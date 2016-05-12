@@ -1259,7 +1259,6 @@ again:
 		za->za_normalization_conflict =
 		    zap_entry_normalization_conflict(&zeh,
 		    NULL, za->za_name, zap);
-
 	}
 	rw_exit(&zc->zc_leaf->l_rwlock);
 	return (err);

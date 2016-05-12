@@ -29,4 +29,5 @@
 
 destroy_pool -f $TESTPOOL1
 
+pkill -9 rngd
 default_cleanup

@@ -45,7 +45,7 @@ void
 abd_checksum_SHA256(abd_t *abd, uint64_t size,
     const void *ctx_template, zio_cksum_t *zcp)
 {
-	SHA2_CTX ctx;
+	SHA2_CTX	ctx;
 	zio_cksum_t tmp;
 
 	SHA2Init(SHA256, &ctx);
@@ -70,7 +70,7 @@ void
 abd_checksum_SHA512_native(abd_t *abd, uint64_t size,
     const void *ctx_template, zio_cksum_t *zcp)
 {
-	SHA2_CTX	ctx;
+	SHA2_CTX        ctx;
 
 	SHA2Init(SHA512_256, &ctx);
 	(void) abd_iterate_func(abd, 0, size, sha_incremental, &ctx);
@@ -82,7 +82,7 @@ void
 abd_checksum_SHA512_byteswap(abd_t *abd, uint64_t size,
     const void *ctx_template, zio_cksum_t *zcp)
 {
-	zio_cksum_t	tmp;
+	zio_cksum_t     tmp;
 
 	abd_checksum_SHA512_native(abd, size, ctx_template, &tmp);
 	zcp->zc_word[0] = BSWAP_64(tmp.zc_word[0]);

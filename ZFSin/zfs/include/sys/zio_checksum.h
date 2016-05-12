@@ -54,7 +54,7 @@ typedef enum zio_checksum_flags {
 	/* Uses salt value */
 	ZCHECKSUM_FLAG_SALTED = (1 << 4),
 	/* Strong enough for nopwrite? */
-	ZCHECKSUM_FLAG_NOPWRITE = (1 << 5)
+	ZCHECKSUM_FLAG_NOPWRITE = (1 << 5),
 } zio_checksum_flags_t;
 
 /*

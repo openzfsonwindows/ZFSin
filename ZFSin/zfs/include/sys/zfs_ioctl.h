@@ -108,6 +108,7 @@ typedef enum drr_headertype {
 /* flag #21 is reserved for a Delphix feature */
 #define	DMU_BACKUP_FEATURE_COMPRESSED		(1 << 22)
 /* flag #23 is reserved for the large dnode feature */
+#define	DMU_BACKUP_FEATURE_RAW			(1 << 24)
 
     /* Unsure what Oracle called this bit */
 #define	DMU_BACKUP_FEATURE_SPILLBLOCKS	(0x20)
@@ -132,9 +133,9 @@ NOTE 3:  Fix to 7097870 (spill block can be dropped in some situations during
 #define	DMU_BACKUP_FEATURE_MASK	(DMU_BACKUP_FEATURE_DEDUP | \
     DMU_BACKUP_FEATURE_DEDUPPROPS | DMU_BACKUP_FEATURE_SA_SPILL | \
     DMU_BACKUP_FEATURE_EMBED_DATA | DMU_BACKUP_FEATURE_LZ4 | \
-    DMU_BACKUP_FEATURE_RESUMING | \
-    DMU_BACKUP_FEATURE_LARGE_BLOCKS | \
-    DMU_BACKUP_FEATURE_COMPRESSED)
+    DMU_BACKUP_FEATURE_RESUMING | DMU_BACKUP_FEATURE_LARGE_BLOCKS | \
+	DMU_BACKUP_FEATURE_COMPRESSED /*| DMU_BACKUP_FEATURE_LARGE_DNODE*/ | \
+    DMU_BACKUP_FEATURE_RAW)
 
 /* Are all features in the given flag word currently supported? */
 #define	DMU_STREAM_SUPPORTED(x)	(!((x) & ~DMU_BACKUP_FEATURE_MASK))
@@ -180,18 +181,28 @@ typedef enum dmu_send_resume_token_version {
 #define	DRR_FLAG_FREERECORDS	(1<<2)
 
 /*
- * flags in the drr_checksumflags field in the DRR_WRITE and
- * DRR_WRITE_BYREF blocks
+ * flags in the drr_flags field in the DRR_WRITE, DRR_SPILL, DRR_OBJECT,
+ * DRR_WRITE_BYREF, and DRR_OBJECT_RANGE blocks
  */
-#define	DRR_CHECKSUM_DEDUP	(1<<0)
+#define	DRR_CHECKSUM_DEDUP	(1<<0) /* not used for DRR_SPILL blocks */
+#define	DRR_RAW_ENCRYPTED	(1<<1)
+#define	DRR_RAW_BYTESWAP	(1<<2)
 
 #define	DRR_IS_DEDUP_CAPABLE(flags)	((flags) & DRR_CHECKSUM_DEDUP)
+#define	DRR_IS_RAW_ENCRYPTED(flags)	((flags) & DRR_RAW_ENCRYPTED)
+#define	DRR_IS_RAW_BYTESWAPPED(flags)	((flags) & DRR_RAW_BYTESWAP)
 
 /* deal with compressed drr_write replay records */
 #define	DRR_WRITE_COMPRESSED(drrw)	((drrw)->drr_compressiontype != 0)
 #define	DRR_WRITE_PAYLOAD_SIZE(drrw) \
 	(DRR_WRITE_COMPRESSED(drrw) ? (drrw)->drr_compressed_size : \
 	(drrw)->drr_logical_size)
+#define	DRR_SPILL_PAYLOAD_SIZE(drrs) \
+	(DRR_IS_RAW_ENCRYPTED(drrs->drr_flags) ? \
+	(drrs)->drr_compressed_size : (drrs)->drr_length)
+#define	DRR_OBJECT_PAYLOAD_SIZE(drro) \
+	(DRR_IS_RAW_ENCRYPTED(drro->drr_flags) ? \
+	drro->drr_raw_bonuslen : P2ROUNDUP(drro->drr_bonuslen, 8))
 
 /*
  * zfs ioctl command structure
@@ -200,7 +211,8 @@ typedef struct dmu_replay_record {
 	enum {
 		DRR_BEGIN, DRR_OBJECT, DRR_FREEOBJECTS,
 		DRR_WRITE, DRR_FREE, DRR_END, DRR_WRITE_BYREF,
-		DRR_SPILL, DRR_WRITE_EMBEDDED, DRR_NUMTYPES
+		DRR_SPILL, DRR_WRITE_EMBEDDED, DRR_OBJECT_RANGE,
+		DRR_NUMTYPES
 	} drr_type;
 	uint32_t drr_payloadlen;
 	union {
@@ -226,8 +238,14 @@ typedef struct dmu_replay_record {
 			uint32_t drr_bonuslen;
 			uint8_t drr_checksumtype;
 			uint8_t drr_compress;
-			uint8_t drr_pad[6];
+			uint8_t drr_dn_slots;
+			uint8_t drr_flags;
+			uint32_t drr_raw_bonuslen;
 			uint64_t drr_toguid;
+			/* only nonzero if DRR_RAW_ENCRYPTED flag is set */
+			uint8_t drr_indblkshift;
+			uint8_t drr_nlevels;
+			uint8_t drr_nblkptr;
 			/* bonus content follows */
 		} drr_object;
 		struct drr_freeobjects {
@@ -243,13 +261,17 @@ typedef struct dmu_replay_record {
 			uint64_t drr_logical_size;
 			uint64_t drr_toguid;
 			uint8_t drr_checksumtype;
-			uint8_t drr_checksumflags;
+			uint8_t drr_flags;
 			uint8_t drr_compressiontype;
 			uint8_t drr_pad2[5];
 			/* deduplication key */
 			ddt_key_t drr_key;
 			/* only nonzero if drr_compressiontype is not 0 */
 			uint64_t drr_compressed_size;
+			/* only nonzero if DRR_RAW_ENCRYPTED flag is set */
+			uint8_t drr_salt[ZIO_DATA_SALT_LEN];
+			uint8_t drr_iv[ZIO_DATA_IV_LEN];
+			uint8_t drr_mac[ZIO_DATA_MAC_LEN];
 			/* content follows */
 		} drr_write;
 		struct drr_free {
@@ -270,7 +292,7 @@ typedef struct dmu_replay_record {
 			uint64_t drr_refoffset;
 			/* properties of the data */
 			uint8_t drr_checksumtype;
-			uint8_t drr_checksumflags;
+			uint8_t drr_flags;
 			uint8_t drr_pad2[6];
 			ddt_key_t drr_key; /* deduplication key */
 		} drr_write_byref;
@@ -278,7 +300,15 @@ typedef struct dmu_replay_record {
 			uint64_t drr_object;
 			uint64_t drr_length;
 			uint64_t drr_toguid;
-			uint64_t drr_pad[4]; /* needed for crypto */
+			uint8_t drr_flags;
+			uint8_t drr_compressiontype;
+			uint8_t drr_pad[6];
+			/* only nonzero if DRR_RAW_ENCRYPTED flag is set */
+			uint64_t drr_compressed_size;
+			uint8_t drr_salt[ZIO_DATA_SALT_LEN];
+			uint8_t drr_iv[ZIO_DATA_IV_LEN];
+			uint8_t drr_mac[ZIO_DATA_MAC_LEN];
+			dmu_object_type_t drr_type;
 			/* spill data follows */
 		} drr_spill;
 		struct drr_write_embedded {
@@ -294,6 +324,16 @@ typedef struct dmu_replay_record {
 			uint32_t drr_psize; /* compr. (real) size of payload */
 			/* (possibly compressed) content follows */
 		} drr_write_embedded;
+		struct drr_object_range {
+			uint64_t drr_firstobj;
+			uint64_t drr_numslots;
+			uint64_t drr_toguid;
+			uint8_t drr_salt[ZIO_DATA_SALT_LEN];
+			uint8_t drr_iv[ZIO_DATA_IV_LEN];
+			uint8_t drr_mac[ZIO_DATA_MAC_LEN];
+			uint8_t drr_flags;
+			uint8_t drr_pad[3];
+		} drr_object_range;
 
 		/*
 		 * Nore: drr_checksum is overlaid with all record types
@@ -528,6 +568,10 @@ typedef enum zfs_ioc {
 	ZFS_IOC_BOOKMARK			= CTL_CODE(ZFSIOCTL_TYPE, 0x843, METHOD_NEITHER, FILE_ANY_ACCESS),
 	ZFS_IOC_GET_BOOKMARKS		= CTL_CODE(ZFSIOCTL_TYPE, 0x844, METHOD_NEITHER, FILE_ANY_ACCESS),
 	ZFS_IOC_DESTROY_BOOKMARKS	= CTL_CODE(ZFSIOCTL_TYPE, 0x845, METHOD_NEITHER, FILE_ANY_ACCESS),
+
+	ZFS_IOC_LOAD_KEY,
+	ZFS_IOC_UNLOAD_KEY,
+	ZFS_IOC_CHANGE_KEY,
 
 	/*
 	 * Linux - 3/64 numbers reserved.

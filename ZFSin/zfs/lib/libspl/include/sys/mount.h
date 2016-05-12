@@ -97,5 +97,11 @@
 #define	MS_OPTIONSTR	0x0100	/* Data is an in/out option string */
 #define	MS_NOMNTTAB	0x0800	/* Don't show mount in mnttab */
 #endif /* __LINUX__ */
+/*
+ * MS_CRYPT indicates that encryption keys should be loaded if they are not
+ * already available. This is not defined in glibc, but it is never seen by
+ * the kernel so it will not cause any problems.
+ */
+#define	MS_CRYPT	0x00000008
 
 #endif /* _LIBSPL_SYS_MOUNT_H */

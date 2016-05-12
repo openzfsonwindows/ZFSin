@@ -65,6 +65,7 @@
     <ClCompile Include="..\..\..\module\zfs\dnode.c" />
     <ClCompile Include="..\..\..\module\zfs\dnode_sync.c" />
     <ClCompile Include="..\..\..\module\zfs\dsl_bookmark.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_crypt.c" />
     <ClCompile Include="..\..\..\module\zfs\dsl_dataset.c" />
     <ClCompile Include="..\..\..\module\zfs\dsl_deadlist.c" />
     <ClCompile Include="..\..\..\module\zfs\dsl_deleg.c" />
@@ -125,6 +126,7 @@
     <ClCompile Include="..\..\..\module\zfs\zio.c" />
     <ClCompile Include="..\..\..\module\zfs\zio_checksum.c" />
     <ClCompile Include="..\..\..\module\zfs\zio_compress.c" />
+    <ClCompile Include="..\..\..\module\zfs\zio_crypt.c" />
     <ClCompile Include="..\..\..\module\zfs\zio_inject.c" />
     <ClCompile Include="..\..\..\module\zfs\zle.c" />
     <ClCompile Include="..\..\..\module\zfs\zrlock.c" />

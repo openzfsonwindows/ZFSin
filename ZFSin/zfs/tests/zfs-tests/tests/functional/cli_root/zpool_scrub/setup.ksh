@@ -35,6 +35,7 @@
 verify_runnable "global"
 verify_disk_count "$DISKS" 2
 
+#log_must rngd -r /dev/urandom -o /dev/random
 default_mirror_setup_noexit $DISK1 $DISK2
 
 mntpnt=$(get_prop mountpoint $TESTPOOL)

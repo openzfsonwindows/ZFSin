@@ -283,6 +283,7 @@
     <ClCompile Include="zfs\module\zfs\dnode.c" />
     <ClCompile Include="zfs\module\zfs\dnode_sync.c" />
     <ClCompile Include="zfs\module\zfs\dsl_bookmark.c" />
+    <ClCompile Include="zfs\module\zfs\dsl_crypt.c" />
     <ClCompile Include="zfs\module\zfs\dsl_dataset.c" />
     <ClCompile Include="zfs\module\zfs\dsl_deadlist.c" />
     <ClCompile Include="zfs\module\zfs\dsl_deleg.c" />
@@ -357,6 +358,7 @@
     <ClCompile Include="zfs\module\zfs\zio.c" />
     <ClCompile Include="zfs\module\zfs\zio_checksum.c" />
     <ClCompile Include="zfs\module\zfs\zio_compress.c" />
+    <ClCompile Include="zfs\module\zfs\zio_crypt.c" />
     <ClCompile Include="zfs\module\zfs\zio_inject.c" />
     <ClCompile Include="zfs\module\zfs\zle.c" />
     <ClCompile Include="zfs\module\zfs\zrlock.c" />

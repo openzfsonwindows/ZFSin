@@ -30,9 +30,10 @@
 
 #if defined(__i386) || defined(__amd64)
 #include <sys/byteorder.h>
+#ifndef __APPLE__  // Not allowed on XNU
 #define	UNALIGNED_POINTERS_PERMITTED
 #endif
-
+#endif
 /*
  * Encrypt multiple blocks of data in CCM mode.  Decrypt for CCM mode
  * is done in another function.

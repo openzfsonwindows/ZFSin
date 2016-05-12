@@ -37,6 +37,7 @@
   <ItemGroup>
     <ClCompile Include="..\libzfs_changelist.c" />
     <ClCompile Include="..\libzfs_config.c" />
+    <ClCompile Include="..\libzfs_crypto.c" />
     <ClCompile Include="..\libzfs_dataset.c" />
     <ClCompile Include="..\libzfs_diff.c" />
     <ClCompile Include="..\libzfs_fru.c" />

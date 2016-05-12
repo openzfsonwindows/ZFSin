@@ -337,9 +337,9 @@ zfsctl_root_inode_cb(struct vnode *vp, int index)
 void
 zfsctl_create(zfsvfs_t *zfsvfs)
 {
-	struct vnode *vp = NULL, *rvp = NULL;
+	struct vnode *vp = NULL; //, *rvp = NULL;
 	zfsctl_node_t *zcp;
-	uint64_t crtime[2];
+//	uint64_t crtime[2];
 
 
 	ASSERT(zfsvfs->z_ctldir == NULL);
@@ -361,12 +361,13 @@ zfsctl_create(zfsvfs_t *zfsvfs)
     zcp = vnode_fsnode(vp);
     zcp->zc_id = ZFSCTL_INO_ROOT;
 
+#ifndef __APPLE__
     VERIFY(VFS_ROOT(zfsvfs->z_vfs, 0, &rvp) == 0);
     VERIFY(0 == sa_lookup(VTOZ(rvp)->z_sa_hdl, SA_ZPL_CRTIME(zfsvfs),
                           &crtime, sizeof (crtime)));
     ZFS_TIME_DECODE(&zcp->zc_cmtime, crtime);
     VN_RELE(rvp);
-
+#endif
 
 #ifdef __LINUX__
     /*

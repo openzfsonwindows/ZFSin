@@ -29,4 +29,5 @@
 
 DISK=${DISKS%% *}
 
+#log_must rngd -r /dev/urandom -o /dev/random
 default_setup $DISK

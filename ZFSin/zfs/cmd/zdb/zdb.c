@@ -62,6 +62,7 @@
 #include <sys/ddt.h>
 #include <sys/zfeature.h>
 #include <sys/abd.h>
+#include <sys/dsl_crypt.h>
 #include <zfs_comutil.h>
 #include <libzfs.h>
 
@@ -1628,14 +1629,14 @@ open_objset(const char *path, dmu_objset_type_t type, void *tag, objset_t **osp)
 	uint64_t version = 0;
 
 	VERIFY3P(sa_os, ==, NULL);
-	err = dmu_objset_own(path, type, B_TRUE, tag, osp);
+	err = dmu_objset_own(path, type, B_TRUE, B_FALSE, tag, osp);
 	if (err != 0) {
 		(void) fprintf(stderr, "failed to own dataset '%s': %s\n", path,
 		    strerror(err));
 		return (err);
 	}
 
-	if (dmu_objset_type(*osp) == DMU_OST_ZFS) {
+	if (dmu_objset_type(*osp) == DMU_OST_ZFS && !(*osp)->os_encrypted) {
 		(void) zap_lookup(*osp, MASTER_NODE_OBJ, ZPL_VERSION_STR,
 		    8, 1, &version);
 		if (version >= ZPL_VERSION_SA) {
@@ -1647,7 +1648,7 @@ open_objset(const char *path, dmu_objset_type_t type, void *tag, objset_t **osp)
 		if (err != 0) {
 			(void) fprintf(stderr, "sa_setup failed: %s\n",
 			    strerror(err));
-			dmu_objset_disown(*osp, tag);
+			dmu_objset_disown(*osp, B_FALSE, tag);
 			*osp = NULL;
 		}
 	}
@@ -1662,7 +1663,7 @@ close_objset(objset_t *os, void *tag)
 	VERIFY3P(os, ==, sa_os);
 	if (os->os_sa != NULL)
 		sa_tear_down(os);
-	dmu_objset_disown(os, tag);
+	dmu_objset_disown(os, B_FALSE, tag);
 	sa_attr_table = NULL;
 	sa_os = NULL;
 }
@@ -1935,6 +1936,7 @@ dump_object(objset_t *os, uint64_t object, int verbosity, int *print_header)
 	dmu_buf_t *db = NULL;
 	dmu_object_info_t doi;
 	dnode_t *dn;
+	boolean_t dnode_held = B_FALSE;
 	void *bonus = NULL;
 	size_t bsize = 0;
 	char iblk[32], dblk[32], lsize[32], asize[32], fill[32];
@@ -1951,16 +1953,33 @@ dump_object(objset_t *os, uint64_t object, int verbosity, int *print_header)
 
 	if (object == 0) {
 		dn = DMU_META_DNODE(os);
+		dmu_object_info_from_dnode(dn, &doi);
 	} else {
-		error = dmu_bonus_hold(os, object, FTAG, &db);
+		/*
+		 * Encrypted datasets will have sensitive bonus buffers
+		 * encrypted. Therefore we cannot hold the bonus buffer and
+		 * must hold the dnode itself instead.
+		 */
+		error = dmu_object_info(os, object, &doi);
 		if (error)
-			fatal("dmu_bonus_hold(%llu) failed, errno %u",
-			    object, error);
-		bonus = db->db_data;
-		bsize = db->db_size;
-		dn = DB_DNODE((dmu_buf_impl_t *)db);
+			fatal("dmu_object_info() failed, errno %u", error);
+
+		if (os->os_encrypted &&
+		    DMU_OT_IS_ENCRYPTED(doi.doi_bonus_type)) {
+			error = dnode_hold(os, object, FTAG, &dn);
+			if (error)
+				fatal("dnode_hold() failed, errno %u", error);
+			dnode_held = B_TRUE;
+		} else {
+			error = dmu_bonus_hold(os, object, FTAG, &db);
+			if (error)
+				fatal("dmu_bonus_hold(%llu) failed, errno %u",
+				    object, error);
+			bonus = db->db_data;
+			bsize = db->db_size;
+			dn = DB_DNODE((dmu_buf_impl_t *)db);
+		}
 	}
-	dmu_object_info_from_dnode(dn, &doi);
 
 	zdb_nicenum(doi.doi_metadata_block_size, iblk);
 	zdb_nicenum(doi.doi_data_block_size, dblk);
@@ -2004,9 +2023,20 @@ dump_object(objset_t *os, uint64_t object, int verbosity, int *print_header)
 		(void) printf("\tdnode maxblkid: %llu\n",
 		    (longlong_t)dn->dn_phys->dn_maxblkid);
 
-		object_viewer[ZDB_OT_TYPE(doi.doi_bonus_type)](os, object,
-		    bonus, bsize);
-		object_viewer[ZDB_OT_TYPE(doi.doi_type)](os, object, NULL, 0);
+		if (!dnode_held) {
+			object_viewer[ZDB_OT_TYPE(doi.doi_bonus_type)](os,
+			    object, bonus, bsize);
+		} else {
+			(void) printf("\t\t(bonus encrypted)\n");
+		}
+
+		if (!os->os_encrypted || !DMU_OT_IS_ENCRYPTED(doi.doi_type)) {
+			object_viewer[ZDB_OT_TYPE(doi.doi_type)](os, object,
+			    NULL, 0);
+		} else {
+			(void) printf("\t\t(object encrypted)\n");
+		}
+
 		*print_header = 1;
 	}
 
@@ -2048,6 +2078,8 @@ dump_object(objset_t *os, uint64_t object, int verbosity, int *print_header)
 
 	if (db != NULL)
 		dmu_buf_rele(db, FTAG);
+	if (dnode_held)
+		dnode_rele(dn, FTAG);
 }
 
 static char *objset_types[DMU_OST_NUMTYPES] = {
@@ -2352,7 +2384,7 @@ dump_path(char *ds, char *path)
 	if (err != 0) {
 		(void) fprintf(stderr, "can't lookup root znode: %s\n",
 		    strerror(err));
-		dmu_objset_disown(os, FTAG);
+		dmu_objset_disown(os, B_FALSE, FTAG);
 		return (EINVAL);
 	}
 
@@ -2925,7 +2957,8 @@ dump_block_stats(spa_t *spa)
 	zdb_cb_t zcb;
 	zdb_blkstats_t *zb, *tzb;
 	uint64_t norm_alloc, norm_space, total_alloc, total_found;
-	int flags = TRAVERSE_PRE | TRAVERSE_PREFETCH_METADATA | TRAVERSE_HARD;
+	int flags = TRAVERSE_PRE | TRAVERSE_PREFETCH_METADATA |
+	    TRAVERSE_NO_DECRYPT | TRAVERSE_HARD;
 	boolean_t leaks = B_FALSE;
 	int e, c;
 	bp_embedded_type_t i;
@@ -3230,8 +3263,8 @@ dump_simulated_ddt(spa_t *spa)
 
 	spa_config_enter(spa, SCL_CONFIG, FTAG, RW_READER);
 
-	(void) traverse_pool(spa, 0, TRAVERSE_PRE | TRAVERSE_PREFETCH_METADATA,
-	    zdb_ddt_add_cb, &t);
+	(void) traverse_pool(spa, 0, TRAVERSE_PRE | TRAVERSE_PREFETCH_METADATA |
+	    TRAVERSE_NO_DECRYPT, zdb_ddt_add_cb, &t);
 
 	spa_config_exit(spa, SCL_CONFIG, FTAG);
 

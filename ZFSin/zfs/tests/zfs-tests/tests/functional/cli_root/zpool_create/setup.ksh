@@ -109,4 +109,5 @@ EOF
 cp $TMPFILE $TMPFILE.keep
 fi
 
+#log_must rngd -r /dev/urandom -o /dev/random
 log_pass

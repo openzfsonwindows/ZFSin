@@ -90,7 +90,7 @@ name_to_bookmark(char *buf, zbookmark_phys_t *zb)
  * during spa_errlog_sync().
  */
 void
-spa_log_error_zb(spa_t *spa, zbookmark_phys_t *zb)
+spa_log_error(spa_t *spa, const zbookmark_phys_t *zb)
 {
 	spa_error_entry_t search;
 	spa_error_entry_t *new;
@@ -128,11 +128,6 @@ spa_log_error_zb(spa_t *spa, zbookmark_phys_t *zb)
 	mutex_exit(&spa->spa_errlist_lock);
 }
 
-void
-spa_log_error(spa_t *spa, zio_t *zio)
-{
-	return spa_log_error_zb(spa, &zio->io_logical->io_bookmark);
-}
 /*
  * Return the number of errors currently in the error log.  This is actually the
  * sum of both the last log and the current log, since we don't know the union

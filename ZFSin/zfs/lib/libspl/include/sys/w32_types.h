@@ -193,4 +193,9 @@ int kobj_get_filesize(struct _buf *file, uint64_t *size);
 
 #define _Atomic
 
+
+#ifndef SIGTSTP
+#define SIGTSTP 0
+#endif
+
 #endif

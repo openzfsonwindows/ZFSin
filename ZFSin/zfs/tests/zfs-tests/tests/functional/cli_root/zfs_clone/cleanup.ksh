@@ -27,4 +27,5 @@
 
 . $STF_SUITE/include/libtest.shlib
 
+pkill -9 rngd
 default_container_cleanup

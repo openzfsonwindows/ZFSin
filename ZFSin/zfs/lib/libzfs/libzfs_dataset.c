@@ -61,6 +61,7 @@
 #include <sys/dnode.h>
 #include <sys/spa.h>
 #include <sys/zap.h>
+#include <sys/dsl_crypt.h>
 #include <libzfs.h>
 
 #include "zfs_namecheck.h"
@@ -984,7 +985,7 @@ zfs_which_resv_prop(zfs_handle_t *zhp, zfs_prop_t *resv_prop)
 nvlist_t *
 zfs_valid_proplist(libzfs_handle_t *hdl, zfs_type_t type, nvlist_t *nvl,
     uint64_t zoned, zfs_handle_t *zhp, zpool_handle_t *zpool_hdl,
-	const char *errbuf)
+    boolean_t key_params_ok, const char *errbuf)
 {
 	nvpair_t *elem;
 	uint64_t intval;
@@ -1141,7 +1142,8 @@ zfs_valid_proplist(libzfs_handle_t *hdl, zfs_type_t type, nvlist_t *nvl,
 		}
 
 		if (zfs_prop_readonly(prop) &&
-		    (!zfs_prop_setonce(prop) || zhp != NULL)) {
+		    !(zfs_prop_setonce(prop) && zhp == NULL) &&
+		    !(zfs_prop_encryption_key_param(prop) && key_params_ok)) {
 			zfs_error_aux(hdl,
 			    dgettext(TEXT_DOMAIN, "'%s' is readonly"),
 			    propname);
@@ -1412,6 +1414,49 @@ badlabel:
 			}
 
 			break;
+
+		case ZFS_PROP_KEYLOCATION:
+			if (!zfs_prop_valid_keylocation(strval, B_FALSE)) {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "invalid keylocation"));
+				(void) zfs_error(hdl, EZFS_BADPROP, errbuf);
+				goto error;
+			}
+
+			if (zhp != NULL) {
+				uint64_t crypt =
+				    zfs_prop_get_int(zhp, ZFS_PROP_ENCRYPTION);
+
+				if (crypt == ZIO_CRYPT_OFF &&
+				    strcmp(strval, "none") != 0) {
+					zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+					    "keylocation must not be 'none' "
+					    "for encrypted datasets"));
+					(void) zfs_error(hdl, EZFS_BADPROP,
+					    errbuf);
+					goto error;
+				} else if (crypt != ZIO_CRYPT_OFF &&
+				    strcmp(strval, "none") == 0) {
+					zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+					    "keylocation must be 'none' "
+					    "for unencrypted datasets"));
+					(void) zfs_error(hdl, EZFS_BADPROP,
+					    errbuf);
+					goto error;
+				}
+			}
+			break;
+
+		case ZFS_PROP_PBKDF2_ITERS:
+			if (intval < MIN_PBKDF2_ITERATIONS) {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "minimum pbkdf2 iterations is %u"),
+				    MIN_PBKDF2_ITERATIONS);
+				(void) zfs_error(hdl, EZFS_BADPROP, errbuf);
+				goto error;
+			}
+			break;
+
 		case ZFS_PROP_UTF8ONLY:
 			chosen_utf = (int)intval;
 			break;
@@ -1463,6 +1508,27 @@ badlabel:
 					zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
 					    "'%s' cannot be zero"),
 					    propname);
+					(void) zfs_error(hdl, EZFS_BADPROP,
+					    errbuf);
+					goto error;
+				}
+				break;
+			default:
+				break;
+			}
+		}
+
+		/* check encryption properties */
+		if (zhp != NULL) {
+			int64_t crypt = zfs_prop_get_int(zhp,
+			    ZFS_PROP_ENCRYPTION);
+
+			switch (prop) {
+			case ZFS_PROP_COPIES:
+				if (crypt != ZIO_CRYPT_OFF && intval > 2) {
+					zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+					    "encrypted datasets cannot have "
+					    "3 copies"));
 					(void) zfs_error(hdl, EZFS_BADPROP,
 					    errbuf);
 					goto error;
@@ -1617,6 +1683,16 @@ zfs_setprop_error(libzfs_handle_t *hdl, zfs_prop_t prop, int err,
 		}
 		break;
 
+	case EACCES:
+		if (prop == ZFS_PROP_KEYLOCATION) {
+			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+			    "keylocation may only be set on encryption roots"));
+			(void) zfs_error(hdl, EZFS_BADPROP, errbuf);
+		} else {
+			(void) zfs_standard_error(hdl, err, errbuf);
+		}
+		break;
+
 	case EOVERFLOW:
 		/*
 		 * This platform can't address a volume this big.
@@ -1684,7 +1760,7 @@ zfs_prop_set_list(zfs_handle_t *zhp, nvlist_t *props)
 
 	if ((nvl = zfs_valid_proplist(hdl, zhp->zfs_type, props,
 				  zfs_prop_get_int(zhp, ZFS_PROP_ZONED), zhp, zhp->zpool_hdl,
-				  errbuf)) == NULL)
+				  B_FALSE, errbuf)) == NULL)
 		goto error;
 	/*
 	 * We have to check for any extra properties which need to be added
@@ -3198,6 +3274,12 @@ parent_name(const char *path, char *buf, size_t buflen)
 	return (0);
 }
 
+int
+zfs_parent_name(zfs_handle_t *zhp, char *buf, size_t buflen)
+{
+	return (parent_name(zfs_get_name(zhp), buf, buflen));
+}
+
 /*
  * If accept_ancestor is false, then check to make sure that the given path has
  * a parent, and that it exists.  If accept_ancestor is true, then find the
@@ -3416,9 +3498,12 @@ zfs_create(libzfs_handle_t *hdl, const char *path, zfs_type_t type,
 	int ret;
 	uint64_t size = 0;
 	uint64_t blocksize = zfs_prop_default_numeric(ZFS_PROP_VOLBLOCKSIZE);
-	char errbuf[1024];
 	uint64_t zoned;
 	enum lzc_dataset_type ost;
+	uint8_t *wkeydata = NULL;
+	uint_t wkeylen = 0;
+	char errbuf[1024];
+	char parent[MAXNAMELEN];
 
 	(void) snprintf(errbuf, sizeof (errbuf), dgettext(TEXT_DOMAIN,
 	    "cannot create '%s'"), path);
@@ -3461,7 +3546,8 @@ zfs_create(libzfs_handle_t *hdl, const char *path, zfs_type_t type,
 	zpool_handle_t *zpool_handle = zpool_open(hdl, pool_path);
 
 	if (props && (props = zfs_valid_proplist(hdl, type, props,
-		zoned, NULL, zpool_handle, errbuf)) == 0) {
+		zoned, NULL, zpool_handle, B_TRUE, errbuf)) == 0) {
+		zpool_close(zpool_handle);
 		return (-1);
 	}
 	zpool_close(zpool_handle);
@@ -3512,9 +3598,18 @@ zfs_create(libzfs_handle_t *hdl, const char *path, zfs_type_t type,
 		}
 	}
 
+	(void) parent_name(path, parent, sizeof (parent));
+	if (zfs_crypto_create(hdl, parent, props, NULL, &wkeydata,
+	    &wkeylen) != 0) {
+		nvlist_free(props);
+		return (zfs_error(hdl, EZFS_CRYPTOFAILED, errbuf));
+	}
+
 	/* create the dataset */
-	ret = lzc_create(path, ost, props);
+	ret = lzc_create(path, ost, props, wkeydata, wkeylen);
 	nvlist_free(props);
+	if (wkeydata != NULL)
+		free(wkeydata);
 
 	/* check for failure */
 	if (ret != 0) {
@@ -3547,6 +3642,13 @@ zfs_create(libzfs_handle_t *hdl, const char *path, zfs_type_t type,
 			    "pool must be upgraded to set this "
 			    "property or value"));
 			return (zfs_error(hdl, EZFS_BADVERSION, errbuf));
+
+		case EACCES:
+			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+			    "encryption root's key is not loaded "
+				"or provided"));
+			return (zfs_error(hdl, EZFS_CRYPTOFAILED, errbuf));
+
 #ifdef _ILP32
 		case EOVERFLOW:
 			/*
@@ -3740,8 +3842,13 @@ zfs_clone(zfs_handle_t *zhp, const char *target, nvlist_t *props)
 			type = ZFS_TYPE_FILESYSTEM;
 		}
 		if ((props = zfs_valid_proplist(hdl, type, props, zoned,
-			zhp, zhp->zpool_hdl, errbuf)) == NULL)
+			zhp, zhp->zpool_hdl, B_TRUE, errbuf)) == NULL)
 			return (-1);
+	}
+
+	if (zfs_crypto_clone_check(hdl, zhp, parent, props) != 0) {
+		nvlist_free(props);
+		return (zfs_error(hdl, EZFS_CRYPTOFAILED, errbuf));
 	}
 
 	ret = lzc_clone(target, zhp->zfs_name, props);
@@ -3896,7 +4003,7 @@ zfs_snapshot_nvl(libzfs_handle_t *hdl, nvlist_t *snaps, nvlist_t *props)
 
 	if (props != NULL &&
 	    (props = zfs_valid_proplist(hdl, ZFS_TYPE_SNAPSHOT,
-		props, B_FALSE, NULL, zpool_hdl, errbuf)) == NULL) {
+		props, B_FALSE, NULL, zpool_hdl, B_FALSE, errbuf)) == NULL) {
 		zpool_close(zpool_hdl);
 		return (-1);
 	}
@@ -4265,6 +4372,18 @@ zfs_rename(zfs_handle_t *zhp, const char *target, boolean_t recursive,
 			    "a child dataset already has a snapshot "
 			    "with the new name"));
 			(void) zfs_error(hdl, EZFS_EXISTS, errbuf);
+		} else if (errno == EACCES) {
+			if (zfs_prop_get_int(zhp, ZFS_PROP_ENCRYPTION) ==
+			    ZIO_CRYPT_OFF) {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "cannot rename an unencrypted dataset to "
+				    "be a decendent of an encrypted one"));
+			} else {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "cannot move encryption child outside of "
+				    "its encryption root"));
+			}
+			(void) zfs_error(hdl, EZFS_CRYPTOFAILED, errbuf);
 		} else {
 			(void) zfs_standard_error(zhp->zfs_hdl, errno, errbuf);
 		}

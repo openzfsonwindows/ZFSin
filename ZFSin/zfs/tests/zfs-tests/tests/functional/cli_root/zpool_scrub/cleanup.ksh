@@ -29,4 +29,5 @@
 
 verify_runnable "global"
 
+pkill -9 rngd
 destroy_mirrors

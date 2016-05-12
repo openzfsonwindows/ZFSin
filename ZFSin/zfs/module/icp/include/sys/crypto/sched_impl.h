@@ -225,7 +225,7 @@ typedef	struct kcf_call_req {
 	kcf_req_params_t	kr_params;	/* Params saved for next call */
 	kcf_areq_node_t		*kr_areq;	/* Use this areq */
 	off_t			kr_saveoffset;
-	size_t			kr_savelen;
+	uint32_t			kr_savelen;
 } kcf_dual_req_t;
 
 /*
@@ -354,7 +354,7 @@ typedef struct kcf_context {
 typedef	struct kcf_ctx_template {
 	crypto_kcf_provider_handle_t	ct_prov_handle;	/* provider handle */
 	uint_t				ct_generation;	/* generation # */
-	size_t				ct_size;	/* for freeing */
+	uint32_t				ct_size;	/* for freeing */
 	crypto_spi_ctx_template_t	ct_prov_tmpl;	/* context template */
 							/* from the SW prov */
 } kcf_ctx_template_t;
@@ -490,11 +490,11 @@ extern kcf_prov_tried_t *kcf_insert_triedlist(kcf_prov_tried_t **,
     kcf_provider_desc_t *, int);
 extern kcf_provider_desc_t *kcf_get_mech_provider(crypto_mech_type_t,
     kcf_mech_entry_t **, int *, kcf_prov_tried_t *, crypto_func_group_t,
-    boolean_t, size_t);
+    boolean_t, uint32_t);
 extern kcf_provider_desc_t *kcf_get_dual_provider(crypto_mechanism_t *,
     crypto_mechanism_t *, kcf_mech_entry_t **, crypto_mech_type_t *,
     crypto_mech_type_t *, int *, kcf_prov_tried_t *,
-    crypto_func_group_t, crypto_func_group_t, boolean_t, size_t);
+    crypto_func_group_t, crypto_func_group_t, boolean_t, uint32_t);
 extern crypto_ctx_t *kcf_new_ctx(crypto_call_req_t  *, kcf_provider_desc_t *,
     crypto_session_id_t);
 extern int kcf_submit_request(kcf_provider_desc_t *, crypto_ctx_t *,

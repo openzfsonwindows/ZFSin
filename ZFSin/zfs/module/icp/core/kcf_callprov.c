@@ -250,7 +250,7 @@ out:
 kcf_provider_desc_t *
 kcf_get_mech_provider(crypto_mech_type_t mech_type, kcf_mech_entry_t **mepp,
     int *error, kcf_prov_tried_t *triedl, crypto_func_group_t fg,
-    boolean_t call_restrict, size_t data_size)
+    boolean_t call_restrict, uint32_t data_size)
 {
 	kcf_provider_desc_t *pd = NULL, *gpd = NULL;
 	kcf_prov_mech_desc_t *prov_chain, *mdesc;
@@ -362,7 +362,7 @@ kcf_get_dual_provider(crypto_mechanism_t *mech1, crypto_mechanism_t *mech2,
     kcf_mech_entry_t **mepp, crypto_mech_type_t *prov_mt1,
     crypto_mech_type_t *prov_mt2, int *error, kcf_prov_tried_t *triedl,
     crypto_func_group_t fg1, crypto_func_group_t fg2, boolean_t call_restrict,
-    size_t data_size)
+	uint32_t data_size)
 {
 	kcf_provider_desc_t *pd = NULL, *pdm1 = NULL, *pdm1m2 = NULL;
 	kcf_prov_mech_desc_t *prov_chain, *mdesc;
@@ -1323,7 +1323,7 @@ kcf_emulate_dual(kcf_provider_desc_t *pd, crypto_ctx_t *ctx,
 {
 	int err = CRYPTO_ARGUMENTS_BAD;
 	kcf_op_type_t optype;
-	size_t save_len;
+	uint32_t save_len;
 	off_t save_offset;
 
 	optype = params->rp_optype;

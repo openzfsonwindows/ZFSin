@@ -28,6 +28,9 @@
 . $STF_SUITE/include/libtest.shlib
 
 DISK=${DISKS%% *}
+
+#log_must rngd -r /dev/urandom -o /dev/random
+
 if is_global_zone; then
 	default_volume_setup $DISK
 else

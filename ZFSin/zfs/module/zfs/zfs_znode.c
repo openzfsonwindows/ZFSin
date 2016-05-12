@@ -843,7 +843,7 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 					 DMU_META_OBJSET,
 					 db2->db.db_object, db2->db_level, db2->db_blkid);
 
-		spa_log_error_zb(db2->db_objset->os_spa, &zb);
+		spa_log_error(db2->db_objset->os_spa, &zb);
 
 		} // bad vtype
 

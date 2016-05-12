@@ -1212,7 +1212,7 @@ zfsvfs_create(const char *osname, zfsvfs_t **zfvp)
 	 * We claim to always be readonly so we can open snapshots;
 	 * other ZPL code will prevent us from writing to snapshots.
 	 */
-	error = dmu_objset_own(osname, DMU_OST_ZFS, B_TRUE, zfsvfs, &os);
+	error = dmu_objset_own(osname, DMU_OST_ZFS, B_TRUE, B_TRUE, zfsvfs, &os);
 	if (error) {
 		kmem_free(zfsvfs, sizeof (zfsvfs_t));
 		return (error);
@@ -1242,7 +1242,7 @@ zfsvfs_create(const char *osname, zfsvfs_t **zfvp)
 
 	error = zfsvfs_init(zfsvfs, os);
 	if (error != 0) {
-		dmu_objset_disown(os, zfsvfs);
+		dmu_objset_disown(os, B_TRUE, zfsvfs);
 		*zfvp = NULL;
 		kmem_free(zfsvfs, sizeof (zfsvfs_t));
 		return (error);
@@ -1261,6 +1261,12 @@ zfsvfs_setup(zfsvfs_t *zfsvfs, boolean_t mounting)
 	if (error)
 		return (error);
 
+	/*
+	 * Set the objset user_ptr to track its zfsvfs.
+	 */
+	mutex_enter(&zfsvfs->z_os->os_user_ptr_lock);
+	dmu_objset_set_user(zfsvfs->z_os, zfsvfs);
+	mutex_exit(&zfsvfs->z_os->os_user_ptr_lock);
 	zfsvfs->z_log = zil_open(zfsvfs->z_os, zfs_get_data);
 
 	/*
@@ -1578,7 +1584,7 @@ dprintf("%s\n", __func__);
 #endif
 out:
 	if (error) {
-		dmu_objset_disown(zfsvfs->z_os, zfsvfs);
+		dmu_objset_disown(zfsvfs->z_os, B_TRUE, zfsvfs);
 		zfsvfs_free(zfsvfs);
 	} else {
 		atomic_inc_32(&zfs_active_fs_count);
@@ -3126,7 +3132,6 @@ zfs_vfs_unmount(struct mount *mp, int mntflags, vfs_context_t *context)
 	 */
 	(void) vflush(mp, NULLVP, FORCECLOSE);
 
-    dprintf("teardown\n");
 	VERIFY(zfsvfs_teardown(zfsvfs, B_TRUE) == 0);
 	os = zfsvfs->z_os;
 
@@ -3149,7 +3154,7 @@ zfs_vfs_unmount(struct mount *mp, int mntflags, vfs_context_t *context)
 		 * Finally release the objset
 		 */
         dprintf("disown\n");
-		dmu_objset_disown(os, zfsvfs);
+		dmu_objset_disown(os, B_TRUE, zfsvfs);
 	}
 
     dprintf("OS released\n");
@@ -3286,9 +3291,9 @@ zfs_vget_internal(zfsvfs_t *zfsvfs, ino64_t ino, vnode_t **vpp)
 			zp->z_finder_parentid = findnode->hl_parent;
 			mutex_exit(&zp->z_lock);
 
+
 		// If we already have the name, cached in zfs_vnop_lookup
 		} else if (zp->z_name_cache[0]) {
-
 			dprintf("vget: cached name '%s'\n", zp->z_name_cache);
 			vnode_update_identity(*vpp, NULL, zp->z_name_cache,
 								  strlen(zp->z_name_cache), 0,

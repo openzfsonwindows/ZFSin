@@ -108,4 +108,5 @@ while (( i < $MAX_NUM )); do
 	(( i = i + 1 ))
 done
 
+#log_must rngd -r /dev/urandom -o /dev/random
 log_pass

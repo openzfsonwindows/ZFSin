@@ -791,11 +791,82 @@ strlcat(register char* s, register const char* t, register uint32_t n)
 
 int win_isatty(HANDLE h) 
 { 
-	DWORD mode; 
-	return GetConsoleMode(h, &mode) != 0; 
+	DWORD mode;
+	int ret;
+
+	const unsigned long bufSize = sizeof(DWORD) + MAX_PATH * sizeof(WCHAR);
+	BYTE buf[sizeof(DWORD) + MAX_PATH * sizeof(WCHAR)];
+	PFILE_NAME_INFO pfni = (PFILE_NAME_INFO)buf;
+
+	if (!GetFileInformationByHandleEx(h, FileNameInfo, buf, bufSize)) {
+		return 0;
+	}
+
+	PWSTR fn = pfni->FileName;
+	fn[pfni->FileNameLength] = L'\0';
+
+	ret = ((wcsstr(fn, L"\\cygwin-") || wcsstr(fn, L"\\msys-")) &&
+		wcsstr(fn, L"-pty") && wcsstr(fn, L"-master"));
+
+	//printf("ret %d Got name as '%S'\n", ret, fn); fflush(stdout);
+	return ret;
 }
 
 int setrlimit(int resource, const struct rlimit *rlp)
 {
 	return 0;
+}
+
+int tcgetattr(int fildes, struct termios *termios_p)
+{
+	return 0;
+}
+
+int tcsetattr(int fildes, int optional_actions,
+	const struct termios *termios_p)
+{
+	return 0;
+}
+
+// Not really getline, just used for password input in libzfs_crypto.c
+#define MAX_GETLINE 128
+int32_t getline(char **linep, uint32_t* linecapp,
+	FILE *stream)
+{
+	static char getpassbuf[MAX_GETLINE + 1];
+	size_t i = 0;
+
+	// This does not work in bash, it echos the password, find
+	// a solution for it too
+	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+	DWORD mode = 0;
+	GetConsoleMode(hStdin, &mode);
+	SetConsoleMode(hStdin, mode & (~ENABLE_ECHO_INPUT));
+
+	int c;
+	for (;;)
+	{
+		c = getc(stream);
+		if ((c == '\r') || (c == '\n'))
+		{
+			getpassbuf[i] = '\0';
+			break;
+		}
+		else if (i < MAX_GETLINE)
+		{
+			getpassbuf[i++] = c;
+		}
+		if (i >= MAX_GETLINE)
+		{
+			getpassbuf[i] = '\0';
+			break;
+		}
+	}
+
+	if (linep) *linep = strdup(getpassbuf);
+	if (linecapp) *linecapp = 1;
+
+	SetConsoleMode(hStdin, mode);
+
+	return i;
 }

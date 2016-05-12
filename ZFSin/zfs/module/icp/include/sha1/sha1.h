@@ -43,6 +43,16 @@
 extern "C" {
 #endif
 
+#ifdef __APPLE__
+/* Unfortunately, XNU defines sha1 in the kernel, and we are not allowed
+ * to call it, so we have to modify the names here.
+ */
+#define SHA1Init   ZFS_SHA1Init
+#define SHA1Update ZFS_SHA1Update
+#define SHA1Final  ZFS_SHA1Final
+
+#endif
+
 /*
  * NOTE: n2rng (Niagara2 RNG driver) accesses the state field of
  * SHA1_CTX directly.  NEVER change this structure without verifying

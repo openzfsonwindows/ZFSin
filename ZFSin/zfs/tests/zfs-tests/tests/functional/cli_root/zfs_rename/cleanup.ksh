@@ -36,4 +36,5 @@ if [[ -d $TESTDIR2 ]]; then
         fi
 fi
 
+pkill -9 rngd
 log_pass

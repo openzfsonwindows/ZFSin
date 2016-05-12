@@ -43,4 +43,5 @@ if [[ -n "$LINUX" ]]; then
 	done	
 fi
 
+pkill -9 rngd
 log_pass

@@ -33,4 +33,5 @@
 
 DISK=${DISKS%% *}
 
+#log_must rngd -r /dev/urandom -o /dev/random
 default_container_volume_setup ${DISK}
