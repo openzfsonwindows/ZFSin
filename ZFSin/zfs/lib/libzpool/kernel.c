@@ -1347,6 +1347,16 @@ kernel_fini(void)
 	random_fini();
 }
 
+/* ARGSUSED */
+uint32_t
+zone_get_hostid(void *zonep)
+{
+	/*
+	 * We're emulating the system's hostid in userland.
+	 */
+	return (strtoul(hw_serial, NULL, 10));
+}
+
 uid_t
 crgetuid(cred_t *cr)
 {
