@@ -48,8 +48,6 @@ function cleanup_testenv
 {
 	cleanup
 
-	destroy_pool -f $TESTPOOL2
-
 	if [[ -n $lofidev ]]; then
 		$LOFIADM -d $lofidev
 	fi
@@ -80,15 +78,3 @@ log_must verify_slog_device $TESTPOOL $lofidev 'ONLINE'
 
 log_pass "Verify slog device can be disk, file, lofi device or any device " \
 	"that presents a block interface."
-
-# Temp disable fore bug 6569095
-# Add file which reside in the itself
-mntpnt=$(get_prop mountpoint $TESTPOOL)
-log_must $MKFILE 100M $mntpnt/vdev
-log_must $ZPOOL add $TESTPOOL $mntpnt/vdev
-
-# Temp disable fore bug 6569072
-# Add ZFS volume
-vol=$TESTPOOL/vol
-log_must $ZPOOL create -V 64M $vol
-log_must $ZPOOL add $TESTPOOL $ZVOL_DEVDIR/$vol
