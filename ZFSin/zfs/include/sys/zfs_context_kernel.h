@@ -71,6 +71,9 @@ extern "C" {
 #include <sys/ctype.h>
 #include <sys/disp.h>
 #include <sys/atomic.h>
+#include <sys/sysevent.h>
+#include <sys/sysevent/eventdefs.h>
+
 //#include <linux/dcache_compat.h>
 
 // There are to be found in spl/include/sys/kmem.h

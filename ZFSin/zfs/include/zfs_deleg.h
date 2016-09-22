@@ -21,7 +21,7 @@
 /*
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2010 Nexenta Systems, Inc. All rights reserved.
- * Copyright (c) 2013 by Delphix. All rights reserved.
+ * Copyright (c) 2013, 2015 by Delphix. All rights reserved.
  */
 
 #ifndef	_ZFS_DELEG_H
@@ -69,6 +69,7 @@ typedef enum {
 	ZFS_DELEG_NOTE_BOOKMARK,
 	ZFS_DELEG_NOTE_LOAD_KEY,
 	ZFS_DELEG_NOTE_CHANGE_KEY,
+	ZFS_DELEG_NOTE_REMAP,
 	ZFS_DELEG_NOTE_NONE
 } zfs_deleg_note_t;
 

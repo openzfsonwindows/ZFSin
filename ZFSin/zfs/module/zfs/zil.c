@@ -905,7 +905,9 @@ static void
 zil_commit_waiter_skip(zil_commit_waiter_t *zcw)
 {
 	mutex_enter(&zcw->zcw_lock);
+#ifdef _KERNEL
 	ASSERT3B(zcw->zcw_done, ==, B_FALSE);
+#endif
 	zcw->zcw_done = B_TRUE;
 	cv_broadcast(&zcw->zcw_cv);
 	mutex_exit(&zcw->zcw_lock);
@@ -1520,10 +1522,12 @@ cont:
 
 #if defined (_WIN32) && defined (_KERNEL)
 				error = zilog->zl_get_data(
-					itx->itx_private, lrw, dbuf, lwb->lwb_zio, zp, rl);
+					itx->itx_private, lrwb, dbuf, lwb, lwb->lwb_write_zio,
+					zp, rl);
 #else
 				error = zilog->zl_get_data(
-					itx->itx_private, lrw, dbuf, lwb->lwb_zio, NULL, NULL);
+					itx->itx_private, lrwb, dbuf, lwb, lwb->lwb_write_zio, 
+					NULL, NULL);
 #endif
 			}
 
@@ -3390,7 +3394,7 @@ zil_replaying(zilog_t *zilog, dmu_tx_t *tx)
 
 /* ARGSUSED */
 int
-zil_vdev_offline(const char *osname, void *arg)
+zil_reset(const char *osname, void *arg)
 {
 	int error;
 

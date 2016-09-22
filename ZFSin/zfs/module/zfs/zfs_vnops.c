@@ -1248,6 +1248,7 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 	 */
 	if (zfs_zget(zfsvfs, object, &zp) != 0)
 		return (SET_ERROR(ENOENT));
+#endif
 	if (zp->z_unlinked) {
 		/*
 		 * Release the vnode asynchronously as we currently have the
@@ -1273,7 +1274,7 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 
 #ifndef _WIN32
 		zgd->zgd_rl = zfs_range_lock(zp, offset, size, RL_READER);
-
+#endif
 		/* test for truncation needs to be done while range locked */
 		if (offset >= zp->z_size) {
 			error = SET_ERROR(ENOENT);
@@ -1297,6 +1298,7 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 #ifndef _WIN32
 			zgd->zgd_rl = zfs_range_lock(zp, offset, size,
 			    RL_READER);
+#endif
 			if (zp->z_blksz == size)
 				break;
 			offset += blkoff;

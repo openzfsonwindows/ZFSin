@@ -83,6 +83,8 @@
 #include <sys/sunddi.h>
 #include <sys/debug.h>
 #include <stropts.h>
+#include <sys/sysevent.h>
+#include <sys/sysevent/eventdefs.h>
 
 /*
  * Stack

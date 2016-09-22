@@ -362,6 +362,7 @@ void dnode_evict_dbufs(dnode_t *dn);
 kmem_cbrc_t
 dnode_move(void *buf, void *newbuf,  uint32_t size, void *arg);
 void dnode_evict_bonus(dnode_t *dn);
+boolean_t dnode_needs_remap(const dnode_t *dn);
 
 #define	DNODE_IS_CACHEABLE(_dn)						\
 	((_dn)->dn_objset->os_primary_cache == ZFS_CACHE_ALL ||		\

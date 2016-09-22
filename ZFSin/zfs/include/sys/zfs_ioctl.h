@@ -572,6 +572,7 @@ typedef enum zfs_ioc {
 	ZFS_IOC_LOAD_KEY,
 	ZFS_IOC_UNLOAD_KEY,
 	ZFS_IOC_CHANGE_KEY,
+	ZFS_IOC_REMAP,
 
 	/*
 	 * Linux - 3/64 numbers reserved.

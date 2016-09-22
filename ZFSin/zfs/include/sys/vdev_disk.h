@@ -42,13 +42,6 @@ typedef struct vdev_disk {
 	PDEVICE_OBJECT vd_DeviceObject;
 } vdev_disk_t;
 
-/*
- * The vdev_buf_t is used to translate between zio_t and buf_t, and back again.
- */
-typedef struct vdev_buf {
-	buf_t		*vb_buf;	/* buffer that describes the io */
-	zio_t		*vb_io;	/* pointer back to the original zio_t */
-} vdev_buf_t;
 #endif /* _KERNEL */
 
 extern int vdev_disk_physio(vdev_t *,

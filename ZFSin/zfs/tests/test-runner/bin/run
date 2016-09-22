@@ -134,7 +134,7 @@ class Cmd(object):
         self.killed = True
         do_sudo = len(self.user) != 0
         signal = '-TERM'
-	
+
         spindump_cmd = [SUDO, "/usr/sbin/spindump", "-file", self.outputdir + "/spindump_" + str(proc.pid) + ".txt"]
         if not do_sudo:
             del spindump_cmd[0]
@@ -144,7 +144,7 @@ class Cmd(object):
             spindump_kp.wait()
         except:
             pass
-	
+
         cmd = [SUDO, KILL, signal, str(proc.pid)]
         if not do_sudo:
             del cmd[0]
@@ -234,8 +234,13 @@ class Cmd(object):
 
         try:
             self.result.starttime = time()
-            proc = Popen(privcmd, stdout=PIPE, stderr=PIPE)
-            t = Timer(int(self.timeout), self.kill_cmd_timeout, [proc])
+            proc = Popen(privcmd, stdout=PIPE, stderr=PIPE, stdin=PIPE)
+            proc.stdin.close()
+
+            # Allow a special timeout value of 0 to mean infinity
+            if int(self.timeout) == 0:
+                self.timeout = maxint
+            t = Timer(int(self.timeout), self.kill_cmd, [proc])
             t.start()
             self.result.stdout, self.result.stderr = self.collect_output(proc)
         except KeyboardInterrupt:

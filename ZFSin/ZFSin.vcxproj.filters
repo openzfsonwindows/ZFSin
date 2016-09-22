@@ -657,6 +657,18 @@
     <ClCompile Include="zfs\module\zfs\hkdf.c">
       <Filter>Source Files\ZFS\module\zfs</Filter>
     </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_indirect.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_indirect_births.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_indirect_mapping.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_removal.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h">

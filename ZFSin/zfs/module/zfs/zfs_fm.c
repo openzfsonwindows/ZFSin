@@ -102,7 +102,7 @@
  * ereport with information about the differences.
  */
 #ifdef _KERNEL
-static void
+void
 zfs_zevent_post_cb(nvlist_t *nvl, nvlist_t *detector)
 {
 	if (nvl)
@@ -842,15 +842,6 @@ zfs_ereport_free_checksum(zio_cksum_report_t *rpt)
 }
 
 void
-zfs_ereport_send_interim_checksum(zio_cksum_report_t *report)
-{
-#ifdef _KERNEL
-	zfs_zevent_post(report->zcr_ereport, report->zcr_detector,
-	    zfs_zevent_post_cb_noop);
-#endif
-}
-
-void
 zfs_ereport_post_checksum(spa_t *spa, vdev_t *vd, zbookmark_phys_t *zb,
     struct zio *zio, uint64_t offset, uint64_t length,
     const abd_t *good_data, const abd_t *bad_data, zio_bad_cksum_t *zbc)
@@ -861,13 +852,13 @@ zfs_ereport_post_checksum(spa_t *spa, vdev_t *vd, zbookmark_phys_t *zb,
 	zfs_ecksum_info_t *info;
 
 	zfs_ereport_start(&ereport, &detector, FM_EREPORT_ZFS_CHECKSUM,
-	    spa, vd, zb, zio, offset, length);
+		spa, vd, zb, zio, offset, length);
 
 	if (ereport == NULL)
 		return;
 
 	info = annotate_ecksum(ereport, zbc, good_data, bad_data, length,
-	    B_FALSE);
+		B_FALSE);
 
 	if (info != NULL) {
 		zfs_zevent_post(ereport, detector, zfs_zevent_post_cb);
@@ -876,36 +867,83 @@ zfs_ereport_post_checksum(spa_t *spa, vdev_t *vd, zbookmark_phys_t *zb,
 #endif
 }
 
-static void
-zfs_post_common(spa_t *spa, vdev_t *vd, const char *name)
+/*
+ * The 'sysevent.fs.zfs.*' events are signals posted to notify user space of
+ * change in the pool.  All sysevents are listed in sys/sysevent/eventdefs.h
+ * and are designed to be consumed by the ZFS Event Daemon (ZED).  For
+ * additional details refer to the zed(8) man page.
+ */
+nvlist_t *
+zfs_event_create(spa_t *spa, vdev_t *vd, const char *type, const char *name,
+    nvlist_t *aux)
 {
+	nvlist_t *resource = NULL;
 #ifdef _KERNEL
-	nvlist_t *resource;
 	char class[64];
 
 	if (spa_load_state(spa) == SPA_LOAD_TRYIMPORT)
-		return;
+		return (NULL);
 
 	if ((resource = fm_nvlist_create(NULL)) == NULL)
-		return;
+		return (NULL);
 
-	(void) snprintf(class, sizeof (class), "%s.%s.%s", FM_RSRC_RESOURCE,
-	    ZFS_ERROR_CLASS, name);
+	(void) snprintf(class, sizeof (class), "%s.%s.%s", type,
+		ZFS_ERROR_CLASS, name);
 	VERIFY0(nvlist_add_uint8(resource, FM_VERSION, FM_RSRC_VERSION));
 	VERIFY0(nvlist_add_string(resource, FM_CLASS, class));
+	VERIFY0(nvlist_add_string(resource,
+            FM_EREPORT_PAYLOAD_ZFS_POOL, spa_name(spa)));
 	VERIFY0(nvlist_add_uint64(resource,
-	    FM_EREPORT_PAYLOAD_ZFS_POOL_GUID, spa_guid(spa)));
+            FM_EREPORT_PAYLOAD_ZFS_POOL_GUID, spa_guid(spa)));
+	VERIFY0(nvlist_add_uint64(resource,
+            FM_EREPORT_PAYLOAD_ZFS_POOL_STATE, spa_state(spa)));
 	VERIFY0(nvlist_add_int32(resource,
-	    FM_EREPORT_PAYLOAD_ZFS_POOL_CONTEXT, spa_load_state(spa)));
+            FM_EREPORT_PAYLOAD_ZFS_POOL_CONTEXT, spa_load_state(spa)));
 
 	if (vd) {
 		VERIFY0(nvlist_add_uint64(resource,
-		    FM_EREPORT_PAYLOAD_ZFS_VDEV_GUID, vd->vdev_guid));
+				FM_EREPORT_PAYLOAD_ZFS_VDEV_GUID, vd->vdev_guid));
 		VERIFY0(nvlist_add_uint64(resource,
-		    FM_EREPORT_PAYLOAD_ZFS_VDEV_STATE, vd->vdev_state));
+				FM_EREPORT_PAYLOAD_ZFS_VDEV_STATE, vd->vdev_state));
+		if (vd->vdev_path != NULL)
+			VERIFY0(nvlist_add_string(resource,
+					FM_EREPORT_PAYLOAD_ZFS_VDEV_PATH, vd->vdev_path));
+		if (vd->vdev_devid != NULL)
+			VERIFY0(nvlist_add_string(resource,
+					FM_EREPORT_PAYLOAD_ZFS_VDEV_DEVID, vd->vdev_devid));
+		if (vd->vdev_fru != NULL)
+			VERIFY0(nvlist_add_string(resource,
+					FM_EREPORT_PAYLOAD_ZFS_VDEV_FRU, vd->vdev_fru));
+#ifdef _linux
+		if (vd->vdev_enc_sysfs_path != NULL)
+			VERIFY0(nvlist_add_string(resource,
+					FM_EREPORT_PAYLOAD_ZFS_VDEV_ENC_SYSFS_PATH,
+					vd->vdev_enc_sysfs_path));
+#endif
 	}
 
-	zfs_zevent_post(resource, NULL, zfs_zevent_post_cb);
+	/* also copy any optional payload data */
+	if (aux) {
+		nvpair_t *elem = NULL;
+
+		while ((elem = nvlist_next_nvpair(aux, elem)) != NULL)
+			(void) nvlist_add_nvpair(resource, elem);
+	}
+
+#endif
+	return (resource);
+}
+
+static void
+zfs_post_common(spa_t *spa, vdev_t *vd, const char *type, const char *name,
+    nvlist_t *aux)
+{
+#ifdef _KERNEL
+	nvlist_t *resource;
+
+	resource = zfs_event_create(spa, vd, type, name, aux);
+	if (resource)
+		zfs_zevent_post(resource, NULL, zfs_zevent_post_cb);
 #endif
 }
 
@@ -918,7 +956,7 @@ zfs_post_common(spa_t *spa, vdev_t *vd, const char *name)
 void
 zfs_post_remove(spa_t *spa, vdev_t *vd)
 {
-	zfs_post_common(spa, vd, FM_EREPORT_RESOURCE_REMOVED);
+	zfs_post_common(spa, vd, FM_RSRC_CLASS, FM_RESOURCE_REMOVED, NULL);
 }
 
 /*
@@ -929,7 +967,7 @@ zfs_post_remove(spa_t *spa, vdev_t *vd)
 void
 zfs_post_autoreplace(spa_t *spa, vdev_t *vd)
 {
-	zfs_post_common(spa, vd, FM_EREPORT_RESOURCE_AUTOREPLACE);
+	zfs_post_common(spa, vd, FM_RSRC_CLASS, FM_RESOURCE_AUTOREPLACE, NULL);
 }
 
 /*
@@ -939,11 +977,48 @@ zfs_post_autoreplace(spa_t *spa, vdev_t *vd)
  * open because the device was not found (fault.fs.zfs.device).
  */
 void
-zfs_post_state_change(spa_t *spa, vdev_t *vd)
+zfs_post_state_change(spa_t *spa, vdev_t *vd, uint64_t laststate)
 {
-	zfs_post_common(spa, vd, FM_EREPORT_RESOURCE_STATECHANGE);
+#ifdef _KERNEL
+	nvlist_t *aux;
+
+	/*
+	 * Add optional supplemental keys to payload
+	 */
+	aux = fm_nvlist_create(NULL);
+	if (vd && aux) {
+		if (vd->vdev_physpath) {
+			(void) nvlist_add_string(aux,
+				FM_EREPORT_PAYLOAD_ZFS_VDEV_PHYSPATH,
+				vd->vdev_physpath);
+		}
+#ifdef _linux
+		if (vd->vdev_enc_sysfs_path) {
+			(void) nvlist_add_string(aux,
+				FM_EREPORT_PAYLOAD_ZFS_VDEV_ENC_SYSFS_PATH,
+				vd->vdev_enc_sysfs_path);
+		}
+#endif
+		(void) nvlist_add_uint64(aux,
+			FM_EREPORT_PAYLOAD_ZFS_VDEV_LASTSTATE, laststate);
+	}
+
+	zfs_post_common(spa, vd, FM_RSRC_CLASS, FM_RESOURCE_STATECHANGE,
+		aux);
+
+	if (aux)
+		fm_nvlist_destroy(aux, FM_NVA_FREE);
+#endif
 }
 
+void
+zfs_ereport_send_interim_checksum(zio_cksum_report_t *report)
+{
+#ifdef _KERNEL
+	zfs_zevent_post(report->zcr_ereport, report->zcr_detector,
+	    zfs_zevent_post_cb_noop);
+#endif
+}
 
 void
 zfs_ereport_snapshot_post(const char *subclass, spa_t *spa, const char *name)

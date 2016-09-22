@@ -185,6 +185,7 @@ extern proc_t p0;
 extern uint32_t strlcpy(register char* s, register const char* t, register uint32_t n);
 extern uint32_t strlcat(register char* s, register const char* t, register uint32_t n);
 #define strtok_r strtok_s
+#define strcasecmp _stricmp
 
 #define htonl _byteswap_ulong
 

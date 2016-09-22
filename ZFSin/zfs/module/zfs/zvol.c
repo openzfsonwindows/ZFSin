@@ -400,26 +400,25 @@ zvol_replay_truncate(void *zv, void *lr, boolean_t byteswap)
  * after a system failure
  */
 static int
-zvol_replay_write(void *zv, void *lr, boolean_t byteswap)
+zvol_replay_write(void *arg1, void *arg2, boolean_t byteswap)
 {
-	zvol_state_t *the_zv = (zvol_state_t *)zv;
-	lr_write_t *the_lr = (lr_write_t *)lr;
-
-	objset_t *os = the_zv->zv_objset;
+	zvol_state_t *zv = arg1;
+	lr_write_t *lr = arg2;
+	objset_t *os = zv->zv_objset;
 	char *data = (char *)(lr + 1);	/* data follows lr_write_t */
 	uint64_t offset, length;
 	dmu_tx_t *tx;
 	int error;
 
 	if (byteswap)
-		byteswap_uint64_array(lr, sizeof (*lr));
+		byteswap_uint64_array(lr, sizeof(*lr));
 
-	offset = the_lr->lr_offset;
-	length = the_lr->lr_length;
+	offset = lr->lr_offset;
+	length = lr->lr_length;
 
 	/* If it's a dmu_sync() block, write the whole block */
-	if (the_lr->lr_common.lrc_reclen == sizeof (lr_write_t)) {
-		uint64_t blocksize = BP_GET_LSIZE(&the_lr->lr_blkptr);
+	if (lr->lr_common.lrc_reclen == sizeof(lr_write_t)) {
+		uint64_t blocksize = BP_GET_LSIZE(&lr->lr_blkptr);
 		if (length < blocksize) {
 			offset -= offset % blocksize;
 			length = blocksize;
@@ -427,8 +426,7 @@ zvol_replay_write(void *zv, void *lr, boolean_t byteswap)
 	}
 
 	tx = dmu_tx_create(os);
-	dmu_tx_hold_zap(tx, ZVOL_ZAP_OBJ, TRUE, NULL);
-	dmu_tx_mark_netfree(tx);
+	dmu_tx_hold_write(tx, ZVOL_OBJ, offset, length);
 	error = dmu_tx_assign(tx, TXG_WAIT);
 	if (error) {
 		dmu_tx_abort(tx);
@@ -549,12 +547,12 @@ zvol_create_minor_impl(const char *name)
 	// are racing with zfs_vfs_mount/zfsvfs_create calling
 	// dmu_objset_own(), as we are below.
 	if ((error = dmu_objset_hold(name, FTAG, &os)) != 0) {
-		printf("%s: Unable to put hold on %s (error=%d).\n",
+		dprintf("%s: Unable to put hold on %s (error=%d).\n",
 		    __func__, name, error);
 		return (error);
 	}
 	if (dmu_objset_type(os) != DMU_OST_ZVOL) {
-		printf("%s: dataset '%s' not ZVOL -- ignoring\n",
+		dprintf("%s: dataset '%s' not ZVOL -- ignoring\n",
 			__func__, name);
 		dmu_objset_rele(os, FTAG);
 		return 0;

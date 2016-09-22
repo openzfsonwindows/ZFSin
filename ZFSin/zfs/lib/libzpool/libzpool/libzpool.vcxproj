@@ -106,11 +106,15 @@
     <ClCompile Include="..\..\..\module\zfs\vdev.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_cache.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_file.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_indirect.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_indirect_births.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_indirect_mapping.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_label.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_mirror.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_missing.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_queue.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_raidz.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_removal.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_root.c" />
     <ClCompile Include="..\..\..\module\zfs\zap.c" />
     <ClCompile Include="..\..\..\module\zfs\zap_leaf.c" />

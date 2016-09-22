@@ -49,7 +49,7 @@
 #include <sys/w32_types.h>
 #include <limits.h>
 
-
+#include <sys/sysevent/eventdefs.h>
 
 
 #ifdef _KERNEL
@@ -62,7 +62,10 @@
 
 #endif
 
+#define ENOTACTIVE EOWNERDEAD
+
 #define noinline
+
 #ifndef MAX_UPL_TRANSFER
 #define MAX_UPL_TRANSFER 256
 #endif

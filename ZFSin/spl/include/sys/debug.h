@@ -111,6 +111,7 @@ do {									\
 		PANIC("ASSERTION(" #cond ") failed: " fmt, __VA_ARGS__);	\
 } while (0)
 
+#define ASSERT3B(x,y,z)	VERIFY3B(x, y, z)
 #define ASSERT3S(x,y,z)	VERIFY3S(x, y, z)
 #define ASSERT3U(x,y,z)	VERIFY3U(x, y, z)
 #define ASSERT3P(x,y,z)	VERIFY3P(x, y, z)
@@ -127,6 +128,7 @@ do {									\
 #define ASSERTF(x, y, z, ...)		((void)0)
 #define ASSERTV(x)
 
+#define ASSERT3B(x,y,z)	((void)0)
 #define ASSERT3S(x,y,z)	((void)0)
 #define ASSERT3U(x,y,z)	((void)0)
 #define ASSERT3P(x,y,z)	((void)0)
@@ -145,6 +147,7 @@ do {									\
 				CAST (_verify3_left), CAST (_verify3_right));			\
 	} while (0)
 
+#define VERIFY3B(x,y,z)	VERIFY3_IMPL(x, y, z, int64_t, "%lld", (boolean_t))
 #define VERIFY3S(x,y,z)	VERIFY3_IMPL(x, y, z, int64_t, "%lld", (long long))
 #define VERIFY3U(x,y,z)	VERIFY3_IMPL(x, y, z, uint64_t, "%llu",		\
 				    (unsigned long long))

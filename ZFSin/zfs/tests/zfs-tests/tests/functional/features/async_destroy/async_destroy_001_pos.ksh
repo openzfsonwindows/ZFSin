@@ -46,35 +46,58 @@ TEST_FS=$TESTPOOL/async_destroy
 
 verify_runnable "both"
 
+function set_max_blocks
+{
+	echo "zfs_async_block_max_blocks/Z$1" | mdb -kw
+}
+
 function cleanup
 {
-	destroy_dataset $TEST_FS
+	datasetexists $TEST_FS && log_must zfs destroy $TEST_FS
+	log_must set_max_blocks ffffffffffffffff
 }
 
 log_onexit cleanup
 log_assert "async_destroy can suspend and resume traversal"
 
-log_must $ZFS create -o recordsize=512 -o compression=off $TEST_FS
+log_must zfs create -o recordsize=1k -o compression=off $TEST_FS
+
+# Fill with 128,000 blocks.
+log_must dd bs=1024k count=128 if=/dev/zero of=/$TEST_FS/file
 
 #
-# Fill with 2G
+# Decrease the max blocks to free each txg, so that freeing takes
+# long enough that we can observe it.
 #
-log_must $DD bs=1024k count=2048 if=/dev/zero of=/$TEST_FS/file
+log_must set_max_blocks 0t100
 
 destroy_dataset $TEST_FS
 
+#
+# We monitor the freeing property, to verify we can see blocks being
+# freed while the suspend/resume code is exercised.
+#
+t0=$SECONDS
 count=0
 while [[ "0" != "$($ZPOOL list -Ho freeing $TESTPOOL)" ]]; do
 	count=$((count + 1))
 	$SLEEP 1
 done
 
+[[ $count -eq 0 ]] && log_fail "Freeing property remained empty"
+
 #
-# We assert that the data took a few seconds to free to make sure that
-# we actually exercised the suspend/resume code. The destroy should
-# actually take much longer than this, so false positives are not likely.
+# After a bit, go back to allowing an unlimited amount of freeing
+# per txg.
 #
-log_must test $count -gt 5
+sleep 10
+log_must set_max_blocks ffffffffffffffff
+
+# Wait for everything to be freed.
+while [[ "0" != "$(zpool list -Ho freeing $TESTPOOL)" ]]; do
+	[[ $((SECONDS - t0)) -gt 180 ]] && \
+	    log_fail "Timed out waiting for freeing to drop to zero"
+done
 
 #
 # Check for leaked blocks.

@@ -121,7 +121,6 @@ typedef struct osx_kstat {
 
 	kstat_named_t zfs_recover;
 
-	kstat_named_t zfs_free_max_blocks;
 	kstat_named_t zfs_free_bpobj_enabled;
 
 	kstat_named_t zfs_send_corrupt_data;
@@ -214,7 +213,6 @@ extern int zfs_resilver_delay;
 extern int zfs_scrub_delay;
 extern int zfs_scan_idle;
 
-extern uint64_t zfs_free_max_blocks;
 extern int64_t zfs_free_bpobj_enabled;
 
 extern int zfs_send_corrupt_data;

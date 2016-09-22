@@ -1,28 +1,28 @@
 /*
- * CDDL HEADER START
- *
- * The contents of this file are subject to the terms of the
- * Common Development and Distribution License (the "License").
- * You may not use this file except in compliance with the License.
- *
- * You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
- * or http://www.opensolaris.org/os/licensing.
- * See the License for the specific language governing permissions
- * and limitations under the License.
- *
- * When distributing Covered Code, include this CDDL HEADER in each
- * file and include the License file at usr/src/OPENSOLARIS.LICENSE.
- * If applicable, add the following below this CDDL HEADER, with the
- * fields enclosed by brackets "[]" replaced with your own identifying
- * information: Portions Copyright [yyyy] [name of copyright owner]
- *
- * CDDL HEADER END
- */
+* CDDL HEADER START
+*
+* The contents of this file are subject to the terms of the
+* Common Development and Distribution License (the "License").
+* You may not use this file except in compliance with the License.
+*
+* You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+* or http://www.opensolaris.org/os/licensing.
+* See the License for the specific language governing permissions
+* and limitations under the License.
+*
+* When distributing Covered Code, include this CDDL HEADER in each
+* file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+* If applicable, add the following below this CDDL HEADER, with the
+* fields enclosed by brackets "[]" replaced with your own identifying
+* information: Portions Copyright [yyyy] [name of copyright owner]
+*
+* CDDL HEADER END
+*/
 /*
- * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
- * Use is subject to license terms.
- * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
- */
+* Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
+* Use is subject to license terms.
+* Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
+*/
 
 #ifndef	_SYS_SYSEVENT_EVENTDEFS_H
 #define	_SYS_SYSEVENT_EVENTDEFS_H
@@ -33,13 +33,13 @@
 extern "C" {
 #endif
 
-/*
- * eventdefs.h contains public definitions for sysevent types (classes
- * and subclasses).  All additions/removal/changes are subject
- * to PSARC approval.
- */
+	/*
+	* eventdefs.h contains public definitions for sysevent types (classes
+	* and subclasses).  All additions/removal/changes are subject
+	* to PSARC approval.
+	*/
 
-/* Sysevent Class definitions */
+	/* Sysevent Class definitions */
 #define	EC_NONE		"EC_none"
 #define	EC_PRIV		"EC_priv"
 #define	EC_PLATFORM	"EC_platform"	/* events private to platform */
@@ -54,23 +54,23 @@ extern "C" {
 #define	EC_FM		"EC_fm"		/* FMA error report event */
 #define	EC_ZFS		"EC_zfs"	/* ZFS event */
 
-/*
- * The following event class is reserved for exclusive use
- * by Sun Cluster software.
- */
+	/*
+	* The following event class is reserved for exclusive use
+	* by Sun Cluster software.
+	*/
 #define	EC_CLUSTER	"EC_Cluster"
 
-/*
- * The following classes are exclusively reserved for use by the
- * Solaris Volume Manager (SVM)
- */
+	/*
+	* The following classes are exclusively reserved for use by the
+	* Solaris Volume Manager (SVM)
+	*/
 #define	EC_SVM_CONFIG	"EC_SVM_Config"
 #define	EC_SVM_STATE	"EC_SVM_State"
 
-/*
- * EC_SVM_CONFIG subclass definitions - supporting attributes (name/value pairs)
- * are found in sys/sysevent/svm.h
- */
+	/*
+	* EC_SVM_CONFIG subclass definitions - supporting attributes (name/value pairs)
+	* are found in sys/sysevent/svm.h
+	*/
 #define	ESC_SVM_CREATE		"ESC_SVM_Create"
 #define	ESC_SVM_DELETE		"ESC_SVM_Delete"
 #define	ESC_SVM_ADD		"ESC_SVM_Add"
@@ -90,10 +90,10 @@ extern "C" {
 #define	ESC_SVM_ATTACH		"ESC_SVM_Attach"
 #define	ESC_SVM_ATTACHING	"ESC_SVM_Attaching"
 
-/*
- * EC_SVM_STATE subclass definitions - supporting attributes (name/value pairs)
- * are found in sys/sysevent/svm.h
- */
+	/*
+	* EC_SVM_STATE subclass definitions - supporting attributes (name/value pairs)
+	* are found in sys/sysevent/svm.h
+	*/
 #define	ESC_SVM_INIT_START	"ESC_SVM_Init_Start"
 #define	ESC_SVM_INIT_FAILED	"ESC_SVM_Init_Failed"
 #define	ESC_SVM_INIT_FATAL	"ESC_SVM_Init_Fatal"
@@ -121,96 +121,96 @@ extern "C" {
 #define	ESC_SVM_REGEN_DONE	"ESC_SVM_Regen_Done"
 #define	ESC_SVM_REGEN_FAILED	"ESC_SVM_Regen_Failed"
 
-/*
- * EC_DR subclass definitions - supporting attributes (name/value pairs)
- * are found in sys/sysevent/dr.h
- */
+	/*
+	* EC_DR subclass definitions - supporting attributes (name/value pairs)
+	* are found in sys/sysevent/dr.h
+	*/
 
-/* Attachment point state change */
+	/* Attachment point state change */
 #define	ESC_DR_AP_STATE_CHANGE	"ESC_dr_ap_state_change"
 #define	ESC_DR_REQ		"ESC_dr_req"	/* Request DR */
 #define	ESC_DR_TARGET_STATE_CHANGE	"ESC_dr_target_state_change"
 
-/*
- * EC_ENV subclass definitions - supporting attributes (name/value pairs)
- * are found in sys/sysevent/env.h
- */
+	/*
+	* EC_ENV subclass definitions - supporting attributes (name/value pairs)
+	* are found in sys/sysevent/env.h
+	*/
 #define	ESC_ENV_TEMP	"ESC_env_temp"	/* Temperature change event subclass */
 #define	ESC_ENV_FAN	"ESC_env_fan"	/* Fan status change event subclass */
 #define	ESC_ENV_POWER	"ESC_env_power"	/* Power supply change event subclass */
 #define	ESC_ENV_LED	"ESC_env_led"	/* LED change event subclass */
 
-/*
- * EC_DOMAIN subclass definitions - supporting attributes (name/value pairs)
- * are found in sys/sysevent/domain.h
- */
+	/*
+	* EC_DOMAIN subclass definitions - supporting attributes (name/value pairs)
+	* are found in sys/sysevent/domain.h
+	*/
 
-/* Domain state change */
+	/* Domain state change */
 #define	ESC_DOMAIN_STATE_CHANGE		"ESC_domain_state_change"
-/* Domain loghost name change */
+	/* Domain loghost name change */
 #define	ESC_DOMAIN_LOGHOST_CHANGE	"ESC_domain_loghost_change"
 
-/*
- * EC_AP_DRIVER subclass definitions - supporting attributes (name/value pairs)
- * are found in sys/sysevent/ap_driver.h
- */
+	/*
+	* EC_AP_DRIVER subclass definitions - supporting attributes (name/value pairs)
+	* are found in sys/sysevent/ap_driver.h
+	*/
 
-/* Alternate Pathing path switch */
+	/* Alternate Pathing path switch */
 #define	ESC_AP_DRIVER_PATHSWITCH	"ESC_ap_driver_pathswitch"
-/* Alternate Pathing database commit */
+	/* Alternate Pathing database commit */
 #define	ESC_AP_DRIVER_COMMIT		"ESC_ap_driver_commit"
-/* Alternate Pathing physical path status change */
+	/* Alternate Pathing physical path status change */
 #define	ESC_AP_DRIVER_PHYS_PATH_STATUS_CHANGE	\
 	"ESC_ap_driver_phys_path_status_change"
 
-/*
- * EC_IPMP subclass definitions - supporting attributes (name/value pairs)
- * are found in sys/sysevent/ipmp.h
- */
+	/*
+	* EC_IPMP subclass definitions - supporting attributes (name/value pairs)
+	* are found in sys/sysevent/ipmp.h
+	*/
 
-/* IPMP group has changed state */
+	/* IPMP group has changed state */
 #define	ESC_IPMP_GROUP_STATE		"ESC_ipmp_group_state"
 
-/* IPMP group has been created or removed */
+	/* IPMP group has been created or removed */
 #define	ESC_IPMP_GROUP_CHANGE		"ESC_ipmp_group_change"
 
-/* IPMP group has had an interface added or removed */
+	/* IPMP group has had an interface added or removed */
 #define	ESC_IPMP_GROUP_MEMBER_CHANGE	"ESC_ipmp_group_member_change"
 
-/* Interface within an IPMP group has changed state or type */
+	/* Interface within an IPMP group has changed state or type */
 #define	ESC_IPMP_IF_CHANGE		"ESC_ipmp_if_change"
 
 
-/*
- * EC_DEV_ADD and EC_DEV_REMOVE subclass definitions - supporting attributes
- * (name/value pairs) are found in sys/sysevent/dev.h
- */
+	/*
+	* EC_DEV_ADD and EC_DEV_REMOVE subclass definitions - supporting attributes
+	* (name/value pairs) are found in sys/sysevent/dev.h
+	*/
 #define	ESC_DISK	"disk"		/* disk device */
 #define	ESC_NETWORK	"network"	/* network interface */
 #define	ESC_PRINTER	"printer"	/* printer device */
 #define	ESC_LOFI	"lofi"		/* lofi device */
 
-/*
- * EC_DEV_BRANCH subclass definitions - supporting attributes (name/value pairs)
- * are found in sys/sysevent/dev.h
- */
+	/*
+	* EC_DEV_BRANCH subclass definitions - supporting attributes (name/value pairs)
+	* are found in sys/sysevent/dev.h
+	*/
 
-/* device tree branch added */
+	/* device tree branch added */
 #define	ESC_DEV_BRANCH_ADD	"ESC_dev_branch_add"
 
-/* device tree branch removed */
+	/* device tree branch removed */
 #define	ESC_DEV_BRANCH_REMOVE	"ESC_dev_branch_remove"
 
-/* FMA Fault and Error event protocol subclass */
+	/* FMA Fault and Error event protocol subclass */
 #define	ESC_FM_ERROR		"ESC_FM_error"
 #define	ESC_FM_ERROR_REPLAY	"ESC_FM_error_replay"
 
-/* Service processor subclass definitions */
+	/* Service processor subclass definitions */
 #define	ESC_PLATFORM_SP_RESET	"ESC_platform_sp_reset"
 
-/*
- * EC_ACPIEV subclass definitions
- */
+	/*
+	* EC_ACPIEV subclass definitions
+	*/
 #define	EC_ACPIEV			"EC_acpiev"
 #define	ESC_ACPIEV_ADD			"ESC_acpiev_add"
 #define	ESC_ACPIEV_REMOVE		"ESC_acpiev_remove"
@@ -218,16 +218,45 @@ extern "C" {
 #define	ESC_ACPIEV_LOW			"ESC_acpiev_low"
 #define	ESC_ACPIEV_STATE_CHANGE		"ESC_acpiev_state_change"
 
-/*
- * ZFS subclass definitions.  supporting attributes (name/value paris) are found
- * in sys/fs/zfs.h
- */
-#define	ESC_ZFS_RESILVER_START	"ESC_ZFS_resilver_start"
-#define	ESC_ZFS_RESILVER_FINISH	"ESC_ZFS_resilver_finish"
-#define	ESC_ZFS_VDEV_REMOVE	"ESC_ZFS_vdev_remove"
-#define	ESC_ZFS_POOL_DESTROY	"ESC_ZFS_pool_destroy"
-#define	ESC_ZFS_VDEV_CLEAR	"ESC_ZFS_vdev_clear"
-#define	ESC_ZFS_VDEV_CHECK	"ESC_ZFS_vdev_check"
+	/*
+	* ZFS subclass definitions.  supporting attributes (name/value paris) are found
+	* in sys/fs/zfs.h
+	*/
+#define	ESC_ZFS_RESILVER_START		"ESC_ZFS_resilver_start"
+#define	ESC_ZFS_RESILVER_FINISH		"ESC_ZFS_resilver_finish"
+#define	ESC_ZFS_VDEV_REMOVE		"ESC_ZFS_vdev_remove"
+#define	ESC_ZFS_VDEV_REMOVE_AUX		"ESC_ZFS_vdev_remove_aux"
+#define	ESC_ZFS_VDEV_REMOVE_DEV		"ESC_ZFS_vdev_remove_dev"
+#define	ESC_ZFS_POOL_CREATE		"ESC_ZFS_pool_create"
+#define	ESC_ZFS_POOL_DESTROY		"ESC_ZFS_pool_destroy"
+#define	ESC_ZFS_POOL_IMPORT		"ESC_ZFS_pool_import"
+#define	ESC_ZFS_VDEV_ADD		"ESC_ZFS_vdev_add"
+#define	ESC_ZFS_VDEV_ATTACH		"ESC_ZFS_vdev_attach"
+#define	ESC_ZFS_VDEV_CLEAR		"ESC_ZFS_vdev_clear"
+#define	ESC_ZFS_VDEV_CHECK		"ESC_ZFS_vdev_check"
+#define	ESC_ZFS_VDEV_ONLINE		"ESC_ZFS_vdev_online"
+#define	ESC_ZFS_CONFIG_SYNC		"ESC_ZFS_config_sync"
+#define	ESC_ZFS_SCRUB_START		"ESC_ZFS_scrub_start"
+#define	ESC_ZFS_SCRUB_FINISH		"ESC_ZFS_scrub_finish"
+#define	ESC_ZFS_SCRUB_ABORT		"ESC_ZFS_scrub_abort"
+#define	ESC_ZFS_SCRUB_RESUME		"ESC_ZFS_scrub_resume"
+#define	ESC_ZFS_SCRUB_PAUSED		"ESC_ZFS_scrub_paused"
+#define	ESC_ZFS_VDEV_SPARE		"ESC_ZFS_vdev_spare"
+#define	ESC_ZFS_VDEV_AUTOEXPAND		"ESC_ZFS_vdev_autoexpand"
+#define	ESC_ZFS_BOOTFS_VDEV_ATTACH	"ESC_ZFS_bootfs_vdev_attach"
+#define	ESC_ZFS_POOL_REGUID		"ESC_ZFS_pool_reguid"
+#define	ESC_ZFS_HISTORY_EVENT		"ESC_ZFS_history_event"
+
+	/*
+	* datalink subclass definitions.
+	*/
+#define	ESC_DATALINK_PHYS_ADD	"ESC_datalink_phys_add"	/* new physical link */
+
+	/*
+	* VRRP subclass definitions. Supporting attributes (name/value paris) are
+	* found in sys/sysevent/vrrp.h
+	*/
+#define	ESC_VRRP_STATE_CHANGE	"ESC_vrrp_state_change"
 
 #ifdef	__cplusplus
 }
