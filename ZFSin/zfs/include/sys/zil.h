@@ -370,9 +370,9 @@ typedef struct itx {
 	void		*itx_private;	/* type-specific opaque data */
 	itx_wr_state_t	itx_wr_state;	/* write state */
 	uint8_t		itx_sync;	/* synchronous transaction */
-	zil_callback_t	itx_callback;   /* Called when the itx is persistent */
-	void		*itx_callback_data; /* User data for the callback */
-	uint64_t	itx_sod;	/* record size on disk */
+	zil_callback_t  itx_callback;   /* Called when the itx is persistent */
+	void            *itx_callback_data; /* User data for the callback */
+	uint64_t        itx_sod;        /* record size on disk */
 	uint64_t	itx_oid;	/* object id */
 	lr_t		itx_lr;		/* common part of log record */
 	/* followed by type-specific part of lr_xx_t and its immediate data */
