@@ -26,7 +26,7 @@
 #
 
 #
-# Copyright (c) 2012 by Delphix. All rights reserved.
+# Copyright (c) 2012, 2017 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/include/libtest.shlib
@@ -56,8 +56,8 @@ set -A args "create" "add" "destroy" "import fakepool" \
     "add mirror fakepool" "add raidz fakepool" \
     "add raidz1 fakepool" "add raidz2 fakepool" \
     "setvprop" "blah blah" "-%" "--?" "-*" "-=" \
-    "-a" "-f" "-g" "-h" "-j" "-k" "-m" "-n" "-o" "-p" "-p /tmp" \
-    "-q" "-r" "-t" "-w" "-x" "-y" "-z" \
+    "-a" "-f" "-g" "-h" "-j" "-m" "-n" "-o" "-p" \
+    "-p /tmp" "-r" "-t" "-w" "-x" "-y" "-z" \
     "-D" "-E" "-G" "-H" "-I" "-J" "-K" "-M" \
     "-N" "-Q" "-R" "-S" "-T" "-V" "-W" "-Y"
 

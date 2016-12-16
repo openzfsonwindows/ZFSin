@@ -20,7 +20,7 @@
  */
 
 /*
- * Copyright (c) 2013 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
  */
 
@@ -57,6 +57,7 @@ typedef enum spa_feature {
 	SPA_FEATURE_ENCRYPTION,
 	SPA_FEATURE_DEVICE_REMOVAL,
 	SPA_FEATURE_OBSOLETE_COUNTS,
+	SPA_FEATURE_POOL_CHECKPOINT,
 	SPA_FEATURES
 } spa_feature_t;
 

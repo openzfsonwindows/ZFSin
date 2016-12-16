@@ -96,6 +96,9 @@ boolean_t lzc_exists(const char *);
 int lzc_rollback(const char *, char *, int);
 int lzc_rollback_to(const char *, const char *);
 
+int lzc_pool_checkpoint(const char *);
+int lzc_pool_checkpoint_discard(const char *);
+
 #ifdef	__cplusplus
 }
 #endif

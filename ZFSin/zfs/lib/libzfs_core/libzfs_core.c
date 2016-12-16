@@ -946,6 +946,86 @@ lzc_unload_key(const char *fsname)
 	return (lzc_ioctl(ZFS_IOC_UNLOAD_KEY, fsname, NULL, NULL));
 }
 
+/*
+ * Creates a checkpoint for the specified pool.
+ *
+ * If this function returns 0 the pool was successfully checkpointed.
+ *
+ * This method may also return:
+ *
+ * ZFS_ERR_CHECKPOINT_EXISTS
+ *	The pool already has a checkpoint. A pools can only have one
+ *	checkpoint at most, at any given time.
+ *
+ * ZFS_ERR_DISCARDING_CHECKPOINT
+ * 	ZFS is in the middle of discarding a checkpoint for this pool.
+ * 	The pool can be checkpointed again once the discard is done.
+ *
+ * ZFS_DEVRM_IN_PROGRESS
+ * 	A vdev is currently being removed. The pool cannot be
+ * 	checkpointed until the device removal is done.
+ *
+ * ZFS_VDEV_TOO_BIG
+ * 	One or more top-level vdevs exceed the maximum vdev size
+ * 	supported for this feature.
+ */
+int
+lzc_pool_checkpoint(const char *pool)
+{
+	int error;
+
+	nvlist_t *result = NULL;
+	nvlist_t *args = fnvlist_alloc();
+
+	error = lzc_ioctl(ZFS_IOC_POOL_CHECKPOINT, pool, args, &result);
+
+	fnvlist_free(args);
+	fnvlist_free(result);
+
+	return (error);
+}
+
+/*
+ * Discard the checkpoint from the specified pool.
+ *
+ * If this function returns 0 the checkpoint was successfully discarded.
+ *
+ * This method may also return:
+ *
+ * ZFS_ERR_NO_CHECKPOINT
+ * 	The pool does not have a checkpoint.
+ *
+ * ZFS_ERR_DISCARDING_CHECKPOINT
+ * 	ZFS is already in the middle of discarding the checkpoint.
+ */
+int
+lzc_pool_checkpoint_discard(const char *pool)
+{
+	int error;
+
+	nvlist_t *result = NULL;
+	nvlist_t *args = fnvlist_alloc();
+
+	error = lzc_ioctl(ZFS_IOC_POOL_DISCARD_CHECKPOINT, pool, args, &result);
+
+	fnvlist_free(args);
+	fnvlist_free(result);
+
+	return (error);
+}
+
+/*
+ * Executes a read-only channel program.
+ *
+ * A read-only channel program works programmatically the same way as a
+ * normal channel program executed with lzc_channel_program(). The only
+ * difference is it runs exclusively in open-context and therefore can
+ * return faster. The downside to that, is that the program cannot change
+ * on-disk state by calling functions from the zfs.sync submodule.
+ *
+ * The return values of this function (and their meaning) are exactly the
+ * same as the ones described in lzc_channel_program().
+ */
 int
 lzc_change_key(const char *fsname, uint64_t crypt_cmd, nvlist_t *props,
     uint8_t *wkeydata, uint_t wkeylen)

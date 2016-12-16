@@ -788,6 +788,14 @@ strlcat(register char* s, register const char* t, register uint32_t n)
 	return (t - o) + m - 1;
 }
 
+char *strndup(char *src, int size)
+{
+	char *r = _strdup(src);
+	if (r) {
+		r[size] = 0;
+	}
+	return r;
+}
 
 int win_isatty(HANDLE h) 
 { 

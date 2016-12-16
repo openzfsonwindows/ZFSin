@@ -97,6 +97,7 @@
     <ClCompile Include="..\..\..\module\zfs\space_map.c" />
     <ClCompile Include="..\..\..\module\zfs\space_reftree.c" />
     <ClCompile Include="..\..\..\module\zfs\spa_boot.c" />
+    <ClCompile Include="..\..\..\module\zfs\spa_checkpoint.c" />
     <ClCompile Include="..\..\..\module\zfs\spa_config.c" />
     <ClCompile Include="..\..\..\module\zfs\spa_errlog.c" />
     <ClCompile Include="..\..\..\module\zfs\spa_history.c" />

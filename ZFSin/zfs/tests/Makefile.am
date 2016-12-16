@@ -5,6 +5,7 @@ SUBDIRS += zfs-tests/cmd/mktree
 SUBDIRS += zfs-tests/cmd/file_write
 SUBDIRS += zfs-tests/cmd/mkbusy
 SUBDIRS += zfs-tests/cmd/randfree_file
+SUBDIRS += zfs-tests/cmd/randwritecomp
 SUBDIRS += zfs-tests/cmd/largest_file
 SUBDIRS += zfs-tests/cmd/rm_lnkcnt_zero_file
 SUBDIRS += zfs-tests/cmd/readmmap

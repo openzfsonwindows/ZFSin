@@ -333,5 +333,8 @@
     <ClCompile Include="..\..\..\module\zfs\cityhash.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\module\zfs\spa_checkpoint.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

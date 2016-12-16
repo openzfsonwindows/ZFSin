@@ -239,6 +239,8 @@ typedef enum {
 	ZPOOL_PROP_LEAKED,
 	ZPOOL_PROP_MAXBLOCKSIZE,
 	ZPOOL_PROP_TNAME,
+	ZPOOL_PROP_BOOTSIZE,
+	ZPOOL_PROP_CHECKPOINT,
 	ZPOOL_NUM_PROPS
 } zpool_prop_t;
 
@@ -594,6 +596,7 @@ typedef struct zpool_rewind_policy {
 #define	ZPOOL_CONFIG_DTL		"DTL"
 #define	ZPOOL_CONFIG_SCAN_STATS		"scan_stats"	/* not stored on disk */
 #define	ZPOOL_CONFIG_REMOVAL_STATS	"removal_stats"	/* not stored on disk */
+#define	ZPOOL_CONFIG_CHECKPOINT_STATS	"checkpoint_stats" /* not on disk */
 #define	ZPOOL_CONFIG_VDEV_STATS		"vdev_stats"	/* not stored on disk */
 
 /* container nvlist of extended stats */
@@ -721,6 +724,8 @@ typedef struct zpool_rewind_policy {
 	"com.delphix:indirect_obsolete_sm"
 #define	VDEV_TOP_ZAP_OBSOLETE_COUNTS_ARE_PRECISE \
 	"com.delphix:obsolete_counts_are_precise"
+#define	VDEV_TOP_ZAP_POOL_CHECKPOINT_SM \
+	"com.delphix:pool_checkpoint_sm"
 
 /*
  * This is needed in userland to report the minimum necessary device size.
@@ -892,6 +897,19 @@ typedef enum zpool_errata {
 	ZPOOL_ERRATA_ZOL_6845_ENCRYPTION,
 } zpool_errata_t;
 
+typedef enum {
+	CS_NONE,
+	CS_CHECKPOINT_EXISTS,
+	CS_CHECKPOINT_DISCARDING,
+	CS_NUM_STATES
+} checkpoint_state_t;
+
+typedef struct pool_checkpoint_stat {
+	uint64_t pcs_state;		/* checkpoint_state_t */
+	uint64_t pcs_start_time;	/* time checkpoint/discard started */
+	uint64_t pcs_space;		/* checkpointed space */
+} pool_checkpoint_stat_t;
+
 /*
  * Vdev statistics.  Note: all fields should be 64-bit because this
  * is passed between kernel and userland as an nvlist uint64 array.
@@ -915,6 +933,7 @@ typedef struct vdev_stat {
 	uint64_t	vs_scan_processed;	/* scan processed bytes	*/
 	uint64_t	vs_fragmentation;	/* device fragmentation */
 
+	uint64_t	vs_checkpoint_space;    /* checkpoint-consumed space */
 } vdev_stat_t;
 
 /*
@@ -1030,6 +1049,22 @@ typedef struct ddt_histogram {
 #define	BLKZNAME		_IOR(0x12, 125, char[ZFS_MAXNAMELEN])
 
 /*
+ * ZFS-specific error codes used for returning descriptive errors
+ * to the userland through zfs ioctls.
+ *
+ * The enum implicitly includes all the error codes from errno.h.
+ * New code should use and extend this enum for errors that are
+ * not described precisely by generic errno codes.
+ */
+typedef enum {
+	ZFS_ERR_CHECKPOINT_EXISTS = 1024,
+	ZFS_ERR_DISCARDING_CHECKPOINT,
+	ZFS_ERR_NO_CHECKPOINT,
+	ZFS_ERR_DEVRM_IN_PROGRESS,
+	ZFS_ERR_VDEV_TOO_BIG
+} zfs_errno_t;
+
+/*
  * Internal SPA load state.  Used by FMA diagnosis engine.
  */
 typedef enum {
@@ -1094,8 +1129,28 @@ typedef enum {
 #define	ZFS_IMPORT_ANY_HOST	0x2
 #define	ZFS_IMPORT_MISSING_LOG	0x4
 #define	ZFS_IMPORT_ONLY		0x8
-#define	ZFS_IMPORT_TEMP_NAME	0x10
-#define	ZFS_IMPORT_LOAD_KEYS	0x20
+#define	ZFS_IMPORT_CHECKPOINT	0x10
+#define	ZFS_IMPORT_TEMP_NAME	0x20
+#define	ZFS_IMPORT_LOAD_KEYS	0x40
+
+/*
+ * Channel program argument/return nvlist keys and defaults.
+ */
+#define	ZCP_ARG_PROGRAM		"program"
+#define	ZCP_ARG_ARGLIST		"arg"
+#define	ZCP_ARG_SYNC		"sync"
+#define	ZCP_ARG_INSTRLIMIT	"instrlimit"
+#define	ZCP_ARG_MEMLIMIT	"memlimit"
+
+#define	ZCP_ARG_CLIARGV		"argv"
+
+#define	ZCP_RET_ERROR		"error"
+#define	ZCP_RET_RETURN		"return"
+
+#define	ZCP_DEFAULT_INSTRLIMIT	(10 * 1000 * 1000)
+#define	ZCP_MAX_INSTRLIMIT	(10 * ZCP_DEFAULT_INSTRLIMIT)
+#define	ZCP_DEFAULT_MEMLIMIT	(10 * 1024 * 1024)
+#define	ZCP_MAX_MEMLIMIT	(10 * ZCP_DEFAULT_MEMLIMIT)
 
 /*
  * Sysevent payload members.  ZFS will generate the following sysevents with the

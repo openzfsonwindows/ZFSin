@@ -573,6 +573,8 @@ typedef enum zfs_ioc {
 	ZFS_IOC_UNLOAD_KEY,
 	ZFS_IOC_CHANGE_KEY,
 	ZFS_IOC_REMAP,
+    ZFS_IOC_POOL_CHECKPOINT,
+    ZFS_IOC_POOL_DISCARD_CHECKPOINT,
 
 	/*
 	 * Linux - 3/64 numbers reserved.
