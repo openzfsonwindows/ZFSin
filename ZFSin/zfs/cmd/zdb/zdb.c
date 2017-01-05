@@ -3539,6 +3539,7 @@ zdb_read_block(char *thing, spa_t *spa)
 	void *lbuf, *buf;
 	char *s, *p, *dup, *vdev, *flagstr;
 	int i, error;
+	boolean_t borrowed = B_FALSE;
 
 	dup = strdup(thing);
 	s = strtok(dup, ":");
@@ -3609,7 +3610,7 @@ zdb_read_block(char *thing, spa_t *spa)
 	psize = size;
 	lsize = size;
 
-	pabd = abd_alloc_linear(SPA_MAXBLOCKSIZE, B_FALSE);
+	pabd = abd_alloc_for_io(SPA_MAXBLOCKSIZE, B_FALSE);
 	lbuf = umem_alloc(SPA_MAXBLOCKSIZE, UMEM_NOFAIL);
 
 	BP_ZERO(bp);
@@ -3701,8 +3702,9 @@ zdb_read_block(char *thing, spa_t *spa)
 		buf = lbuf;
 		size = lsize;
 	} else {
-		buf = abd_to_buf(pabd);
 		size = psize;
+		buf = abd_borrow_buf_copy(pabd, size);
+		borrowed = B_TRUE;
 	}
 
 	if (flags & ZDB_FLAG_PRINT_BLKPTR)
@@ -3717,6 +3719,9 @@ zdb_read_block(char *thing, spa_t *spa)
 		zdb_dump_gbh(buf, flags);
 	else
 		zdb_dump_block(thing, buf, size, flags);
+
+	if (borrowed)
+		abd_return_buf_copy(pabd, buf, size);
 
 out:
 	abd_free(pabd);
