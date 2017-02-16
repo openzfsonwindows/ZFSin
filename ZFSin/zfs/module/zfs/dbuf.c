@@ -659,9 +659,8 @@ retry:
 	dbu_evict_taskq = taskq_create("dbu_evict", 1, minclsyspri, 0, 0, 0);
 
 	multilist_create(&dbuf_cache, sizeof (dmu_buf_impl_t),
-		offsetof(dmu_buf_impl_t, db_cache_link),
-		zfs_arc_num_sublists_per_state,
-		dbuf_cache_multilist_index_func);
+	    offsetof(dmu_buf_impl_t, db_cache_link),
+	    dbuf_cache_multilist_index_func);
 	refcount_create(&dbuf_cache_size);
 
 #ifdef _KERNEL
