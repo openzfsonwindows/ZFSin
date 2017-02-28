@@ -3266,7 +3266,7 @@ zdb_dump_block_raw(void *buf, uint64_t size, int flags)
 {
 	if (flags & ZDB_FLAG_BSWAP)
 		byteswap_uint64_array(buf, size);
-	VERIFY(write(_fileno(stdout), buf, size) == size);
+	VERIFY(write(fileno(stdout), buf, size) == size);
 }
 
 static void
@@ -3680,9 +3680,7 @@ main(int argc, char **argv)
 	boolean_t target_is_spa = B_TRUE;
 
 	(void) setrlimit(RLIMIT_NOFILE, &rl);
-#ifdef _sun
 	(void) enable_extended_FILE_stdio(-1, -1);
-#endif
 
 	dprintf_setup(&argc, argv);
 

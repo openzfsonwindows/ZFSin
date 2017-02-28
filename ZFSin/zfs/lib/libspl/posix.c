@@ -794,3 +794,8 @@ int win_isatty(HANDLE h)
 	DWORD mode; 
 	return GetConsoleMode(h, &mode) != 0; 
 }
+
+int setrlimit(int resource, const struct rlimit *rlp)
+{
+	return 0;
+}

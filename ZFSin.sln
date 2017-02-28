@@ -59,6 +59,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zfs", "ZFSin\zfs\cmd\zfs\zf
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zstreamdump", "ZFSin\zfs\cmd\zstreamdump\zstreamdump\zstreamdump.vcxproj", "{4778CE42-0E64-4BC5-86A4-3568F977C0F9}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zdb", "ZFSin\zfs\cmd\zdb\zdb\zdb.vcxproj", "{1727E0FD-46FF-4690-BC35-78B7AA300679}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM = Debug|ARM
@@ -619,6 +621,26 @@ Global
 		{4778CE42-0E64-4BC5-86A4-3568F977C0F9}.ReleaseWithoutAsm|x64.Build.0 = Debug|x64
 		{4778CE42-0E64-4BC5-86A4-3568F977C0F9}.ReleaseWithoutAsm|x86.ActiveCfg = Release|Win32
 		{4778CE42-0E64-4BC5-86A4-3568F977C0F9}.ReleaseWithoutAsm|x86.Build.0 = Release|Win32
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Debug|ARM.ActiveCfg = Debug|Win32
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Debug|ARM64.ActiveCfg = Debug|Win32
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Debug|x64.ActiveCfg = Debug|x64
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Debug|x64.Build.0 = Debug|x64
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Debug|x86.ActiveCfg = Debug|Win32
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Debug|x86.Build.0 = Debug|Win32
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Release|ARM.ActiveCfg = Release|Win32
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Release|ARM64.ActiveCfg = Release|Win32
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Release|x64.ActiveCfg = Release|x64
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Release|x64.Build.0 = Release|x64
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Release|x86.ActiveCfg = Release|Win32
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.Release|x86.Build.0 = Release|Win32
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.ReleaseWithoutAsm|ARM.ActiveCfg = Release|x64
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.ReleaseWithoutAsm|ARM.Build.0 = Release|x64
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.ReleaseWithoutAsm|ARM64.ActiveCfg = Release|x64
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.ReleaseWithoutAsm|ARM64.Build.0 = Release|x64
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.ReleaseWithoutAsm|x64.ActiveCfg = Release|x64
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.ReleaseWithoutAsm|x64.Build.0 = Release|x64
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.ReleaseWithoutAsm|x86.ActiveCfg = Release|Win32
+		{1727E0FD-46FF-4690-BC35-78B7AA300679}.ReleaseWithoutAsm|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -643,6 +665,7 @@ Global
 		{C6948C8E-ABE3-4D34-8300-C88B8A5BD8FD} = {09435112-F31C-4F47-B23E-DF2C82815654}
 		{D923B8A4-5161-4E28-9E69-D3193114DAC4} = {512F5D40-6654-4669-AEB0-189E6B549D31}
 		{4778CE42-0E64-4BC5-86A4-3568F977C0F9} = {512F5D40-6654-4669-AEB0-189E6B549D31}
+		{1727E0FD-46FF-4690-BC35-78B7AA300679} = {512F5D40-6654-4669-AEB0-189E6B549D31}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {46CB0FB5-E673-4CDA-91A9-7E293FDBDE32}

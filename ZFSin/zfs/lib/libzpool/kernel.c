@@ -1057,7 +1057,7 @@ kobj_open_file(char *name)
 
 	/* set vp as the _fd field of the file */
 	if (vn_openat(name, UIO_SYSSPACE, FREAD, 0, &vp, 0, 0, rootdir) != 0)
-		return ((void *)-1UL);
+		return ((void *)-1ULL);
 
 	file = umem_zalloc(sizeof (struct _buf), UMEM_NOFAIL);
 	file->_fd = (intptr_t)vp;
@@ -1191,15 +1191,19 @@ static int random_fd = -1, urandom_fd = -1;
 void
 random_init(void)
 {
+#ifndef _WIN32
 	VERIFY((random_fd = open("/dev/random", O_RDONLY)) != -1);
 	VERIFY((urandom_fd = open("/dev/urandom", O_RDONLY)) != -1);
+#endif
 }
 
 void
 random_fini(void)
 {
+#ifndef _WIN32
 	close(random_fd);
 	close(urandom_fd);
+#endif
 
 	random_fd = -1;
 	urandom_fd = -1;
@@ -1210,11 +1214,12 @@ random_get_bytes_common(uint8_t *ptr, size_t len, int fd)
 {
 	size_t resid = len;
 	ssize_t bytes;
-
-	ASSERT(fd != -1);
+	unsigned int number;
 
 	while (resid != 0) {
-		bytes = read(fd, ptr, resid);
+		rand_s(&number);
+		bytes = MIN(resid, sizeof(number));
+		memcpy(ptr, &number, bytes);
 		ASSERT3S(bytes, >=, 0);
 		ptr += bytes;
 		resid -= bytes;
@@ -1306,20 +1311,21 @@ kernel_init(int mode)
 
 	umem_nofail_callback(umem_out_of_memory);
 
+	buf.dwLength = sizeof(MEMORYSTATUSEX);
 	GlobalMemoryStatusEx(&buf);
 	physmem = buf.ullTotalPhys;
 
 	physmem /= PAGESIZE;
 
 	dprintf("physmem = %llu pages (%.2f GB)\n", physmem,
-	    (double)physmem * PAGESIZE / (1ULL << 30));
+		(double)physmem * PAGESIZE / (1ULL << 30));
 
 	(void) snprintf(hw_serial, sizeof (hw_serial), "%ld",
 	    (mode & FWRITE) ? get_system_hostid() : 0);
-
+#ifndef _WIN32
 	VERIFY((random_fd = open("/dev/random", O_RDONLY)) != -1);
 	VERIFY((urandom_fd = open("/dev/urandom", O_RDONLY)) != -1);
-
+#endif
 	thread_init();
 	system_taskq_init();
 	icp_init();

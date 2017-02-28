@@ -178,5 +178,17 @@ int fsync(int);
 #define roundup(x, y)         ((((x) + ((y) - 1)) / (y)) * (y))
 #define howmany(x, y)   ((((x) % (y)) == 0) ? ((x) / (y)) : (((x) / (y)) + 1))
 
+#define RLIMIT_NOFILE   8               /* number of open files */
+typedef uint64_t	rlim_t;
+struct rlimit {
+	rlim_t  rlim_cur;       /* current (soft) limit */
+	rlim_t  rlim_max;       /* hard limit */
+};
+
+
+struct _buf *kobj_open_file(char *name);
+int kobj_read_file(struct _buf *file, char *buf, unsigned size, unsigned off);
+void kobj_close_file(struct _buf *file);
+int kobj_get_filesize(struct _buf *file, uint64_t *size);
 
 #endif
