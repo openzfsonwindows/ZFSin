@@ -6241,7 +6241,7 @@ top:
 				}
 
 				ASSERT(addr >= VDEV_LABEL_START_SIZE &&
-				    addr + asize < vd->vdev_psize -
+				    addr + asize <= vd->vdev_psize -
 				    VDEV_LABEL_END_SIZE);
 
 				/*
@@ -8661,7 +8661,6 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
 			 * lifetime of the ZIO and be cleaned up afterwards, we
 			 * add it to the l2arc_free_on_write queue.
 			 */
-
 			asize = vdev_psize_to_asize(dev->l2ad_vdev,
 			    psize);
 			if (!HDR_SHARED_DATA(hdr) && psize == asize) {
