@@ -483,7 +483,9 @@ dbuf_evict_one(void)
 	 * Once a thread stops evicting from the dbuf cache it will
 	 * reset its tsd to NULL.
 	 */
+#ifdef _KERNEL
 	ASSERT3P(tsd_get(zfs_dbuf_evict_key), ==, NULL);
+#endif
 	(void) tsd_set(zfs_dbuf_evict_key, (void *)B_TRUE);
 
 	dmu_buf_impl_t *db = multilist_sublist_tail(mls);
