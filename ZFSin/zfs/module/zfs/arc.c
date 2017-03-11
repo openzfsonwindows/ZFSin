@@ -8332,7 +8332,7 @@ top:
 			/*
 			 * This doesn't exist in the ARC.  Destroy.
 			 * arc_hdr_destroy() will call list_remove()
-			 * and decrement arcstat_l2_size.
+			 * and decrement arcstat_l2_lsize.
 			 */
 			arc_change_state(arc_anon, hdr, hash_lock);
 			arc_hdr_destroy(hdr);
@@ -8688,9 +8688,6 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
 			    zio_t *, wzio);
 
 			write_asize += asize;
-			/*
-			 * Keep the clock hand suitably device-aligned.
-			 */
 			write_psize += psize;
 			dev->l2ad_hand += asize;
 
