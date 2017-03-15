@@ -135,6 +135,7 @@
     <ClCompile Include="..\..\..\module\zfs\zio_inject.c" />
     <ClCompile Include="..\..\..\module\zfs\zle.c" />
     <ClCompile Include="..\..\..\module\zfs\zrlock.c" />
+    <ClCompile Include="..\..\..\module\zfs\zthr.c" />
     <ClCompile Include="..\kernel.c" />
     <ClCompile Include="..\taskq.c" />
     <ClCompile Include="..\util.c" />

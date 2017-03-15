@@ -669,6 +669,9 @@
     <ClCompile Include="zfs\module\zfs\vdev_removal.c">
       <Filter>Source Files\ZFS\module\zfs</Filter>
     </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zthr.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h">

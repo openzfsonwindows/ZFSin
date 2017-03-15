@@ -393,6 +393,7 @@
     <ClCompile Include="zfs\module\zfs\zio_inject.c" />
     <ClCompile Include="zfs\module\zfs\zle.c" />
     <ClCompile Include="zfs\module\zfs\zrlock.c" />
+    <ClCompile Include="zfs\module\zfs\zthr.c" />
     <ClCompile Include="zfs\module\zfs\zvol.c" />
   </ItemGroup>
   <ItemGroup>

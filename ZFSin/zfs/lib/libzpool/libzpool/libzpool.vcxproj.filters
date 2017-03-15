@@ -324,5 +324,8 @@
     <ClCompile Include="..\..\..\module\zfs\vdev_removal.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\module\zfs\zthr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
