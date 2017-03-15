@@ -1,0 +1,627 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Driver Files">
+      <UniqueIdentifier>{8E41214B-6785-4CFE-B992-037D68949A14}</UniqueIdentifier>
+      <Extensions>inf;inv;inx;mof;mc;</Extensions>
+    </Filter>
+    <Filter Include="Source Files\SPL">
+      <UniqueIdentifier>{bf000b1a-9b6d-4cad-81fd-85c5c13d081b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS">
+      <UniqueIdentifier>{3e4a560c-f6b5-4842-99c2-82eede74304f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module">
+      <UniqueIdentifier>{b5512f23-3918-418c-8681-69818b6c3cfe}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\cmd">
+      <UniqueIdentifier>{a6f7b80d-0232-45ec-83c8-90760936a2bd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\zfs">
+      <UniqueIdentifier>{c53d26d1-7390-42f9-a34c-7f8d9bcafd69}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\nvpair">
+      <UniqueIdentifier>{7052c0eb-eb86-43a3-99fa-820a97dda48b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\unicode">
+      <UniqueIdentifier>{cf6e9f0e-8bd2-44bd-8daf-24e98c09fec2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\zcommon">
+      <UniqueIdentifier>{55eff3c7-9ef9-4069-9a6a-b4970546fadb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp">
+      <UniqueIdentifier>{104bdb7f-3b3d-4967-abc7-a2e283dd62d1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\algs">
+      <UniqueIdentifier>{1e2b1423-a88e-462e-a8e4-379aa5adb91b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\api">
+      <UniqueIdentifier>{1c16a659-e3de-448d-829c-79310535f0c9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\core">
+      <UniqueIdentifier>{947383d7-ee41-4dc9-a580-5cbdab2f9516}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\include">
+      <UniqueIdentifier>{bc2ac47a-78f9-46e8-9ea1-7c2ba585229b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\io">
+      <UniqueIdentifier>{c62c2a33-f384-4c3c-9b75-1ce25ac189b2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\os">
+      <UniqueIdentifier>{da2f6f30-227a-4730-8fe0-e891c0472b69}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\spi">
+      <UniqueIdentifier>{927aecdb-1c49-42b3-a630-bc33185fc075}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\algs\aes">
+      <UniqueIdentifier>{1d641d16-0481-41bd-9f2a-419fb8db7136}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\algs\edonr">
+      <UniqueIdentifier>{31a6e220-f2e5-4cd4-b415-d3e7a432ddb5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\algs\modes">
+      <UniqueIdentifier>{90b22354-27a8-44ff-afb5-9baffe719137}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\algs\sha1">
+      <UniqueIdentifier>{ff6b4e43-ddeb-480b-ae6b-dea8bfe89049}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\algs\sha2">
+      <UniqueIdentifier>{3f6c98cc-ffab-4634-934d-ec71d1c8c325}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\algs\skein">
+      <UniqueIdentifier>{c0aa4f63-a152-49ad-a115-4e0c3ec574da}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\SPL\zlib">
+      <UniqueIdentifier>{46a0f593-3a81-470b-8936-c13bd26389a9}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Inf Include="ZFSin.inf">
+      <Filter>Driver Files</Filter>
+    </Inf>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="spl\module\spl\spl-atomic.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-avl.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-condvar.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-cred.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-ddi.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-debug.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-err.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-kmem.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-kobj.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-kstat.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-list.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-mutex.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-processor.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-policy.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-proc.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-rwlock.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-seg_kmem.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-taskq.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-thread.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-tsd.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-vmem.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-vnode.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-windows.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-xdr.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-time.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\nvpair\nvpair_alloc_fixed.c">
+      <Filter>Source Files\ZFS\module\nvpair</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\nvpair\fnvpair.c">
+      <Filter>Source Files\ZFS\module\nvpair</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\nvpair\nvpair.c">
+      <Filter>Source Files\ZFS\module\nvpair</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\nvpair\nvpair_alloc_spl.c">
+      <Filter>Source Files\ZFS\module\nvpair</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\unicode\u8_textprep.c">
+      <Filter>Source Files\ZFS\module\unicode</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\unicode\uconv.c">
+      <Filter>Source Files\ZFS\module\unicode</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zcommon\zfs_comutil.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zcommon\zfs_deleg.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zcommon\zfs_fletcher.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zcommon\zfs_namecheck.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zcommon\zfs_prop.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zcommon\zpool_prop.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zcommon\zprop_common.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\illumos-crypto.c">
+      <Filter>Source Files\ZFS\module\icp</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\os\bitmap_arch.c">
+      <Filter>Source Files\ZFS\module\icp\os</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\os\modconf.c">
+      <Filter>Source Files\ZFS\module\icp\os</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\os\modhash.c">
+      <Filter>Source Files\ZFS\module\icp\os</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\core\kcf_callprov.c">
+      <Filter>Source Files\ZFS\module\icp\core</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\core\kcf_mech_tabs.c">
+      <Filter>Source Files\ZFS\module\icp\core</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\core\kcf_prov_lib.c">
+      <Filter>Source Files\ZFS\module\icp\core</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\core\kcf_prov_tabs.c">
+      <Filter>Source Files\ZFS\module\icp\core</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\core\kcf_sched.c">
+      <Filter>Source Files\ZFS\module\icp\core</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\aes\aes_impl.c">
+      <Filter>Source Files\ZFS\module\icp\algs\aes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\aes\aes_modes.c">
+      <Filter>Source Files\ZFS\module\icp\algs\aes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\edonr\edonr.c">
+      <Filter>Source Files\ZFS\module\icp\algs\edonr</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\modes\cbc.c">
+      <Filter>Source Files\ZFS\module\icp\algs\modes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\modes\ccm.c">
+      <Filter>Source Files\ZFS\module\icp\algs\modes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\modes\ctr.c">
+      <Filter>Source Files\ZFS\module\icp\algs\modes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\modes\ecb.c">
+      <Filter>Source Files\ZFS\module\icp\algs\modes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\skein\skein.c">
+      <Filter>Source Files\ZFS\module\icp\algs\skein</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\skein\skein_block.c">
+      <Filter>Source Files\ZFS\module\icp\algs\skein</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\skein\skein_iv.c">
+      <Filter>Source Files\ZFS\module\icp\algs\skein</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\sha2\sha2.c">
+      <Filter>Source Files\ZFS\module\icp\algs\sha2</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\sha1\sha1.c">
+      <Filter>Source Files\ZFS\module\icp\algs\sha1</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\api\kcf_cipher.c">
+      <Filter>Source Files\ZFS\module\icp\api</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\api\kcf_ctxops.c">
+      <Filter>Source Files\ZFS\module\icp\api</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\api\kcf_digest.c">
+      <Filter>Source Files\ZFS\module\icp\api</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\api\kcf_mac.c">
+      <Filter>Source Files\ZFS\module\icp\api</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\api\kcf_miscapi.c">
+      <Filter>Source Files\ZFS\module\icp\api</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\io\aes.c">
+      <Filter>Source Files\ZFS\module\icp\io</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\io\sha1_mod.c">
+      <Filter>Source Files\ZFS\module\icp\io</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\io\sha2_mod.c">
+      <Filter>Source Files\ZFS\module\icp\io</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\spi\kcf_spi.c">
+      <Filter>Source Files\ZFS\module\icp\spi</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\blkptr.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\arc.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\bplist.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\bpobj.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\bptree.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\bqueue.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dbuf.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dbuf_stats.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\ddt.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\ddt_zap.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dmu.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dmu_diff.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dmu_object.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dmu_objset.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dmu_send.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dmu_traverse.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dmu_tx.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dmu_zfetch.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dnode.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dnode_sync.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_bookmark.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_dataset.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\modes\modes.c">
+      <Filter>Source Files\ZFS\module\icp\algs\modes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\modes\gcm.c">
+      <Filter>Source Files\ZFS\module\icp\algs\modes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_deadlist.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_dir.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_deleg.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="driver.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_pool.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_proc.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_prop.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_scan.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_synctask.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_userhold.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\edonr_zfs.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\fm.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\gzip.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\lzjb.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\multilist.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\range_tree.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\refcount.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\rrwlock.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\sa.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\sha256.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\skein_zfs.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\spa.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\spa_boot.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\spa_config.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\spa_errlog.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\spa_history.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\spa_stats.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\space_map.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\space_reftree.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\txg.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\uberblock.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\unique.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_cache.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_disk.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_file.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_label.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_mirror.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_missing.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_queue.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_root.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zap.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zap_leaf.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zap_micro.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfeature.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfeature_common.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_acl.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_byteswap.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_debug.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_dir.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_fm.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_fuid.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_ioctl.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_log.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_onexit.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_replay.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_rlock.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_sa.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_vfsops.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_vnops.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_znode.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zil.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zio.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zio_checksum.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zio_compress.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zio_inject.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zle.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zrlock.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zvol.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_raidz.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_kstat_windows.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_vnops_windows.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_lib.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\spa_misc.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\metaslab.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\lz4.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dsl_destroy.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-mount.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-uio.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_windows.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h">
+      <Filter>Source Files\ZFS\module\icp\algs\edonr</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\icp\algs\skein\skein_impl.h">
+      <Filter>Source Files\ZFS\module\icp\algs\skein</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\icp\algs\skein\skein_port.h">
+      <Filter>Source Files\ZFS\module\icp\algs\skein</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\README.md" />
+  </ItemGroup>
+</Project>

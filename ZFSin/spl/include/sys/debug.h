@@ -57,7 +57,8 @@
 
 #include <spl-debug.h>
 
-inline static void panic(char *str, ...) { (void)str; __halt(); }
+//inline static void panic(char *str, ...) { (void)str; __halt(); }
+inline static void panic(char *str, ...) { DbgBreakPoint(); }
 #define dprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
 #define IOLog(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
 

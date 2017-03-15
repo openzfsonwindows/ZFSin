@@ -164,7 +164,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="driver.c" />
-    <ClCompile Include="spl-uio.c" />
     <ClCompile Include="spl\module\spl\spl-atomic.c" />
     <ClCompile Include="spl\module\spl\spl-avl.c" />
     <ClCompile Include="spl\module\spl\spl-condvar.c" />
@@ -187,6 +186,7 @@
     <ClCompile Include="spl\module\spl\spl-thread.c" />
     <ClCompile Include="spl\module\spl\spl-time.c" />
     <ClCompile Include="spl\module\spl\spl-tsd.c" />
+    <ClCompile Include="spl\module\spl\spl-uio.c" />
     <ClCompile Include="spl\module\spl\spl-vmem.c" />
     <ClCompile Include="spl\module\spl\spl-vnode.c" />
     <ClCompile Include="spl\module\spl\spl-windows.c" />
@@ -325,6 +325,7 @@
     <ClCompile Include="zfs\module\zfs\zfs_vnops.c" />
     <ClCompile Include="zfs\module\zfs\zfs_vnops_windows.c" />
     <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_lib.c" />
+    <ClCompile Include="zfs\module\zfs\zfs_windows.c" />
     <ClCompile Include="zfs\module\zfs\zfs_znode.c" />
     <ClCompile Include="zfs\module\zfs\zil.c" />
     <ClCompile Include="zfs\module\zfs\zio.c" />
@@ -334,12 +335,14 @@
     <ClCompile Include="zfs\module\zfs\zle.c" />
     <ClCompile Include="zfs\module\zfs\zrlock.c" />
     <ClCompile Include="zfs\module\zfs\zvol.c" />
-    <ClCompile Include="zfs_windows.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h" />
     <ClInclude Include="zfs\module\icp\algs\skein\skein_impl.h" />
     <ClInclude Include="zfs\module\icp\algs\skein\skein_port.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
