@@ -1,0 +1,90 @@
+;
+; ZFSin.inf
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=Sample ; TODO: edit Class
+ClassGuid={78A1C341-4539-11d3-B88D-00C04FAD5171} ; TODO: edit ClassGuid
+Provider=%ManufacturerName%
+CatalogFile=ZFSin.cat
+DriverVer= ; TODO: set DriverVer in stampinf property pages
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+; ================= Class section =====================
+
+[ClassInstall32]
+Addreg=SampleClassReg
+
+[SampleClassReg]
+HKR,,,0,%ClassName%
+HKR,,Icon,,-5
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+ZFSin.sys  = 1,,
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName%=Standard,NT$ARCH$
+
+[Standard.NT$ARCH$]
+%ZFSin.DeviceDesc%=ZFSin_Device, Root\ZFSin ; TODO: edit hw-id
+
+[ZFSin_Device.NT]
+CopyFiles=Drivers_Dir
+
+[Drivers_Dir]
+ZFSin.sys
+
+;-------------- Service installation
+[ZFSin_Device.NT.Services]
+AddService = ZFSin,%SPSVCINST_ASSOCSERVICE%, ZFSin_Service_Inst
+
+; -------------- ZFSin driver install sections
+[ZFSin_Service_Inst]
+DisplayName    = %ZFSin.SVCDESC%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\ZFSin.sys
+
+;
+;--- ZFSin_Device Coinstaller installation ------
+;
+
+[DestinationDirs]
+ZFSin_Device_CoInstaller_CopyFiles = 11
+
+[ZFSin_Device.NT.CoInstallers]
+AddReg=ZFSin_Device_CoInstaller_AddReg
+CopyFiles=ZFSin_Device_CoInstaller_CopyFiles
+
+[ZFSin_Device_CoInstaller_AddReg]
+HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfCoInstaller"
+
+[ZFSin_Device_CoInstaller_CopyFiles]
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
+
+[SourceDisksFiles]
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with SourceDisksNames
+
+[ZFSin_Device.NT.Wdf]
+KmdfService =  ZFSin, ZFSin_wdfsect
+[ZFSin_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+SPSVCINST_ASSOCSERVICE= 0x00000002
+ManufacturerName="lundman.net" ;TODO: Replace with your manufacturer name
+ClassName="Samples" ; TODO: edit ClassName
+DiskName = "ZFSin Installation Disk"
+ZFSin.DeviceDesc = "ZFSin Device"
+ZFSin.SVCDESC = "ZFSin Service"
