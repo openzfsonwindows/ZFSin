@@ -1,5 +1,5 @@
 
-To setup a development environment for compiling ZFS.
+# To setup a development environment for compiling ZFS.
 
 
 Download free development Windows 10 image from Microsoft.
@@ -73,6 +73,7 @@ GitHub extension if you intend to be part of development environment.
 https://visualstudio.github.com/
 
 
+---
 
 
 Host and Target VMs are now configured.
@@ -119,3 +120,34 @@ Windows Updates run, you can disable those in gpedit.msc
      Windows Components >
 	 Windows Defender
 	 Windows Updates
+
+
+---
+
+# Milestones
+
+
+  ✓ Compile SPL sources
+  *  Godzillion warnings yet to be addressed
+
+  ✓ Port SPL sources, atomics, mutex, kmem, condvars
+  *  C11 _Atomics in kmem not yet handled
+
+  ✓ Compile ZFS sources, stubbing out code as needed
+  *  zlib still needs to be included
+
+  ✓ Load and Unload SPL and ZFS code
+
+  ⃝ Port kernel `zfs_ioctl.c` to accept ioctls from userland
+
+  ⃝ Compile userland libspl, libzpool, libzfs
+
+  ⃝ Compile cmd/zpool
+
+  ⃝ Port functions in libzpool, libzfs. Iterate disks, ioctl
+
+  ⃝ Test ioctl from zpool to talk to kernel
+
+  ⃝ Port kernel `vdev_disk.c` / `vdev_file.c` to issue IO
+
+  ⃝ Port kernel `zfs_vnops.c` / `zfs_vnops_windows.c`
