@@ -10,6 +10,7 @@ extern int zfs_start(void);
 extern void zfs_stop(void);
 extern void windows_delay(int ticks);
 
+PDRIVER_OBJECT WIN_DriverObject = NULL;
 
 NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
@@ -19,6 +20,8 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING Reg
 	WDF_DRIVER_CONFIG_INIT(&config, ZFSin_Init);
 	//config.DriverInitFlags = WdfDriverInitNonPnpDriver;
 	config.EvtDriverUnload = ZFSin_Fini;
+	// Setup global so zfs_ioctl.c can setup devnode
+	WIN_DriverObject = DriverObject;
 	status = WdfDriverCreate(DriverObject, RegistryPath, WDF_NO_OBJECT_ATTRIBUTES, &config, WDF_NO_HANDLE);
 	return status;
 }

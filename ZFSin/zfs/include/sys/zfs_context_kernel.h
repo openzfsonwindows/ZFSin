@@ -116,6 +116,8 @@ typedef struct direntry dirent64_t;
 #define IS_ARRAY(arg) (IS_INDEXABLE(arg) && (((void *) &arg) == ((void *) arg)))
 #define ARRAY_SIZE(arr) (IS_ARRAY(arr) ? (sizeof(arr) / sizeof(arr[0])) : 0)
 
+extern PDRIVER_OBJECT WIN_DriverObject;
+
 
 #endif /* _KERNEL */
 

@@ -44,6 +44,15 @@
 /* Do nothing with this VOP. */
 #define	VOP_REALVP(svp, realvpp)	1
 
+
+#define NT_DEVICE_NAME      L"\\Device\\ZFSCTL"
+#define DOS_DEVICE_NAME     L"\\DosDevices\\ZFS"
+
+
+
+
+
+
 #ifdef _KERNEL
 
 #include <sys/zfs_context_kernel.h>
