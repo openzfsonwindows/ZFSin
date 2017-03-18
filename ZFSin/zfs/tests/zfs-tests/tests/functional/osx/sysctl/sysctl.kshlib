@@ -1,0 +1,398 @@
+#!/bin/ksh -p
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the "License").
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets "[]" replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+
+#
+# Copyright (C) 2016 Brendon Humphrey (brendon.humphrey@mac.com). All rights reserved.
+#
+# Use is subject to license terms.
+#
+
+. $STF_SUITE/include/libtest.shlib
+
+#
+# DESCRIPTION:
+# Check that all "base" kstats are published via OSX sysctl.
+#
+# STRATEGY:
+#
+#
+
+set -A UNIX_SYSCTLS \
+"kstat.unix.kmem_cache.zfs_znode_cache.buf_size" \
+"kstat.unix.kmem_cache.zfs_znode_cache.align" \
+"kstat.unix.kmem_cache.zfs_znode_cache.chunk_size" \
+"kstat.unix.kmem_cache.zfs_znode_cache.slab_size" \
+"kstat.unix.kmem_cache.zfs_znode_cache.alloc" \
+"kstat.unix.kmem_cache.zfs_znode_cache.alloc_fail" \
+"kstat.unix.kmem_cache.zfs_znode_cache.free" \
+"kstat.unix.kmem_cache.zfs_znode_cache.depot_alloc" \
+"kstat.unix.kmem_cache.zfs_znode_cache.depot_free" \
+"kstat.unix.kmem_cache.zfs_znode_cache.depot_contention" \
+"kstat.unix.kmem_cache.zfs_znode_cache.slab_alloc" \
+"kstat.unix.kmem_cache.zfs_znode_cache.slab_free" \
+"kstat.unix.kmem_cache.zfs_znode_cache.buf_constructed" \
+"kstat.unix.kmem_cache.zfs_znode_cache.buf_avail" \
+"kstat.unix.kmem_cache.zfs_znode_cache.buf_inuse" \
+"kstat.unix.kmem_cache.zfs_znode_cache.buf_total" \
+"kstat.unix.kmem_cache.zfs_znode_cache.buf_max" \
+"kstat.unix.kmem_cache.zfs_znode_cache.slab_create" \
+"kstat.unix.kmem_cache.zfs_znode_cache.slab_destroy" \
+"kstat.unix.kmem_cache.zfs_znode_cache.vmem_source" \
+"kstat.unix.kmem_cache.zfs_znode_cache.hash_size" \
+"kstat.unix.kmem_cache.zfs_znode_cache.hash_lookup_depth" \
+"kstat.unix.kmem_cache.zfs_znode_cache.hash_rescale" \
+"kstat.unix.kmem_cache.zfs_znode_cache.full_magazines" \
+"kstat.unix.kmem_cache.zfs_znode_cache.empty_magazines" \
+"kstat.unix.kmem_cache.zfs_znode_cache.magazine_size" \
+"kstat.unix.kmem_cache.zfs_znode_cache.reap" \
+"kstat.unix.kmem_cache.zfs_znode_cache.defrag" \
+"kstat.unix.kmem_cache.zfs_znode_cache.scan" \
+"kstat.unix.kmem_cache.zfs_znode_cache.move_callbacks" \
+"kstat.unix.kmem_cache.zfs_znode_cache.move_yes" \
+"kstat.unix.kmem_cache.zfs_znode_cache.move_no" \
+"kstat.unix.kmem_cache.zfs_znode_cache.move_later" \
+"kstat.unix.kmem_cache.zfs_znode_cache.move_dont_need" \
+"kstat.unix.kmem_cache.zfs_znode_cache.move_dont_know" \
+"kstat.unix.kmem_cache.zfs_znode_cache.move_hunt_found" \
+"kstat.unix.kmem_cache.zfs_znode_cache.move_slabs_freed" \
+"kstat.unix.kmem_cache.zfs_znode_cache.move_reclaimable"
+
+set -A ZFS_TUNEABLE_SYSCTLS \
+"kstat.zfs.darwin.tunable.spa_version" \
+"kstat.zfs.darwin.tunable.zpl_version" \
+"kstat.zfs.darwin.tunable.active_vnodes" \
+"kstat.zfs.darwin.tunable.vnop_debug" \
+"kstat.zfs.darwin.tunable.ignore_negatives" \
+"kstat.zfs.darwin.tunable.ignore_positives" \
+"kstat.zfs.darwin.tunable.create_negatives" \
+"kstat.zfs.darwin.tunable.force_formd_normalized" \
+"kstat.zfs.darwin.tunable.skip_unlinked_drain" \
+"kstat.zfs.darwin.tunable.zfs_arc_max" \
+"kstat.zfs.darwin.tunable.zfs_arc_min" \
+"kstat.zfs.darwin.tunable.zfs_arc_meta_limit" \
+"kstat.zfs.darwin.tunable.zfs_arc_meta_min" \
+"kstat.zfs.darwin.tunable.zfs_arc_grow_retry" \
+"kstat.zfs.darwin.tunable.zfs_arc_shrink_shift" \
+"kstat.zfs.darwin.tunable.zfs_arc_p_min_shift" \
+"kstat.zfs.darwin.tunable.zfs_disable_dup_eviction" \
+"kstat.zfs.darwin.tunable.zfs_arc_average_blocksize" \
+"kstat.zfs.darwin.tunable.l2arc_write_max" \
+"kstat.zfs.darwin.tunable.l2arc_write_boost" \
+"kstat.zfs.darwin.tunable.l2arc_headroom" \
+"kstat.zfs.darwin.tunable.l2arc_headroom_boost" \
+"kstat.zfs.darwin.tunable.l2arc_max_block_size" \
+"kstat.zfs.darwin.tunable.l2arc_feed_secs" \
+"kstat.zfs.darwin.tunable.l2arc_feed_min_ms" \
+"kstat.zfs.darwin.tunable.max_active" \
+"kstat.zfs.darwin.tunable.sync_read_min_active" \
+"kstat.zfs.darwin.tunable.sync_read_max_active" \
+"kstat.zfs.darwin.tunable.sync_write_min_active" \
+"kstat.zfs.darwin.tunable.sync_write_max_active" \
+"kstat.zfs.darwin.tunable.async_read_min_active" \
+"kstat.zfs.darwin.tunable.async_read_max_active" \
+"kstat.zfs.darwin.tunable.async_write_min_active" \
+"kstat.zfs.darwin.tunable.async_write_max_active" \
+"kstat.zfs.darwin.tunable.scrub_min_active" \
+"kstat.zfs.darwin.tunable.scrub_max_active" \
+"kstat.zfs.darwin.tunable.async_write_min_dirty_pct" \
+"kstat.zfs.darwin.tunable.async_write_max_dirty_pct" \
+"kstat.zfs.darwin.tunable.aggregation_limit" \
+"kstat.zfs.darwin.tunable.read_gap_limit" \
+"kstat.zfs.darwin.tunable.write_gap_limit" \
+"kstat.zfs.darwin.tunable.arc_reduce_dnlc_percent" \
+"kstat.zfs.darwin.tunable.arc_lotsfree_percent" \
+"kstat.zfs.darwin.tunable.zfs_dirty_data_max" \
+"kstat.zfs.darwin.tunable.zfs_dirty_data_sync" \
+"kstat.zfs.darwin.tunable.zfs_delay_max_ns" \
+"kstat.zfs.darwin.tunable.zfs_delay_min_dirty_percent" \
+"kstat.zfs.darwin.tunable.zfs_delay_scale" \
+"kstat.zfs.darwin.tunable.spa_asize_inflation" \
+"kstat.zfs.darwin.tunable.zfs_mdcomp_disable" \
+"kstat.zfs.darwin.tunable.zfs_prefetch_disable" \
+"kstat.zfs.darwin.tunable.zfetch_max_streams" \
+"kstat.zfs.darwin.tunable.zfetch_min_sec_reap" \
+"kstat.zfs.darwin.tunable.zfetch_array_rd_sz" \
+"kstat.zfs.darwin.tunable.zfs_default_bs" \
+"kstat.zfs.darwin.tunable.zfs_default_ibs" \
+"kstat.zfs.darwin.tunable.metaslab_aliquot" \
+"kstat.zfs.darwin.tunable.spa_max_replication_override" \
+"kstat.zfs.darwin.tunable.spa_mode_global" \
+"kstat.zfs.darwin.tunable.zfs_flags" \
+"kstat.zfs.darwin.tunable.zfs_txg_timeout" \
+"kstat.zfs.darwin.tunable.zfs_vdev_cache_max" \
+"kstat.zfs.darwin.tunable.zfs_vdev_cache_size" \
+"kstat.zfs.darwin.tunable.zfs_vdev_cache_bshift" \
+"kstat.zfs.darwin.tunable.vdev_mirror_shift" \
+"kstat.zfs.darwin.tunable.zfs_scrub_limit" \
+"kstat.zfs.darwin.tunable.zfs_no_scrub_io" \
+"kstat.zfs.darwin.tunable.zfs_no_scrub_prefetch" \
+"kstat.zfs.darwin.tunable.fzap_default_block_shift" \
+"kstat.zfs.darwin.tunable.zfs_immediate_write_sz" \
+"kstat.zfs.darwin.tunable.zfs_read_chunk_size" \
+"kstat.zfs.darwin.tunable.zfs_nocacheflush" \
+"kstat.zfs.darwin.tunable.zil_replay_disable" \
+"kstat.zfs.darwin.tunable.metaslab_gang_bang" \
+"kstat.zfs.darwin.tunable.metaslab_df_alloc_threshold" \
+"kstat.zfs.darwin.tunable.metaslab_df_free_pct" \
+"kstat.zfs.darwin.tunable.zio_injection_enabled" \
+"kstat.zfs.darwin.tunable.zvol_immediate_write_sz" \
+"kstat.zfs.darwin.tunable.l2arc_noprefetch" \
+"kstat.zfs.darwin.tunable.l2arc_feed_again" \
+"kstat.zfs.darwin.tunable.l2arc_norw" \
+"kstat.zfs.darwin.tunable.zfs_top_maxinflight" \
+"kstat.zfs.darwin.tunable.zfs_resilver_delay" \
+"kstat.zfs.darwin.tunable.zfs_scrub_delay" \
+"kstat.zfs.darwin.tunable.zfs_scan_idle" \
+"kstat.zfs.darwin.tunable.zfs_recover" \
+"kstat.zfs.darwin.tunable.zfs_free_max_blocks" \
+"kstat.zfs.darwin.tunable.zfs_free_bpobj_enabled" \
+"kstat.zfs.darwin.tunable.zfs_send_corrupt_data" \
+"kstat.zfs.darwin.tunable.zfs_send_queue_length" \
+"kstat.zfs.darwin.tunable.zfs_recv_queue_length" \
+"kstat.zfs.darwin.tunable.zfs_vdev_mirror_rotating_inc" \
+"kstat.zfs.darwin.tunable.zfs_vdev_mirror_rotating_seek_inc" \
+"kstat.zfs.darwin.tunable.zfs_vdev_mirror_rotating_seek_offset" \
+"kstat.zfs.darwin.tunable.zfs_vdev_mirror_non_rotating_inc" \
+"kstat.zfs.darwin.tunable.zfs_vdev_mirror_non_rotating_seek_inc" \
+"kstat.zfs.darwin.tunable.zvol_inhibit_dev" \
+"kstat.zfs.darwin.tunable.zfs_send_set_freerecords_bit"
+
+set -A ZFS_SYSCTLS \
+"kstat.zfs.misc.fm.erpt-dropped" \
+"kstat.zfs.misc.fm.erpt-set-failed" \
+"kstat.zfs.misc.fm.fmri-set-failed" \
+"kstat.zfs.misc.fm.payload-set-failed" \
+"kstat.zfs.misc.xuio_stats.onloan_read_buf" \
+"kstat.zfs.misc.xuio_stats.onloan_write_buf" \
+"kstat.zfs.misc.xuio_stats.read_buf_copied" \
+"kstat.zfs.misc.xuio_stats.read_buf_nocopy" \
+"kstat.zfs.misc.xuio_stats.write_buf_copied" \
+"kstat.zfs.misc.xuio_stats.write_buf_nocopy" \
+"kstat.zfs.misc.zfetchstats.hits" \
+"kstat.zfs.misc.zfetchstats.misses" \
+"kstat.zfs.misc.zfetchstats.max_streams" \
+"kstat.zfs.misc.dmu_tx.dmu_tx_assigned" \
+"kstat.zfs.misc.dmu_tx.dmu_tx_delay" \
+"kstat.zfs.misc.dmu_tx.dmu_tx_error" \
+"kstat.zfs.misc.dmu_tx.dmu_tx_suspended" \
+"kstat.zfs.misc.dmu_tx.dmu_tx_group" \
+"kstat.zfs.misc.dmu_tx.dmu_tx_memory_reserve" \
+"kstat.zfs.misc.dmu_tx.dmu_tx_memory_reclaim" \
+"kstat.zfs.misc.dmu_tx.dmu_tx_dirty_throttle" \
+"kstat.zfs.misc.dmu_tx.dmu_tx_dirty_delay" \
+"kstat.zfs.misc.dmu_tx.dmu_tx_dirty_over_max" \
+"kstat.zfs.misc.dmu_tx.dmu_tx_quota" \
+"kstat.zfs.misc.arcstats.hits" \
+"kstat.zfs.misc.arcstats.misses" \
+"kstat.zfs.misc.arcstats.demand_data_hits" \
+"kstat.zfs.misc.arcstats.demand_data_misses" \
+"kstat.zfs.misc.arcstats.demand_metadata_hits" \
+"kstat.zfs.misc.arcstats.demand_metadata_misses" \
+"kstat.zfs.misc.arcstats.prefetch_data_hits" \
+"kstat.zfs.misc.arcstats.prefetch_data_misses" \
+"kstat.zfs.misc.arcstats.prefetch_metadata_hits" \
+"kstat.zfs.misc.arcstats.prefetch_metadata_misses" \
+"kstat.zfs.misc.arcstats.mru_hits" \
+"kstat.zfs.misc.arcstats.mru_ghost_hits" \
+"kstat.zfs.misc.arcstats.mfu_hits" \
+"kstat.zfs.misc.arcstats.mfu_ghost_hits" \
+"kstat.zfs.misc.arcstats.deleted" \
+"kstat.zfs.misc.arcstats.mutex_miss" \
+"kstat.zfs.misc.arcstats.evict_skip" \
+"kstat.zfs.misc.arcstats.evict_not_enough" \
+"kstat.zfs.misc.arcstats.evict_l2_cached" \
+"kstat.zfs.misc.arcstats.evict_l2_eligible" \
+"kstat.zfs.misc.arcstats.evict_l2_ineligible" \
+"kstat.zfs.misc.arcstats.evict_l2_skip" \
+"kstat.zfs.misc.arcstats.hash_elements" \
+"kstat.zfs.misc.arcstats.hash_elements_max" \
+"kstat.zfs.misc.arcstats.hash_collisions" \
+"kstat.zfs.misc.arcstats.hash_chains" \
+"kstat.zfs.misc.arcstats.hash_chain_max" \
+"kstat.zfs.misc.arcstats.p" \
+"kstat.zfs.misc.arcstats.c" \
+"kstat.zfs.misc.arcstats.c_min" \
+"kstat.zfs.misc.arcstats.c_max" \
+"kstat.zfs.misc.arcstats.size" \
+"kstat.zfs.misc.arcstats.hdr_size" \
+"kstat.zfs.misc.arcstats.data_size" \
+"kstat.zfs.misc.arcstats.metadata_size" \
+"kstat.zfs.misc.arcstats.other_size" \
+"kstat.zfs.misc.arcstats.anon_size" \
+"kstat.zfs.misc.arcstats.anon_evictable_data" \
+"kstat.zfs.misc.arcstats.anon_evictable_metadata" \
+"kstat.zfs.misc.arcstats.mru_size" \
+"kstat.zfs.misc.arcstats.mru_evictable_data" \
+"kstat.zfs.misc.arcstats.mru_evictable_metadata" \
+"kstat.zfs.misc.arcstats.mru_ghost_size" \
+"kstat.zfs.misc.arcstats.mru_ghost_evictable_data" \
+"kstat.zfs.misc.arcstats.mru_ghost_evictable_metadata" \
+"kstat.zfs.misc.arcstats.mfu_size" \
+"kstat.zfs.misc.arcstats.mfu_evictable_data" \
+"kstat.zfs.misc.arcstats.mfu_evictable_metadata" \
+"kstat.zfs.misc.arcstats.mfu_ghost_size" \
+"kstat.zfs.misc.arcstats.mfu_ghost_evictable_data" \
+"kstat.zfs.misc.arcstats.mfu_ghost_evictable_metadata" \
+"kstat.zfs.misc.arcstats.l2_hits" \
+"kstat.zfs.misc.arcstats.l2_misses" \
+"kstat.zfs.misc.arcstats.l2_feeds" \
+"kstat.zfs.misc.arcstats.l2_rw_clash" \
+"kstat.zfs.misc.arcstats.l2_read_bytes" \
+"kstat.zfs.misc.arcstats.l2_write_bytes" \
+"kstat.zfs.misc.arcstats.l2_writes_sent" \
+"kstat.zfs.misc.arcstats.l2_writes_done" \
+"kstat.zfs.misc.arcstats.l2_writes_error" \
+"kstat.zfs.misc.arcstats.l2_writes_lock_retry" \
+"kstat.zfs.misc.arcstats.l2_writes_skip_toobig" \
+"kstat.zfs.misc.arcstats.l2_evict_lock_retry" \
+"kstat.zfs.misc.arcstats.l2_evict_reading" \
+"kstat.zfs.misc.arcstats.l2_evict_l1cached" \
+"kstat.zfs.misc.arcstats.l2_free_on_write" \
+"kstat.zfs.misc.arcstats.l2_cdata_free_on_write" \
+"kstat.zfs.misc.arcstats.l2_abort_lowmem" \
+"kstat.zfs.misc.arcstats.l2_cksum_bad" \
+"kstat.zfs.misc.arcstats.l2_io_error" \
+"kstat.zfs.misc.arcstats.l2_size" \
+"kstat.zfs.misc.arcstats.l2_asize" \
+"kstat.zfs.misc.arcstats.l2_hdr_size" \
+"kstat.zfs.misc.arcstats.l2_compress_successes" \
+"kstat.zfs.misc.arcstats.l2_compress_zeros" \
+"kstat.zfs.misc.arcstats.l2_compress_failures" \
+"kstat.zfs.misc.arcstats.memory_throttle_count" \
+"kstat.zfs.misc.arcstats.duplicate_buffers" \
+"kstat.zfs.misc.arcstats.duplicate_buffers_size" \
+"kstat.zfs.misc.arcstats.duplicate_reads" \
+"kstat.zfs.misc.arcstats.arc_meta_used" \
+"kstat.zfs.misc.arcstats.arc_meta_limit" \
+"kstat.zfs.misc.arcstats.arc_meta_max" \
+"kstat.zfs.misc.arcstats.arc_meta_min" \
+"kstat.zfs.misc.arcstats.sync_wait_for_async" \
+"kstat.zfs.misc.arcstats.demand_hit_predictive_prefetch" \
+"kstat.zfs.misc.zil.zil_commit_count" \
+"kstat.zfs.misc.zil.zil_commit_writer_count" \
+"kstat.zfs.misc.zil.zil_itx_count" \
+"kstat.zfs.misc.zil.zil_itx_indirect_count" \
+"kstat.zfs.misc.zil.zil_itx_indirect_bytes" \
+"kstat.zfs.misc.zil.zil_itx_copied_count" \
+"kstat.zfs.misc.zil.zil_itx_copied_bytes" \
+"kstat.zfs.misc.zil.zil_itx_needcopy_count" \
+"kstat.zfs.misc.zil.zil_itx_needcopy_bytes" \
+"kstat.zfs.misc.zil.zil_itx_metaslab_normal_count" \
+"kstat.zfs.misc.zil.zil_itx_metaslab_normal_bytes" \
+"kstat.zfs.misc.zil.zil_itx_metaslab_slog_count" \
+"kstat.zfs.misc.zil.zil_itx_metaslab_slog_bytes" \
+"kstat.zfs.misc.vdev_cache_stats.delegations" \
+"kstat.zfs.misc.vdev_cache_stats.hits" \
+"kstat.zfs.misc.vdev_cache_stats.misses"
+
+set -A SPL_SYSCTLS \
+"kstat.spl.misc.spl_misc.os_mem_alloc" \
+"kstat.spl.misc.spl_misc.active_threads" \
+"kstat.spl.misc.spl_misc.active_mutex" \
+"kstat.spl.misc.spl_misc.active_rwlock" \
+"kstat.spl.misc.spl_misc.monitor_thread_wake_count" \
+"kstat.spl.misc.spl_misc.active_tsd" \
+"kstat.spl.misc.spl_misc.reap_thread_wake_count" \
+"kstat.spl.misc.spl_misc.reap_thread_reaped_count" \
+"kstat.spl.misc.spl_misc.reap_thread_miss" \
+"kstat.spl.misc.spl_misc.spl_mach_pressure_wake_count" \
+"kstat.spl.misc.spl_misc.vm_page_free_multiplier" \
+"kstat.spl.misc.spl_misc.vm_page_free_min_min" \
+"kstat.spl.misc.spl_misc.spl_free_wake_count" \
+"kstat.spl.misc.spl_misc.spl_spl_free" \
+"kstat.spl.misc.spl_misc.spl_spl_free_manual_pressure" \
+"kstat.spl.misc.spl_misc.spl_spl_free_fast_pressure" \
+"kstat.spl.misc.spl_misc.spl_spl_free_delta_ema" \
+"kstat.spl.misc.spl_misc.spl_spl_free_negative_count" \
+"kstat.spl.misc.spl_misc.spl_spl_minimal_uses_spl_free"
+
+set -A POOL_SYSCTLS \
+"kstat.zfs/POOL.misc.dmu_tx_assign.1 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.2 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.4 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.8 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.16 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.32 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.64 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.128 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.256 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.512 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.1024 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.2048 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.4096 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.8192 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.16384 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.32768 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.65536 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.131072 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.262144 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.524288 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.1048576 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.2097152 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.4194304 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.8388608 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.16777216 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.33554432 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.67108864 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.134217728 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.268435456 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.536870912 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.1073741824 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.2147483648 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.4294967296 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.8589934592 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.17179869184 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.34359738368 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.68719476736 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.137438953472 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.274877906944 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.549755813888 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.1099511627776 ns" \
+"kstat.zfs/POOL.misc.dmu_tx_assign.2199023255552 ns"
+
+typeset SYSCTL=/usr/sbin/sysctl
+
+function sysctl_exists #OID
+{
+	typeset OID=$1
+	result=$($SYSCTL $OID)
+	return $?
+}
+
+function read_sysctl #OID
+{
+	typeset OID=$1
+
+	$ECHO `$SYSCTL $OID | cut -d":" -f2`
+}
+
+function write_sysctl # OID value
+{
+	typeset OID=$1
+	typeset value=$2
+
+	`$SYSCTL -w $OID $value`
+	return $?
+}
+
+
+

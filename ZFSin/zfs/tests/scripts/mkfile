@@ -1,0 +1,54 @@
+#!/bin/bash
+
+#BGH - truncate not available on OSX so use gtruncate from homebrew coreutils
+#TRUNCATE=truncate
+TRUNCATE=/usr/local/bin/gtruncate
+
+sparse=0
+if [[ "$1" == "-s" ]]; then
+	sparse=1
+	shift
+fi
+
+size=$1 ; shift
+files="$*"
+
+ERR=0
+if [[ "$sparse" -eq 1 ]]; then
+	for file in $files; do
+		dir=`dirname $file`
+		[ ! -d "$dir" ] && mkdir -p $dir
+
+		$TRUNCATE -s $size $file
+		ret=$?
+		if [[ "$ret" -gt 0 ]]; then
+			ERR=$ret
+			continue
+		fi
+	done
+else
+	if [[ ${size:1} == *[mM] ]]; then
+		size=${size%%[mM]}
+	elif [[ ${size:1} == *[gG] ]]; then
+		size=$((${size%%[gG]} * 1024))
+	else
+		size=$(($size / 1048576))
+	fi
+
+	for file in $files; do
+		dir=`dirname $file`
+		[ ! -d "$dir" ] && mkdir -p $dir
+
+		dd if=/dev/zero of=$file bs=1048576 count=$size \
+			2> /dev/null
+		ret=$?
+		if [[ "$ret" -gt 0 ]]; then
+			ERR=$ret
+			continue
+		fi
+	done
+fi
+
+sync
+
+exit $ERR

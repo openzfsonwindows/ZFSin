@@ -1,0 +1,36 @@
+#!/bin/bash
+
+if [[ -z "$1" ]]; then
+    # No test date specified - take the last one.
+    tstnr=`find /var/tmp/test_results/2*[0-9] -maxdepth 0 | tail -n1 | sed 's@.*/@@'`
+elif [[ "$1" == "help" || "$1" == "--help" || "$1" == "-h" ]]; then
+    echo "Usage: `basename $0` [test_date]"
+    echo "If test date is unset, last one is used."
+    exit 0
+elif [[ -n "$1" && ! -d "/var/tmp/test_results/$1" ]]; then
+    echo "Usage: `basename $0` [test_date]"
+    echo "THe directory /var/tmp/test_results/$1 does not exist."
+    exit 1
+else
+    tstnr=$1
+fi
+
+grep '^Test: .*\[FAIL\]' /var/tmp/test_results/$tstnr/log  | \
+    while read line; do
+	test=$(echo "$line" | sed "s@.*/\(.*\) (.*@\1@")
+	testdir=$(find /var/tmp/test_results/$tstnr -name "$test")
+
+	echo "$line"
+	if [[ -f "$testdir/merged" ]]; then
+		cat $testdir/merged | \
+		    while read merged; do
+			echo "  $merged"
+		done
+	elif find $testdir/* -type f > /dev/null 2>&1; then
+		cat $testdir/* | \
+		    while read merged; do
+			echo "  $merged"
+		done
+	fi
+	echo
+done

@@ -1,0 +1,4 @@
+#!/bin/sh
+
+echo "[MISSING CMD '$@']" > /dev/stderr
+exit 1

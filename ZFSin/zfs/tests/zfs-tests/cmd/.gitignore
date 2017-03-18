@@ -1,0 +1,12 @@
+chg_usr_exec/chg_usr_exec
+file_write/file_write
+mkbusy/mkbusy
+mktree/mktree
+randfree_file/randfree_file
+largest_file/largest_file
+rm_lnkcnt_zero_file/rm_lnkcnt_zero_file
+readmmap/readmmap
+mmapwrite/mmapwrite
+file_trunc/file_trunc
+file_check/file_check
+*.o
