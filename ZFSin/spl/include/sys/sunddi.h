@@ -183,5 +183,8 @@ struct i_ddi_soft_state {
 #define	MIN_N_ITEMS	8	/* 8 void *'s == 32 bytes */
 
 
+uint32_t
+ddi_strcspn(const char * __restrict s, const char * __restrict charset);
+#define strcspn ddi_strcspn
 
 #endif /* SPL_SUNDDI_H */

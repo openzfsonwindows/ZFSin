@@ -5949,6 +5949,21 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	const zfs_ioc_vec_t *vec;
 	char *saved_poolname = NULL;
 	nvlist_t *innvl = NULL;
+	ULONG               inBufLength; // Input buffer length
+	ULONG               outBufLength; // Output buffer length
+
+	PIO_STACK_LOCATION  irpSp;// Pointer to current stack location
+	irpSp = IoGetCurrentIrpStackLocation(Irp);
+
+	inBufLength = irpSp->Parameters.DeviceIoControl.InputBufferLength;
+	outBufLength = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
+
+	// It must have at least a zfs_cmd_t in there
+	if (inBufLength < sizeof(zfs_cmd_t) 
+		|| outBufLength < sizeof(zfs_cmd_t)) {
+		return STATUS_INVALID_PARAMETER;
+	}
+
 
 //	vfs_context_t *ctx = vfs_context_current();
 //	cred_t *cr = vfs_context_ucred(ctx);
@@ -5969,6 +5984,9 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 		return (zvol_ioctl(dev, cmd, arg, 0, NULL, NULL));
 	}
 #endif
+
+	cmd = irpSp->Parameters.DeviceIoControl.IoControlCode;
+
 
 	mutex_enter(&zfsdev_state_lock);
 	if (zfsdev_get_state_impl(minorx, ZST_ALL) == NULL) {
@@ -5998,9 +6016,12 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 
 	zc = kmem_zalloc(sizeof (zfs_cmd_t), KM_SLEEP);
 
-#ifdef _WIN32
+	// The userland/kernel space copy has already been handled, so use bcopy
 	flag |= FKIOCTL;
-#endif
+
+	// copyin the userland data to kernel-space "zc" 
+	arg = Irp->AssociatedIrp.SystemBuffer;
+
 
 	error = ddi_copyin((void *)arg, zc, sizeof (zfs_cmd_t), flag);
 	if (error != 0) {
@@ -6044,9 +6065,9 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 		break;
 	}
 
-#ifdef __APPLE__
+#ifdef _WIN32
 	if (error == 0)
-		error = vec->zvec_secpolicy(zc, innvl, cr);
+		error = vec->zvec_secpolicy(zc, innvl, NULL);
 #else
 //	if (error == 0 && !(flag & FKIOCTL))
 //		error = vec->zvec_secpolicy(zc, innvl, cr);
@@ -6126,6 +6147,7 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 		dprintf("ddi_copyout fault\n");
 		error = SET_ERROR(EFAULT);
 	}
+	Irp->IoStatus.Information = sizeof(zfs_cmd_t);
 	if (error == 0 && vec->zvec_allow_log) {
 		char *s = tsd_get(zfs_allow_log_key);
 		if (s != NULL)
@@ -6139,7 +6161,7 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	kmem_free(zc, sizeof (zfs_cmd_t));
 	zc = NULL;
 
-#ifdef _WIN32
+#ifdef __APPLE__
 	/*
 	 * Return the real error in zc_ioc_error so the ioctl call always
 	 * does a copyout of the zc data.
@@ -6153,6 +6175,12 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	((zfs_cmd_t *)arg)->zc_ioc_error = error;
 #endif
 	dprintf("ioctl out result %d\n", error);
+
+	Irp->IoStatus.Status = error;
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+
+	return error;
 	return (0);
 }
 
