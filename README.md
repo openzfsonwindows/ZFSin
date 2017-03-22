@@ -136,11 +136,17 @@ Windows Updates run, you can disable those in gpedit.msc
   ✓ Compile ZFS sources, stubbing out code as needed
   *  zlib still needs to be included
 
+  ⃝ Include kernel zlib library
+
   ✓ Load and Unload SPL and ZFS code
 
-  ⃝ Port kernel `zfs_ioctl.c` to accept ioctls from userland
+  ✓ Port kernel `zfs_ioctl.c` to accept ioctls from userland
 
   ⃝ Compile userland libspl, libzpool, libzfs
+
+  ⃝ Include pthread wrapper library
+
+  ⃝ Include userland zlib library
 
   ⃝ Compile cmd/zpool
 

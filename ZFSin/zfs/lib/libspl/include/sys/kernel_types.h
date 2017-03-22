@@ -1,0 +1,5 @@
+#ifndef LIBSPL_SYS_KERNEL_TYPES_H
+#define LIBSPL_SYS_KERNEL_TYPES_H
+
+
+#endif

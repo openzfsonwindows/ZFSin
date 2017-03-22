@@ -64,6 +64,7 @@
 #include <time.h>
 #include <ctype.h>
 #include <signal.h>
+#include <sys/proc.h>
 #include <sys/mman.h>
 #include <sys/note.h>
 #include <sys/types.h>
@@ -761,8 +762,8 @@ void uio_update( struct uio *a_uio, user_size_t a_count );
 #define kpreempt(X)
 
 
-#include <libkern/OSByteOrder.h>
-#define htobe32(x) OSSwapHostToBigInt32(x)
+//#include <libkern/OSByteOrder.h>
+#define htobe32(x) _byteswap_ulong(x)
 
 
 #endif /* !_KERNEL */
