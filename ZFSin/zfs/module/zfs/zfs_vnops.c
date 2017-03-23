@@ -810,9 +810,21 @@ zfs_write(vnode_t *vp, uio_t *uio, int ioflag, cred_t *cr, caller_context_t *ct)
 	    &zp->z_pflags, 8);
 
 	/*
-	 * If immutable or not appending then return EPERM
+	 * In a case vp->v_vfsp != zp->z_zfsvfs->z_vfs (e.g. snapshots) our
+	 * callers might not be able to detect properly that we are read-only,
+	 * so check it explicitly here.
 	 */
-	if ((zp->z_pflags & (ZFS_IMMUTABLE | ZFS_READONLY)) ||
+	if (vfs_flags(zfsvfs->z_vfs) & MNT_RDONLY) {
+		ZFS_EXIT(zfsvfs);
+		return (SET_ERROR(EROFS));
+	}
+
+	/*
+	 * If immutable or not appending then return EPERM.
+	 * Intentionally allow ZFS_READONLY through here.
+	 * See zfs_zaccess_common()
+	 */
+	if ((zp->z_pflags & ZFS_IMMUTABLE) ||
 	    ((zp->z_pflags & ZFS_APPENDONLY) && !(ioflag & FAPPEND) &&
          (uio_offset(uio) < zp->z_size))) {
 		ZFS_EXIT(zfsvfs);
@@ -3413,10 +3425,9 @@ zfs_setattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 	}
 #endif
 
-	if ((mask & AT_SIZE) && (zp->z_pflags & ZFS_READONLY)) {
-		ZFS_EXIT(zfsvfs);
-		return ((EPERM));
-	}
+	/*
+	 * Note: ZFS_READONLY is handled in zfs_zaccess_common.
+	 */
 
 	/*
 	 * Verify timestamps doesn't overflow 32 bits.
@@ -5574,8 +5585,12 @@ zfs_map(vnode_t *vp, offset_t off, struct as *as, caddr_t *addrp,
 	ZFS_ENTER(zfsvfs);
 	ZFS_VERIFY_ZP(zp);
 
+	/*
+	 * Note: ZFS_READONLY is handled in zfs_zaccess_common.
+	 */
+
 	if ((prot & PROT_WRITE) && (zp->z_pflags &
-	    (ZFS_IMMUTABLE | ZFS_READONLY | ZFS_APPENDONLY))) {
+	    (ZFS_IMMUTABLE | ZFS_APPENDONLY))) {
 		ZFS_EXIT(zfsvfs);
 		return (SET_ERROR(EPERM));
 	}
