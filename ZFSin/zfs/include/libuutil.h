@@ -26,6 +26,7 @@
 #define	_LIBUUTIL_H
 
 #include <sys/types.h>
+#include <sys/w32_types.h>
 #include <stdarg.h>
 #include <stdio.h>
 

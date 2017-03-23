@@ -96,6 +96,7 @@ typedef unsigned char uchar_t;
 #define R_OK 4
 
 #define MAXPATHLEN MAX_PATH
+#define PATH_MAX  MAX_PATH
 
 typedef struct timespec			timestruc_t; /* definition per SVr4 */
 typedef struct timespec			timespec_t;

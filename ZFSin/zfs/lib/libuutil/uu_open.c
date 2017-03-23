@@ -20,14 +20,52 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
-#ifndef _SYS_FEATURE_TESTS_H
-#define	_SYS_FEATURE_TESTS_H
 
-//#define	__NORETURN	__attribute__((__noreturn__))
-#define	__NORETURN
 
-#endif
+#include "libuutil_common.h"
+
+#include <sys/time.h>
+
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <sys/w32_types.h>
+
+#ifdef _LP64
+#define	TMPPATHFMT	"%s/uu%ld"
+#else /* _LP64 */
+#define	TMPPATHFMT	"%s/uu%lld"
+#endif /* _LP64 */
+
+/*ARGSUSED*/
+int
+uu_open_tmp(const char *dir, uint_t uflags)
+{
+	int f;
+	char *fname = uu_zalloc(PATH_MAX);
+
+	if (fname == NULL)
+		return (-1);
+
+	for (;;) {
+		(void) snprintf(fname, PATH_MAX, "%s/uu%lld", dir, gethrtime());
+
+		f = open(fname, O_CREAT | O_EXCL | O_RDWR, 0600);
+
+		if (f >= 0 || errno != EEXIST)
+			break;
+	}
+
+	if (f >= 0)
+		(void) unlink(fname);
+
+	uu_free(fname);
+
+	return (f);
+}
