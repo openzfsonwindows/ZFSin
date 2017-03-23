@@ -16,7 +16,7 @@
  * fields enclosed by brackets "[]" replaced with your own identifying
  * information: Portions Copyright [yyyy] [name of copyright owner]
  *
- * CDDL HEADER END
+ * CDDL HEADER ENDS
  */
 
 /*

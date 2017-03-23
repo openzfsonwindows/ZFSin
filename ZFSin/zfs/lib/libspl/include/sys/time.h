@@ -62,6 +62,12 @@
 #define        NSEC2SEC(n)     ((n) / (NANOSEC / SEC))
 #define        SEC2NSEC(m)     ((hrtime_t)(m) * (NANOSEC / SEC))
 
+
+struct timeval {
+	time_t		tv_sec;         /* seconds */
+    uint64_t	tv_usec;        /* and microseconds */
+};
+
 extern void gethrestime(timestruc_t *);
 
 #endif /* _LIBSPL_SYS_TIME_H */

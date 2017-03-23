@@ -144,9 +144,9 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ⃝ Compile userland libspl, libzpool, libzfs
 
-  ⃝ Include pthread wrapper library
+  ✓ Include pthread wrapper library
 
-  ⃝ Include userland zlib library
+  ✓ Include userland zlib library
 
   ⃝ Compile cmd/zpool
 

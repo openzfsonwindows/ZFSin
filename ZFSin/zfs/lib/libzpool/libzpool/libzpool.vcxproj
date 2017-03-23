@@ -1,0 +1,217 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|ARM">
+      <Configuration>Debug</Configuration>
+      <Platform>ARM</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ARM">
+      <Configuration>Release</Configuration>
+      <Platform>ARM</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|ARM64">
+      <Configuration>Debug</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|ARM64">
+      <Configuration>Release</Configuration>
+      <Platform>ARM64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\..\module\zcommon\zfs_comutil.c" />
+    <ClCompile Include="..\..\..\module\zcommon\zfs_deleg.c" />
+    <ClCompile Include="..\..\..\module\zcommon\zfs_fletcher.c" />
+    <ClCompile Include="..\..\..\module\zcommon\zfs_namecheck.c" />
+    <ClCompile Include="..\..\..\module\zcommon\zfs_prop.c" />
+    <ClCompile Include="..\..\..\module\zcommon\zfs_uio.c" />
+    <ClCompile Include="..\..\..\module\zcommon\zpool_prop.c" />
+    <ClCompile Include="..\..\..\module\zcommon\zprop_common.c" />
+    <ClCompile Include="..\..\..\module\zfs\arc.c" />
+    <ClCompile Include="..\..\..\module\zfs\blkptr.c" />
+    <ClCompile Include="..\..\..\module\zfs\bplist.c" />
+    <ClCompile Include="..\..\..\module\zfs\bpobj.c" />
+    <ClCompile Include="..\..\..\module\zfs\bptree.c" />
+    <ClCompile Include="..\..\..\module\zfs\bqueue.c" />
+    <ClCompile Include="..\..\..\module\zfs\dbuf.c" />
+    <ClCompile Include="..\..\..\module\zfs\dbuf_stats.c" />
+    <ClCompile Include="..\..\..\module\zfs\ddt.c" />
+    <ClCompile Include="..\..\..\module\zfs\ddt_zap.c" />
+    <ClCompile Include="..\..\..\module\zfs\dmu.c" />
+    <ClCompile Include="..\..\..\module\zfs\dmu_diff.c" />
+    <ClCompile Include="..\..\..\module\zfs\dmu_object.c" />
+    <ClCompile Include="..\..\..\module\zfs\dmu_objset.c" />
+    <ClCompile Include="..\..\..\module\zfs\dmu_send.c" />
+    <ClCompile Include="..\..\..\module\zfs\dmu_traverse.c" />
+    <ClCompile Include="..\..\..\module\zfs\dmu_tx.c" />
+    <ClCompile Include="..\..\..\module\zfs\dmu_zfetch.c" />
+    <ClCompile Include="..\..\..\module\zfs\dnode.c" />
+    <ClCompile Include="..\..\..\module\zfs\dnode_sync.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_bookmark.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_dataset.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_deadlist.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_deleg.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_destroy.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_dir.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_pool.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_proc.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_prop.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_scan.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_synctask.c" />
+    <ClCompile Include="..\..\..\module\zfs\dsl_userhold.c" />
+    <ClCompile Include="..\..\..\module\zfs\edonr_zfs.c" />
+    <ClCompile Include="..\..\..\module\zfs\fm.c" />
+    <ClCompile Include="..\..\..\module\zfs\gzip.c" />
+    <ClCompile Include="..\..\..\module\zfs\lz4.c" />
+    <ClCompile Include="..\..\..\module\zfs\lzjb.c" />
+    <ClCompile Include="..\..\..\module\zfs\metaslab.c" />
+    <ClCompile Include="..\..\..\module\zfs\multilist.c" />
+    <ClCompile Include="..\..\..\module\zfs\range_tree.c" />
+    <ClCompile Include="..\..\..\module\zfs\refcount.c" />
+    <ClCompile Include="..\..\..\module\zfs\rrwlock.c" />
+    <ClCompile Include="..\..\..\module\zfs\sa.c" />
+    <ClCompile Include="..\..\..\module\zfs\sha256.c" />
+    <ClCompile Include="..\..\..\module\zfs\skein_zfs.c" />
+    <ClCompile Include="..\..\..\module\zfs\spa.c" />
+    <ClCompile Include="..\..\..\module\zfs\space_map.c" />
+    <ClCompile Include="..\..\..\module\zfs\space_reftree.c" />
+    <ClCompile Include="..\..\..\module\zfs\spa_boot.c" />
+    <ClCompile Include="..\..\..\module\zfs\spa_config.c" />
+    <ClCompile Include="..\..\..\module\zfs\spa_errlog.c" />
+    <ClCompile Include="..\..\..\module\zfs\spa_history.c" />
+    <ClCompile Include="..\..\..\module\zfs\spa_misc.c" />
+    <ClCompile Include="..\..\..\module\zfs\spa_stats.c" />
+    <ClCompile Include="..\..\..\module\zfs\txg.c" />
+    <ClCompile Include="..\..\..\module\zfs\uberblock.c" />
+    <ClCompile Include="..\..\..\module\zfs\unique.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_cache.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_file.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_label.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_mirror.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_missing.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_queue.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_raidz.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_root.c" />
+    <ClCompile Include="..\..\..\module\zfs\zap.c" />
+    <ClCompile Include="..\..\..\module\zfs\zap_leaf.c" />
+    <ClCompile Include="..\..\..\module\zfs\zap_micro.c" />
+    <ClCompile Include="..\..\..\module\zfs\zfeature.c" />
+    <ClCompile Include="..\..\..\module\zfs\zfeature_common.c" />
+    <ClCompile Include="..\..\..\module\zfs\zfs_byteswap.c" />
+    <ClCompile Include="..\..\..\module\zfs\zfs_debug.c" />
+    <ClCompile Include="..\..\..\module\zfs\zfs_fm.c" />
+    <ClCompile Include="..\..\..\module\zfs\zfs_fuid.c" />
+    <ClCompile Include="..\..\..\module\zfs\zfs_sa.c" />
+    <ClCompile Include="..\..\..\module\zfs\zfs_znode.c" />
+    <ClCompile Include="..\..\..\module\zfs\zil.c" />
+    <ClCompile Include="..\..\..\module\zfs\zio.c" />
+    <ClCompile Include="..\..\..\module\zfs\zio_checksum.c" />
+    <ClCompile Include="..\..\..\module\zfs\zio_compress.c" />
+    <ClCompile Include="..\..\..\module\zfs\zio_inject.c" />
+    <ClCompile Include="..\..\..\module\zfs\zle.c" />
+    <ClCompile Include="..\..\..\module\zfs\zrlock.c" />
+    <ClCompile Include="..\kernel.c" />
+    <ClCompile Include="..\taskq.c" />
+    <ClCompile Include="..\util.c" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{6352BFDB-D45E-47FD-BDE8-F9320CAECF9B}</ProjectGuid>
+    <TemplateGuid>{0a049372-4c4d-4ea0-a64e-dc6ad88ceca1}</TemplateGuid>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <MinimumVisualStudioVersion>12.0</MinimumVisualStudioVersion>
+    <Configuration>Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">Win32</Platform>
+    <RootNamespace>libzpool</RootNamespace>
+    <DriverType>KMDF</DriverType>
+    <WindowsTargetPlatformVersion>10.0.10586.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v140</PlatformToolset>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'" Label="Configuration">
+    <TargetVersion>Windows10</TargetVersion>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>__x86_64</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>__x86_64</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -27,6 +27,7 @@
 #define	_SYS_NVPAIR_H
 
 #include <sys/types.h>
+#include <sys/w32_types.h>
 #include <sys/time.h>
 #include <sys/errno.h>
 #include <sys/va_list.h>

@@ -58,7 +58,9 @@
 #define	MAXPROJID	MAXUID		/* max project id */
 
 #ifndef	PAGESIZE
-#define	PAGESIZE	(sysconf(_SC_PAGESIZE))
+#define	PAGESIZE	(8192) // SYSTEM_INFO.dwPageSize;
 #endif /* PAGESIZE */
+
+#define NBBY				8
 
 #endif

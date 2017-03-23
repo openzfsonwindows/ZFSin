@@ -197,7 +197,7 @@ typedef struct kthread {
 #define	thread_create(stk, stksize, func, arg, len, pp, state, pri)	\
 	zk_thread_create(stk, stksize, (thread_func_t)func, arg,	\
 			 len, NULL, state, pri, PTHREAD_CREATE_DETACHED)
-#define	thread_join(t)			zk_thread_join(t)
+//#define	thread_join(t)			zk_thread_join(t)
 #define	newproc(f,a,cid,pri,ctp,pid)	(ENOSYS)
 
 extern kthread_t *zk_thread_current(void);
@@ -450,6 +450,8 @@ struct vnode {
 #endif
 };
 
+typedef struct vnode vnode_t;
+
 #ifdef _WIN32
 #define vnode_vid(vp) ((vp)->v_id)
 #define pwrite64 pwrite
@@ -458,10 +460,6 @@ int vnode_getwithref(vnode_t *vp);
 int vnode_put(vnode_t *vp);
 void vnode_rele(vnode_t *vp);
 #endif
-
-#undef vnode_t
-#define vnode_t struct vnode
-
 
 #define	AV_SCANSTAMP_SZ	32		/* length of anti-virus scanstamp */
 
@@ -568,21 +566,10 @@ extern vnode_t *rootdir;
 #define	ddi_get_lbolt64()	(gethrtime() >> 23)
 #define	hz	119	/* frequency when using gethrtime() >> 23 for lbolt */
 
-#define typecheck(type,x) \
-	({      type __dummy;		  \
-		typeof(x) __dummy2;					 \
-		(void)(&__dummy == &__dummy2);		 \
-        1;									 \
-	})
-
-#define ddi_time_before(a, b)           (typecheck(clock_t, a) && \
-                                        typecheck(clock_t, b) && \
-                                        ((a) - (b) < 0))
+#define ddi_time_before(a, b)           ((a) - (b) < 0)
 #define ddi_time_after(a, b)            ddi_time_before(b, a)
 
-#define ddi_time_before64(a, b)         (typecheck(int64_t, a) && \
-                                        typecheck(int64_t, b) && \
-                                        ((a) - (b) < 0))
+#define ddi_time_before64(a, b)         ((a) - (b) < 0)
 #define ddi_time_after64(a, b)          ddi_time_before64(b, a)
 
 extern void delay(clock_t ticks);
@@ -600,7 +587,9 @@ extern void delay(clock_t ticks);
 #define	defclsyspri	60
 #define	maxclsyspri	99
 
-#define	CPU_SEQID	((uint64_t)pthread_self() & (max_ncpus - 1))
+extern pthread_key_t ptw32_selfThreadKey;
+//#define	CPU_SEQID	((uint64_t)pthread_self() & (max_ncpus - 1))
+#define	CPU_SEQID	(((uint64_t) pthread_getspecific(ptw32_selfThreadKey)) & (max_ncpus - 1))
 
 #define	kcred		NULL
 #define	CRED()		NULL

@@ -48,7 +48,9 @@
 #define NT_DEVICE_NAME      L"\\Device\\ZFSCTL"
 #define DOS_DEVICE_NAME     L"\\DosDevices\\ZFS"
 
-
+#include <sys/types.h>
+#include <sys/w32_types.h>
+#include <limits.h>
 
 
 

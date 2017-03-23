@@ -42,12 +42,10 @@
 
 typedef struct iovec iovec_t;
 
-#if 0
 typedef enum uio_rw {
 	UIO_READ =	0,
 	UIO_WRITE =	1,
 } uio_rw_t;
-#endif
 
 typedef enum uio_seg {
 	UIO_USERSPACE =	0,

@@ -20,8 +20,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
- * Use is subject to license terms.
+ * Copyright(c) 2017 Jorgen Lundman <lundman@lundman.net>
  */
 
 /*
@@ -42,26 +41,22 @@
 #include <sys/va_list.h>
 #include <sys/timer.h>
 
-#ifndef HAVE_INTTYPES
-//#include <inttypes.h>
+#include <stdint.h>
 
-#ifdef __APPLE__
-#include <mach/boolean.h>
-#define B_TRUE TRUE
-#define B_FALSE FALSE
-#else
 typedef enum boolean { B_FALSE=0, B_TRUE } boolean_t;
 typedef enum boolean bool_t;
-#endif
 
 typedef unsigned char	uchar_t;
 typedef unsigned short	ushort_t;
 typedef unsigned int	uint_t;
 typedef unsigned long	ulong_t;
-
+typedef short int16_t;
+typedef unsigned short uint16_t;
 typedef long long	longlong_t;
 typedef unsigned long long u_longlong_t;
-#endif /* HAVE_INTTYPES */
+typedef char int8_t;
+typedef unsigned char uint8_t;
+
 
 typedef longlong_t	offset_t;
 typedef u_longlong_t	u_offset_t;
@@ -88,6 +83,13 @@ typedef ushort_t o_mode_t; /* old file attribute type */
 typedef short		index_t;
 
 typedef unsigned long long rlim64_t;
+
+typedef uint64_t uid_t;
+typedef uint64_t gid_t;
+typedef uint64_t user_ssize_t;
+
+typedef unsigned long ulong_t;
+typedef unsigned char uchar_t;
 
 #define F_OK 0
 #define W_OK 2
@@ -137,5 +139,12 @@ typedef union {
 	} _p;
 } lloff_t;
 #endif
+
+
+#define	EDQUOT	49	/* Disc quota exceeded			*/
+#define	EBADE	50	/* invalid exchange			*/
+#define ESTALE          70              /* Stale NFS file handle */
+
+#define INT_MAX 2147483647
 
 #endif

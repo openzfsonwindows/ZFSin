@@ -39,6 +39,8 @@
 
 #ifdef _KERNEL
 #include <sys/nvpair.h>
+#else
+#include <winioctl.h>
 #endif	/* _KERNEL */
 
 #ifdef	__cplusplus

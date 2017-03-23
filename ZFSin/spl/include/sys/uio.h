@@ -171,7 +171,7 @@ struct uio *nuio = uio_duplicate(uio);                              \
 		uio_setrw(nuio, rw);
 \
 result = spl_uiomove(p, n, nuio);                                         \
-*cbytes = x - uio_resid(nuio);                                        \
+*cbytes = (uint32_t)(x - uio_resid(nuio));                                        \
 uio_free(nuio);                                                     \
 return result;                                                      \
 }

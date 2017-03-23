@@ -35,6 +35,7 @@
  */
 
 #include <sys/types.h>
+#include <sys/w32_types.h>
 
 #ifdef	__cplusplus
 extern "C" {

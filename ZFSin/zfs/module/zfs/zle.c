@@ -31,6 +31,7 @@
  * are literal values.  If b >= n then the next (256 - b + 1) bytes are zero.
  */
 #include <sys/types.h>
+#include <sys/w32_types.h>
 #include <sys/sysmacros.h>
 
 size_t
