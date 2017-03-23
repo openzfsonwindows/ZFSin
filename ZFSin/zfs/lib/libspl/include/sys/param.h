@@ -29,6 +29,7 @@
 
 //#include_next <sys/param.h>
 #include <unistd.h>
+#include <limits.h>
 
 /*
  * File system parameters and macros.
@@ -48,7 +49,7 @@
 #define DEV_BSHIFT 9     /* log2(DEV_BSIZE) */
 
 #define	MAXNAMELEN	256
-#define	MAXOFFSET_T	LLONG_MAX
+#define	MAXOFFSET_T	_I64_MAX
 
 #define	UID_NOBODY	60001		/* user ID no body */
 #define	GID_NOBODY	UID_NOBODY

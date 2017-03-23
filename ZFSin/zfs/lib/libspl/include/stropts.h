@@ -23,7 +23,7 @@
 #define	_LIBSPL_STROPTS_H
 
 
-int highbit64(uint64_t i);
+int highbit64(unsigned long long i);
 
 
 #endif /* _LIBSPL_STROPTS_H */

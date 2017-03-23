@@ -26,6 +26,7 @@
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
  * Copyright (c) 2013 Steven Hartland. All rights reserved.
  * Copyright 2016 Nexenta Systems, Inc.
+ * Copyright (c) 2017 Jorgen Lundman. All rights reserved.
  */
 
 #ifndef	_LIBZFS_H
@@ -58,7 +59,7 @@ extern "C" {
 #define	DISK_ROOT		"/dev"
 #ifdef __LINUX__
 #define	UDISK_ROOT		"/dev/disk"
-#elif defined(__APPLE__)
+#elif defined(_WIN32)
 #define	UDISK_ROOT		"/private/var/run/disk"
 #define	UDISK_ROOT_ALT		"/var/run/disk"
 #endif /* __LINUX__ */
@@ -70,7 +71,7 @@ extern "C" {
 
 #ifdef __LINUX__
 #define	DEFAULT_IMPORT_PATH_SIZE	7
-#elif defined(__APPLE__)
+#elif defined(_WIN32)
 #ifndef __UNSAFE_DEFAULT_IMPORT_PATH__
 #define	DEFAULT_IMPORT_PATH_SIZE	3
 #else

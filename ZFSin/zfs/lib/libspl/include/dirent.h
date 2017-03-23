@@ -100,9 +100,9 @@
 # define S_IWRITE _S_IWRITE                    /* write permission */
 # define S_IEXEC  _S_IEXEC                     /* execute permission */
 #endif
-#define S_IFBLK   0                            /* block device */
-#define S_IFLNK   0                            /* link */
-#define S_IFSOCK  0                            /* socket */
+#define S_IFBLK   -1                            /* block device */
+#define S_IFLNK   -2                            /* link */
+//#define S_IFSOCK  0                            /* socket */
 
 #if defined(_MSC_VER)
 # define S_IRUSR  S_IREAD                      /* read, user */

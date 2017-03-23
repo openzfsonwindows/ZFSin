@@ -62,11 +62,12 @@
 #define        NSEC2SEC(n)     ((n) / (NANOSEC / SEC))
 #define        SEC2NSEC(m)     ((hrtime_t)(m) * (NANOSEC / SEC))
 
-
+#if 0
 struct timeval {
-	time_t		tv_sec;         /* seconds */
-    uint64_t	tv_usec;        /* and microseconds */
+	long	tv_sec;         /* seconds */
+    long	tv_usec;        /* and microseconds */
 };
+#endif
 
 extern void gethrestime(timestruc_t *);
 

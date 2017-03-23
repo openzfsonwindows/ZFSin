@@ -91,6 +91,8 @@ typedef uint64_t user_ssize_t;
 typedef unsigned long ulong_t;
 typedef unsigned char uchar_t;
 
+typedef uint32_t dev_t;
+
 #define F_OK 0
 #define W_OK 2
 #define R_OK 4
@@ -105,15 +107,6 @@ typedef struct timespec			timespec_t;
 #define strlcpy(D, S, N) strncpy_s((D), (N), (S), _TRUNCATE)
 #define strlcat(D, S, N) strncat_s((D), (N), (S), _TRUNCATE)
 
-#if !defined(htonll)
-#define htonll(x)       _byteswap_uint64(x)
-#endif
-#if !defined(ntohll)
-#define ntohll(x)       _byteswap_uint64(x)
-#endif
-#if !defined(ntohl)
-#define ntohl(x)       _byteswap_ulong(x)
-#endif
 
 
 /*
@@ -141,11 +134,26 @@ typedef union {
 } lloff_t;
 #endif
 
-
+#define	ENOTBLK	15	/* Block device required		*/
 #define	EDQUOT	49	/* Disc quota exceeded			*/
 #define	EBADE	50	/* invalid exchange			*/
+#define ESHUTDOWN       58              /* Can't send after socket shutdown */
 #define ESTALE          70              /* Stale NFS file handle */
 
+#define O_SHLOCK 0
+
 #define INT_MAX 2147483647
+
+#define	DBL_DIG		15
+#define	DBL_MAX		1.7976931348623157081452E+308
+#define	DBL_MIN		2.2250738585072013830903E-308
+
+#define	FLT_DIG		6
+#define	FLT_MAX		3.4028234663852885981170E+38F
+#define	FLT_MIN		1.1754943508222875079688E-38F
+
+#define STDIN_FILENO 0
+#define STDOUT_FILENO 1
+#define STDERR_FILENO 2
 
 #endif

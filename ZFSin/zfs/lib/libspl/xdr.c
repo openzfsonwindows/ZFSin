@@ -30,6 +30,9 @@
  */
 
 #include <rpc/xdr.h>
+#include <sys/socket.h>
+
+#pragma comment(lib, "Ws2_32.lib")
 
 /*
  * As of glibc-2.5-25 there is not support for xdr_control().  The

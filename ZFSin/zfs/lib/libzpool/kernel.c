@@ -32,6 +32,7 @@
 #include <zlib.h>
 #include <sys/vnode.h>
 #include <sys/signal.h>
+#include <sys/socket.h>
 #include <sys/spa.h>
 #include <sys/stat.h>
 #include <sys/processor.h>

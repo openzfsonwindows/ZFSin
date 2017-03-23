@@ -78,27 +78,8 @@ typedef uint16_t in_port_t;
 typedef uint32_t in_addr_t;
 #endif
 
-#if !defined(_XPG4_2) || defined(__EXTENSIONS__) || defined(_XPG5)
-extern	uint32_t htonl(uint32_t);
-extern	uint16_t htons(uint16_t);
-extern 	uint32_t ntohl(uint32_t);
-extern	uint16_t ntohs(uint16_t);
-#else
-extern	in_addr_t htonl(in_addr_t);
-extern	in_port_t htons(in_port_t);
-extern 	in_addr_t ntohl(in_addr_t);
-extern	in_port_t ntohs(in_port_t);
-#endif	/* !defined(_XPG4_2) || defined(__EXTENSIONS__) || defined(_XPG5) */
 #endif
 
-/* 10.8 is lacking in htonll */
-#if !defined(htonll)
-#define htonll(x)       __DARWIN_OSSwapInt64(x)
-#endif
-
-#if !defined(ntohll)
-#define ntohll(x)       __DARWIN_OSSwapInt64(x)
-#endif
 
 
 #if !defined(_XPG4_2) || defined(__EXTENSIONS__)
