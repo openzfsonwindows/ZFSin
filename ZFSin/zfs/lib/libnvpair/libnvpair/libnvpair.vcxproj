@@ -41,6 +41,14 @@
     <ClCompile Include="..\libnvpair.c" />
     <ClCompile Include="..\nvpair_alloc_system.c" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\libspl\libspl\libspl.vcxproj">
+      <Project>{5514a992-229b-47b4-9e37-8299a4c1263a}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\libuutil\libuutil\libuutil.vcxproj">
+      <Project>{46508747-2a2d-4f92-95ef-aaad820bc29b}</Project>
+    </ProjectReference>
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{9BAA46C8-7D45-43F6-BBE9-53C7C78500F0}</ProjectGuid>
     <TemplateGuid>{0a049372-4c4d-4ea0-a64e-dc6ad88ceca1}</TemplateGuid>

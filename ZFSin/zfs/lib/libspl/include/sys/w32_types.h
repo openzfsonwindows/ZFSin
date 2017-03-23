@@ -56,7 +56,7 @@ typedef long long	longlong_t;
 typedef unsigned long long u_longlong_t;
 typedef char int8_t;
 typedef unsigned char uint8_t;
-
+typedef unsigned char uchar_t;
 
 typedef longlong_t	offset_t;
 typedef u_longlong_t	u_offset_t;
@@ -155,5 +155,11 @@ typedef union {
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
 #define STDERR_FILENO 2
+
+
+#define bzero(b,len) (memset((b), '\0', (len)))
+#define bcopy(b1,b2,len) (memmove((b2), (b1), (len)))
+#define bcmp(b1, b2, len) (memcmp((b2), (b1), (len)))
+
 
 #endif

@@ -15,44 +15,46 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\fdatasync.c">
+    <ClCompile Include="..\clear.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\gethrestime.c">
+    <ClCompile Include="..\compare.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\gethrtime.c">
+    <ClCompile Include="..\copy.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\getmntany.c">
+    <ClCompile Include="..\gen_uuid.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\list.c">
+    <ClCompile Include="..\pack.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\mkdirp.c">
+    <ClCompile Include="..\parse.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\strnlen.c">
+    <ClCompile Include="..\randutils.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\timestamp.c">
+    <ClCompile Include="..\unpack.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\uio.c">
+    <ClCompile Include="..\unparse.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\xdr.c">
+    <ClCompile Include="..\uuid_time.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\zmount.c">
+    <ClCompile Include="..\isnull.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\zone.c">
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\uuid.h">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\getopt.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
+    </ClInclude>
+    <ClInclude Include="..\randutils.h">
+      <Filter>Resource Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

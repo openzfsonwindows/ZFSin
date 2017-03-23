@@ -29,6 +29,8 @@
 
 
 #include <sys/dklabel.h>	/* Needed for NDKMAP define */
+#include <sys/types.h>
+#include <sys/w32_types.h>
 
 #ifdef	__cplusplus
 extern "C" {

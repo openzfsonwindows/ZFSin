@@ -32,6 +32,7 @@
 #include <sys/isa_defs.h>
 #include <sys/types32.h>
 #include <sys/isa_defs.h>
+#include <sys/w32_types.h>
 
 #ifdef	__cplusplus
 extern "C" {

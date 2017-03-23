@@ -36,6 +36,13 @@
 #define	issetugid() (geteuid() == 0 || getegid() == 0)
 #endif
 
+
+extern int	opterr;
+extern int	optind;
+extern int	optopt;
+extern int	optreset;
+extern char	*optarg;
+
 int fdatasync(int fd);
 
 #endif /* _LIBSPL_UNISTD_H */
