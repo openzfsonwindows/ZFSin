@@ -20,15 +20,45 @@
  * CDDL HEADER END
  */
 /*
- * Copyright 2006 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright 2004 Sun Microsystems, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
-#ifndef _SOL_SYS_INTTYPES_H
-#define	_SOL_SYS_INTTYPES_H
 
-#include <inttypes.h>
 
-#define	_INT64_TYPE
+#include <rpc/types.h>
+#include <sys/nvpair.h>
 
-#endif
+static void *
+nv_alloc_sys(nv_alloc_t *nva, size_t size)
+{
+	return (kmem_alloc(size, (int)(uintptr_t)nva->nva_arg));
+}
+
+/*ARGSUSED*/
+static void
+nv_free_sys(nv_alloc_t *nva, void *buf, size_t size)
+{
+	kmem_free(buf, size);
+}
+
+static const nv_alloc_ops_t system_ops = {
+	NULL,			/* nv_ao_init() */
+	NULL,			/* nv_ao_fini() */
+	nv_alloc_sys,		/* nv_ao_alloc() */
+	nv_free_sys,		/* nv_ao_free() */
+	NULL			/* nv_ao_reset() */
+};
+
+nv_alloc_t nv_alloc_sleep_def = {
+	&system_ops,
+	(void *)KM_SLEEP
+};
+
+nv_alloc_t nv_alloc_nosleep_def = {
+	&system_ops,
+	(void *)KM_NOSLEEP
+};
+
+nv_alloc_t *nv_alloc_sleep = &nv_alloc_sleep_def;
+nv_alloc_t *nv_alloc_nosleep = &nv_alloc_nosleep_def;
