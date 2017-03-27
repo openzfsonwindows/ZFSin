@@ -35,6 +35,12 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\asm-generic\atomic.c" />
+    <ClCompile Include="..\crypto\edonr\edonr.c" />
+    <ClCompile Include="..\crypto\sha2\sha2.c" />
+    <ClCompile Include="..\crypto\skein\skein.c" />
+    <ClCompile Include="..\crypto\skein\skein_block.c" />
+    <ClCompile Include="..\crypto\skein\skein_iv.c" />
     <ClCompile Include="..\fdatasync.c" />
     <ClCompile Include="..\gethrestime.c" />
     <ClCompile Include="..\gethrtime.c" />
@@ -42,7 +48,7 @@
     <ClCompile Include="..\getopt.c" />
     <ClCompile Include="..\list.c" />
     <ClCompile Include="..\mkdirp.c" />
-    <ClCompile Include="..\strnlen.c" />
+    <ClCompile Include="..\crc32.c" />
     <ClCompile Include="..\timestamp.c" />
     <ClCompile Include="..\uio.c" />
     <ClCompile Include="..\xdr.c" />
@@ -124,7 +130,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>__x86_64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
@@ -135,7 +141,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <PreprocessorDefinitions>__x86_64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>

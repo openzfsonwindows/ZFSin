@@ -40,6 +40,11 @@
 #ifndef	_LIBSPL_SYS_UIO_H
 #define	_LIBSPL_SYS_UIO_H
 
+struct iovec {
+	void    *iov_base;      /* Base address. */
+	uint32_t   iov_len;       /* Length. */
+};
+
 typedef struct iovec iovec_t;
 
 typedef enum uio_rw {
@@ -52,9 +57,6 @@ typedef enum uio_seg {
 	UIO_SYSSPACE =	1,
 	UIO_USERISPACE = 2,
 } uio_seg_t;
-
-
-
 
 struct uio {
 	struct iovec	*uio_iov;	/* pointer to array of iovecs */

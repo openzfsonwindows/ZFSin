@@ -102,4 +102,6 @@
 #define RLIM64_INFINITY			(~0ULL)
 #endif
 
+#define _LITTLE_ENDIAN
+
 #endif /* _LIBSPL_SYS_SYSMACROS_H */

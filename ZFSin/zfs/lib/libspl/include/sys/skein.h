@@ -24,6 +24,7 @@
 #define	_SYS_SKEIN_H_
 
 #include <sys/types.h>		/* get size_t definition */
+#include <sys/w32_types.h>
 
 #ifdef	__cplusplus
 extern "C" {

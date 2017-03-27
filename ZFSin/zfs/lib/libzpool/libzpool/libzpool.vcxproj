@@ -131,6 +131,11 @@
     <ClCompile Include="..\taskq.c" />
     <ClCompile Include="..\util.c" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\libicp\libicp\libicp.vcxproj">
+      <Project>{1696dcff-4f3a-4199-a677-27a578ae2de1}</Project>
+    </ProjectReference>
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{6352BFDB-D45E-47FD-BDE8-F9320CAECF9B}</ProjectGuid>
     <TemplateGuid>{0a049372-4c4d-4ea0-a64e-dc6ad88ceca1}</TemplateGuid>

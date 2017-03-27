@@ -35,21 +35,44 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\rdwr_efi.c" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\libuuid\libuuid\libuuid.vcxproj">
-      <Project>{afadbaaf-f5b7-4a2a-8da5-9d95e1a5cda4}</Project>
-    </ProjectReference>
+    <ClCompile Include="..\..\..\module\icp\algs\aes\aes_impl.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\aes\aes_modes.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\edonr\edonr.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\modes\cbc.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\modes\ccm.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\modes\ctr.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\modes\ecb.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\modes\gcm.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\modes\modes.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\sha1\sha1.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\sha2\sha2.c" />
+    <ClCompile Include="..\..\..\module\icp\api\kcf_cipher.c" />
+    <ClCompile Include="..\..\..\module\icp\api\kcf_ctxops.c" />
+    <ClCompile Include="..\..\..\module\icp\api\kcf_digest.c" />
+    <ClCompile Include="..\..\..\module\icp\api\kcf_mac.c" />
+    <ClCompile Include="..\..\..\module\icp\api\kcf_miscapi.c" />
+    <ClCompile Include="..\..\..\module\icp\core\kcf_callprov.c" />
+    <ClCompile Include="..\..\..\module\icp\core\kcf_mech_tabs.c" />
+    <ClCompile Include="..\..\..\module\icp\core\kcf_prov_lib.c" />
+    <ClCompile Include="..\..\..\module\icp\core\kcf_prov_tabs.c" />
+    <ClCompile Include="..\..\..\module\icp\core\kcf_sched.c" />
+    <ClCompile Include="..\..\..\module\icp\illumos-crypto.c" />
+    <ClCompile Include="..\..\..\module\icp\io\aes.c" />
+    <ClCompile Include="..\..\..\module\icp\io\sha1_mod.c" />
+    <ClCompile Include="..\..\..\module\icp\io\sha2_mod.c" />
+    <ClCompile Include="..\..\..\module\icp\os\bitmap_arch.c" />
+    <ClCompile Include="..\..\..\module\icp\os\modconf.c" />
+    <ClCompile Include="..\..\..\module\icp\os\modhash.c" />
+    <ClCompile Include="..\..\..\module\icp\spi\kcf_spi.c" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{C9B7EC29-CC3B-463C-9B84-B2EF4D13F69D}</ProjectGuid>
+    <ProjectGuid>{1696DCFF-4F3A-4199-A677-27A578AE2DE1}</ProjectGuid>
     <TemplateGuid>{0a049372-4c4d-4ea0-a64e-dc6ad88ceca1}</TemplateGuid>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <MinimumVisualStudioVersion>12.0</MinimumVisualStudioVersion>
     <Configuration>Debug</Configuration>
     <Platform Condition="'$(Platform)' == ''">Win32</Platform>
-    <RootNamespace>libefi</RootNamespace>
+    <RootNamespace>libicp</RootNamespace>
     <DriverType>KMDF</DriverType>
     <WindowsTargetPlatformVersion>10.0.10586.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
@@ -112,13 +135,13 @@
   <PropertyGroup />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>__x86_64</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>__x86_64</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>

@@ -38,6 +38,7 @@ extern "C" {
 #endif
 
 #include <sys/types.h>
+#include <sys/w32_types.h>
 
 /*
  * EdonR allows to call EdonRUpdate() consecutively only if the total length

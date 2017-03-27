@@ -436,7 +436,7 @@ SHA1Final(void *digest, SHA1_CTX *ctx)
 	bzero(ctx, sizeof (*ctx));
 }
 
-
+#undef __amd64
 #if !defined(__amd64)
 
 typedef uint32_t sha1word;

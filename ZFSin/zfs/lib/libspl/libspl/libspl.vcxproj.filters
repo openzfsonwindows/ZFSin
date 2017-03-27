@@ -33,9 +33,6 @@
     <ClCompile Include="..\mkdirp.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\strnlen.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\timestamp.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -52,6 +49,27 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\getopt.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\crc32.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\crypto\sha2\sha2.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\crypto\edonr\edonr.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\crypto\skein\skein.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\crypto\skein\skein_block.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\crypto\skein\skein_iv.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\asm-generic\atomic.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

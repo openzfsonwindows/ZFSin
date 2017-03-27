@@ -37,6 +37,12 @@
 extern "C" {
 #endif
 
+#ifdef _WIN32
+#ifndef _KERNEL
+#pragma comment(lib, "Ws2_32.lib")
+#include <WinSock2.h>
+#endif
+#endif
 
 #define	CRYPTO_SPI_VERSION_1	1
 #define	CRYPTO_SPI_VERSION_2	2
