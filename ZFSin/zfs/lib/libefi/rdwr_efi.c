@@ -53,6 +53,7 @@ int osx_device_isvirtual(char *pathbuf);
 
 #ifdef _WIN32
 #include <sys/types32.h>
+#include <sys/w32_types.h>
 #endif
 
 static struct uuid_to_ptag {
@@ -473,7 +474,7 @@ efi_ioctl(int fd, int cmd, dk_efi_t *dk_ioc)
 {
 	void *data = dk_ioc->dki_data;
 	int error;
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
 	diskaddr_t capacity;
 	uint_t lbsize;
 
@@ -561,6 +562,7 @@ efi_ioctl(int fd, int cmd, dk_efi_t *dk_ioc)
 
 		/* Sync the new EFI table to disk */
 		error = fsync(fd);
+
 		if (error == -1)
 			return (error);
 
@@ -853,7 +855,7 @@ efi_read(int fd, struct dk_gpt *vtoc)
 	}
 
 	if (rval < 0) {
-		free(efi);
+		posix_memalign_free(efi);
 		return (rval);
 	}
 
@@ -916,7 +918,7 @@ efi_read(int fd, struct dk_gpt *vtoc)
 		UUID_LE_CONVERT(vtoc->efi_parts[i].p_uguid,
 		    efi_parts[i].efi_gpe_UniquePartitionGUID);
 	}
-	free(efi);
+	posix_memalign_free(efi);
 
 	return (dki_info.dki_partition);
 }
@@ -996,7 +998,7 @@ write_pmbr(int fd, struct dk_gpt *vtoc)
 	dk_ioc.dki_lba = 0;
 	dk_ioc.dki_length = len;
 	if (efi_ioctl(fd, DKIOCSETEFI, &dk_ioc) == -1) {
-		free(buf);
+		posix_memalign_free(buf);
 		switch (errno) {
 		case EIO:
 			return (VT_EIO);
@@ -1006,7 +1008,7 @@ write_pmbr(int fd, struct dk_gpt *vtoc)
 			return (VT_ERROR);
 		}
 	}
-	free(buf);
+	posix_memalign_free(buf);
 	return (0);
 }
 
@@ -1330,7 +1332,7 @@ efi_write(int fd, struct dk_gpt *vtoc)
 	    LE_32(efi->efi_gpt_HeaderSize)));
 
 	if (efi_ioctl(fd, DKIOCSETEFI, &dk_ioc) == -1) {
-		free(dk_ioc.dki_data);
+		posix_memalign_free(dk_ioc.dki_data);
 		switch (errno) {
 		case EIO:
 			return (VT_EIO);
@@ -1342,7 +1344,7 @@ efi_write(int fd, struct dk_gpt *vtoc)
 	}
 	/* if it's a metadevice we're done */
 	if (md_flag) {
-		free(dk_ioc.dki_data);
+		posix_memalign_free(dk_ioc.dki_data);
 		return (0);
 	}
 
@@ -1393,7 +1395,7 @@ efi_write(int fd, struct dk_gpt *vtoc)
 	}
 	/* write the PMBR */
 	(void) write_pmbr(fd, vtoc);
-	free(dk_ioc.dki_data);
+	posix_memalign_free(dk_ioc.dki_data);
 
 	return (0);
 }

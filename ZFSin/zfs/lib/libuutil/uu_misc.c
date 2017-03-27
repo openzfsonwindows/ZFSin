@@ -215,7 +215,7 @@ uu_panic(const char *format, ...)
 		abort();
 	else
 		for (;;)
-			(void) pause();
+			(void) sleep(5);
 }
 
 static void

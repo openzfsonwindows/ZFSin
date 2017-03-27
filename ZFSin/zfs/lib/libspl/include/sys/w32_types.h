@@ -162,9 +162,14 @@ typedef union {
 #define bcopy(b1,b2,len) (memmove((b2), (b1), (len)))
 #define bcmp(b1, b2, len) (memcmp((b2), (b1), (len)))
 
+#define alloca _alloca
+#define posix_memalign_free _aligned_free
+int posix_memalign(void **memptr, uint32_t alignment, uint32_t size);
 
-//#ifndef htonll
-//#/define htonll 
-//#endif
+#define MIN(a, b)  (((a) < (b)) ? (a) : (b)) 
+
+#define sleep(x) Sleep(x * 1000000)
+
+int fsync(int);
 
 #endif

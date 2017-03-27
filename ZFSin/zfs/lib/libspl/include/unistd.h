@@ -45,4 +45,6 @@ extern char	*optarg;
 
 int fdatasync(int fd);
 
+#define ftruncate _chsize_s
+
 #endif /* _LIBSPL_UNISTD_H */

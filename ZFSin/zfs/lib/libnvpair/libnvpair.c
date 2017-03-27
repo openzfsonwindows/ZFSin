@@ -994,9 +994,11 @@ nvpair_value_match_regex(nvpair_t *nvp, int ai,
 		/* check string value for match */
 		if (nvpair_value_string(nvp, &val) == 0) {
 			if (value_regex) {
+#ifndef _WIN32
 				if (regexec(value_regex, val,
 				    (size_t)0, NULL, 0) == 0)
 					return (1);	/* match */
+#endif
 			} else {
 				if (strcmp(value, val) == 0)
 					return (1);	/* match */
@@ -1011,9 +1013,11 @@ nvpair_value_match_regex(nvpair_t *nvp, int ai,
 		if ((nvpair_value_string_array(nvp, &val_array, &a_len) == 0) &&
 		    (ai < a_len)) {
 			if (value_regex) {
+#ifndef _WIN32
 				if (regexec(value_regex, val_array[ai],
 				    (size_t)0, NULL, 0) == 0)
 					return (1);
+#endif
 			} else {
 				if (strcmp(value, val_array[ai]) == 0)
 					return (1);

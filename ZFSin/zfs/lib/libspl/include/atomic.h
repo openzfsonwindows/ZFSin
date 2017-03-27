@@ -28,14 +28,16 @@
 #define	_SYS_ATOMIC_H
 
 #include <sys/types.h>
+#include <sys/w32_types.h>
 #include <sys/inttypes.h>
 
 #ifdef	__cplusplus
 extern "C" {
 #endif
 
-#if defined(__STDC__)
-/*
+//#if defined(__STDC__)
+#if defined(_WIN32)
+	/*
  * Increment target.
  */
 extern void atomic_inc_8(volatile uint8_t *);
@@ -288,6 +290,23 @@ extern void membar_producer(void);
  */
 extern void membar_consumer(void);
 #endif  /* __STDC__ */
+
+#ifdef _WIN33
+//extern void atomic_add_32(volatile uint32_t *, int32_t);
+#define atomic_inc_32				InterlockedIncrement
+#define atomic_dec_32				InterlockedDecrement
+#define atomic_add_32				InterlockedExchangeAdd
+#define atomic_add_32_nv(A,V)		(InterlockedExchangeAdd((A),(V))+(V))
+#define atomic_inc_64				InterlockedIncrement64
+#define atomic_dec_64				InterlockedDecrement64
+#define atomic_add_64				InterlockedExchangeAdd64
+#define atomic_sub_64(A,V)			InterlockedExchangeAdd64((A),-(V))
+#define atomic_add_64_nv(A,V)		(InterlockedExchangeAdd64((A),(V))+(V))
+#define atomic_add_cas_64(P,O,N)	InterlockedCompareExchange64((P),(N),(O))
+
+#endif
+
+
 
 #ifdef	__cplusplus
 }

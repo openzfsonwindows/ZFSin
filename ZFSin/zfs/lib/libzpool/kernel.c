@@ -646,7 +646,9 @@ get_disk_size_libzpool(int fd)
 	d_size = (off_t)((uint64_t)blksize * blkcnt);
 	return (d_size);
 }
+#endif
 
+#ifdef _WIN32
 /* vdev_file uses vnode_getwithvid(), so supply a userspace version. */
 int
 vnode_getwithvid(vnode_t *vp, uint32_t id)

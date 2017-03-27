@@ -72,5 +72,17 @@
     <ClCompile Include="..\asm-generic\atomic.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\posix.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\xdr_array.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\xdr_float.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\xdr_mem.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

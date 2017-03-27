@@ -66,6 +66,7 @@
 
 static void Encode(uint8_t *, const uint32_t *, size_t);
 
+#undef __amd64
 #if	defined(__amd64)
 
 #define	SHA1_TRANSFORM(ctx, in) sha1_block_data_order((ctx), (in), 1)

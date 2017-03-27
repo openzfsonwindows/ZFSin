@@ -78,6 +78,8 @@ enum xdr_op {
 	XDR_FREE=2
 };
 
+#define XDR_GET_BYTES_AVAIL 1
+
 /*
  * This is the number of bytes per unit of external data.
  */
@@ -96,6 +98,13 @@ enum xdr_op {
  */
 typedef	bool_t (*xdrproc_t)();
 
+typedef struct xdr_bytesrec {
+	bool_t xc_is_last_record;
+	uint32_t xc_num_avail;
+} xdr_bytesrec_t;
+
+typedef struct xdr_bytesrec xdr_bytesrec;
+
 /*
  * The XDR handle.
  * Contains operation which is being applied to the stream,
@@ -113,6 +122,9 @@ typedef struct {
 		bool_t	(*x_setpostn)(); /* lets you reposition the stream */
 		long *	(*x_inline)();	/* buf quick ptr to buffered data */
 		void	(*x_destroy)();	/* free privates of this xdr_stream */
+		bool_t(*x_control)(struct XDR *, int, void *);
+		bool_t(*x_getint32)(struct XDR *, int32_t *);
+		bool_t(*x_putint32)(struct XDR *, int32_t *);
 	} *x_ops;
 	caddr_t 	x_public;	/* users' data */
 	caddr_t		x_private;	/* pointer to private data */
@@ -167,6 +179,16 @@ typedef struct {
 #define	XDR_DESTROY(xdrs)				\
 	(*(xdrs)->x_ops->x_destroy)(xdrs)
 #define	xdr_destroy(xdrs) XDR_DESTROY(xdrs)
+
+#define XDR_GETINT32(xdrs, int32p)                      \
+        (*(xdrs)->x_ops->x_getint32)(xdrs, int32p)
+#define xdr_getint32(xdrs, int32p)                      \
+        (*(xdrs)->x_ops->x_getint32)(xdrs, int32p)
+
+#define XDR_PUTINT32(xdrs, int32p)                      \
+        (*(xdrs)->x_ops->x_putint32)(xdrs, int32p)
+#define xdr_putint32(xdrs, int32p)                      \
+        (*(xdrs)->x_ops->x_putint32)(xdrs, int32p)
 
 /*
  * Support struct for discriminated unions.
@@ -264,5 +286,10 @@ extern bool_t	xdrrec_endofrecord();	/* make end of xdr record */
 extern int	xdrrec_readbytes();	/* like a read on a pipe */
 extern bool_t	xdrrec_skiprecord();	/* move to beginning of next record */
 extern bool_t	xdrrec_eof();		/* true if no more input */
+
+#define XDR_PEEK        2
+#define XDR_SKIPBYTES   3
+#define XDR_RDMAGET     4
+#define XDR_RDMASET     5
 
 #endif /* !_rpc_xdr_h */

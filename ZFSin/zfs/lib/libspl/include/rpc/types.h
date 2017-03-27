@@ -31,4 +31,9 @@
 
 #include <stdint.h>
 
+
+typedef int32_t rpc_inline_t;
+
+
+
 #endif /* LIBSPL_RPC_TYPES_H */

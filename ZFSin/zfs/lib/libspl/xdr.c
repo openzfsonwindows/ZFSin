@@ -684,3 +684,44 @@ xdr_wrapstring(XDR *xdrs, char **cpp)
 {
 	return (xdr_string(xdrs, cpp, LASTUNSIGNED));
 }
+
+bool_t
+xdr_control(XDR *xdrs, int request, void *info)
+{
+	xdr_bytesrec_t *xptr;
+	int32_t *int32p;
+	int len;
+
+	switch (request) {
+	case XDR_GET_BYTES_AVAIL:
+		xptr = (xdr_bytesrec_t *)info;
+		xptr->xc_is_last_record = TRUE;
+		xptr->xc_num_avail = xdrs->x_handy;
+		return (TRUE);
+
+	case XDR_PEEK:
+		/*
+		* Return the next 4 byte unit in the XDR stream.
+		*/
+		if (xdrs->x_handy < sizeof(int32_t))
+			return (FALSE);
+		int32p = (int32_t *)info;
+		*int32p = (int32_t)ntohl((uint32_t)
+			(*((int32_t *)(xdrs->x_private))));
+		return (TRUE);
+
+	case XDR_SKIPBYTES:
+		/*
+		* Skip the next N bytes in the XDR stream.
+		*/
+		int32p = (int32_t *)info;
+		len = RNDUP((int)(*int32p));
+		if (xdrs->x_handy < len)
+			return (FALSE);
+		xdrs->x_handy -= len;
+		xdrs->x_private += len;
+		return (TRUE);
+
+	}
+	return (FALSE);
+}

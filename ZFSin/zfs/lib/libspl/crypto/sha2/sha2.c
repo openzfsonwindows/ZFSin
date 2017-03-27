@@ -36,15 +36,43 @@
  * and appreciated.
  */
 
-#include <sys/zfs_context.h>
+#ifndef _KERNEL
+#include <stdint.h>
+#include <strings.h>
+#include <stdlib.h>
+#include <errno.h>
+#endif /* _KERNEL */
+
+#include <sys/types.h>
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/sysmacros.h>
 #define	_SHA2_IMPL
 #include <sys/sha2.h>
-#include <sha2/sha2_consts.h>
+#include <sys/sha2_consts.h>
 
-#define	_RESTRICT_KYWD
+#ifdef _KERNEL
+#include <sys/cmn_err.h>
+
+#else
+
+#ifndef __APPLE__
+#pragma weak SHA256Update = SHA2Update
+#pragma weak SHA384Update = SHA2Update
+#pragma weak SHA512Update = SHA2Update
+
+#pragma weak SHA256Final = SHA2Final
+#pragma weak SHA384Final = SHA2Final
+#pragma weak SHA512Final = SHA2Final
+#endif
+
+#endif	/* _KERNEL */
 
 #ifdef _WIN32
-// No assembler for now
+#define _RESTRICT_KYWD
+/* In the future we can look at the assembler version, produced from the
+ * perl script sha512-x86_64.pl
+ */
 #undef __amd64
 #endif
 
@@ -52,7 +80,6 @@
 #include <sys/byteorder.h>
 #define	HAVE_HTONL
 #endif
-#include <sys/isa_defs.h>	/* for _ILP32 */
 
 static void Encode(uint8_t *, uint32_t *, size_t);
 static void Encode64(uint8_t *, uint64_t *, size_t);
@@ -60,7 +87,7 @@ static void Encode64(uint8_t *, uint64_t *, size_t);
 #undef __amd64
 #if	defined(__amd64)
 #define	SHA512Transform(ctx, in) SHA512TransformBlocks((ctx), (in), 1)
-#define	SHA256Transform(ctx, in) SHA256TransformBlocks((ctx), (in), 1)
+#define	SHA256Transform(ctx, in) ((ctx), (in), 1)
 
 void SHA512TransformBlocks(SHA2_CTX *ctx, const void *in, size_t num);
 void SHA256TransformBlocks(SHA2_CTX *ctx, const void *in, size_t num);
@@ -71,18 +98,6 @@ static void SHA512Transform(SHA2_CTX *, const uint8_t *);
 #endif	/* __amd64 */
 
 static uint8_t PADDING[128] = { 0x80, /* all zeros */ };
-
-/*
- * The low-level checksum routines use a lot of stack space. On systems where
- * small stacks are enforced (like 32-bit kernel builds), insert compiler memory
- * barriers to reduce stack frame size. This can reduce the SHA512Transform()
- * stack frame usage from 3k to <1k on ARM32, for example.
- */
-#if defined(_ILP32) || defined(__powerpc)	/* small stack */
-#define	SMALL_STACK_MEMORY_BARRIER	asm volatile("": : :"memory");
-#else
-#define	SMALL_STACK_MEMORY_BARRIER
-#endif
 
 /* Ch and Maj are the basic SHA2 functions. */
 #define	Ch(b, c, d)	(((b) & (c)) ^ ((~b) & (d)))
@@ -116,8 +131,7 @@ static uint8_t PADDING[128] = { 0x80, /* all zeros */ };
 	T1 = h + BIGSIGMA1(e) + Ch(e, f, g) + SHA512_CONST(i) + w;	\
 	d += T1;							\
 	T2 = BIGSIGMA0(a) + Maj(a, b, c);				\
-	h = T1 + T2;							\
-	SMALL_STACK_MEMORY_BARRIER;
+	h = T1 + T2
 
 /*
  * sparc optimization:
@@ -751,7 +765,10 @@ SHA2Init(uint64_t mech, SHA2_CTX *ctx)
 
 #ifndef _KERNEL
 
-// #pragma inline(SHA256Init, SHA384Init, SHA512Init)
+#ifdef sun
+#pragma inline(SHA256Init, SHA384Init, SHA512Init)
+#endif
+
 void
 SHA256Init(SHA256_CTX *ctx)
 {
@@ -956,11 +973,3 @@ SHA2Final(void *digest, SHA2_CTX *ctx)
 	/* zeroize sensitive information */
 	bzero(ctx, sizeof (*ctx));
 }
-
-
-
-#ifdef _KERNEL
-EXPORT_SYMBOL(SHA2Init);
-EXPORT_SYMBOL(SHA2Update);
-EXPORT_SYMBOL(SHA2Final);
-#endif

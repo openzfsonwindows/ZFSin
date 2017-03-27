@@ -65,6 +65,11 @@
     <ClCompile Include="..\..\..\module\icp\os\modhash.c" />
     <ClCompile Include="..\..\..\module\icp\spi\kcf_spi.c" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\libspl\libspl\libspl.vcxproj">
+      <Project>{5514a992-229b-47b4-9e37-8299a4c1263a}</Project>
+    </ProjectReference>
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{1696DCFF-4F3A-4199-A677-27A578AE2DE1}</ProjectGuid>
     <TemplateGuid>{0a049372-4c4d-4ea0-a64e-dc6ad88ceca1}</TemplateGuid>
