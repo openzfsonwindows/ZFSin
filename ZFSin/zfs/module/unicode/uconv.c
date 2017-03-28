@@ -312,8 +312,8 @@ check_bom32(const uint32_t *u32s, size_t u32l, int *in)
 }
 
 int
-uconv_u16tou32(const uint16_t *u16s, size_t *utf16len,
-    uint32_t *u32s, size_t *utf32len, int flag)
+uconv_u16tou32(const uint16_t *u16s, uint32_t *utf16len,
+    uint32_t *u32s, uint32_t *utf32len, int flag)
 {
 	int inendian;
 	int outendian;
@@ -422,8 +422,8 @@ uconv_u16tou32(const uint16_t *u16s, size_t *utf16len,
 }
 
 int
-uconv_u16tou8(const uint16_t *u16s, size_t *utf16len,
-    uchar_t *u8s, size_t *utf8len, int flag)
+uconv_u16tou8(const uint16_t *u16s, uint32_t *utf16len,
+    uchar_t *u8s, uint32_t *utf8len, int flag)
 {
 	int inendian;
 	int outendian;
@@ -516,8 +516,8 @@ uconv_u16tou8(const uint16_t *u16s, size_t *utf16len,
 }
 
 int
-uconv_u32tou16(const uint32_t *u32s, size_t *utf32len,
-    uint16_t *u16s, size_t *utf16len, int flag)
+uconv_u32tou16(const uint32_t *u32s, uint32_t *utf32len,
+    uint16_t *u16s, uint32_t *utf16len, int flag)
 {
 	int inendian;
 	int outendian;
@@ -599,8 +599,8 @@ uconv_u32tou16(const uint32_t *u32s, size_t *utf32len,
 }
 
 int
-uconv_u32tou8(const uint32_t *u32s, size_t *utf32len,
-    uchar_t *u8s, size_t *utf8len, int flag)
+uconv_u32tou8(const uint32_t *u32s, uint32_t *utf32len,
+    uchar_t *u8s, uint32_t *utf8len, int flag)
 {
 	int inendian;
 	int outendian;
@@ -667,8 +667,8 @@ uconv_u32tou8(const uint32_t *u32s, size_t *utf32len,
 }
 
 int
-uconv_u8tou16(const uchar_t *u8s, size_t *utf8len,
-    uint16_t *u16s, size_t *utf16len, int flag)
+uconv_u8tou16(const uchar_t *u8s, uint32_t *utf8len,
+    uint16_t *u16s, uint32_t *utf16len, int flag)
 {
 	int inendian;
 	int outendian;
@@ -778,8 +778,8 @@ uconv_u8tou16(const uchar_t *u8s, size_t *utf8len,
 }
 
 int
-uconv_u8tou32(const uchar_t *u8s, size_t *utf8len,
-    uint32_t *u32s, size_t *utf32len, int flag)
+uconv_u8tou32(const uchar_t *u8s, uint32_t *utf8len,
+    uint32_t *u32s, uint32_t *utf32len, int flag)
 {
 	int inendian;
 	int outendian;

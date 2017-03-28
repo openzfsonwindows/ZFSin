@@ -35,33 +35,18 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\libzfs_changelist.c" />
-    <ClCompile Include="..\libzfs_config.c" />
-    <ClCompile Include="..\libzfs_dataset.c" />
-    <ClCompile Include="..\libzfs_diff.c" />
-    <ClCompile Include="..\libzfs_fru.c" />
-    <ClCompile Include="..\libzfs_graph.c" />
-    <ClCompile Include="..\libzfs_import.c" />
-    <ClCompile Include="..\libzfs_iter.c" />
-    <ClCompile Include="..\libzfs_mount.c" />
-    <ClCompile Include="..\libzfs_pool.c" />
-    <ClCompile Include="..\libzfs_sendrecv.c" />
-    <ClCompile Include="..\libzfs_status.c" />
-    <ClCompile Include="..\libzfs_util.c" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\libshare\libshare\libshare.vcxproj">
-      <Project>{91cd04e0-3a60-4092-bc71-9a20d91f3651}</Project>
-    </ProjectReference>
+    <ClCompile Include="..\libshare.c" />
+    <ClCompile Include="..\nfs.c" />
+    <ClCompile Include="..\smb.c" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{93BBE582-95D6-4CB4-9C3C-9825B6607453}</ProjectGuid>
+    <ProjectGuid>{91CD04E0-3A60-4092-BC71-9A20D91F3651}</ProjectGuid>
     <TemplateGuid>{0a049372-4c4d-4ea0-a64e-dc6ad88ceca1}</TemplateGuid>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <MinimumVisualStudioVersion>12.0</MinimumVisualStudioVersion>
     <Configuration>Debug</Configuration>
     <Platform Condition="'$(Platform)' == ''">Win32</Platform>
-    <RootNamespace>libzfs</RootNamespace>
+    <RootNamespace>libshare</RootNamespace>
     <DriverType>KMDF</DriverType>
     <WindowsTargetPlatformVersion>10.0.10586.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
@@ -124,13 +109,13 @@
   <PropertyGroup />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>__x86_64</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>__x86_64</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>

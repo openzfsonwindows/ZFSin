@@ -1238,7 +1238,9 @@ spa_deactivate(spa_t *spa)
 	 * it.
 	 */
 	if (spa->spa_did != 0) {
+#ifndef _WIN32
 		thread_join(spa->spa_did);
+#endif
 		spa->spa_did = 0;
 	}
 

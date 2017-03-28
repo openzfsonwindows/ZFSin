@@ -138,6 +138,9 @@
     <ProjectReference Include="..\..\libnvpair\libnvpair\libnvpair.vcxproj">
       <Project>{9baa46c8-7d45-43f6-bbe9-53c7c78500f0}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\..\libunicode\libunicode\libunicode.vcxproj">
+      <Project>{c6948c8e-abe3-4d34-8300-c88b8a5bd8fd}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\..\libuutil\libuutil\libuutil.vcxproj">
       <Project>{46508747-2a2d-4f92-95ef-aaad820bc29b}</Project>
     </ProjectReference>

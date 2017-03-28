@@ -197,7 +197,7 @@ typedef struct kthread {
 #define	thread_create(stk, stksize, func, arg, len, pp, state, pri)	\
 	zk_thread_create(stk, stksize, (thread_func_t)func, arg,	\
 			 len, NULL, state, pri, PTHREAD_CREATE_DETACHED)
-//#define	thread_join(t)			zk_thread_join(t)
+#define	thread_join(t)			zk_thread_join(t)
 #define	newproc(f,a,cid,pri,ctp,pid)	(ENOSYS)
 
 extern kthread_t *zk_thread_current(void);
@@ -205,7 +205,7 @@ extern void zk_thread_exit(void);
 extern kthread_t *zk_thread_create(caddr_t stk, size_t  stksize,
 	thread_func_t func, void *arg, size_t len,
 	proc_t *pp, int state, pri_t pri, int detachstate);
-extern void zk_thread_join(kt_did_t tid);
+extern void zk_thread_join(pthread_t tid);
 
 #define	kpreempt_disable()	((void)0)
 #define	kpreempt_enable()	((void)0)

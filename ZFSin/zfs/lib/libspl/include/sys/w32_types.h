@@ -156,7 +156,7 @@ typedef union {
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
 #define STDERR_FILENO 2
-
+#define O_EXLOCK 0
 
 #define bzero(b,len) (memset((b), '\0', (len)))
 #define bcopy(b1,b2,len) (memmove((b2), (b1), (len)))
@@ -171,5 +171,15 @@ int posix_memalign(void **memptr, uint32_t alignment, uint32_t size);
 #define sleep(x) Sleep(x * 1000000)
 
 int fsync(int);
+
+#define lstat _stat64
+
+#define MFSTYPENAMELEN  16
+#define MAXPATHLEN      1024
+#define MNAMELEN        MAXPATHLEN
+
+#define roundup(x, y)         ((((x) + ((y) - 1)) / (y)) * (y))
+#define howmany(x, y)   ((((x) % (y)) == 0) ? ((x) / (y)) : (((x) / (y)) + 1))
+
 
 #endif

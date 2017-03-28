@@ -761,7 +761,7 @@ libzfs_run_process(const char *path, char *argv[], int flags)
 {
 	pid_t pid;
 	int error, devnull_fd;
-
+#ifndef _WIN32
 	pid = vfork();
 	if (pid == 0) {
 		devnull_fd = open("/dev/null", O_WRONLY);
@@ -795,7 +795,7 @@ libzfs_run_process(const char *path, char *argv[], int flags)
 
 		return (WEXITSTATUS(status));
 	}
-
+#endif
 	return (-1);
 }
 
@@ -1354,8 +1354,8 @@ int
 zfs_ioctl(libzfs_handle_t *hdl, int request, zfs_cmd_t *zc)
 {
 	int error;
-
 	int original_errno = errno;
+
 	errno = 0;
 	error = ioctl(hdl->libzfs_fd, request, zc);
 

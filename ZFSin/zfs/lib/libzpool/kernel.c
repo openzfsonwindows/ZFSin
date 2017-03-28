@@ -194,7 +194,9 @@ zk_thread_create(caddr_t stk, size_t stksize, thread_func_t func, void *arg,
 	VERIFY3S(stksize, >, 0);
 	stksize = P2ROUNDUP(MAX(stksize, TS_STACK_MIN), PAGESIZE);
 	VERIFY0(pthread_attr_setstacksize(&attr, stksize));
+#ifndef _WIN32
 	VERIFY0(pthread_attr_setguardsize(&attr, PAGESIZE));
+#endif
 
 	VERIFY0(pthread_create(&kt->t_tid, &attr, &zk_thread_helper, kt));
 	VERIFY0(pthread_attr_destroy(&attr));
@@ -1104,7 +1106,7 @@ kobj_get_filesize(struct _buf *file, uint64_t *size)
 void
 delay(clock_t ticks)
 {
-	poll(0, 0, ticks * (1000 / hz));
+	usleep(ticks * 1000 / hz);
 }
 
 /*
@@ -1300,11 +1302,12 @@ kernel_init(int mode)
 {
 	size_t len;
 	int ret;
+	MEMORYSTATUSEX buf;
 
 	umem_nofail_callback(umem_out_of_memory);
 
-	len = sizeof(physmem);
-	ret = sysctlbyname("hw.memsize", &physmem, &len, NULL, 0);
+	GlobalMemoryStatusEx(&buf);
+	physmem = buf.ullTotalPhys;
 
 	physmem /= PAGESIZE;
 

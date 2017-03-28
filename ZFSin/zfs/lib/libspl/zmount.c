@@ -29,7 +29,7 @@
  */
 
 
-#ifdef __APPLE__
+#ifdef _WIN32
 
 #include <sys/mount.h>
 #include <sys/zfs_mount.h>
@@ -38,7 +38,8 @@ int
 zmount(const char *spec, const char *dir, int mflag, char *fstype,
     char *dataptr, int datalen, char *optptr, int optlen)
 {
-	int rv;
+	int rv = 0;
+#if 0
 	struct zfs_mount_args mnt_args;
 	char *rpath = NULL;
 	assert(spec != NULL);
@@ -67,7 +68,7 @@ zmount(const char *spec, const char *dir, int mflag, char *fstype,
 	rv = mount(fstype, rpath ? rpath : dir, 0, &mnt_args);
 
 	if (rpath) free(rpath);
-
+#endif
 	return rv;
 }
 

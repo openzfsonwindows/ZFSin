@@ -367,7 +367,7 @@ efi_alloc_and_init(int fd, uint32_t nparts, struct dk_gpt **vtoc)
 	if (read_disk_info(fd, &capacity, &lbsize) != 0)
 		return (-1);
 
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
 	if (efi_get_info(fd, &dki_info) != 0)
 		return (-1);
 

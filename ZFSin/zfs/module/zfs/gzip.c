@@ -42,7 +42,7 @@ typedef uint32_t zlen_t;
 
 #include <strings.h>
 #include <zlib.h>
-
+#include <sys/w32_types.h>
 typedef uLongf zlen_t;
 #define	compress_func	compress2
 #define	uncompress_func	uncompress
