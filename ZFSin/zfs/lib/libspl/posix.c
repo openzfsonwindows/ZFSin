@@ -404,20 +404,20 @@ basename(char *arg)
 }
 
 
-int ioctl(int fd, int request, zfs_cmd_t *zc)
+int ioctl(HANDLE hDevice, int request, zfs_cmd_t *zc)
 {
 	int error;
-	HANDLE hDevice;
+	//HANDLE hDevice;
 	ULONG bytesReturned;
 
-	hDevice = _get_osfhandle(fd);
-
+	//hDevice = _get_osfhandle(fd);
+	fprintf(stderr, "calling ioctl\n"); fflush(stderr);
 	error = DeviceIoControl(hDevice,
 		(DWORD)request,
 		zc,
 		(DWORD)sizeof(*zc),
 		zc,
-		sizeof(sizeof(zc)),
+		sizeof(sizeof(*zc)),
 		&bytesReturned,
 		NULL
 	);
@@ -449,6 +449,17 @@ int vasprintf(char **strp, const char *fmt, va_list ap)
 		*strp = 0; 
 	}
 
+	return(r);
+}
+
+
+int asprintf(char **strp, const char *fmt, ...)
+{
+	int r;
+	va_list ap;
+	va_start(ap, fmt);
+	r = vasprintf(strp, fmt, ap);
+	va_end(ap);
 	return(r);
 }
 
@@ -494,4 +505,20 @@ long gethostid(void)
 		&dwSerialNumber, &dwMaxComponentLen,
 		&dwFileSysFlags, szFileSysName, 80);
 	return dwSerialNumber;
+}
+
+uid_t geteuid(void)
+{
+	return 0; // woah, root?
+}
+
+struct passwd *getpwuid(uid_t uid)
+{
+	return NULL;
+}
+
+const char *ctime_r(char *buffer, size_t bufsize, time_t cur_time)
+{
+	errno_t e = ctime_s(buffer, bufsize, cur_time);
+	return buffer;
 }

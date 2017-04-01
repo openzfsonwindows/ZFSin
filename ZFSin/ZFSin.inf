@@ -21,12 +21,14 @@ Addreg=SampleClassReg
 [SampleClassReg]
 HKR,,,0,%ClassName%
 HKR,,Icon,,-5
+HKR,,DeviceType,0x10001,0x11 
 
 [SourceDisksNames]
 1 = %DiskName%,,,""
 
 [SourceDisksFiles]
 ZFSin.sys  = 1,,
+zpool.exe  = 1,,
 
 ;*****************************************
 ; Install Section

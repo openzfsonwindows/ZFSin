@@ -34,8 +34,6 @@
  * Copyright (c) 2016 Actifio, Inc. All rights reserved.
  */
 
-#define __APPLE_API_PRIVATE
-
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/errno.h>
@@ -5952,6 +5950,8 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	ULONG               inBufLength; // Input buffer length
 	ULONG               outBufLength; // Output buffer length
 
+	dprintf("ZFS: zfsdev_ioctl\n");
+
 	PIO_STACK_LOCATION  irpSp;// Pointer to current stack location
 	irpSp = IoGetCurrentIrpStackLocation(Irp);
 
@@ -6324,22 +6324,26 @@ zfs_attach(void)
 	NTSTATUS ntStatus;
 	UNICODE_STRING  ntUnicodeString;    // NT Device Name
 	UNICODE_STRING ntWin32NameString; // Win32 Name 
+	//  UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(L"\\Device\\SNDBLST");
+//#define ZFS_DEV_KERNEL	L"\\Device\\ZFSCTL"
+//#define ZFS_DEV_DOS		L"\\DosDevices\\ZFS"
+//#define ZFS_DEV			"\\\\.\\ZFS"
 
-	RtlInitUnicodeString(&ntUnicodeString, NT_DEVICE_NAME);
+	RtlInitUnicodeString(&ntUnicodeString, ZFS_DEV_KERNEL);
 	ntStatus = IoCreateDevice(
 		WIN_DriverObject,                   // Our Driver Object
 		0,                              // We don't use a device extension
 		&ntUnicodeString,               // Device name "\Device\SIOCTL"
 		FILE_DEVICE_UNKNOWN,            // Device type
-		FILE_DEVICE_SECURE_OPEN,     // Device characteristics
+		/*FILE_DEVICE_SECURE_OPEN*/ 0,     // Device characteristics
 		FALSE,                          // Not an exclusive device
 		&deviceObject);                // Returned ptr to Device Object
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf(("ZFS: Couldn't create the device object /dev/zfs\n"));
+		dprintf(("ZFS: Couldn't create the device object /dev/zfs (%s)\n", ZFS_DEV_KERNEL));
 		return ntStatus;
 	}
-
+	dprintf("ZFS: created kernel device node\n");
 	//
 	// Initialize the driver object with this driver's entry points.
 	//
@@ -6347,21 +6351,21 @@ zfs_attach(void)
 	WIN_DriverObject->MajorFunction[IRP_MJ_CREATE]         = zfsdev_open;
 	WIN_DriverObject->MajorFunction[IRP_MJ_CLOSE]          = zfsdev_release;
 	WIN_DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = zfsdev_ioctl;
-	//DriverObject->DriverUnload = SioctlUnloadDriver;
 
 	// Initialize a Unicode String containing the Win32 name
 	// for our device.
-	RtlInitUnicodeString(&ntWin32NameString, DOS_DEVICE_NAME);
+	RtlInitUnicodeString(&ntWin32NameString, ZFS_DEV_DOS);
 
 	// Create a symbolic link between our device name  and the Win32 name
 	ntStatus = IoCreateSymbolicLink(
 		&ntWin32NameString, &ntUnicodeString);
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf(("ZFS: Couldn't create userland symbolic link to /dev/zfs\n"));
+		dprintf(("ZFS: Couldn't create userland symbolic link to /dev/zfs (%s)\n", ZFS_DEV));
 		IoDeleteDevice(deviceObject);
 		return -1;
 	}
+	dprintf("ZFS: created userland device symlink\n");
 #endif
 
 
@@ -6395,7 +6399,7 @@ zfs_detach(void)
 	PDEVICE_OBJECT deviceObject = WIN_DriverObject->DeviceObject;
 	UNICODE_STRING uniWin32NameString;
 
-	RtlInitUnicodeString(&uniWin32NameString, DOS_DEVICE_NAME);
+	RtlInitUnicodeString(&uniWin32NameString, ZFS_DEV_DOS);
 	IoDeleteSymbolicLink(&uniWin32NameString);
 	if (deviceObject != NULL)
 		IoDeleteDevice(deviceObject);

@@ -7468,7 +7468,7 @@ main(int argc, char **argv)
 		return (1);
 	}
 
-	libdiskmgt_init();
+	//libdiskmgt_init();
 	
 	libzfs_print_on_error(g_zfs, B_TRUE);
 
@@ -7502,7 +7502,7 @@ main(int argc, char **argv)
 		(void) zpool_log_history(g_zfs, history_str);
 
 	libzfs_fini(g_zfs);
-	libdiskmgt_fini();
+	//libdiskmgt_fini();
 	
 	/*
 	 * The 'ZFS_ABORT' environment variable causes us to dump core on exit

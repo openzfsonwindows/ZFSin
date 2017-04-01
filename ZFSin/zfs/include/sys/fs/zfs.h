@@ -915,7 +915,14 @@ typedef struct ddt_histogram {
 
 #define	ZVOL_DRIVER	"zvol"
 #define	ZFS_DRIVER	"zfs"
-#define	ZFS_DEV		"/dev/zfs"
+
+//#define	ZFS_DEV		"/dev/zfs"
+// Windows dev names sure are funky
+#define ZFS_DEV_KERNEL	L"\\Device\\ZFSCTL"
+#define ZFS_DEV_DOS		L"\\DosDevices\\ZFS"
+#define ZFS_DEV			"\\\\.\\ZFS"
+
+
 #define	ZFS_DISK_ROOT	"/dev"
 #define	ZFS_DISK_ROOTD	ZFS_DISK_ROOT "/"
 #define	ZFS_RDISK_ROOT	"/dev"

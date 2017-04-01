@@ -281,7 +281,7 @@ check_sector_size_database(char *path, int *sector_size)
 #endif
 
 
-#ifdef __APPLE__
+#ifdef _WIN32
 // FIXME
 static boolean_t
 check_sector_size_database(char *path, int *sector_size)
@@ -340,11 +340,12 @@ check_file(const char *file, boolean_t force, boolean_t isspare)
 	pool_state_t state;
 	boolean_t inuse;
 
-	
+#ifdef __APPLE__	
 	if (dm_in_swap_dir(file)) {
 		vdev_error(gettext("%s is located within the swapfile directory.\n"), file);
 		return (-1);
 	}
+#endif
 
 	if ((fd = open(file, O_RDONLY)) < 0)
 		return (0);
@@ -433,6 +434,7 @@ check_slice(const char *path, blkid_cache cache, int force, boolean_t isspare)
   else
     who = DM_WHO_ZPOOL;
 
+#ifdef __APPLE__	
   if (dm_inuse((char *)path, &msg, who, &error) || error) {
     if (error != 0) {
       libdiskmgt_error(error);
@@ -443,7 +445,7 @@ check_slice(const char *path, blkid_cache cache, int force, boolean_t isspare)
       return (-1);
     }
   }
-
+#endif
 #if 0
   /*
    * If we're given a whole disk, ignore overlapping slices since we're

@@ -894,9 +894,22 @@ libzfs_init(void)
 		return (NULL);
 	}
 
-	if ((hdl->libzfs_fd = open(ZFS_DEV, O_RDWR)) < 0) {
+//	if ((hdl->libzfs_fd = open(ZFS_DEV, O_RDWR)) < 0) {
+	HANDLE h;
+	h = CreateFile("\\\\.\\ZFS", GENERIC_READ | GENERIC_WRITE,
+		0, NULL, OPEN_EXISTING, 0, NULL);
+	fprintf(stderr, "Opening Windows ZFS device %p:%d\n", h, GetLastError());
+	fflush(stderr);
+	hdl->libzfs_fd = h;//_open_osfhandle(h, O_RDWR);
+	//fprintf(stderr, "_open_osfhandle said %d:%d\n", hdl->libzfs_fd, GetLastError());
+	if ((hdl->libzfs_fd) == INVALID_HANDLE_VALUE) {
+
 		(void) fprintf(stderr, gettext("Unable to open %s: %s.\n"),
 		    ZFS_DEV, strerror(errno));
+//#define ZFS_DEV_KERNEL	L"\\Device\\ZFSCTL"
+//#define ZFS_DEV_DOS		L"\\DosDevices\\ZFS"
+//#define ZFS_DEV			"\\\\.\\ZFS"
+
 		if (errno == ENOENT)
 			(void) fprintf(stderr,
 			     gettext("Verify the ZFS module stack is "
@@ -928,7 +941,8 @@ libzfs_init(void)
 #endif
 
 	if (libzfs_core_init() != 0) {
-		(void) close(hdl->libzfs_fd);
+		fprintf(stderr, "core failed\n"); fflush(stderr);
+		(void) CloseHandle(hdl->libzfs_fd);
 #ifdef LINUX
 		(void) fclose(hdl->libzfs_mnttab);
 #endif
@@ -939,6 +953,7 @@ libzfs_init(void)
 		return (NULL);
 	}
 
+	fprintf(stderr, "init continuing\n");	fflush(stderr);
 	zfs_prop_init();
 	zpool_prop_init();
 	zpool_feature_init();
@@ -948,14 +963,14 @@ libzfs_init(void)
 #endif
 
     //fprintf(stderr, "make_dataset_handle %p\r\n", hdl->libzfs_log_str);
-
+	fprintf(stderr, "init ok\n");	fflush(stderr);
 	return (hdl);
 }
 
 void
 libzfs_fini(libzfs_handle_t *hdl)
 {
-	(void) close(hdl->libzfs_fd);
+	(void)CloseHandle(hdl->libzfs_fd);
 #ifdef LINUX
 	if (hdl->libzfs_mnttab)
 #ifdef HAVE_SETMNTENT

@@ -91,33 +91,39 @@ static int g_refcount;
 int
 libzfs_core_init(void)
 {
-	(void) pthread_mutex_lock(&g_lock);
+	fprintf(stderr, "trying pthreads\n"); fflush(stderr);
+//	(void) pthread_mutex_lock(&g_lock);
+	fprintf(stderr, "trying pthreads ok\n"); fflush(stderr);
 	if (g_refcount == 0) {
-		g_fd = open("/dev/zfs", O_RDWR);
-		if (g_fd < 0) {
-			(void) pthread_mutex_unlock(&g_lock);
+//		g_fd = open("/dev/zfs", O_RDWR);
+		g_fd = CreateFile("\\\\.\\ZFS", GENERIC_READ | GENERIC_WRITE,
+			0, NULL, OPEN_EXISTING, 0, NULL);
+
+		if (g_fd == STATUS_INVALID_HANDLE) {
+//			(void) pthread_mutex_unlock(&g_lock);
 			return (errno);
 		}
 	}
 	g_refcount++;
-	(void) pthread_mutex_unlock(&g_lock);
+//	(void) pthread_mutex_unlock(&g_lock);
 	return (0);
 }
 
 void
 libzfs_core_fini(void)
 {
-	(void) pthread_mutex_lock(&g_lock);
+//	(void) pthread_mutex_lock(&g_lock);
 	ASSERT3S(g_refcount, >, 0);
 
 	if (g_refcount > 0)
 		g_refcount--;
 
 	if (g_refcount == 0 && g_fd != -1) {
-		(void) close(g_fd);
+		//(void) close(g_fd);
+		(void)CloseHandle(g_fd);
 		g_fd = -1;
 	}
-	(void) pthread_mutex_unlock(&g_lock);
+//	(void) pthread_mutex_unlock(&g_lock);
 }
 
 static int

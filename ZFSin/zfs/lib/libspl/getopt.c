@@ -128,3 +128,42 @@ getopt(nargc, nargv, ostr)
 	}
 	return (optopt);			/* dump back option letter */
 }
+
+int
+getsubopt(optionsp, tokens, valuep)
+char **optionsp;
+char *tokens[];
+char **valuep;
+{
+	register char *s = *optionsp, *p;
+	register int i, optlen;
+
+	*valuep = NULL;
+	if (*s == '\0')
+		return (-1);
+	p = strchr(s, ',');             /* find next option */
+	if (p == NULL) {
+		p = s + strlen(s);
+	}
+	else {
+		*p++ = '\0';            /* mark end and point to next */
+	}
+	*optionsp = p;                  /* point to next option */
+	p = strchr(s, '=');             /* find value */
+	if (p == NULL) {
+		optlen = strlen(s);
+		*valuep = NULL;
+	}
+	else {
+		optlen = p - s;
+		*valuep = ++p;
+	}
+	for (i = 0; tokens[i] != NULL; i++) {
+		if ((optlen == strlen(tokens[i])) &&
+			(strncmp(s, tokens[i], optlen) == 0))
+			return (i);
+	}
+	/* no match, point value at option and return error */
+	*valuep = s;
+	return (-1);
+}
