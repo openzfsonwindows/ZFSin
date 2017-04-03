@@ -134,7 +134,6 @@ Windows Updates run, you can disable those in gpedit.msc
   *  C11 _Atomics in kmem not yet handled
 
   ✓ Compile ZFS sources, stubbing out code as needed
-  *  zlib still needs to be included
 
   ⃝ Include kernel zlib library
 
@@ -142,17 +141,18 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ✓ Port kernel `zfs_ioctl.c` to accept ioctls from userland
 
-  ⃝ Compile userland libspl, libzpool, libzfs
+  ✓ Compile userland libspl, libzpool, libzfs, ...
 
   ✓ Include pthread wrapper library
+  *  Replaced with thin pthread.h file
 
   ✓ Include userland zlib library
 
-  ⃝ Compile cmd/zpool
+  ✓ Compile cmd/zpool
 
   ⃝ Port functions in libzpool, libzfs. Iterate disks, ioctl
 
-  ⃝ Test ioctl from zpool to talk to kernel
+  ✓ Test ioctl from zpool to talk to kernel
 
   ⃝ Port kernel `vdev_disk.c` / `vdev_file.c` to issue IO
 
