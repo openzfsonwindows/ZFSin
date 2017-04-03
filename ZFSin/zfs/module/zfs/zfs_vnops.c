@@ -270,9 +270,9 @@ zfs_close(vnode_t *vp, int flag, int count, offset_t offset, cred_t *cr,
  * data (cmd == SEEK_DATA). "off" is an in/out parameter.
  */
 static int
-zfs_holey_common(struct inode *ip, int cmd, loff_t *off)
+zfs_holey_common(struct vnode *vp, int cmd, loff_t *off)
 {
-	znode_t	*zp = ITOZ(ip);
+	znode_t	*zp = VTOZ(vp);
 	uint64_t noff = (uint64_t)*off; /* new offset */
 	uint64_t file_sz;
 	int error;
@@ -288,7 +288,7 @@ zfs_holey_common(struct inode *ip, int cmd, loff_t *off)
 	else
 		hole = B_FALSE;
 
-	error = dmu_offset_next(ZTOZSB(zp)->z_os, zp->z_id, hole, &noff);
+	error = dmu_offset_next(zp->z_zfsvfs->z_os, zp->z_id, hole, &noff);
 
 	if (error == ESRCH)
 		return (SET_ERROR(ENXIO));
@@ -312,18 +312,18 @@ zfs_holey_common(struct inode *ip, int cmd, loff_t *off)
 }
 
 int
-zfs_holey(struct inode *ip, int cmd, loff_t *off)
+zfs_holey(struct vnode *vp, int cmd, loff_t *off)
 {
-	znode_t	*zp = ITOZ(ip);
-	zfs_sb_t *zsb = ITOZSB(ip);
+	znode_t	*zp = VTOZ(vp);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 	int error;
 
-	ZFS_ENTER(zsb);
+	ZFS_ENTER(zfsvfs);
 	ZFS_VERIFY_ZP(zp);
 
-	error = zfs_holey_common(ip, cmd, off);
+	error = zfs_holey_common(vp, cmd, off);
 
-	ZFS_EXIT(zsb);
+	ZFS_EXIT(zfsvfs);
 	return (error);
 }
 
