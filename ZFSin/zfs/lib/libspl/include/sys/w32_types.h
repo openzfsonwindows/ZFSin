@@ -42,6 +42,7 @@
 #include <sys/timer.h>
 
 #include <stdint.h>
+#include <malloc.h>
 
 typedef enum boolean { B_FALSE=0, B_TRUE } boolean_t;
 typedef enum boolean bool_t;
@@ -79,6 +80,7 @@ typedef int		projid_t;
 
 typedef int		major_t;
 typedef uint_t	minor_t;
+typedef int pid_t;
 
 typedef ushort_t o_mode_t; /* old file attribute type */
 typedef short		index_t;

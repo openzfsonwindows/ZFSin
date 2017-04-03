@@ -129,7 +129,8 @@ ddi_copyin(const void *from, void *to, uint32_t len, int flags)
     if (flags & FKIOCTL)
 		bcopy(from, to, len);
 	else
-		//ret = copyin((user_addr_t)from, (void *)to, len);
+		bcopy(from, to, len);
+	//ret = copyin((user_addr_t)from, (void *)to, len);
 
 	return ret;
 }
@@ -143,6 +144,7 @@ ddi_copyout(const void *from, void *to, uint32_t len, int flags)
     if (flags & FKIOCTL) {
 		bcopy(from, to, len);
 	} else {
+		bcopy(from, to, len);
 		//ret = copyout(from, (user_addr_t)to, len);
 	}
 

@@ -77,10 +77,10 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/types.h>
 #include <pthread.h>
 #include <sys/nvpair.h>
 #include <sys/param.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/zfs_ioctl.h>
 
@@ -92,27 +92,27 @@ int
 libzfs_core_init(void)
 {
 	fprintf(stderr, "trying pthreads\n"); fflush(stderr);
-//	(void) pthread_mutex_lock(&g_lock);
+	(void) pthread_mutex_lock(&g_lock);
 	fprintf(stderr, "trying pthreads ok\n"); fflush(stderr);
 	if (g_refcount == 0) {
-//		g_fd = open("/dev/zfs", O_RDWR);
+		g_fd = open("/dev/zfs", O_RDWR);
 		g_fd = CreateFile("\\\\.\\ZFS", GENERIC_READ | GENERIC_WRITE,
 			0, NULL, OPEN_EXISTING, 0, NULL);
 
 		if (g_fd == STATUS_INVALID_HANDLE) {
-//			(void) pthread_mutex_unlock(&g_lock);
+			(void) pthread_mutex_unlock(&g_lock);
 			return (errno);
 		}
 	}
 	g_refcount++;
-//	(void) pthread_mutex_unlock(&g_lock);
+	(void) pthread_mutex_unlock(&g_lock);
 	return (0);
 }
 
 void
 libzfs_core_fini(void)
 {
-//	(void) pthread_mutex_lock(&g_lock);
+	(void) pthread_mutex_lock(&g_lock);
 	ASSERT3S(g_refcount, >, 0);
 
 	if (g_refcount > 0)
@@ -123,7 +123,7 @@ libzfs_core_fini(void)
 		(void)CloseHandle(g_fd);
 		g_fd = -1;
 	}
-//	(void) pthread_mutex_unlock(&g_lock);
+	(void) pthread_mutex_unlock(&g_lock);
 }
 
 static int

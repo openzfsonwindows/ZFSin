@@ -35,6 +35,7 @@
 #include <fcntl.h>
 #include <sys/zfs_ioctl.h>
 #include <WinSock2.h>
+#include <pthread.h>
 
 int posix_memalign(void **memptr, uint32_t alignment, uint32_t size)
 {
@@ -411,13 +412,13 @@ int ioctl(HANDLE hDevice, int request, zfs_cmd_t *zc)
 	ULONG bytesReturned;
 
 	//hDevice = _get_osfhandle(fd);
-	fprintf(stderr, "calling ioctl\n"); fflush(stderr);
+	fprintf(stderr, "calling ioctl on 0x%x (raw 0x%x)\n", (request&0x2ffc) >> 2, request); fflush(stderr);
 	error = DeviceIoControl(hDevice,
 		(DWORD)request,
 		zc,
-		(DWORD)sizeof(*zc),
+		(DWORD)sizeof(zfs_cmd_t),
 		zc,
-		sizeof(sizeof(*zc)),
+		(DWORD)sizeof(zfs_cmd_t),
 		&bytesReturned,
 		NULL
 	);
@@ -426,6 +427,8 @@ int ioctl(HANDLE hDevice, int request, zfs_cmd_t *zc)
 		error = GetLastError();
 	else
 		error = 0;
+
+	fprintf(stderr, "return ioctl: error %d\n", error); fflush(stderr);
 	return error;
 }
 

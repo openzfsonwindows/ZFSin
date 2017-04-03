@@ -5887,12 +5887,27 @@ zfsdev_state_destroy(dev_t dev)
 	return (0);
 }
 
+#ifdef _WIN32
+static NTSTATUS
+zfsdev_open(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+#else
 static int
 zfsdev_open(dev_t dev, int flags, int devtype, struct proc *p)
-//static int
-//zfsdev_open(struct vnode *ino, struct file *filp)
+#endif
 {
 	int error;
+#ifdef _WIN32
+	dev_t dev = DeviceObject;
+	int flags = 0;
+	int devtype = 0;
+	struct proc *p = NULL;
+	PAGED_CODE();
+
+	Irp->IoStatus.Status = STATUS_SUCCESS;
+	Irp->IoStatus.Information = 0;
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+#endif
 
 	dprintf("zfsdev_open, dev %d flag %02X devtype %d, proc is %p: thread %p\n",
 			minor(dev), flags, devtype, p, current_thread());
@@ -5910,12 +5925,27 @@ zfsdev_open(dev_t dev, int flags, int devtype, struct proc *p)
 	return (-error);
 }
 
+#ifdef _WIN32
+static NTSTATUS
+zfsdev_release(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+#else
 static int
 zfsdev_release(dev_t dev, int flags, int devtype, struct proc *p)
-//static int
-//zfsdev_release(struct vnode *ino, struct file *filp)
+#endif
 {
 	int error;
+#ifdef _WIN32
+	dev_t dev = DeviceObject;
+	int flags = 0;
+	int devtype = 0;
+	struct proc *p = NULL;
+	PAGED_CODE();
+
+	Irp->IoStatus.Status = STATUS_SUCCESS;
+	Irp->IoStatus.Information = 0;
+
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+#endif
 
 	dprintf("zfsdev_release, dev %d flag %02X devtype %d, dev is %p, thread %p\n",
 		   minor(dev), flags, devtype, p, current_thread());
@@ -5958,23 +5988,15 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	inBufLength = irpSp->Parameters.DeviceIoControl.InputBufferLength;
 	outBufLength = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
 
+	dprintf("ZFS: ioctl sizes: in %d out %d\n", inBufLength, outBufLength);
 	// It must have at least a zfs_cmd_t in there
 	if (inBufLength < sizeof(zfs_cmd_t) 
 		|| outBufLength < sizeof(zfs_cmd_t)) {
-		return STATUS_INVALID_PARAMETER;
+		error = STATUS_INVALID_PARAMETER;
+		goto end;
 	}
 
 
-//	vfs_context_t *ctx = vfs_context_current();
-//	cred_t *cr = vfs_context_ucred(ctx);
-
-	//printf("ioctl minor %d\n", minor);
-
-#ifdef __OPPLE__
-	error = proc_suser(p);			/* Are we superman? */
-	if (error)
-		return (error);			/* Nope... */
-#endif /* __OPPLE__ */
 
 	// If minor > 0 it is an ioctl for zvol!
 #if 0
@@ -5987,7 +6009,7 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 
 	cmd = irpSp->Parameters.DeviceIoControl.IoControlCode;
 
-
+#if 0
 	mutex_enter(&zfsdev_state_lock);
 	if (zfsdev_get_state_impl(minorx, ZST_ALL) == NULL) {
 		mutex_exit(&zfsdev_state_lock);
@@ -5995,15 +6017,18 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 		return (zvol_ioctl(dev, cmd, arg, 0, NULL, NULL));
 	}
 	mutex_exit(&zfsdev_state_lock);
+#endif
 
 	vecnum = cmd - ZFS_IOC_FIRST;
 #ifdef illumos
 	ASSERT3U(getmajor(dev), ==, ddi_driver_major(zfs_dip));
 #endif
-	dprintf("[zfs] got ioctl %lx (%lx)\n", vecnum, vecnum);
+	dprintf("[zfs] got ioctl 0x%lx (0x%lx)\n", vecnum, (vecnum>>2)+0x800);
 
 	if (vecnum >= sizeof (zfs_ioc_vec) / sizeof (zfs_ioc_vec[0])) {
-		return (-SET_ERROR(EINVAL));
+		dprintf("ZFS: ioctl err 2\n");
+		error = STATUS_INVALID_PARAMETER;
+		goto end;
 	}
 	vec = &zfs_ioc_vec[vecnum];
 
@@ -6011,8 +6036,11 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	 * The registered ioctl list may be sparse. Verify that either
 	 * a normal or legacy handler are registered.
 	 */
-	if (vec->zvec_func == NULL && vec->zvec_legacy_func == NULL)
-		return (-SET_ERROR(EINVAL));
+	if (vec->zvec_func == NULL && vec->zvec_legacy_func == NULL) {
+		dprintf("ZFS: ioctl err 3\n");
+		error = STATUS_INVALID_PARAMETER;
+		goto end;
+	}
 
 	zc = kmem_zalloc(sizeof (zfs_cmd_t), KM_SLEEP);
 
@@ -6026,6 +6054,7 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	error = ddi_copyin((void *)arg, zc, sizeof (zfs_cmd_t), flag);
 	if (error != 0) {
 		error = SET_ERROR(EFAULT);
+		dprintf("ZFS: ioctl err 4\n");
 		goto out;
 	}
 
@@ -6141,6 +6170,7 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	}
 
  out:
+	dprintf("ZFS: ioctl out\n");
 	nvlist_free(innvl);
 	rc = ddi_copyout(zc, (void *)arg, sizeof (zfs_cmd_t), flag);
 	if (error == 0 && rc != 0) {
@@ -6174,6 +6204,8 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	 */
 	((zfs_cmd_t *)arg)->zc_ioc_error = error;
 #endif
+
+end:
 	dprintf("ioctl out result %d\n", error);
 
 	Irp->IoStatus.Status = error;
@@ -6181,7 +6213,6 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
 	return error;
-	return (0);
 }
 
 #ifdef CONFIG_COMPAT

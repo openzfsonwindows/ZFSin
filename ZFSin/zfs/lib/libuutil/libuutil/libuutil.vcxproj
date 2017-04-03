@@ -53,9 +53,6 @@
     <ProjectReference Include="..\..\libefi\libefi\libefi.vcxproj">
       <Project>{c9b7ec29-cc3b-463c-9b84-b2ef4d13f69d}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\..\libpthread\pthread.vcxproj">
-      <Project>{490718de-5962-4e10-a358-ca24bc62004f}</Project>
-    </ProjectReference>
     <ProjectReference Include="..\..\libspl\libspl\libspl.vcxproj">
       <Project>{5514a992-229b-47b4-9e37-8299a4c1263a}</Project>
     </ProjectReference>
