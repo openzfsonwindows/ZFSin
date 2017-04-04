@@ -135,8 +135,8 @@ typedef struct nv_alloc {
 struct nv_alloc_ops {
 	int (*nv_ao_init)(nv_alloc_t *, va_list);
 	void (*nv_ao_fini)(nv_alloc_t *);
-	void *(*nv_ao_alloc)(nv_alloc_t *, size_t);
-	void (*nv_ao_free)(nv_alloc_t *, void *, size_t);
+	void *(*nv_ao_alloc)(nv_alloc_t *, uint32_t);
+	void (*nv_ao_free)(nv_alloc_t *, void *, uint32_t);
 	void (*nv_ao_reset)(nv_alloc_t *);
 };
 
@@ -155,17 +155,17 @@ void nv_alloc_fini(nv_alloc_t *);
 /* list management */
 int nvlist_alloc(nvlist_t **, uint_t, int);
 void nvlist_free(nvlist_t *);
-int nvlist_size(nvlist_t *, size_t *, int);
-int nvlist_pack(nvlist_t *, char **, size_t *, int, int);
-int nvlist_unpack(char *, size_t, nvlist_t **, int);
+int nvlist_size(nvlist_t *, uint32_t *, int);
+int nvlist_pack(nvlist_t *, char **, uint32_t *, int, int);
+int nvlist_unpack(char *, uint32_t, nvlist_t **, int);
 int nvlist_dup(nvlist_t *, nvlist_t **, int);
 int nvlist_merge(nvlist_t *, nvlist_t *, int);
 
 uint_t nvlist_nvflag(nvlist_t *);
 
 int nvlist_xalloc(nvlist_t **, uint_t, nv_alloc_t *);
-int nvlist_xpack(nvlist_t *, char **, size_t *, int, nv_alloc_t *);
-int nvlist_xunpack(char *, size_t, nvlist_t **, nv_alloc_t *);
+int nvlist_xpack(nvlist_t *, char **, uint32_t *, int, nv_alloc_t *);
+int nvlist_xunpack(char *, uint32_t, nvlist_t **, nv_alloc_t *);
 int nvlist_xdup(nvlist_t *, nvlist_t **, nv_alloc_t *);
 nv_alloc_t *nvlist_lookup_nv_alloc(nvlist_t *);
 
@@ -280,13 +280,13 @@ int nvpair_value_double(nvpair_t *, double *);
 
 nvlist_t *fnvlist_alloc(void);
 void fnvlist_free(nvlist_t *);
-size_t fnvlist_size(nvlist_t *);
-char *fnvlist_pack(nvlist_t *, size_t *);
-void fnvlist_pack_free(char *, size_t);
-nvlist_t *fnvlist_unpack(char *, size_t);
+uint32_t fnvlist_size(nvlist_t *);
+char *fnvlist_pack(nvlist_t *, uint32_t *);
+void fnvlist_pack_free(char *, uint32_t);
+nvlist_t *fnvlist_unpack(char *, uint32_t);
 nvlist_t *fnvlist_dup(nvlist_t *);
 void fnvlist_merge(nvlist_t *, nvlist_t *);
-size_t fnvlist_num_pairs(nvlist_t *);
+uint32_t fnvlist_num_pairs(nvlist_t *);
 
 void fnvlist_add_boolean(nvlist_t *, const char *);
 void fnvlist_add_boolean_value(nvlist_t *, const char *, boolean_t);

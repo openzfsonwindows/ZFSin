@@ -898,17 +898,12 @@ libzfs_init(void)
 	HANDLE h;
 	h = CreateFile("\\\\.\\ZFS", GENERIC_READ | GENERIC_WRITE,
 		0, NULL, OPEN_EXISTING, 0, NULL);
-	fprintf(stderr, "Opening Windows ZFS device %p:%d\n", h, GetLastError());
-	fflush(stderr);
 	hdl->libzfs_fd = h;//_open_osfhandle(h, O_RDWR);
-	//fprintf(stderr, "_open_osfhandle said %d:%d\n", hdl->libzfs_fd, GetLastError());
+
 	if ((hdl->libzfs_fd) == INVALID_HANDLE_VALUE) {
 
 		(void) fprintf(stderr, gettext("Unable to open %s: %s.\n"),
 		    ZFS_DEV, strerror(errno));
-//#define ZFS_DEV_KERNEL	L"\\Device\\ZFSCTL"
-//#define ZFS_DEV_DOS		L"\\DosDevices\\ZFS"
-//#define ZFS_DEV			"\\\\.\\ZFS"
 
 		if (errno == ENOENT)
 			(void) fprintf(stderr,
@@ -941,7 +936,6 @@ libzfs_init(void)
 #endif
 
 	if (libzfs_core_init() != 0) {
-		fprintf(stderr, "core failed\n"); fflush(stderr);
 		(void) CloseHandle(hdl->libzfs_fd);
 #ifdef LINUX
 		(void) fclose(hdl->libzfs_mnttab);
@@ -953,7 +947,6 @@ libzfs_init(void)
 		return (NULL);
 	}
 
-	fprintf(stderr, "init continuing\n");	fflush(stderr);
 	zfs_prop_init();
 	zpool_prop_init();
 	zpool_feature_init();
@@ -962,8 +955,6 @@ libzfs_init(void)
 	libshare_init();
 #endif
 
-    //fprintf(stderr, "make_dataset_handle %p\r\n", hdl->libzfs_log_str);
-	fprintf(stderr, "init ok\n");	fflush(stderr);
 	return (hdl);
 }
 
@@ -1369,19 +1360,15 @@ int
 zfs_ioctl(libzfs_handle_t *hdl, int request, zfs_cmd_t *zc)
 {
 	int error;
-	int original_errno = errno;
 
 	errno = 0;
 	error = ioctl(hdl->libzfs_fd, request, zc);
 
-	/* normal path, zfsdev_ioctl returns the real error in zc_ioc_error */
-	if ((error == 0) && zc->zc_ioc_error) {
-		error = -1;
-		errno = zc->zc_ioc_error;
-	} else if (error != -1) {
-		errno = original_errno;
-	}
-
+#ifdef _WIN32
+	// Nothing will fill in errno, so we have to
+	if (error)
+		errno = error;
+#endif
 	return (error);
 }
 

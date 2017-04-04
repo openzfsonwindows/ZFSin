@@ -412,7 +412,20 @@ int ioctl(HANDLE hDevice, int request, zfs_cmd_t *zc)
 	ULONG bytesReturned;
 
 	//hDevice = _get_osfhandle(fd);
-	fprintf(stderr, "calling ioctl on 0x%x (raw 0x%x)\n", (request&0x2ffc) >> 2, request); fflush(stderr);
+#if 0
+	fprintf(stderr, "calling ioctl on 0x%x (raw 0x%x) struct size %d in %p:%d out %p:%d\n", 
+		(request&0x2ffc) >> 2, request,
+		sizeof(zfs_cmd_t),
+		zc->zc_nvlist_src, zc->zc_nvlist_src_size,
+		zc->zc_nvlist_dst, zc->zc_nvlist_dst_size
+		); fflush(stderr);
+	strcpy(zc->zc_name, "thisisatest");
+	zc->zc_dev = 0x12345678;
+	for (int x = 0; x < 16; x++)
+		fprintf(stderr, "%02x ", ((unsigned char *)zc)[x]);
+	fprintf(stderr, "\n");
+	fflush(stderr);
+#endif
 	error = DeviceIoControl(hDevice,
 		(DWORD)request,
 		zc,
@@ -428,7 +441,20 @@ int ioctl(HANDLE hDevice, int request, zfs_cmd_t *zc)
 	else
 		error = 0;
 
-	fprintf(stderr, "return ioctl: error %d\n", error); fflush(stderr);
+	fprintf(stderr, "    (ioctl 0x%x status %d bytes %ld)\n", (request & 0x2ffc) >> 2, error, bytesReturned); fflush(stderr);
+#if 0
+	for (int x = 0; x < 16; x++)
+		fprintf(stderr, "%02x ", ((unsigned char *)zc)[x]);
+	fprintf(stderr, "\n");
+	fflush(stderr);
+	fprintf(stderr, "returned ioctl on 0x%x (raw 0x%x) struct size %d in %p:%d out %p:%d\n",
+		(request & 0x2ffc) >> 2, request,
+		sizeof(zfs_cmd_t),
+		zc->zc_nvlist_src, zc->zc_nvlist_src_size,
+		zc->zc_nvlist_dst, zc->zc_nvlist_dst_size
+	); fflush(stderr);
+#endif
+
 	return error;
 }
 

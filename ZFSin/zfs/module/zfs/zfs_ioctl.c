@@ -1270,6 +1270,8 @@ put_nvlist(zfs_cmd_t *zc, nvlist_t *nvl)
 
 	size = fnvlist_size(nvl);
 
+	dprintf("ZFS: %s trying copyout %p:%d (max)\n", __func__, zc->zc_nvlist_dst, zc->zc_nvlist_dst_size);
+
 	if (size > zc->zc_nvlist_dst_size) {
 		error = SET_ERROR(ENOMEM);
 	} else {
@@ -6044,12 +6046,12 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 
 	zc = kmem_zalloc(sizeof (zfs_cmd_t), KM_SLEEP);
 
-	// The userland/kernel space copy has already been handled, so use bcopy
-	flag |= FKIOCTL;
+	// copyin the userland data to kernel-space "zc". Change zc
+	// to point directly to the buffer?
+	//arg = Irp->AssociatedIrp.SystemBuffer;
+	arg = irpSp->Parameters.DeviceIoControl.Type3InputBuffer;
 
-	// copyin the userland data to kernel-space "zc" 
-	arg = Irp->AssociatedIrp.SystemBuffer;
-
+	dprintf("ZFS: kernel struct size %d\n", sizeof(zfs_cmd_t));
 
 	error = ddi_copyin((void *)arg, zc, sizeof (zfs_cmd_t), flag);
 	if (error != 0) {
@@ -6057,6 +6059,17 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 		dprintf("ZFS: ioctl err 4\n");
 		goto out;
 	}
+
+#if 0
+	for (int x = 0; x < 16; x++)
+		dprintf("%02x ", ((unsigned char *)zc)[x]);
+	dprintf("\n");
+#endif
+	dprintf("ZFS: ioctl nvlist sizes: in %p:%d out %p:%d. dev %llx\n",
+		zc->zc_nvlist_src, zc->zc_nvlist_src_size,
+		zc->zc_nvlist_dst, zc->zc_nvlist_dst_size,
+		zc->zc_dev);
+
 
 	zc->zc_dev = dev;
 
@@ -6094,13 +6107,12 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 		break;
 	}
 
-#ifdef _WIN32
+
+
+
+
 	if (error == 0)
 		error = vec->zvec_secpolicy(zc, innvl, NULL);
-#else
-//	if (error == 0 && !(flag & FKIOCTL))
-//		error = vec->zvec_secpolicy(zc, innvl, cr);
-#endif
 
 	dprintf("ioctl secpolicy %d\n", error);
 
@@ -6172,12 +6184,18 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
  out:
 	dprintf("ZFS: ioctl out\n");
 	nvlist_free(innvl);
+
+	zc->zc_name[0] = '@';
+
+	//arg = Irp->UserBuffer;
+	arg = irpSp->Parameters.DeviceIoControl.Type3InputBuffer;
 	rc = ddi_copyout(zc, (void *)arg, sizeof (zfs_cmd_t), flag);
 	if (error == 0 && rc != 0) {
 		dprintf("ddi_copyout fault\n");
 		error = SET_ERROR(EFAULT);
 	}
 	Irp->IoStatus.Information = sizeof(zfs_cmd_t);
+
 	if (error == 0 && vec->zvec_allow_log) {
 		char *s = tsd_get(zfs_allow_log_key);
 		if (s != NULL)
@@ -6190,20 +6208,6 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 
 	kmem_free(zc, sizeof (zfs_cmd_t));
 	zc = NULL;
-
-#ifdef __APPLE__
-	/*
-	 * Return the real error in zc_ioc_error so the ioctl call always
-	 * does a copyout of the zc data.
-	 */
-	/*
-	 * This is a bit naughty. We need to set the return error code, but
-	 * we have already called "ddi_copyout." Yet, we also know that in
-	 * Darwin ioctl does the actual copyout, and that we use FKIOCTL here.
-	 * So we can change it directly.
-	 */
-	((zfs_cmd_t *)arg)->zc_ioc_error = error;
-#endif
 
 end:
 	dprintf("ioctl out result %d\n", error);

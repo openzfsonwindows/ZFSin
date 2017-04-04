@@ -441,7 +441,7 @@ typedef struct zfs_ecksum_info {
 		uint32_t	zr_end;
 	} zei_ranges[MAX_RANGES];
 
-	size_t	zei_range_count;
+	uint32_t	zei_range_count;
 	uint32_t zei_mingap;
 	uint32_t zei_allowed_mingap;
 
@@ -450,8 +450,8 @@ typedef struct zfs_ecksum_info {
 static void
 update_histogram(uint64_t value_arg, uint16_t *hist, uint32_t *count)
 {
-	size_t i;
-	size_t bits = 0;
+	uint32_t i;
+	uint32_t bits = 0;
 	uint64_t value = BE_64(value_arg);
 
 	/* We store the bits in big-endian (largest-first) order */
@@ -481,8 +481,8 @@ zei_shrink_ranges(zfs_ecksum_info_t *eip)
 	uint32_t mingap = UINT32_MAX;
 	uint32_t new_allowed_gap = eip->zei_mingap + 1;
 
-	size_t idx, output;
-	size_t max = eip->zei_range_count;
+	uint32_t idx, output;
+	uint32_t max = eip->zei_range_count;
 
 	struct zei_ranges *r = eip->zei_ranges;
 
@@ -524,7 +524,7 @@ static void
 zei_add_range(zfs_ecksum_info_t *eip, int start, int end)
 {
 	struct zei_ranges *r = eip->zei_ranges;
-	size_t count = eip->zei_range_count;
+	uint32_t count = eip->zei_range_count;
 
 	if (count >= MAX_RANGES) {
 		zei_shrink_ranges(eip);
@@ -548,13 +548,13 @@ zei_add_range(zfs_ecksum_info_t *eip, int start, int end)
 	eip->zei_range_count++;
 }
 
-static size_t
+static uint32_t
 zei_range_total_size(zfs_ecksum_info_t *eip)
 {
 	struct zei_ranges *r = eip->zei_ranges;
-	size_t count = eip->zei_range_count;
-	size_t result = 0;
-	size_t idx;
+	uint32_t count = eip->zei_range_count;
+	uint32_t result = 0;
+	uint32_t idx;
 
 	for (idx = 0; idx < count; idx++)
 		result += (r[idx].zr_end - r[idx].zr_start);
@@ -564,7 +564,7 @@ zei_range_total_size(zfs_ecksum_info_t *eip)
 
 static zfs_ecksum_info_t *
 annotate_ecksum(nvlist_t *ereport, zio_bad_cksum_t *info,
-    const uint8_t *goodbuf, const uint8_t *badbuf, size_t size,
+    const uint8_t *goodbuf, const uint8_t *badbuf, uint32_t size,
     boolean_t drop_if_identical)
 {
 	const uint64_t *good = (const uint64_t *)goodbuf;
@@ -573,15 +573,15 @@ annotate_ecksum(nvlist_t *ereport, zio_bad_cksum_t *info,
 	uint64_t allset = 0;
 	uint64_t allcleared = 0;
 
-	size_t nui64s = size / sizeof (uint64_t);
+	uint32_t nui64s = size / sizeof (uint64_t);
 
-	size_t inline_size;
+	uint32_t inline_size;
 	int no_inline = 0;
-	size_t idx;
-	size_t range;
+	uint32_t idx;
+	uint32_t range;
 
-	size_t offset = 0;
-	ssize_t start = -1;
+	uint32_t offset = 0;
+	uint64_t start = -1;
 
 	zfs_ecksum_info_t *eip = kmem_zalloc(sizeof (*eip), KM_SLEEP);
 
@@ -658,8 +658,8 @@ annotate_ecksum(nvlist_t *ereport, zio_bad_cksum_t *info,
 	 * offsets.
 	 */
 	for (range = 0; range < eip->zei_range_count; range++) {
-		size_t start = eip->zei_ranges[range].zr_start;
-		size_t end = eip->zei_ranges[range].zr_end;
+		uint32_t start = eip->zei_ranges[range].zr_start;
+		uint32_t end = eip->zei_ranges[range].zr_end;
 
 		for (idx = start; idx < end; idx++) {
 			uint64_t set, cleared;

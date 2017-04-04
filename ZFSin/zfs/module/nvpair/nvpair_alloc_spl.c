@@ -29,25 +29,25 @@
 #include <sys/vmem.h>
 
 static void *
-nv_alloc_sleep_spl(nv_alloc_t *nva, size_t size)
+nv_alloc_sleep_spl(nv_alloc_t *nva, uint32_t size)
 {
 	return (kmem_alloc(size, KM_SLEEP));
 }
 
 static void *
-nv_alloc_pushpage_spl(nv_alloc_t *nva, size_t size)
+nv_alloc_pushpage_spl(nv_alloc_t *nva, uint32_t size)
 {
 	return (kmem_alloc(size, KM_PUSHPAGE));
 }
 
 static void *
-nv_alloc_nosleep_spl(nv_alloc_t *nva, size_t size)
+nv_alloc_nosleep_spl(nv_alloc_t *nva, uint32_t size)
 {
 	return (kmem_alloc(size, KM_NOSLEEP));
 }
 
 static void
-nv_free_spl(nv_alloc_t *nva, void *buf, size_t size)
+nv_free_spl(nv_alloc_t *nva, void *buf, uint32_t size)
 {
 	kmem_free(buf, size);
 }

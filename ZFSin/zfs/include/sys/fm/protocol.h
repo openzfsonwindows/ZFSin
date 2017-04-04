@@ -332,7 +332,7 @@ extern "C" {
 #define	FM_NVA_FREE		0	/* free allocator on nvlist_destroy */
 #define	FM_NVA_RETAIN		1	/* keep allocator on nvlist_destroy */
 
-extern nv_alloc_t *fm_nva_xcreate(char *, size_t);
+extern nv_alloc_t *fm_nva_xcreate(char *, uint32_t);
 extern void fm_nva_xdestroy(nv_alloc_t *);
 extern nvlist_t *fm_nvlist_create(nv_alloc_t *);
 extern void fm_nvlist_destroy(nvlist_t *, int);

@@ -123,32 +123,134 @@ getpcstack(uintptr_t *pcstack, int pcstack_limit)
 int
 ddi_copyin(const void *from, void *to, uint32_t len, int flags)
 {
-	int ret = 0;
+	int error = 0;
+	PMDL  mdl = NULL;
+	PCHAR buffer = NULL;
 
-    /* Fake ioctl() issued by kernel, 'from' is a kernel address */
-    if (flags & FKIOCTL)
+	if (from == NULL ||
+		to == NULL ||
+		len == 0)
+		return 0;
+
+    /* Fake ioctl() issued by kernel, so we just need to bcopy */
+	if (flags & FKIOCTL) {
 		bcopy(from, to, len);
-	else
-		bcopy(from, to, len);
+		return 0;
+	}
+
 	//ret = copyin((user_addr_t)from, (void *)to, len);
+	// Lets try reading from the input nvlist
+	dprintf("SPL: trying windows copyin: %p:%d\n", from, len);
 
-	return ret;
+	try {
+		ProbeForRead(from, len, sizeof(UCHAR));
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		error = GetExceptionCode();
+		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
+	}
+	if (error) goto end;
+
+	mdl = IoAllocateMdl(from, len, FALSE, TRUE, NULL);
+	if (!mdl) {
+		error = STATUS_INSUFFICIENT_RESOURCES;
+		goto end;
+	}
+
+	try {
+		MmProbeAndLockPages(mdl, UserMode, IoReadAccess);
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		error = GetExceptionCode();
+		dprintf("SPL: Exception while locking inBuf 0X%08X\n", error);
+		IoFreeMdl(mdl);
+	}
+	if (error) goto out;
+
+	buffer = MmGetSystemAddressForMdlSafe(mdl, NormalPagePriority | MdlMappingNoExecute);
+
+	if (!buffer) {
+		error = STATUS_INSUFFICIENT_RESOURCES;
+	} else {
+		// Success, copy over the data.
+		bcopy(buffer, to, len);
+	}
+
+	dprintf("SPL: copyout return %d (%d bytes)\n", error, len);
+
+out:
+	if (mdl) {
+		MmUnlockPages(mdl);
+		IoFreeMdl(mdl);
+		mdl = NULL;
+	}
+
+end:
+	return error;
 }
 
 int
 ddi_copyout(const void *from, void *to, uint32_t len, int flags)
 {
-	int ret = 0;
+	int error = 0;
+	PMDL  mdl = NULL;
+	PCHAR buffer = NULL;
 
-    /* Fake ioctl() issued by kernel, 'from' is a kernel address */
-    if (flags & FKIOCTL) {
+	if (from == NULL ||
+		to == NULL ||
+		len == 0)
+		return 0;
+
+	/* Fake ioctl() issued by kernel, 'from' is a kernel address */
+	if (flags & FKIOCTL) {
 		bcopy(from, to, len);
-	} else {
-		bcopy(from, to, len);
-		//ret = copyout(from, (user_addr_t)to, len);
+		return 0;
 	}
 
-	return ret;
+	dprintf("SPL: trying windows copyout: %p:%d\n", to, len);
+
+	mdl = IoAllocateMdl(to, len, FALSE, TRUE, NULL);
+	if (!mdl) {
+		error = STATUS_INSUFFICIENT_RESOURCES;
+		dprintf("SPL: copyout failed to allocate mdl\n");
+		goto end;
+	}
+
+	try {
+		MmProbeAndLockPages(mdl, UserMode, IoWriteAccess);
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		error = GetExceptionCode();
+		dprintf("SPL: Exception while locking outBuf 0X%08X\n",
+			error);
+	}
+	if (error != 0) {
+		IoFreeMdl(mdl);
+		goto end;
+	}
+
+	buffer = MmGetSystemAddressForMdlSafe(mdl, NormalPagePriority | MdlMappingNoExecute);
+
+	if (!buffer) {
+		error = STATUS_INSUFFICIENT_RESOURCES;
+		goto out;
+	} else {
+		// Success, copy over the data.
+		bcopy(from, buffer, len);
+	}
+	dprintf("SPL: copyout return %d (%d bytes)\n", error, len);
+out:
+	if (mdl) {
+		MmUnlockPages(mdl);
+		IoFreeMdl(mdl);
+		mdl = NULL;
+	}
+
+end:
+	return error;
 }
 
 /* Technically, this call does not exist in IllumOS, but we use it for

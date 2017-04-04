@@ -91,11 +91,9 @@ static int g_refcount;
 int
 libzfs_core_init(void)
 {
-	fprintf(stderr, "trying pthreads\n"); fflush(stderr);
 	(void) pthread_mutex_lock(&g_lock);
-	fprintf(stderr, "trying pthreads ok\n"); fflush(stderr);
 	if (g_refcount == 0) {
-		g_fd = open("/dev/zfs", O_RDWR);
+		//g_fd = open("/dev/zfs", O_RDWR);
 		g_fd = CreateFile("\\\\.\\ZFS", GENERIC_READ | GENERIC_WRITE,
 			0, NULL, OPEN_EXISTING, 0, NULL);
 

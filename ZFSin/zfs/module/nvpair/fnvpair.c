@@ -61,10 +61,10 @@ fnvlist_free(nvlist_t *nvl)
 	nvlist_free(nvl);
 }
 
-size_t
+uint32_t
 fnvlist_size(nvlist_t *nvl)
 {
-	size_t size;
+	uint32_t size;
 	VERIFY3U(nvlist_size(nvl, &size, NV_ENCODE_NATIVE), ==, 0);
 	return (size);
 }
@@ -74,7 +74,7 @@ fnvlist_size(nvlist_t *nvl)
  * fnvlist_pack_free().
  */
 char *
-fnvlist_pack(nvlist_t *nvl, size_t *sizep)
+fnvlist_pack(nvlist_t *nvl, uint32_t *sizep)
 {
 	char *packed = 0;
 	VERIFY3U(nvlist_pack(nvl, &packed, sizep, NV_ENCODE_NATIVE,
@@ -84,7 +84,7 @@ fnvlist_pack(nvlist_t *nvl, size_t *sizep)
 
 /*ARGSUSED*/
 void
-fnvlist_pack_free(char *pack, size_t size)
+fnvlist_pack_free(char *pack, uint32_t size)
 {
 #ifdef _KERNEL
 	kmem_free(pack, size);
@@ -94,7 +94,7 @@ fnvlist_pack_free(char *pack, size_t size)
 }
 
 nvlist_t *
-fnvlist_unpack(char *buf, size_t buflen)
+fnvlist_unpack(char *buf, uint32_t buflen)
 {
 	nvlist_t *rv;
 	VERIFY3U(nvlist_unpack(buf, buflen, &rv, KM_SLEEP), ==, 0);
@@ -115,10 +115,10 @@ fnvlist_merge(nvlist_t *dst, nvlist_t *src)
 	VERIFY3U(nvlist_merge(dst, src, KM_SLEEP), ==, 0);
 }
 
-size_t
+uint32_t
 fnvlist_num_pairs(nvlist_t *nvl)
 {
-	size_t count = 0;
+	uint32_t count = 0;
 	nvpair_t *pair;
 
 	for (pair = nvlist_next_nvpair(nvl, 0); pair != NULL;

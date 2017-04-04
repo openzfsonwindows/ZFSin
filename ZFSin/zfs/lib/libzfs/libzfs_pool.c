@@ -3800,7 +3800,10 @@ zpool_log_history(libzfs_handle_t *hdl, const char *message)
 
 	args = fnvlist_alloc();
 	fnvlist_add_string(args, "message", message);
+	
+	// this call core dumps on WIN32
 	err = zcmd_write_src_nvlist(hdl, &zc, args);
+
 	if (err == 0)
 		err = ioctl(hdl->libzfs_fd, ZFS_IOC_LOG_HISTORY, &zc);
 	nvlist_free(args);
