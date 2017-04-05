@@ -943,6 +943,78 @@ zpool_read_label(int fd, nvlist_t **config, int *num_labels)
 	return (0);
 }
 
+int
+zpool_read_label_win(HANDLE h, nvlist_t **config, int *num_labels)
+{
+	int l, count = 0;
+	vdev_label_t *label;
+	nvlist_t *expected_config = NULL;
+	uint64_t expected_guid = 0, size;
+	LARGE_INTEGER large;
+	int fd;
+
+	*config = NULL;
+
+	GetFileSizeEx(h, &large);
+	size = P2ALIGN_TYPED(large.QuadPart, sizeof(vdev_label_t), uint64_t);
+
+	fd = _open_osfhandle(h, 0);
+
+	if ((label = malloc(sizeof(vdev_label_t))) == NULL)
+		return (-1);
+
+	for (l = 0; l < VDEV_LABELS; l++) {
+		uint64_t state, guid, txg;
+
+		if (pread(fd, label, sizeof(vdev_label_t),
+			label_offset(size, l)) != sizeof(vdev_label_t))
+			continue;
+
+		if (nvlist_unpack(label->vl_vdev_phys.vp_nvlist,
+			sizeof(label->vl_vdev_phys.vp_nvlist), config, 0) != 0)
+			continue;
+
+		if (nvlist_lookup_uint64(*config, ZPOOL_CONFIG_GUID,
+			&guid) != 0 || guid == 0) {
+			nvlist_free(*config);
+			continue;
+		}
+
+		if (nvlist_lookup_uint64(*config, ZPOOL_CONFIG_POOL_STATE,
+			&state) != 0 || state > POOL_STATE_L2CACHE) {
+			nvlist_free(*config);
+			continue;
+		}
+
+		if (state != POOL_STATE_SPARE && state != POOL_STATE_L2CACHE &&
+			(nvlist_lookup_uint64(*config, ZPOOL_CONFIG_POOL_TXG,
+				&txg) != 0 || txg == 0)) {
+			nvlist_free(*config);
+			continue;
+		}
+
+		if (expected_guid) {
+			if (expected_guid == guid)
+				count++;
+
+			nvlist_free(*config);
+		}
+		else {
+			expected_config = *config;
+			expected_guid = guid;
+			count++;
+		}
+	}
+
+	if (num_labels != NULL)
+		*num_labels = count;
+
+	free(label);
+	*config = expected_config;
+
+	return (0);
+}
+
 typedef struct rdsk_node {
 	char *rn_name;
 	int rn_num_labels;
@@ -952,6 +1024,9 @@ typedef struct rdsk_node {
 	avl_tree_t *rn_avl;
 	avl_node_t rn_node;
 	boolean_t rn_nozpool;
+#ifdef _WIN32
+	HANDLE rn_handle;
+#endif
 } rdsk_node_t;
 
 static int
@@ -1157,7 +1232,7 @@ zpool_open_func(void *arg)
 	nvlist_t *config;
 	int num_labels;
 	int fd;
-
+fprintf(stderr, "%s: enter\n", __func__); fflush(stderr);
 	if (rn->rn_nozpool)
 		return;
 #if defined (__linux__) || defined (_WIN32)
@@ -1306,6 +1381,100 @@ zpool_open_func(void *arg)
 	rn->rn_num_labels = num_labels;
 }
 
+static void
+zpool_open_func_win(void *arg)
+{
+	rdsk_node_t *rn = arg;
+	struct stat statbuf;
+	nvlist_t *config;
+	int num_labels;
+	int fd;
+	fprintf(stderr, "%s: enter\n", __func__); fflush(stderr);
+	if (rn->rn_nozpool)
+		return;
+	/*
+	* Skip devices with well known prefixes there can be side effects
+	* when opening devices which need to be avoided.
+	*
+	* core     - Symlink to /proc/kcore
+	* fd*      - Floppy interface.
+	* fuse     - Fuse control device.
+	* hpet     - High Precision Event Timer
+	* lp*      - Printer interface.
+	* parport* - Parallel port interface.
+	* ppp      - Generic PPP driver.
+	* random   - Random device
+	* rtc      - Real Time Clock
+	* tty*     - Generic serial interface.
+	* urandom  - Random device.
+	* usbmon*  - USB IO monitor.
+	* vcs*     - Virtual console memory.
+	* watchdog - Watchdog must be closed in a special way.
+	*/
+	if ((strncmp(rn->rn_name, "core", 4) == 0) ||
+		(strncmp(rn->rn_name, "fd", 2) == 0) ||
+		(strncmp(rn->rn_name, "fuse", 4) == 0) ||
+		(strncmp(rn->rn_name, "watchdog", 8) == 0))
+		return;
+
+	/*
+	* Ignore failed stats.  We only want regular files and block devices.
+	*/
+	DWORD type = GetFileType(rn->rn_handle);
+	fprintf(stderr, "filetpye %d 0x%x\n", type);
+	//if (fstatat64(rn->rn_dfd, rn->rn_name, &statbuf, 0) != 0 ||
+	//	(!S_ISREG(statbuf.st_mode) && !S_ISBLK(statbuf.st_mode)))
+	//	return;
+
+
+	//if ((fd = openat64(rn->rn_dfd, rn->rn_name, O_RDONLY)) < 0) {
+	//	/* symlink to a device that's no longer there */
+	//	if (errno == ENOENT)
+	//		nozpool_all_slices(rn->rn_avl, rn->rn_name);
+	//	return;
+	//}
+
+	
+	/* this file is too small to hold a zpool */
+	LARGE_INTEGER large;
+	GetFileSizeEx(rn->rn_handle, &large);
+	if (type == FILE_TYPE_DISK &&
+		large.QuadPart < SPA_MINDEVSIZE) {
+		return;
+	}
+//	if (S_ISREG(statbuf.st_mode) &&
+//		statbuf.st_size < SPA_MINDEVSIZE) {
+//		(void)close(fd);
+//		return;
+//	}
+//	else if (!S_ISREG(statbuf.st_mode)) {
+	else if (type != FILE_TYPE_DISK) {
+		/*
+		* Try to read the disk label first so we don't have to
+		* open a bunch of minor nodes that can't have a zpool.
+		*/
+		check_slices(rn->rn_avl, fd, rn->rn_name);
+	}
+
+//	if ((zpool_read_label(fd, &config, &num_labels)) != 0) {
+	if ((zpool_read_label_win(rn->rn_handle, &config, &num_labels)) != 0) {
+//		(void)close(fd);
+		(void)no_memory(rn->rn_hdl);
+		return;
+	}
+
+	if (num_labels == 0) {
+//		(void)close(fd);
+		nvlist_free(config);
+		return;
+	}
+
+//	(void)close(fd);
+
+	rn->rn_config = config;
+	rn->rn_num_labels = num_labels;
+}
+
 /*
  * Given a file descriptor, clear (zero) the label information.
  */
@@ -1408,6 +1577,7 @@ err_blkid1:
 }
 #endif /* HAVE_LIBBLKID */
 
+
 char *
 zpool_default_import_path[DEFAULT_IMPORT_PATH_SIZE] = {
 #ifdef __LINUX__
@@ -1417,16 +1587,9 @@ zpool_default_import_path[DEFAULT_IMPORT_PATH_SIZE] = {
 	"/dev/disk/by-id",	/* May be multiple entries and persistent */
 	"/dev/disk/by-path",	/* Encodes physical location and persistent */
 	"/dev/disk/by-label",	/* Custom persistent labels */
-	"/dev"			/* UNSAFE device names will change */
+	"/dev"			
 #elif defined(_WIN32)
-	"/private/var/run/disk/by-id",
-	"/private/var/run/disk/by-path",
-#ifndef __UNSAFE_DEFAULT_IMPORT_PATH__
-	"/private/var/run/disk/by-serial"
-#else
-	"/private/var/run/disk/by-serial",
-	"/dev"			/* UNSAFE device names will change */
-#endif /* !__UNSAFE_DEFAULT_IMPORT_PATH__ */
+	"/dev"
 #endif /* __LINUX__ */
 };
 
@@ -1640,6 +1803,271 @@ error:
 	return (ret);
 }
 
+
+#ifdef _WIN32
+/*
+ * Call Windows API to get list of physical disks, and iterate through them
+ * finding partitions.
+*/
+static nvlist_t *
+zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
+{
+	int i, dirs = iarg->paths;
+	struct dirent *dp;
+	char path[MAXPATHLEN];
+	char *end, **dir = iarg->path;
+	size_t pathleft;
+	nvlist_t *ret = NULL;
+	pool_list_t pools = { 0 };
+	pool_entry_t *pe, *penext;
+	vdev_entry_t *ve, *venext;
+	config_entry_t *ce, *cenext;
+	name_entry_t *ne, *nenext;
+	avl_tree_t slice_cache;
+	rdsk_node_t *slice;
+	void *cookie;
+
+	verify(iarg->poolname == NULL || iarg->guid == 0);
+
+	/*
+	* Go through and read the label configuration information from every
+	* possible device, organizing the information according to pool GUID
+	* and toplevel GUID.
+	*/
+	{
+		taskq_t *t;
+		char rdsk[MAXPATHLEN];
+		int dfd;
+		boolean_t config_failed = B_FALSE;
+		DIR *dirp;
+
+#define _WIN32_MEAN_AND_LEAN
+#include <Windows.h>
+#include <Setupapi.h>
+#include <Ntddstor.h>
+#pragma comment( lib, "setupapi.lib" )
+
+		fprintf(stderr, "win32 disk\n"); fflush(stderr);
+		
+		HDEVINFO diskClassDevices;
+		GUID diskClassDeviceInterfaceGuid = GUID_DEVINTERFACE_DISK;
+		SP_DEVICE_INTERFACE_DATA deviceInterfaceData;
+		PSP_DEVICE_INTERFACE_DETAIL_DATA deviceInterfaceDetailData;
+		DWORD requiredSize;
+		DWORD deviceIndex;
+		
+		HANDLE disk = INVALID_HANDLE_VALUE;
+		STORAGE_DEVICE_NUMBER diskNumber;
+		DWORD bytesReturned;
+		
+		diskClassDevices = SetupDiGetClassDevs(&diskClassDeviceInterfaceGuid,
+			NULL,
+			NULL,
+			DIGCF_PRESENT |
+			DIGCF_DEVICEINTERFACE);
+		//CHK(INVALID_HANDLE_VALUE != diskClassDevices,
+		//	"SetupDiGetClassDevs");
+
+		ZeroMemory(&deviceInterfaceData, sizeof(SP_DEVICE_INTERFACE_DATA));
+		deviceInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+		deviceIndex = 0;
+
+		while (SetupDiEnumDeviceInterfaces(diskClassDevices,
+			NULL,
+			&diskClassDeviceInterfaceGuid,
+			deviceIndex,
+			&deviceInterfaceData)) {
+
+			++deviceIndex;
+
+			SetupDiGetDeviceInterfaceDetail(diskClassDevices,
+				&deviceInterfaceData,
+				NULL,
+				0,
+				&requiredSize,
+				NULL);
+			//CHK(ERROR_INSUFFICIENT_BUFFER == GetLastError(),
+			//	"SetupDiGetDeviceInterfaceDetail - 1");
+
+			deviceInterfaceDetailData = (PSP_DEVICE_INTERFACE_DETAIL_DATA)malloc(requiredSize);
+			//CHK(NULL != deviceInterfaceDetailData,
+			//	"malloc");
+
+			ZeroMemory(deviceInterfaceDetailData, requiredSize);
+			deviceInterfaceDetailData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
+
+			SetupDiGetDeviceInterfaceDetail(diskClassDevices,
+				&deviceInterfaceData,
+				deviceInterfaceDetailData,
+				requiredSize,
+				NULL,
+				NULL);
+
+			// Here, the device path is something like
+			// " \\?\ide#diskvmware_virtual_ide_hard_drive___________00000001#5&1778b74b&0&0.0.0#{53f56307-b6bf-11d0-94f2-00a0c91efb8b}"
+			// and we create a path like
+			// "\\?\PhysicalDrive0"
+			// but perhaps it is better to use the full name of the device.
+			disk = CreateFile(deviceInterfaceDetailData->DevicePath,
+				0/*GENERIC_READ*/,
+				FILE_SHARE_READ | FILE_SHARE_WRITE,
+				NULL,
+				OPEN_EXISTING,
+				FILE_ATTRIBUTE_NORMAL,
+				NULL);
+			//CHK(INVALID_HANDLE_VALUE != disk,
+			//	"CreateFile");
+
+			DeviceIoControl(disk,
+				IOCTL_STORAGE_GET_DEVICE_NUMBER,
+				NULL,
+				0,
+				&diskNumber,
+				sizeof(STORAGE_DEVICE_NUMBER),
+				&bytesReturned,
+				NULL);
+
+			//dfd = _open_osfhandle(disk, _O_RDONLY); // If dfd is close()d, so is the handle "disk".
+			//CloseHandle(disk);
+			//disk = INVALID_HANDLE_VALUE;
+
+			fprintf(stderr, "path '%s'\n and '\\\\?\\PhysicalDrive%d'\n", deviceInterfaceDetailData->DevicePath,
+				diskNumber.DeviceNumber); fflush(stderr);
+			snprintf(rdsk, MAXPATHLEN, "\\\\?\\PhysicalDrive%d", diskNumber.DeviceNumber);
+
+#if 0
+			if ((dfd = open(rdsk, O_RDONLY)) < 0 ||
+				(dirp = fdopendir(dfd)) == NULL) {
+				if (dfd >= 0)
+					(void) close(dfd);
+				zfs_error_aux(hdl, strerror(errno));
+				(void)zfs_error_fmt(hdl, EZFS_BADPATH,
+					dgettext(TEXT_DOMAIN, "cannot open '%s'"),
+					rdsk);
+				goto error;
+			}
+#endif
+
+			avl_create(&slice_cache, slice_cache_compare,
+				sizeof(rdsk_node_t), offsetof(rdsk_node_t, rn_node));
+
+			/*
+			* This is not MT-safe, but we have no MT consumers of libzfs
+			*/
+			//		while ((dp = readdir(dirp)) != NULL) {
+			//			const char *name = dp->d_name;
+			//			if (name[0] == '.' &&
+			//				(name[1] == 0 || (name[1] == '.' && name[2] == 0)))
+			//				continue;
+
+			slice = zfs_alloc(hdl, sizeof(rdsk_node_t));
+			slice->rn_name = zfs_strdup(hdl, deviceInterfaceDetailData->DevicePath);
+			slice->rn_avl = &slice_cache;
+			slice->rn_handle = disk;
+			slice->rn_hdl = hdl;
+			slice->rn_nozpool = B_FALSE;
+			avl_add(&slice_cache, slice);
+			//		}
+		}
+		/*
+		* create a thread pool to do all of this in parallel;
+		* rn_nozpool is not protected, so this is racy in that
+		* multiple tasks could decide that the same slice can
+		* not hold a zpool, which is benign.  Also choose
+		* double the number of processors; we hold a lot of
+		* locks in the kernel, so going beyond this doesn't
+		* buy us much.
+		*/
+		t = taskq_create("z_import", 2 * max_ncpus, defclsyspri,
+			2 * max_ncpus, INT_MAX, TASKQ_PREPOPULATE);
+		for (slice = avl_first(&slice_cache); slice;
+			(slice = avl_walk(&slice_cache, slice,
+				AVL_AFTER)))
+				(void) taskq_dispatch(t, zpool_open_func_win, slice,
+					TQ_SLEEP);
+		taskq_wait(t);
+		taskq_destroy(t);
+
+		cookie = NULL;
+		while ((slice = avl_destroy_nodes(&slice_cache,
+			&cookie)) != NULL) {
+			if (slice->rn_config != NULL && !config_failed) {
+				nvlist_t *config = slice->rn_config;
+				boolean_t matched = B_TRUE;
+
+				if (iarg->poolname != NULL) {
+					char *pname;
+
+					matched = nvlist_lookup_string(config,
+						ZPOOL_CONFIG_POOL_NAME,
+						&pname) == 0 &&
+						strcmp(iarg->poolname, pname) == 0;
+				}
+				else if (iarg->guid != 0) {
+					uint64_t this_guid;
+
+					matched = nvlist_lookup_uint64(config,
+						ZPOOL_CONFIG_POOL_GUID,
+						&this_guid) == 0 &&
+						iarg->guid == this_guid;
+				}
+				if (!matched) {
+					nvlist_free(config);
+				}
+				else {
+					/*
+					* use the non-raw path for the config
+					*/
+					(void)strlcpy(end, slice->rn_name,
+						pathleft);
+					if (add_config(hdl, &pools, path, i + 1,
+						slice->rn_num_labels, config) != 0)
+						config_failed = B_TRUE;
+				}
+			}
+			free(slice->rn_name);
+			free(slice);
+		}
+		avl_destroy(&slice_cache);
+
+//		(void)closedir(dirp);
+		CloseHandle(disk);
+
+		if (config_failed)
+			goto error;
+	}
+
+#ifdef HAVE_LIBBLKID
+	skip_scanning :
+#endif
+				  ret = get_configs(hdl, &pools, iarg->can_be_active);
+
+			  error:
+				  for (pe = pools.pools; pe != NULL; pe = penext) {
+					  penext = pe->pe_next;
+					  for (ve = pe->pe_vdevs; ve != NULL; ve = venext) {
+						  venext = ve->ve_next;
+						  for (ce = ve->ve_configs; ce != NULL; ce = cenext) {
+							  cenext = ce->ce_next;
+							  if (ce->ce_config)
+								  nvlist_free(ce->ce_config);
+							  free(ce);
+						  }
+						  free(ve);
+					  }
+					  free(pe);
+				  }
+
+				  for (ne = pools.names; ne != NULL; ne = nenext) {
+					  nenext = ne->ne_next;
+					  free(ne->ne_name);
+					  free(ne);
+				  }
+
+				  return (ret);
+}
+#endif // WIN32
+
 nvlist_t *
 zpool_find_import(libzfs_handle_t *hdl, int argc, char **argv)
 {
@@ -1648,6 +2076,9 @@ zpool_find_import(libzfs_handle_t *hdl, int argc, char **argv)
 	iarg.paths = argc;
 	iarg.path = argv;
 
+#ifdef _WIN32
+	zpool_find_import_win(hdl, &iarg);
+#endif
 	return (zpool_find_import_impl(hdl, &iarg));
 }
 
@@ -1801,7 +2232,9 @@ zpool_search_import(libzfs_handle_t *hdl, importargs_t *import)
 	if (import->cachefile != NULL)
 		return (zpool_find_import_cached(hdl, import->cachefile,
 		    import->poolname, import->guid));
-
+#ifdef _WIN32
+	zpool_find_import_win(hdl, import);
+#endif
 	return (zpool_find_import_impl(hdl, import));
 }
 

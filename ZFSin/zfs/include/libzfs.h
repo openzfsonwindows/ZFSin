@@ -72,11 +72,7 @@ extern "C" {
 #ifdef __LINUX__
 #define	DEFAULT_IMPORT_PATH_SIZE	7
 #elif defined(_WIN32)
-#ifndef __UNSAFE_DEFAULT_IMPORT_PATH__
-#define	DEFAULT_IMPORT_PATH_SIZE	3
-#else
-#define	DEFAULT_IMPORT_PATH_SIZE	4
-#endif /* !__UNSAFE_DEFAULT_IMPORT_PATH__ */
+#define	DEFAULT_IMPORT_PATH_SIZE	1
 #endif /* __LINUX__ */
 extern char *zpool_default_import_path[DEFAULT_IMPORT_PATH_SIZE];
 
