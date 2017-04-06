@@ -951,14 +951,11 @@ zpool_read_label_win(HANDLE h, nvlist_t **config, int *num_labels)
 	nvlist_t *expected_config = NULL;
 	uint64_t expected_guid = 0, size;
 	LARGE_INTEGER large;
-	int fd;
 
 	*config = NULL;
 
 	GetFileSizeEx(h, &large);
 	size = P2ALIGN_TYPED(large.QuadPart, sizeof(vdev_label_t), uint64_t);
-
-	fd = _open_osfhandle(h, 0);
 
 	if ((label = malloc(sizeof(vdev_label_t))) == NULL)
 		return (-1);
@@ -966,7 +963,7 @@ zpool_read_label_win(HANDLE h, nvlist_t **config, int *num_labels)
 	for (l = 0; l < VDEV_LABELS; l++) {
 		uint64_t state, guid, txg;
 
-		if (pread(fd, label, sizeof(vdev_label_t),
+		if (pread_win(h, label, sizeof(vdev_label_t),
 			label_offset(size, l)) != sizeof(vdev_label_t))
 			continue;
 

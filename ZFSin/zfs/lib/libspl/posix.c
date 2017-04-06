@@ -114,10 +114,10 @@ char *realpath(const char *file_name, char *resolved_name)
 	return resolved_name;
 }
 
-ssize_t pread(int fd, void *buf, uint32_t nbyte, off_t offset)
+int pread(int fd, void *buf, uint32_t nbyte, off_t offset)
 {
 	uint64_t off;
-	ssize_t red;
+	int red;
 
 	off = _lseek(fd, 0, SEEK_CUR);
 	if (_lseek(fd, offset, SEEK_SET) != offset)
@@ -127,6 +127,16 @@ ssize_t pread(int fd, void *buf, uint32_t nbyte, off_t offset)
 
 	_lseek(fd, off, SEEK_SET);
 
+	return red;
+}
+int pread_win(HANDLE h, void *buf, uint32_t nbyte, off_t offset)
+{
+	uint64_t off;
+	DWORD red;
+	OVERLAPPED overlapped;
+	overlapped.Offset = offset & 0xFFFFFFFF;
+	overlapped.OffsetHigh = offset >> 32;
+	ReadFile(h, buf, nbyte, &red, &overlapped);
 	return red;
 }
 
