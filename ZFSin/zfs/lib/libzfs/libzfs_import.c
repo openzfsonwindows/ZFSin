@@ -951,11 +951,12 @@ zpool_read_label_win(HANDLE h, nvlist_t **config, int *num_labels)
 	nvlist_t *expected_config = NULL;
 	uint64_t expected_guid = 0, size;
 	LARGE_INTEGER large;
+	uint64_t drivesize;
 
 	*config = NULL;
 
-	GetFileSizeEx(h, &large);
-	size = P2ALIGN_TYPED(large.QuadPart, sizeof(vdev_label_t), uint64_t);
+	drivesize = GetFileDriveSize(h);
+	size = P2ALIGN_TYPED(drivesize, sizeof(vdev_label_t), uint64_t);
 
 	if ((label = malloc(sizeof(vdev_label_t))) == NULL)
 		return (-1);
@@ -1385,7 +1386,7 @@ zpool_open_func_win(void *arg)
 	struct stat statbuf;
 	nvlist_t *config;
 	int num_labels;
-	int fd;
+	HANDLE fd;
 	fprintf(stderr, "%s: enter\n", __func__); fflush(stderr);
 	if (rn->rn_nozpool)
 		return;
@@ -1393,37 +1394,66 @@ zpool_open_func_win(void *arg)
 	* Skip devices with well known prefixes there can be side effects
 	* when opening devices which need to be avoided.
 	*
-	* core     - Symlink to /proc/kcore
-	* fd*      - Floppy interface.
-	* fuse     - Fuse control device.
-	* hpet     - High Precision Event Timer
-	* lp*      - Printer interface.
-	* parport* - Parallel port interface.
-	* ppp      - Generic PPP driver.
-	* random   - Random device
-	* rtc      - Real Time Clock
-	* tty*     - Generic serial interface.
-	* urandom  - Random device.
-	* usbmon*  - USB IO monitor.
-	* vcs*     - Virtual console memory.
+	* <insert list of windows ones here>
 	* watchdog - Watchdog must be closed in a special way.
 	*/
 	if ((strncmp(rn->rn_name, "core", 4) == 0) ||
-		(strncmp(rn->rn_name, "fd", 2) == 0) ||
-		(strncmp(rn->rn_name, "fuse", 4) == 0) ||
 		(strncmp(rn->rn_name, "watchdog", 8) == 0))
 		return;
 
 	/*
 	* Ignore failed stats.  We only want regular files and block devices.
 	*/
-	DWORD type = GetFileType(rn->rn_handle);
-	fprintf(stderr, "filetpye %d 0x%x\n", type);
 	//if (fstatat64(rn->rn_dfd, rn->rn_name, &statbuf, 0) != 0 ||
 	//	(!S_ISREG(statbuf.st_mode) && !S_ISBLK(statbuf.st_mode)))
 	//	return;
 
+	// Check if this filename is encoded with "#start#len#name"
+	if (rn->rn_name[0] == '#') {
+		uint64_t offset;
+		uint64_t len;
+		char *end = NULL;
 
+		offset = strtoull(&rn->rn_name[1], &end, 10);
+		while (end && *end == '#') end++;
+		len = strtoull(end, &end, 10);
+		while (end && *end == '#') end++;
+		fd = CreateFile(end,
+			GENERIC_READ,
+			FILE_SHARE_READ | FILE_SHARE_WRITE,
+			NULL,
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
+			NULL);
+		if (fd == INVALID_HANDLE_VALUE) {
+			int error = GetLastError();
+			return;
+		}
+		LARGE_INTEGER place;
+		place.QuadPart = offset;
+		SetFilePointerEx(fd, place, NULL, FILE_BEGIN); // If it fails, we cant read label
+
+
+	} else {
+
+		fd = CreateFile(rn->rn_name,
+			GENERIC_READ,
+			FILE_SHARE_READ | FILE_SHARE_WRITE,
+			NULL,
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
+			NULL);
+		if (fd == INVALID_HANDLE_VALUE) {
+			int error = GetLastError();
+			return;
+		}
+	}
+
+	DWORD type = GetFileType(fd);
+	fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type);
+	
+	type = GetDriveType(rn->rn_name);
+	fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type);
 	//if ((fd = openat64(rn->rn_dfd, rn->rn_name, O_RDONLY)) < 0) {
 	//	/* symlink to a device that's no longer there */
 	//	if (errno == ENOENT)
@@ -1433,12 +1463,12 @@ zpool_open_func_win(void *arg)
 
 	
 	/* this file is too small to hold a zpool */
-	LARGE_INTEGER large;
-	GetFileSizeEx(rn->rn_handle, &large);
 	if (type == FILE_TYPE_DISK &&
-		large.QuadPart < SPA_MINDEVSIZE) {
+		GetFileDriveSize(fd) < SPA_MINDEVSIZE) {
+		CloseHandle(fd);
 		return;
 	}
+
 //	if (S_ISREG(statbuf.st_mode) &&
 //		statbuf.st_size < SPA_MINDEVSIZE) {
 //		(void)close(fd);
@@ -1453,20 +1483,19 @@ zpool_open_func_win(void *arg)
 		check_slices(rn->rn_avl, fd, rn->rn_name);
 	}
 
-//	if ((zpool_read_label(fd, &config, &num_labels)) != 0) {
-	if ((zpool_read_label_win(rn->rn_handle, &config, &num_labels)) != 0) {
-//		(void)close(fd);
+	if ((zpool_read_label_win(fd, &config, &num_labels)) != 0) {
+		CloseHandle(fd);
 		(void)no_memory(rn->rn_hdl);
 		return;
 	}
 
 	if (num_labels == 0) {
-//		(void)close(fd);
+		CloseHandle(fd);
 		nvlist_free(config);
 		return;
 	}
 
-//	(void)close(fd);
+	CloseHandle(fd);
 
 	rn->rn_config = config;
 	rn->rn_num_labels = num_labels;
@@ -1826,6 +1855,8 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 
 	verify(iarg->poolname == NULL || iarg->guid == 0);
 
+	avl_create(&slice_cache, slice_cache_compare,
+		sizeof(rdsk_node_t), offsetof(rdsk_node_t, rn_node));
 	/*
 	* Go through and read the label configuration information from every
 	* possible device, organizing the information according to pool GUID
@@ -1843,9 +1874,8 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 #include <Setupapi.h>
 #include <Ntddstor.h>
 #pragma comment( lib, "setupapi.lib" )
-
-		fprintf(stderr, "win32 disk\n"); fflush(stderr);
 		
+		/* First, open all raw physical devices */
 		HDEVINFO diskClassDevices;
 		GUID diskClassDeviceInterfaceGuid = GUID_DEVINTERFACE_DISK;
 		SP_DEVICE_INTERFACE_DATA deviceInterfaceData;
@@ -1910,10 +1940,10 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 				FILE_SHARE_READ | FILE_SHARE_WRITE,
 				NULL,
 				OPEN_EXISTING,
-				FILE_ATTRIBUTE_NORMAL,
+				FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
 				NULL);
-			//CHK(INVALID_HANDLE_VALUE != disk,
-			//	"CreateFile");
+			if (disk == INVALID_HANDLE_VALUE)
+				continue;
 
 			DeviceIoControl(disk,
 				IOCTL_STORAGE_GET_DEVICE_NUMBER,
@@ -1924,48 +1954,136 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 				&bytesReturned,
 				NULL);
 
-			//dfd = _open_osfhandle(disk, _O_RDONLY); // If dfd is close()d, so is the handle "disk".
-			//CloseHandle(disk);
-			//disk = INVALID_HANDLE_VALUE;
-
 			fprintf(stderr, "path '%s'\n and '\\\\?\\PhysicalDrive%d'\n", deviceInterfaceDetailData->DevicePath,
 				diskNumber.DeviceNumber); fflush(stderr);
-			snprintf(rdsk, MAXPATHLEN, "\\\\?\\PhysicalDrive%d", diskNumber.DeviceNumber);
+			snprintf(rdsk, MAXPATHLEN, "\\\\.\\PHYSICALDRIVE%d", diskNumber.DeviceNumber);
 
-#if 0
-			if ((dfd = open(rdsk, O_RDONLY)) < 0 ||
-				(dirp = fdopendir(dfd)) == NULL) {
-				if (dfd >= 0)
-					(void) close(dfd);
-				zfs_error_aux(hdl, strerror(errno));
-				(void)zfs_error_fmt(hdl, EZFS_BADPATH,
-					dgettext(TEXT_DOMAIN, "cannot open '%s'"),
-					rdsk);
-				goto error;
+			//CloseHandle(disk);
+
+			// Lets skip physical disks for now
+			if (diskNumber.DeviceNumber == 0) {
+				CloseHandle(disk);
+				continue;
 			}
-#endif
+			DWORD ior;
+			PDRIVE_LAYOUT_INFORMATION_EX partitions;
+			DWORD partitionsSize = sizeof(DRIVE_LAYOUT_INFORMATION_EX) + 127 * sizeof(PARTITION_INFORMATION_EX);
+			partitions = (PDRIVE_LAYOUT_INFORMATION_EX)malloc(partitionsSize);
+			if (DeviceIoControl(disk, IOCTL_DISK_GET_DRIVE_LAYOUT_EX, NULL, 0, partitions, partitionsSize, &ior, NULL)) {
+				fprintf(stderr, "read partitions ok %d\n", partitions->PartitionCount); fflush(stderr);
 
-			avl_create(&slice_cache, slice_cache_compare,
-				sizeof(rdsk_node_t), offsetof(rdsk_node_t, rn_node));
+				for (int i = 0; i < partitions->PartitionCount; i++) {
+					switch (partitions->PartitionEntry[i].PartitionStyle) {
+					case PARTITION_STYLE_MBR:
+						fprintf(stderr, "    mbr %d: type %x off 0x%llx len 0x%llx\n", i, 
+							partitions->PartitionEntry[i].Mbr.PartitionType,
+							partitions->PartitionEntry[i].StartingOffset.QuadPart,
+							partitions->PartitionEntry[i].PartitionLength.QuadPart); fflush(stderr);
+						break;
+					case PARTITION_STYLE_GPT:
+						fprintf(stderr, "    gpt %d: type %x off 0x%llx len 0x%llx\n", i,
+							partitions->PartitionEntry[i].Gpt.PartitionType,
+							partitions->PartitionEntry[i].StartingOffset.QuadPart,
+							partitions->PartitionEntry[i].PartitionLength.QuadPart); fflush(stderr);
+						break;
+					}
+				}
+				free(partitions);
+			}
+			else {
+				fprintf(stderr, "read partitions ng\n"); fflush(stderr);
+			}
 
-			/*
-			* This is not MT-safe, but we have no MT consumers of libzfs
-			*/
-			//		while ((dp = readdir(dirp)) != NULL) {
-			//			const char *name = dp->d_name;
-			//			if (name[0] == '.' &&
-			//				(name[1] == 0 || (name[1] == '.' && name[2] == 0)))
-			//				continue;
+			CloseHandle(disk);
 
 			slice = zfs_alloc(hdl, sizeof(rdsk_node_t));
 			slice->rn_name = zfs_strdup(hdl, deviceInterfaceDetailData->DevicePath);
 			slice->rn_avl = &slice_cache;
-			slice->rn_handle = disk;
+
 			slice->rn_hdl = hdl;
 			slice->rn_nozpool = B_FALSE;
 			avl_add(&slice_cache, slice);
-			//		}
+
+
+			// Add the whole physical device, but lets also try to read EFI off it.
+
+			disk = CreateFile(deviceInterfaceDetailData->DevicePath,
+				GENERIC_READ,
+				FILE_SHARE_READ | FILE_SHARE_WRITE,
+				NULL,
+				OPEN_EXISTING,
+				FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
+				NULL);
+
+			// On standard OsX created zpool, we expect:
+			// offset     name
+			// 0x200      MBR partition protective GPT
+			// 0x400      EFI partition, s0 as ZFS
+			// 0x8410     "version" "name" "testpool" ZFS label
+
+			if (disk != INVALID_HANDLE_VALUE) {
+				fprintf(stderr, "asking libefi to read label\n"); fflush(stderr);
+				int error;
+				struct dk_gpt *vtoc;
+				error = efi_alloc_and_read(disk, &vtoc);
+				if (error >= 0) {
+					fprintf(stderr, "EFI read OK, max partitions %d\n", vtoc->efi_nparts); fflush(stderr);
+					for (int i = 0; i < vtoc->efi_nparts; i++) {
+
+						if (vtoc->efi_parts[i].p_start == 0 &&
+							vtoc->efi_parts[i].p_size == 0) continue;
+
+						fprintf(stderr, "    part %d:  offset %llx:    len %llx:    tag: %x    name: '%s'\n", i, vtoc->efi_parts[i].p_start, vtoc->efi_parts[i].p_size,
+							vtoc->efi_parts[i].p_tag, vtoc->efi_parts[i].p_name); fflush(stderr);
+						if (vtoc->efi_parts[i].p_start != 0 &&
+							vtoc->efi_parts[i].p_size != 0 &&
+							!strncasecmp("ZFS", vtoc->efi_parts[i].p_name, 3)) {
+							// Lets invent a naming scheme with start, and len in it.
+							snprintf(rdsk, sizeof(rdsk), "#%llu#%llu#%s",
+								vtoc->efi_parts[i].p_start * vtoc->efi_lbasize, vtoc->efi_parts[i].p_size * vtoc->efi_lbasize, deviceInterfaceDetailData->DevicePath);
+				
+							slice = zfs_alloc(hdl, sizeof(rdsk_node_t));
+							slice->rn_name = zfs_strdup(hdl, rdsk);
+							slice->rn_avl = &slice_cache;
+							slice->rn_hdl = hdl;
+							slice->rn_nozpool = B_FALSE;
+							avl_add(&slice_cache, slice);
+						}
+					}
+				}
+				efi_free(vtoc);
+				CloseHandle(disk);
+			}
+		} // while SetupDiEnumDeviceInterfaces
+
+
+		/* Now lets iterate the partitions (volumes) */
+		HANDLE vol;
+		vol = FindFirstVolume(rdsk, sizeof(rdsk));
+		while (vol != INVALID_HANDLE_VALUE) {
+
+			// If it ends with a \, we need to eat it.
+			char *r;
+			r = &rdsk[strlen(rdsk) - 1];
+			if (*r == '\\' || *r == '/')
+				*r = 0;
+
+			fprintf(stderr, "Processing volume '%s'\n", rdsk); fflush(stderr);
+
+				slice = zfs_alloc(hdl, sizeof(rdsk_node_t));
+				slice->rn_name = zfs_strdup(hdl, rdsk);
+				slice->rn_avl = &slice_cache;
+				slice->rn_hdl = hdl;
+				slice->rn_nozpool = B_FALSE;
+				avl_add(&slice_cache, slice);
+
+			if (!FindNextVolume(vol, rdsk, sizeof(rdsk))) {
+				FindVolumeClose(vol);
+				vol = INVALID_HANDLE_VALUE;
+			}
 		}
+
+
 		/*
 		* create a thread pool to do all of this in parallel;
 		* rn_nozpool is not protected, so this is racy in that
@@ -2015,9 +2133,9 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 					/*
 					* use the non-raw path for the config
 					*/
-					(void)strlcpy(end, slice->rn_name,
-						pathleft);
-					if (add_config(hdl, &pools, path, i + 1,
+//					(void)strlcpy(end, slice->rn_name,
+//						pathleft);
+					if (add_config(hdl, &pools, /*path*/ slice->rn_name, /*order*/ 1,
 						slice->rn_num_labels, config) != 0)
 						config_failed = B_TRUE;
 				}
@@ -2028,7 +2146,6 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 		avl_destroy(&slice_cache);
 
 //		(void)closedir(dirp);
-		CloseHandle(disk);
 
 		if (config_failed)
 			goto error;

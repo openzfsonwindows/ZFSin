@@ -129,29 +129,57 @@ int pread(int fd, void *buf, uint32_t nbyte, off_t offset)
 
 	return red;
 }
+
 int pread_win(HANDLE h, void *buf, uint32_t nbyte, off_t offset)
 {
 	uint64_t off;
 	DWORD red;
-	OVERLAPPED overlapped;
-	overlapped.Offset = offset & 0xFFFFFFFF;
-	overlapped.OffsetHigh = offset >> 32;
-	ReadFile(h, buf, nbyte, &red, &overlapped);
+	LARGE_INTEGER large;
+	LARGE_INTEGER lnew;
+
+	// This code does all seeks based on "current" so we can pre-seek to offset start
+
+	// Find current position
+	large.QuadPart = 0;
+	SetFilePointerEx(h, large, &lnew, FILE_CURRENT);
+
+	// Seek to place to read
+	large.QuadPart = offset;
+	SetFilePointerEx(h, large, NULL, FILE_CURRENT);
+
+	// Read
+	if (!ReadFile(h, buf, nbyte, &red, NULL))
+		red = -GetLastError();
+
+	// Restore position
+	SetFilePointerEx(h, lnew, NULL, FILE_BEGIN);
+
 	return red;
 }
 
-ssize_t pwrite(int fd, const void *buf, uint32_t nbyte, off_t offset)
+int pwrite(HANDLE h, const void *buf, uint32_t nbyte, off_t offset)
 {
 	uint64_t off;
-	ssize_t wrote;
+	DWORD wrote;
+	LARGE_INTEGER large;
+	LARGE_INTEGER lnew;
 
-	off = _lseek(fd, 0, SEEK_CUR);
-	if (_lseek(fd, offset, SEEK_SET) != offset)
-		return -1;
+	// This code does all seeks based on "current" so we can pre-seek to offset start
 
-	wrote = write(fd, buf, nbyte);
+	// Find current position
+	large.QuadPart = 0;
+	SetFilePointerEx(h, large, &lnew, FILE_CURRENT);
 
-	_lseek(fd, off, SEEK_SET);
+	// Seek to place to read
+	large.QuadPart = offset;
+	SetFilePointerEx(h, large, NULL, FILE_CURRENT);
+
+	// Read
+	if (!WriteFile(h, buf, nbyte, &wrote, NULL))
+		wrote = -GetLastError();
+
+	// Restore position
+	SetFilePointerEx(h, lnew, NULL, FILE_BEGIN);
 
 	return wrote;
 }
@@ -180,11 +208,13 @@ int statfs(const char *path, struct statfs *buf)
 	ULARGE_INTEGER lpTotalNumberOfFreeBytes;
 	uint64_t lbsize;
 
+#if 1
 	if (GetDiskFreeSpaceEx(path,
 		&lpFreeBytesAvailable,
 		&lpTotalNumberOfBytes,
 		&lpTotalNumberOfFreeBytes))
 		return -1;
+#endif
 
 	DISK_GEOMETRY_EX geometry_ex;
 	HANDLE handle;
@@ -561,3 +591,35 @@ const char *ctime_r(char *buffer, size_t bufsize, time_t cur_time)
 	errno_t e = ctime_s(buffer, bufsize, cur_time);
 	return buffer;
 }
+
+uint64_t GetFileDriveSize(HANDLE h)
+{
+	LARGE_INTEGER large;
+
+	if (GetFileSizeEx(h, &large))
+		return large.QuadPart;
+
+	DISK_GEOMETRY_EX geometry_ex;
+	DWORD len;
+	if (DeviceIoControl(h, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
+		&geometry_ex, sizeof(geometry_ex), &len, NULL))
+		return geometry_ex.DiskSize.QuadPart;
+
+
+	PARTITION_INFORMATION partInfo;
+	DWORD retcount = 0;
+
+	if (DeviceIoControl(h,
+		IOCTL_DISK_GET_PARTITION_INFO,
+		(LPVOID)NULL,
+		(DWORD)0,
+		(LPVOID)&partInfo,
+		sizeof(partInfo),
+		&retcount,
+		(LPOVERLAPPED)NULL)) {
+		return partInfo.PartitionLength.QuadPart;
+	}
+	return 0;
+}
+
+
