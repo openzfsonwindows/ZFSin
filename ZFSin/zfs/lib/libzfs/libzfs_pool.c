@@ -2419,14 +2419,47 @@ zpool_get_physpath(zpool_handle_t *zhp, char *physpath, size_t phypath_size)
 static int
 zpool_open_delay(int timeout, const char *path, int oflag)
 {
-	int i = 0;
-	int fd = open(path, oflag);
+	int i = 0, fd;
 
-	while ((fd == -1) && (errno == EBUSY) && (i < timeout)) {
-		i++;
-		usleep(1000);
-		fd = open(path, oflag);
+	if (path[0] == '#') {
+		uint64_t offset;
+		uint64_t len;
+		char *end = NULL;
+
+		end = path;
+		while (end && *end == '#') end++;
+		offset = strtoull(end, &end, 10);
+		while (end && *end == '#') end++;
+		len = strtoull(end, &end, 10);
+		while (end && *end == '#') end++;
+		fd = CreateFile(end,
+			GENERIC_READ,
+			FILE_SHARE_READ | FILE_SHARE_WRITE,
+			NULL,
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
+			NULL);
+		
+	} else {
+
+		fd = CreateFile(path,
+			GENERIC_READ,
+			FILE_SHARE_READ | FILE_SHARE_WRITE,
+			NULL,
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
+			NULL);
+
 	}
+	if (fd == INVALID_HANDLE_VALUE) {
+		int error = -GetLastError();
+	}
+
+//	while ((fd == -1) && (errno == EBUSY) && (i < timeout)) {
+//		i++;
+//		usleep(1000);
+//		fd = open(path, oflag);
+//	}
 
 	return (fd);
 }
