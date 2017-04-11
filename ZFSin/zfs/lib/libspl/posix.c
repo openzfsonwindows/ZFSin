@@ -479,7 +479,7 @@ int ioctl(HANDLE hDevice, int request, zfs_cmd_t *zc)
 	if (error == 0)
 		error = GetLastError();
 	else
-		error = 0;
+		error = zc->zc_ioc_error;
 
 	fprintf(stderr, "    (ioctl 0x%x status %d bytes %ld)\n", (request & 0x2ffc) >> 2, error, bytesReturned); fflush(stderr);
 #if 0
