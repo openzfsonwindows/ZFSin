@@ -243,6 +243,9 @@ struct vdev {
 	kmutex_t	vdev_dtl_lock;	/* vdev_dtl_{map,resilver}	*/
 	kmutex_t	vdev_stat_lock;	/* vdev_stat			*/
 	kmutex_t	vdev_probe_lock; /* protects vdev_probe_zio	*/
+
+	uint64_t vdev_win_offset; /* soft partition start */
+	uint64_t vdev_win_length; /* soft partition length */
 };
 
 #define	VDEV_RAIDZ_MAXPARITY	3

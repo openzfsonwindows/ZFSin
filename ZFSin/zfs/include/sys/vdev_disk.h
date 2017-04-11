@@ -37,6 +37,7 @@ typedef struct vdev_disk {
 	char		*vd_minor;
 	list_t		vd_ldi_cbs;
 	boolean_t	vd_ldi_offline;
+	HANDLE vd_lh;
 } vdev_disk_t;
 
 /*

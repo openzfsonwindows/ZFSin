@@ -1522,9 +1522,10 @@ zfs_ioc_pool_stats(zfs_cmd_t *zc)
 	nvlist_t *config;
 	int error;
 	int ret = 0;
-
+	dprintf("%s: enter\n", __func__);
 	error = spa_get_stats(zc->zc_name, &config, zc->zc_value,
 						  sizeof (zc->zc_value));
+	dprintf("%s: get_stats %d\n", __func__, error);
 	if (config != NULL) {
 		ret = put_nvlist(zc, config);
 		nvlist_free(config);
@@ -1538,6 +1539,7 @@ zfs_ioc_pool_stats(zfs_cmd_t *zc)
 	} else {
 		ret = error;
 	}
+	dprintf("%s: exit %d\n", __func__, error);
 
 	return (ret);
 }
@@ -5997,7 +5999,6 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 		error = STATUS_INVALID_PARAMETER;
 		goto end;
 	}
-
 
 
 	// If minor > 0 it is an ioctl for zvol!

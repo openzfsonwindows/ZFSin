@@ -71,10 +71,291 @@ vdev_disk_free(vdev_t *vd)
 #define        VDEV_DEBUG(...) /* Nothing... */
 #endif
 
+NTSTATUS
+NTAPI
+CompletionRoutine(
+	IN PDEVICE_OBJECT  DeviceObject,
+	IN PIRP  Irp,
+	IN PVOID  Context)
+{
+	if (Irp->PendingReturned == TRUE)
+	{
+		KeSetEvent((PKEVENT)Context, IO_NO_INCREMENT, FALSE);
+	}
+	return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
+
+int kernel_ioctl(HANDLE h, long cmd, void *inbuf, uint32_t inlen,
+	void *outbuf, uint32_t outlen)
+{
+	NTSTATUS status;
+	PIRP irp;
+	PIO_STACK_LOCATION irpStack;
+	KEVENT event;
+	PFILE_OBJECT        FileObject;
+	PDEVICE_OBJECT      DeviceObject;
+
+
+	dprintf("%s: trying to send kernel ioctl %x\n", __func__, cmd);
+	// Convert HANDLE to FileObject
+	status = ObReferenceObjectByHandle(
+		h,
+		0,
+		*IoFileObjectType,
+		KernelMode,
+		&FileObject,
+		NULL
+	);
+	if (status != STATUS_SUCCESS)
+		return -1;
+
+	// Convert FileObject to DeviceObject
+	DeviceObject = IoGetRelatedDeviceObject(FileObject);
+	ObDereferenceObject(FileObject);
+
+	irp = IoAllocateIrp(DeviceObject->StackSize, FALSE);
+
+	if (irp == NULL) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	irpStack = IoGetNextIrpStackLocation(irp);
+
+	irpStack->MajorFunction = IRP_MJ_DEVICE_CONTROL;
+
+	irpStack->Parameters.DeviceIoControl.IoControlCode =
+		cmd;
+	irpStack->Parameters.DeviceIoControl.OutputBufferLength =
+		outlen;
+
+	irp->AssociatedIrp.SystemBuffer = inbuf;
+
+	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
+
+	IoSetCompletionRoutine(irp,
+		CompletionRoutine,
+		&event,
+		TRUE,
+		TRUE,
+		TRUE);
+
+	status = IoCallDriver(DeviceObject, irp);
+	dprintf("%s: return %d\n", __func__, status);
+	if (status == STATUS_PENDING) {
+		KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
+		status = irp->IoStatus.Status;
+	}
+
+	IoFreeIrp(irp);
+
+	return status;
+}
+
+
 static int
 vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
-    uint64_t *ashift)
+	uint64_t *ashift)
 {
+	spa_t *spa = vd->vdev_spa;
+	vdev_disk_t *dvd = vd->vdev_tsd;
+	int error = EINVAL;
+	uint64_t capacity = 0, blksz = 0, pbsize;
+	int isssd;
+
+	dprintf("%s: open of '%s'", vd->vdev_path);
+
+	/*
+	* We must have a pathname, and it must be absolute.
+	* It can also start with # for partition encoded paths
+	*/
+	if (vd->vdev_path == NULL || vd->vdev_path[0] != '/' || vd->vdev_path[0] != '#') {
+		vd->vdev_stat.vs_aux = VDEV_AUX_BAD_LABEL;
+		return (SET_ERROR(EINVAL));
+	}
+
+	/*
+	* Reopen the device if it's not currently open. Otherwise,
+	* just update the physical size of the device.
+	*/
+	if (dvd != NULL) {
+		if (dvd->vd_ldi_offline && dvd->vd_lh == NULL) {
+			/*
+			* If we are opening a device in its offline notify
+			* context, the LDI handle was just closed. Clean
+			* up the LDI event callbacks and free vd->vdev_tsd.
+			*/
+			vdev_disk_free(vd);
+		}
+		else {
+			ASSERT(vd->vdev_reopening);
+			goto skip_open;
+		}
+	}
+
+	/*
+	* Create vd->vdev_tsd.
+	*/
+	vdev_disk_alloc(vd);
+	dvd = vd->vdev_tsd;
+
+	/*
+	* If we have not yet opened the device, try to open it by the
+	* specified path.
+	*/
+	NTSTATUS            ntstatus;
+	uint8_t *FileName = NULL;
+	uint32_t FileLength;
+
+	/* Check for partition encoded paths */
+	if (vd->vdev_path[0] == '#') {
+		uint8_t *end;
+		end = &vd->vdev_path[0];
+		while (end && end[0] == '#') end++;
+		ddi_strtoull(end, &end, 10, &vd->vdev_win_offset);
+		while (end && end[0] == '#') end++;
+		ddi_strtoull(end, &end, 10, &vd->vdev_win_length);
+		while (end && end[0] == '#') end++;
+
+		FileName = end;
+
+	}
+	else {
+
+		FileName = vd->vdev_path;
+
+	}
+
+
+	ANSI_STRING         AnsiFilespec;
+	UNICODE_STRING      UnicodeFilespec;
+	OBJECT_ATTRIBUTES   ObjectAttributes;
+
+	SHORT                   UnicodeName[PATH_MAX];
+	CHAR                    AnsiName[PATH_MAX];
+	USHORT                  NameLength = 0;
+
+	memset(UnicodeName, 0, sizeof(SHORT) * PATH_MAX);
+	memset(AnsiName, 0, sizeof(UCHAR) * PATH_MAX);
+
+	NameLength = strlen(FileName);
+	ASSERT(NameLength < PATH_MAX);
+
+	memmove(AnsiName, FileName, NameLength);
+
+	AnsiFilespec.MaximumLength = AnsiFilespec.Length = NameLength;
+	AnsiFilespec.Buffer = AnsiName;
+
+	UnicodeFilespec.MaximumLength = PATH_MAX * 2;
+	UnicodeFilespec.Length = 0;
+	UnicodeFilespec.Buffer = (PWSTR)UnicodeName;
+
+	RtlAnsiStringToUnicodeString(&UnicodeFilespec, &AnsiFilespec, FALSE);
+
+	ObjectAttributes.Length = sizeof(OBJECT_ATTRIBUTES);
+	ObjectAttributes.RootDirectory = NULL;
+	ObjectAttributes.Attributes = 0; /*OBJ_CASE_INSENSITIVE;*/
+	ObjectAttributes.ObjectName = &UnicodeFilespec;
+	ObjectAttributes.SecurityDescriptor = NULL;
+	ObjectAttributes.SecurityQualityOfService = NULL;
+
+//DbgBreakPoint();
+	ntstatus = ZwCreateFile(&dvd->vd_lh,
+		spa_mode(spa) == FREAD ? GENERIC_READ : GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE,
+		&ObjectAttributes,
+		NULL,
+		0,
+		FILE_ATTRIBUTE_NORMAL,
+		FILE_SHARE_WRITE | FILE_SHARE_READ,
+		FILE_OPEN,
+		spa_mode(spa) == FREAD ? 0 : FILE_NO_INTERMEDIATE_BUFFERING,
+		NULL,
+		0);
+
+	if (ntstatus == STATUS_SUCCESS) {
+		error = 0;
+	} else {
+		error = EINVAL; // GetLastError();
+	}
+
+	/*
+	* If we succeeded in opening the device, but 'vdev_wholedisk'
+	* is not yet set, then this must be a slice.
+	*/
+	if (error == 0 && vd->vdev_wholedisk == -1ULL)
+		vd->vdev_wholedisk = 0;
+
+	if (error) {
+		vd->vdev_stat.vs_aux = VDEV_AUX_OPEN_FAILED;
+		return (error);
+	}
+
+skip_open:
+
+	*max_psize = *psize;
+
+	/*
+	* Determine the actual size of the device.
+	*/
+	if (vd->vdev_win_length != 0) {
+		psize = vd->vdev_win_length;
+	} else {
+#include <ntdddisk.h>
+#include <Ntddstor.h>
+		/*
+		* Determine the device's minimum transfer size.
+		* If the ioctl isn't supported, assume DEV_BSIZE.
+		*/
+		// fill in capacity, blksz, pbsize
+		STORAGE_PROPERTY_QUERY storageQuery;
+		memset(&storageQuery, 0, sizeof(STORAGE_PROPERTY_QUERY));
+		storageQuery.PropertyId = StorageAccessAlignmentProperty;
+		storageQuery.QueryType = PropertyStandardQuery;
+
+		STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR diskAlignment = { 0 };
+		memset(&diskAlignment, 0, sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR));
+		DWORD outsize;
+
+
+		error = kernel_ioctl(dvd->vd_lh, IOCTL_STORAGE_QUERY_PROPERTY,
+			&storageQuery, sizeof(STORAGE_PROPERTY_QUERY),
+			&diskAlignment, sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR));
+
+		if (error == 0) {
+			blksz = diskAlignment.BytesPerLogicalSector;
+			pbsize = diskAlignment.BytesPerPhysicalSector;
+		} else {
+			blksz = pbsize = DEV_BSIZE;
+		}
+
+		if (vd->vdev_win_length > 0) {
+			capacity = vd->vdev_win_length;
+		} else {
+			DISK_GEOMETRY_EX geometry_ex;
+			DWORD len;
+			error = kernel_ioctl(dvd->vd_lh, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
+				NULL, 0,
+				&geometry_ex, sizeof(geometry_ex));
+			if (error == 0)
+				capacity = geometry_ex.DiskSize.QuadPart;
+		}
+	}
+
+	*ashift = highbit64(MAX(pbsize, SPA_MINBLOCKSIZE)) - 1;
+
+
+	/*
+	* Clear the nowritecache bit, so that on a vdev_reopen() we will
+	* try again.
+	*/
+	vd->vdev_nowritecache = B_FALSE;
+
+	/* Inform the ZIO pipeline that we are non-rotational */
+	vd->vdev_nonrot = B_FALSE;
+//	if (ldi_ioctl(dvd->vd_lh, DKIOCISSOLIDSTATE, (intptr_t)&isssd,
+//		FKIOCTL, kcred, NULL) == 0) {
+//		vd->vdev_nonrot = (isssd ? B_TRUE : B_FALSE);
+//	}
 
 	return (0);
 }
@@ -88,6 +369,8 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 static void vdev_disk_close_thread(void *arg)
 {
 	struct vnode *vp = arg;
+
+
 
 	(void) vnode_close(vp, 0,
 					   spl_vfs_context_kernel());
@@ -115,6 +398,10 @@ vdev_disk_close(vdev_t *vd)
 	 */
 	if (dvd->vd_ldi_offline)
 		return;
+
+	if (dvd->vd_lh != NULL)
+		ZwClose(dvd->vd_lh);
+	dvd->vd_lh = NULL;
 
 	vdev_disk_free(vd);
 }
