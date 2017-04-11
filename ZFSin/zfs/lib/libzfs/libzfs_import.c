@@ -2191,7 +2191,8 @@ zpool_find_import(libzfs_handle_t *hdl, int argc, char **argv)
 	iarg.path = argv;
 
 #ifdef _WIN32
-	zpool_find_import_win(hdl, &iarg);
+	if (iarg.paths == 0)
+		return zpool_find_import_win(hdl, &iarg);
 #endif
 	return (zpool_find_import_impl(hdl, &iarg));
 }
@@ -2347,7 +2348,8 @@ zpool_search_import(libzfs_handle_t *hdl, importargs_t *import)
 		return (zpool_find_import_cached(hdl, import->cachefile,
 		    import->poolname, import->guid));
 #ifdef _WIN32
-	zpool_find_import_win(hdl, import);
+	if (import->paths == 0)
+		return zpool_find_import_win(hdl, import);
 #endif
 	return (zpool_find_import_impl(hdl, import));
 }
