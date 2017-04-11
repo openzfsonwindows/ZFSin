@@ -1522,6 +1522,7 @@ zfs_ioc_pool_stats(zfs_cmd_t *zc)
 	nvlist_t *config;
 	int error;
 	int ret = 0;
+
 	dprintf("%s: enter\n", __func__);
 	error = spa_get_stats(zc->zc_name, &config, zc->zc_value,
 						  sizeof (zc->zc_value));
@@ -6211,13 +6212,27 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	zc = NULL;
 
 end:
+
+	/*
+	* Return the real error in zc_ioc_error so the ioctl call always
+	* does a copyout of the zc data.
+	*/
+	/*
+	* This is a bit naughty. We need to set the return error code, but
+	* we have already called "ddi_copyout." Yet, we also know that in
+	* Darwin ioctl does the actual copyout, and that we use FKIOCTL here.
+	* So we can change it directly.
+	*/
+	((zfs_cmd_t *)arg)->zc_ioc_error = error;
+
+
 	dprintf("ioctl out result %d\n", error);
 
-	Irp->IoStatus.Status = error;
+	Irp->IoStatus.Status = STATUS_SUCCESS; //error;
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
-	return error;
+	return STATUS_SUCCESS; // error;
 }
 
 #ifdef CONFIG_COMPAT

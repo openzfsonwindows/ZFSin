@@ -178,7 +178,7 @@ ddi_copyin(const void *from, void *to, uint32_t len, int flags)
 		bcopy(buffer, to, len);
 	}
 
-	dprintf("SPL: copyout return %d (%d bytes)\n", error, len);
+	dprintf("SPL: copyin return %d (%d bytes)\n", error, len);
 
 out:
 	if (mdl) {

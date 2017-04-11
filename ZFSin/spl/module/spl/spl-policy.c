@@ -5,7 +5,7 @@
 int
 spl_priv_check_cred(void *cred, int priv, /*__unused*/ int flags)
 {
-	int error;
+	int error = 0;
 	(void)flags;
 //	if (kauth_cred_getuid(cred) == 0) {
 //		error = 0;
@@ -16,7 +16,8 @@ spl_priv_check_cred(void *cred, int priv, /*__unused*/ int flags)
 	 * The default is deny, so if no policies have granted it, reject
 	 * with a privilege error here.
 	 */
-	error = EPERM;
+	// Assuming everything is root for now, fix me. WIN32
+	 //error = EPERM;
 out:
 	return (error);
 }
