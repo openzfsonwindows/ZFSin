@@ -25,9 +25,6 @@
  *
  */
 
-//#define DEBUG 1 //smd
-#include <sys/mutex.h>
-
 
 //#include <mach/mach_types.h>
 //#include <mach/kern_return.h>
@@ -41,6 +38,9 @@
 // Not defined in headers
 
 uint64_t zfs_active_mutex = 0;
+
+#define MUTEX_INITIALISED 0x23456789
+
 
 #ifdef SPL_DEBUG_MUTEX
 #include <sys/list.h>
@@ -191,7 +191,6 @@ void spl_mutex_subsystem_fini(void)
 }
 
 
-
 #ifdef SPL_DEBUG_MUTEX
 void spl_mutex_init(kmutex_t *mp, char *name, kmutex_type_t type, void *ibc,
 					const char *file, const char *fn, int line)
@@ -202,7 +201,12 @@ void spl_mutex_init(kmutex_t *mp, char *name, kmutex_type_t type, void *ibc)
 	(void)name;
 	ASSERT(type != MUTEX_SPIN);
     ASSERT(ibc == NULL);
-    mp->m_owner = NULL;
+
+	if (mp->initialised == MUTEX_INITIALISED)
+		panic("%s: mutex already initialised\n", __func__);
+	mp->initialised = MUTEX_INITIALISED;
+
+	mp->m_owner = NULL;
 	//lck_mtx_init((FAST_MUTEX *)&mp->m_lock, zfs_mutex_group, zfs_lock_attr);
 	ExInitializeFastMutex((FAST_MUTEX *)&mp->m_lock);
 	//KeInitializeMutex((KMUTEX *)&mp->m_lock, 0);
@@ -239,11 +243,19 @@ void spl_mutex_destroy(kmutex_t *mp)
 {
     if (!mp) return;
 
+	if (mp->initialised != MUTEX_INITIALISED) {
+		panic("%s: mutex not initialised\n", __func__);
+		spl_mutex_init(mp, "uhoh", 0, NULL);
+	}
+	mp->initialised = 0;
+
 	if (mp->m_owner != 0) panic("SPL: releasing held mutex");
 
 	//lck_mtx_destroy((FAST_MUTEX *)&mp->m_lock, zfs_mutex_group);
-	ExReleaseFastMutex((FAST_MUTEX *)&mp->m_lock, FALSE);
-	//KeReleaseMutex((KMUTEX *)&mp->m_lock, FALSE);
+
+	// Fast mutex don't seem to have a destroy method
+	//ExReleaseFastMutex((FAST_MUTEX *)&mp->m_lock, FALSE); // this is unlock
+
 	atomic_dec_64(&zfs_active_mutex);
 
 #ifdef SPL_DEBUG_MUTEX
@@ -266,7 +278,10 @@ void spl_mutex_enter(kmutex_t *mp, char *file, int line)
 void spl_mutex_enter(kmutex_t *mp)
 #endif
 {
-    if (mp->m_owner == current_thread())
+	if (mp->initialised != MUTEX_INITIALISED)
+		panic("%s: mutex not initialised\n", __func__);
+	
+	if (mp->m_owner == current_thread())
         panic("mutex_enter: locking against myself!");
 
 #ifdef DEBUG
@@ -315,9 +330,12 @@ void spl_mutex_exit(kmutex_t *mp)
 		leak->wdlist_line = 0;
 	}
 #endif
+	if (mp->m_owner != current_thread())
+		panic("%s: releasing not held lock?", __func__);
+
     mp->m_owner = NULL;
     //lck_mtx_unlock((FAST_MUTEX *)&mp->m_lock);
-	ExReleaseFastMutex((FAST_MUTEX *)&mp->m_lock, FALSE);
+	ExReleaseFastMutex((FAST_MUTEX *)&mp->m_lock);
 	//KeReleaseFastMutex((KMUTEX *)&mp->m_lock, FALSE);
 	//dprintf("mutex_exit %p\n", &mp->m_lock);
 }
@@ -327,6 +345,9 @@ int spl_mutex_tryenter(kmutex_t *mp)
 {
     NTSTATUS held;
 	LARGE_INTEGER timeout;
+
+	if (mp->initialised != MUTEX_INITIALISED)
+		panic("%s: mutex not initialised\n", __func__);
 
     if (mp->m_owner == current_thread())
         panic("mutex_tryenter: locking against myself!");

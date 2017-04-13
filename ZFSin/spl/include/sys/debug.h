@@ -58,7 +58,8 @@
 #include <spl-debug.h>
 
 //inline static void panic(char *str, ...) { (void)str; __halt(); }
-inline static void panic(char *str, ...) { DbgBreakPoint(); }
+//inline static void panic(char *str, ...) { KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, str, __VA_ARGS__ )); DbgBreakPoint(); }
+#define panic(...) do { KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__)); DbgBreakPoint(); windows_delay(hz); } while(1)
 #define dprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
 #define IOLog(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
 

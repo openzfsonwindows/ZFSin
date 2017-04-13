@@ -1,4 +1,29 @@
+/*
+* CDDL HEADER START
+*
+* The contents of this file are subject to the terms of the
+* Common Development and Distribution License (the "License").
+* You may not use this file except in compliance with the License.
+*
+* You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+* or http://www.opensolaris.org/os/licensing.
+* See the License for the specific language governing permissions
+* and limitations under the License.
+*
+* When distributing Covered Code, include this CDDL HEADER in each
+* file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+* If applicable, add the following below this CDDL HEADER, with the
+* fields enclosed by brackets "[]" replaced with your own identifying
+* information: Portions Copyright [yyyy] [name of copyright owner]
+*
+* CDDL HEADER END
+*/
 
+/*
+*
+* Copyright (C) 2017 Jorgen Lundman <lundman@lundman.net>
+*
+*/
 
 #ifndef OSX_MUTEX_H
 #define OSX_MUTEX_H
@@ -22,11 +47,8 @@ typedef enum {
     MUTEX_DEFAULT = 6       /* kernel default mutex */
 } kmutex_type_t;
 
-// Does anyone know where lck_mtx_t; is actually defined? Not just the opaque
-// typedef in i386/locks.h ?
 typedef struct {
 	FAST_MUTEX opaque;
-	//KMUTEX opaque;
 } mutex_t;
 
 /* To enable watchdog to keep an eye on mutex being held for too long
@@ -48,8 +70,9 @@ typedef struct {
  */
 
 typedef struct kmutex {
-    void           *m_owner;
 	mutex_t m_lock;
+	void           *m_owner;
+	unsigned int initialised;
 
 #ifdef SPL_DEBUG_MUTEX
 	void *leak;
