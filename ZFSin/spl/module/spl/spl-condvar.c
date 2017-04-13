@@ -21,7 +21,7 @@
 
 /*
  *
- * Copyright (C) 2013 Jorgen Lundman <lundman@lundman.net>
+ * Copyright (C) 2017 Jorgen Lundman <lundman@lundman.net>
  *
  */
 
@@ -34,27 +34,33 @@
 void spl_wdlist_settime(void *mpleak, uint64_t value);
 #endif
 
+#define CONDVAR_INIT 0x12345678
+
 void
 spl_cv_init(kcondvar_t *cvp, char *name, kcv_type_t type, void *arg)
 {
 	(void) cvp;	(void) name; (void) type; (void) arg;
 	//DbgBreakPoint();
-	KeInitializeEvent(cvp, NotificationEvent, FALSE);
+	KeInitializeEvent(&cvp->kevent, NotificationEvent, FALSE);
+	cvp->initialised = CONDVAR_INIT;
 }
 
 void
 spl_cv_destroy(kcondvar_t *cvp)
 {
-	(void) cvp;
+	if (cvp->initialised != CONDVAR_INIT)
+		panic("%s: not initialised", __func__);
+	cvp->initialised = 0;
 }
 
 void
 spl_cv_signal(kcondvar_t *cvp)
 {
-	(void) cvp;
+	if (cvp->initialised != CONDVAR_INIT)
+		panic("%s: not initialised", __func__);
 	//DbgBreakPoint();
-	KeSetEvent(cvp, 0, FALSE); // technically wakes everyone
-	KeClearEvent(cvp);
+	KeSetEvent(&cvp->kevent, 0, FALSE); // technically wakes everyone
+//	KeClearEvent(&cvp->kevent);
 	//wakeup_one((caddr_t)cvp); // KeSetEvent(&cvp->mp_lock, 0, FALSE);
 }
 
@@ -63,11 +69,12 @@ spl_cv_signal(kcondvar_t *cvp)
 void
 spl_cv_broadcast(kcondvar_t *cvp)
 {
-	(void) cvp;
+	if (cvp->initialised != CONDVAR_INIT)
+		panic("%s: not initialised", __func__);
     //wakeup((caddr_t)cvp);
 	//DbgBreakPoint();
-	KeSetEvent(cvp, 0, FALSE);
-	KeClearEvent(cvp);
+	KeSetEvent(&cvp->kevent, 0, FALSE);
+//	KeClearEvent(&cvp->kevent);
 }
 
 
@@ -78,7 +85,8 @@ spl_cv_broadcast(kcondvar_t *cvp)
 void
 spl_cv_wait(kcondvar_t *cvp, kmutex_t *mp, int flags, const char *msg)
 {
-	(void) flags; (void) cvp;
+	if (cvp->initialised != CONDVAR_INIT)
+		panic("%s: not initialised", __func__);
 
     if (msg != NULL && msg[0] == '&')
         ++msg;  /* skip over '&' prefixes */
@@ -91,8 +99,10 @@ spl_cv_wait(kcondvar_t *cvp, kmutex_t *mp, int flags, const char *msg)
 	//DbgBreakPoint();
 	//(void) KeWaitForSingleObject(&mp->m_lock, Executive, KernelMode, FALSE, NULL);
 	mutex_exit(mp);
-	(void)KeWaitForSingleObject(cvp, Executive, KernelMode, FALSE, NULL);
+	(void)KeWaitForSingleObject(&cvp->kevent, Executive, KernelMode, FALSE, NULL);
 	mutex_enter(mp);
+
+	KeClearEvent(&cvp->kevent);
 	//	mp->m_owner = current_thread();
 #ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, gethrestime_sec());
@@ -115,7 +125,10 @@ spl_cv_timedwait(kcondvar_t *cvp, kmutex_t *mp, clock_t tim, int flags,
 	LARGE_INTEGER timeout;
 	(void) cvp;	(void) flags;
 
-    if (msg != NULL && msg[0] == '&')
+	if (cvp->initialised != CONDVAR_INIT)
+		panic("%s: not initialised", __func__);
+	
+	if (msg != NULL && msg[0] == '&')
         ++msg;  /* skip over '&' prefixes */
 
 	timenow = zfs_lbolt();
@@ -140,13 +153,14 @@ spl_cv_timedwait(kcondvar_t *cvp, kmutex_t *mp, clock_t tim, int flags,
     //result = msleep(cvp, (lck_mtx_t *)&mp->m_lock, flags, msg, &ts);
 
 	mutex_exit(mp);
-	result = KeWaitForSingleObject(cvp, Executive, KernelMode,
+	result = KeWaitForSingleObject(&cvp->kevent, Executive, KernelMode,
 		FALSE, &timeout);
 	mutex_enter(mp);
 	//mp->m_owner = current_thread();
 #ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, gethrestime_sec());
 #endif
+	KeClearEvent(&cvp->kevent);
 
 	//return (result == EWOULDBLOCK ? -1 : 0);
 	return (result == STATUS_TIMEOUT ? -1 : 0);
@@ -163,9 +177,11 @@ cv_timedwait_hires(kcondvar_t *cvp, kmutex_t *mp, hrtime_t tim,
 {
     int result;
 	LARGE_INTEGER timeout;
-	(void) cvp;	(void) flag;
 
-    if (res > 1) {
+	if (cvp->initialised != CONDVAR_INIT)
+		panic("%s: not initialised", __func__);
+	
+	if (res > 1) {
         /*
          * Align expiration to the specified resolution.
          */
@@ -187,13 +203,14 @@ cv_timedwait_hires(kcondvar_t *cvp, kmutex_t *mp, hrtime_t tim,
     //mp->m_owner = NULL;
     //result = msleep(cvp, (lck_mtx_t *)&mp->m_lock, PRIBIO, "cv_timedwait_hires", &ts);
 	mutex_exit(mp);
-	result = KeWaitForSingleObject(cvp, Executive, KernelMode,
+	result = KeWaitForSingleObject(&cvp->kevent, Executive, KernelMode,
 		FALSE, &timeout);
 	mutex_enter(mp);
 	//mp->m_owner = current_thread();
 #ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, gethrestime_sec());
 #endif
+	KeClearEvent(&cvp->kevent);
 
 	// return (result == EWOULDBLOCK ? -1 : 0);
 	return (result == STATUS_TIMEOUT ? -1 : 0);

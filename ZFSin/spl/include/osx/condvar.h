@@ -12,8 +12,8 @@ typedef enum {
 
 
 struct cv {
-	KEVENT cv;
-//	uint64_t   pad;
+	KEVENT kevent; 
+	int initialised;
 };
 
 typedef struct cv  kcondvar_t;
