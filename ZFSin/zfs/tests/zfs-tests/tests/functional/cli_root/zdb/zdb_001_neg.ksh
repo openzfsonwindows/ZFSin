@@ -61,8 +61,6 @@ set -A args "create" "add" "destroy" "import fakepool" \
     "-D" "-E" "-G" "-H" "-I" "-J" "-K" "-M" \
     "-N" "-Q" "-R" "-S" "-T" "-V" "-W" "-Y"
 
-#    "-N" "-Q" "-R" "-S" "-T" "-V" "-W" "-Y" "-Z"
-
 log_assert "Execute zdb using invalid parameters."
 
 typeset -i i=0

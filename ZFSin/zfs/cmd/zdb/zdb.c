@@ -120,20 +120,21 @@ static void
 usage(void)
 {
 	(void) fprintf(stderr,
-	    "Usage:\t%s [-AbcdDFGhiLMPsvX] [-e [-p <path> ...]] "
+	    "Usage:\t%s [-AbcdDFGhiLMPsvX] [-e [-V] [-p <path> ...]] "
 	    "[-I <inflight I/Os>]\n"
 	    "\t\t[-o <var>=<value>]... [-t <txg>] [-U <cache>] [-x <dumpdir>]\n"
 	    "\t\t[<poolname> [<object> ...]]\n"
-	    "\t%s [-AdiPv] [-e [-p <path> ...]] [-U <cache>] <dataset> "
+	    "\t%s [-AdiPv] [-e [-V] [-p <path> ...]] [-U <cache>] <dataset> "
 	    "[<object> ...]\n"
 	    "\t%s -C [-A] [-U <cache>]\n"
 	    "\t%s -l [-Aqu] <device>\n"
-	    "\t%s -m [-AFLPX] [-e [-p <path> ...]] [-t <txg>] [-U <cache>]\n"
-	    "\t\t<poolname> [<vdev> [<metaslab> ...]]\n"
+	    "\t%s -m [-AFLPX] [-e [-V] [-p <path> ...]] [-t <txg>] "
+	    "[-U <cache>]\n\t\t<poolname> [<vdev> [<metaslab> ...]]\n"
 	    "\t%s -O <dataset> <path>\n"
-	    "\t%s -R [-A] [-e [-p <path> ...]] [-U <cache>]\n"
+	    "\t%s -R [-A] [-e [-V] [-p <path> ...]] [-U <cache>]\n"
 	    "\t\t<poolname> <vdev>:<offset>:<size>[:<flags>]\n"
-	    "\t%s -S [-AP] [-e [-p <path> ...]] [-U <cache>] <poolname>\n\n",
+	    "\t%s -S [-AP] [-e [-V] [-p <path> ...]] [-U <cache>] "
+	    "<poolname>\n\n",
 	    cmdname, cmdname, cmdname, cmdname, cmdname, cmdname, cmdname,
 	    cmdname);
 
@@ -195,6 +196,7 @@ usage(void)
 	(void) fprintf(stderr, "        -u uberblock\n");
 	(void) fprintf(stderr, "        -U <cachefile_path> -- use alternate "
 	    "cachefile\n");
+	(void) fprintf(stderr, "        -V do verbatim import\n");
 	(void) fprintf(stderr, "        -x <dumpdir> -- "
 	    "dump all read blocks into specified directory\n");
 	(void) fprintf(stderr, "        -X attempt extreme rewind (does not "
@@ -3833,7 +3835,7 @@ main(int argc, char **argv)
 		spa_config_path = spa_config_path_env;
 
 	while ((c = getopt(argc, argv,
-	    "AbcCdDeFGhiI:lLmMo:Op:PqRsSt:uU:vX")) != -1) {
+	    "AbcCdDeFGhiI:lLmMo:Op:PqRsSt:uU:vVX")) != -1) {
 		switch (c) {
 		case 'b':
 		case 'c':
