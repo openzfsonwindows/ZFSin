@@ -53,7 +53,7 @@ uint_t zfs_dbuf_evict_key;
 // FIXME
 #define noinline
 #undef ZFS_DEBUG
-
+#pragma pack(8)
 struct dbuf_hold_impl_data {
 	/* Function arguments */
 	dnode_t *dh_dn;
@@ -72,6 +72,7 @@ struct dbuf_hold_impl_data {
 	arc_buf_contents_t dh_type;
 	int dh_depth;
 };
+#pragma pack(0)
 
 static void __dbuf_hold_impl_init(struct dbuf_hold_impl_data *dh,
     dnode_t *dn, uint8_t level, uint64_t blkid, boolean_t fail_sparse,

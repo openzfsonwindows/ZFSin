@@ -70,6 +70,7 @@ typedef enum zfeature_flags {
 	ZFEATURE_FLAG_PER_DATASET =             (1 << 3)
 } zfeature_flags_t;
 
+#pragma pack(4)
 typedef struct zfeature_info {
 	spa_feature_t fi_feature;
 	const char *fi_uname;	/* User-facing feature name */
@@ -79,6 +80,7 @@ typedef struct zfeature_info {
 	/* array of dependencies, terminated by SPA_FEATURE_NONE */
 	const spa_feature_t *fi_depends;
 } zfeature_info_t;
+#pragma pack()
 
 typedef int (zfeature_func_t)(zfeature_info_t *, void *);
 

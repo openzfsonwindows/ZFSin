@@ -57,6 +57,8 @@ struct dmu_tx;
 
 #define	OBJSET_FLAG_USERACCOUNTING_COMPLETE	(1ULL<<0)
 
+//#pragma pack(4)  // Definitely needed or "os_lock" wanders..
+
 typedef struct objset_phys {
 	dnode_phys_t os_meta_dnode;
 	zil_header_t os_zil_header;
@@ -130,6 +132,8 @@ struct objset {
 	void *os_user_ptr;
 	sa_os_t *os_sa;
 };
+//#pragma pack()
+
 
 #define	DMU_META_OBJSET		0
 #define	DMU_META_DNODE_OBJECT	0

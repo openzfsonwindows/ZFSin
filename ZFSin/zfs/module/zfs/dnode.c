@@ -1248,7 +1248,6 @@ dnode_rele_and_unlock(dnode_t *dn, void *tag)
 	dnode_handle_t *dnh = dn->dn_handle;
 
 	refs = refcount_remove(&dn->dn_holds, tag);
-    dprintf("dnode: -dn_hold %d\n", refcount_count(&dn->dn_holds));
 	mutex_exit(&dn->dn_mtx);
 
 	/*

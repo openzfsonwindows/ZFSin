@@ -440,7 +440,7 @@ typedef struct zfs_cmd {
     int             zc_ioc_error; /* ioctl error value */
     uint64_t        zc_dev;      /* OSX doesn't have ddi_driver_major*/
 } zfs_cmd_t;
-#pragma push()
+#pragma pack()
 
 /*
  * /dev/zfs ioctl numbers.

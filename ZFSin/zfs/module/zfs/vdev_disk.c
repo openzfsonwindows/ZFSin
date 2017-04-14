@@ -29,6 +29,10 @@
 #include <sys/fs/zfs.h>
 #include <sys/zio.h>
 
+#include <ntdddisk.h>
+#include <Ntddstor.h>
+
+
 /*
  * Virtual device vector for disks.
  */
@@ -42,10 +46,6 @@ vdev_disk_alloc(vdev_t *vd)
 	vdev_disk_t *dvd;
 
 	dvd = vd->vdev_tsd = kmem_zalloc(sizeof (vdev_disk_t), KM_SLEEP);
-#ifdef _WIN32
-/* XXX Only alloc that needs zeroed, all others are properly initialized */
-	bzero(dvd, sizeof (vdev_disk_t));
-#endif
 
 }
 
@@ -71,87 +71,61 @@ vdev_disk_free(vdev_t *vd)
 #define        VDEV_DEBUG(...) /* Nothing... */
 #endif
 
-NTSTATUS
-NTAPI
-CompletionRoutine(
-	IN PDEVICE_OBJECT  DeviceObject,
-	IN PIRP  Irp,
-	IN PVOID  Context)
-{
-	if (Irp->PendingReturned == TRUE)
-	{
-		KeSetEvent((PKEVENT)Context, IO_NO_INCREMENT, FALSE);
-	}
-	return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-
-int kernel_ioctl(HANDLE h, long cmd, void *inbuf, uint32_t inlen,
+// If we call this function, not only does it return all zeros, but we crash
+// much later on trying to release a mutex. Why?
+int kernel_ioctl(vdev_disk_t *dvd, long cmd, void *inbuf, uint32_t inlen,
 	void *outbuf, uint32_t outlen)
 {
 	NTSTATUS status;
-	PIRP irp;
-	PIO_STACK_LOCATION irpStack;
-	KEVENT event;
 	PFILE_OBJECT        FileObject;
 	PDEVICE_OBJECT      DeviceObject;
 
-
 	dprintf("%s: trying to send kernel ioctl %x\n", __func__, cmd);
-	// Convert HANDLE to FileObject
-	status = ObReferenceObjectByHandle(
-		h,
+
+	DISK_GEOMETRY DiskGeometry;
+	PARTITION_INFORMATION PartitionInfo;
+	IO_STATUS_BLOCK IoStatusBlock;
+	KEVENT Event;
+	PIRP Irp;
+	NTSTATUS Status;
+	ULONG Remainder;
+	PAGED_CODE();
+
+	/* Only needed for disks */
+	dprintf("%s: device type %d\n", __func__, dvd->vd_DeviceObject->DeviceType);
+
+	/* Build the information IRP */
+	KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
+	Irp = IoBuildDeviceIoControlRequest(IOCTL_DISK_GET_DRIVE_GEOMETRY,
+		dvd->vd_DeviceObject,
+		NULL,
 		0,
-		*IoFileObjectType,
-		KernelMode,
-		&FileObject,
-		NULL
-	);
-	if (status != STATUS_SUCCESS)
-		return -1;
+		&DiskGeometry,
+		sizeof(DISK_GEOMETRY),
+		FALSE,
+		&Event,
+		&IoStatusBlock);
+	if (!Irp) return FALSE;
 
-	// Convert FileObject to DeviceObject
-	DeviceObject = IoGetRelatedDeviceObject(FileObject);
-	ObDereferenceObject(FileObject);
+	/* Override verification */
+	IoGetNextIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
 
-	irp = IoAllocateIrp(DeviceObject->StackSize, FALSE);
-
-	if (irp == NULL) {
-		return STATUS_INSUFFICIENT_RESOURCES;
+	/* Do the request */
+	Status = IoCallDriver(dvd->vd_DeviceObject, Irp);
+	if (Status == STATUS_PENDING)
+	{
+		/* Wait for completion */
+		KeWaitForSingleObject(&Event,
+			Executive,
+			KernelMode,
+			FALSE,
+			NULL);
+		Status = IoStatusBlock.Status;
 	}
+	dprintf("%s: BPS %u\n", __func__, DiskGeometry.BytesPerSector);
 
-	irpStack = IoGetNextIrpStackLocation(irp);
-
-	irpStack->MajorFunction = IRP_MJ_DEVICE_CONTROL;
-
-	irpStack->Parameters.DeviceIoControl.IoControlCode =
-		cmd;
-	irpStack->Parameters.DeviceIoControl.OutputBufferLength =
-		outlen;
-
-	irp->AssociatedIrp.SystemBuffer = inbuf;
-
-	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
-
-	IoSetCompletionRoutine(irp,
-		CompletionRoutine,
-		&event,
-		TRUE,
-		TRUE,
-		TRUE);
-
-	status = IoCallDriver(DeviceObject, irp);
-	dprintf("%s: return %d\n", __func__, status);
-	if (status == STATUS_PENDING) {
-		KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
-		status = irp->IoStatus.Status;
-	}
-
-	IoFreeIrp(irp);
-
-	return status;
+	return 0;
 }
-
 
 static int
 vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
@@ -160,16 +134,17 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	spa_t *spa = vd->vdev_spa;
 	vdev_disk_t *dvd = vd->vdev_tsd;
 	int error = EINVAL;
-	uint64_t capacity = 0, blksz = 0, pbsize;
+	uint64_t capacity = 0, blksz = 0, pbsize = 0;
 	int isssd;
 
-	dprintf("%s: open of '%s'", vd->vdev_path);
+	PAGED_CODE();
 
+	dprintf("%s: open of '%s'\n", __func__, vd->vdev_path);
 	/*
 	* We must have a pathname, and it must be absolute.
 	* It can also start with # for partition encoded paths
 	*/
-	if (vd->vdev_path == NULL || vd->vdev_path[0] != '/' || vd->vdev_path[0] != '#') {
+	if (vd->vdev_path == NULL || (vd->vdev_path[0] != '/' && vd->vdev_path[0] != '#')) {
 		vd->vdev_stat.vs_aux = VDEV_AUX_BAD_LABEL;
 		return (SET_ERROR(EINVAL));
 	}
@@ -226,6 +201,13 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 
 	}
 
+	// Apparently in Userland it is "\\?\" but in
+	// kernel has to be "\??\" - is there not a name that works in both?
+	if (!strncmp("\\\\?\\", FileName, 4)) {
+		FileName[1] = '?';
+	}
+
+	dprintf("%s: opening '%s'\n", __func__, FileName);
 
 	ANSI_STRING         AnsiFilespec;
 	UNICODE_STRING      UnicodeFilespec;
@@ -258,17 +240,18 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	ObjectAttributes.ObjectName = &UnicodeFilespec;
 	ObjectAttributes.SecurityDescriptor = NULL;
 	ObjectAttributes.SecurityQualityOfService = NULL;
+	IO_STATUS_BLOCK iostatus;
 
 //DbgBreakPoint();
 	ntstatus = ZwCreateFile(&dvd->vd_lh,
-		spa_mode(spa) == FREAD ? GENERIC_READ : GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE,
+		spa_mode(spa) == FREAD ? GENERIC_READ | SYNCHRONIZE : GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE,
 		&ObjectAttributes,
-		NULL,
+		&iostatus,
 		0,
 		FILE_ATTRIBUTE_NORMAL,
 		FILE_SHARE_WRITE | FILE_SHARE_READ,
 		FILE_OPEN,
-		spa_mode(spa) == FREAD ? 0 : FILE_NO_INTERMEDIATE_BUFFERING,
+		FILE_SYNCHRONOUS_IO_NONALERT | (spa_mode(spa) == FREAD ? 0 : FILE_NO_INTERMEDIATE_BUFFERING),
 		NULL,
 		0);
 
@@ -290,56 +273,97 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 		return (error);
 	}
 
+	// Since we will use DeviceObject and FileObject to do ioctl and IO
+	// we grab them now and lock them in place.
+	// Convert HANDLE to FileObject
+	PFILE_OBJECT        FileObject;
+	PDEVICE_OBJECT      DeviceObject;
+	NTSTATUS status;
+
+	// This adds a reference to FileObject
+	status = ObReferenceObjectByHandle(
+		dvd->vd_lh,  // fixme, keep this in dvd
+		0,
+		*IoFileObjectType,
+		KernelMode,
+		&FileObject,
+		NULL
+	);
+	if (status != STATUS_SUCCESS) {
+		ZwClose(dvd->vd_lh);
+		dvd->vd_lh = NULL;
+		vd->vdev_stat.vs_aux = VDEV_AUX_OPEN_FAILED;
+		return EIO;
+	}
+
+	// Convert FileObject to DeviceObject
+	DeviceObject = IoGetRelatedDeviceObject(FileObject);
+
+	// Grab a reference to DeviceObject
+	ObReferenceObject(DeviceObject);
+
+	dvd->vd_FileObject = FileObject;
+	dvd->vd_DeviceObject = DeviceObject;
+
+
 skip_open:
 
-	*max_psize = *psize;
-
+	// kernel_ioctl() corrupts the stack, so hardcode this for now
+#if 0
 	/*
 	* Determine the actual size of the device.
 	*/
 	if (vd->vdev_win_length != 0) {
 		psize = vd->vdev_win_length;
 	} else {
-#include <ntdddisk.h>
-#include <Ntddstor.h>
-		/*
-		* Determine the device's minimum transfer size.
-		* If the ioctl isn't supported, assume DEV_BSIZE.
-		*/
-		// fill in capacity, blksz, pbsize
-		STORAGE_PROPERTY_QUERY storageQuery;
-		memset(&storageQuery, 0, sizeof(STORAGE_PROPERTY_QUERY));
-		storageQuery.PropertyId = StorageAccessAlignmentProperty;
-		storageQuery.QueryType = PropertyStandardQuery;
-
-		STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR diskAlignment = { 0 };
-		memset(&diskAlignment, 0, sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR));
-		DWORD outsize;
-
-
-		error = kernel_ioctl(dvd->vd_lh, IOCTL_STORAGE_QUERY_PROPERTY,
-			&storageQuery, sizeof(STORAGE_PROPERTY_QUERY),
-			&diskAlignment, sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR));
-
-		if (error == 0) {
-			blksz = diskAlignment.BytesPerLogicalSector;
-			pbsize = diskAlignment.BytesPerPhysicalSector;
-		} else {
-			blksz = pbsize = DEV_BSIZE;
-		}
-
-		if (vd->vdev_win_length > 0) {
-			capacity = vd->vdev_win_length;
-		} else {
-			DISK_GEOMETRY_EX geometry_ex;
-			DWORD len;
-			error = kernel_ioctl(dvd->vd_lh, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
-				NULL, 0,
-				&geometry_ex, sizeof(geometry_ex));
-			if (error == 0)
-				capacity = geometry_ex.DiskSize.QuadPart;
-		}
+		DISK_GEOMETRY_EX geometry_ex;
+		DWORD len;
+		error = kernel_ioctl(dvd->vd_lh, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
+			NULL, 0,
+			&geometry_ex, sizeof(geometry_ex));
+		if (error == 0)
+			capacity = geometry_ex.DiskSize.QuadPart;
 	}
+	/*
+	* Determine the device's minimum transfer size.
+	* If the ioctl isn't supported, assume DEV_BSIZE.
+	*/
+	// fill in capacity, blksz, pbsize
+	STORAGE_PROPERTY_QUERY storageQuery;
+	memset(&storageQuery, 0, sizeof(STORAGE_PROPERTY_QUERY));
+	storageQuery.PropertyId = StorageAccessAlignmentProperty;
+	storageQuery.QueryType = PropertyStandardQuery;
+
+	STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR diskAlignment = { 0 };
+	memset(&diskAlignment, 0, sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR));
+	DWORD outsize;
+
+	error = kernel_ioctl(dvd, IOCTL_STORAGE_QUERY_PROPERTY,
+		&storageQuery, sizeof(STORAGE_PROPERTY_QUERY),
+		&diskAlignment, sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR));
+
+	if (error == 0) {
+		blksz = diskAlignment.BytesPerLogicalSector;
+		pbsize = diskAlignment.BytesPerPhysicalSector;
+		if (!blksz) blksz = DEV_BSIZE;
+		if (!pbsize) pbsize = DEV_BSIZE;
+	} else {
+		blksz = pbsize = DEV_BSIZE;
+	}
+
+#endif // broken ioctl, see above
+
+	// Set psize to the size of the partition. For now, assume virtual
+	// since ioctls do not seem to work.
+	if (vd->vdev_win_length != 0) 
+		*psize = vd->vdev_win_length;
+
+	// Set max_psize to the biggest it can be, expanding..
+	*max_psize = *psize;
+
+
+	if (!blksz) blksz = DEV_BSIZE;
+	if (!pbsize) pbsize = DEV_BSIZE;
 
 	*ashift = highbit64(MAX(pbsize, SPA_MINBLOCKSIZE)) - 1;
 
@@ -360,26 +384,6 @@ skip_open:
 	return (0);
 }
 
-#if 0
-/*
- * It appears on export/reboot, iokit can hold a lock, then call our
- * termination handler, and we end up locking-against-ourselves inside
- * IOKit. We are then forced to make the vnode_close() call be async.
- */
-static void vdev_disk_close_thread(void *arg)
-{
-	struct vnode *vp = arg;
-
-
-
-	(void) vnode_close(vp, 0,
-					   spl_vfs_context_kernel());
-	thread_exit();
-}
-
-/* Not static so zfs_osx.cpp can call it on device removal */
-void
-#endif
 
 static void
 vdev_disk_close(vdev_t *vd)
@@ -399,9 +403,18 @@ vdev_disk_close(vdev_t *vd)
 	if (dvd->vd_ldi_offline)
 		return;
 
-	if (dvd->vd_lh != NULL)
+	if (dvd->vd_lh != NULL) {
+		dprintf("%s: \n", __func__);
+
+		// Release our holds
+		ObDereferenceObject(dvd->vd_FileObject);
+		ObDereferenceObject(dvd->vd_DeviceObject);
+		// Close file
 		ZwClose(dvd->vd_lh);
+	}
 	dvd->vd_lh = NULL;
+	dvd->vd_FileObject = NULL;
+	dvd->vd_DeviceObject = NULL;
 
 	vdev_disk_free(vd);
 }
@@ -412,6 +425,8 @@ vdev_disk_physio(vdev_t *vd, caddr_t data,
 {
 	vdev_disk_t *dvd = vd->vdev_tsd;
 
+	dprintf("%s: \n", __func__);
+
 	/*
 	 * If the vdev is closed, it's likely in the REMOVED or FAULTED state.
 	 * Nothing to be done here but return failure.
@@ -421,14 +436,23 @@ vdev_disk_physio(vdev_t *vd, caddr_t data,
 
 	ASSERT(vd->vdev_ops == &vdev_disk_ops);
 
+	return EIO;
 }
 
 
+
+/*
+* IO has finished callback, in Windows this is called as a different
+* IRQ level, so we can practically do nothing here. (Can't call mutex
+* locking, like from kmem_free())
+*/
 static void
-vdev_disk_io_intr(buf_t *bp)
+//vdev_disk_io_intr(buf_t *bp)
+vdev_disk_io_intr(PDEVICE_OBJECT DeviceObject, PIRP irp, PVOID Context)
 {
-	vdev_buf_t *vb = (vdev_buf_t *)bp;
-	zio_t *zio = vb->vb_io;
+	zio_t *zio = Context;
+
+	dprintf("%s: done\n", __func__);
 
 	/*
 	 * The rest of the zio stack only deals with EIO, ECKSUM, and ENXIO.
@@ -439,11 +463,26 @@ vdev_disk_io_intr(buf_t *bp)
 
 //	if (zio->io_error == 0 && bp->b_resid != 0)
 //		zio->io_error = SET_ERROR(EIO);
-
-	kmem_free(vb, sizeof (vdev_buf_t));
+	zio->io_error = (irp->IoStatus.Status != 0 ? EIO : 0);
+	if (irp->IoStatus.Information != zio->io_size)
+		dprintf("%s: size mismatch 0x%llx != 0x%llx\n",
+			irp->IoStatus.Information, zio->io_size);
 
 	zio_delay_interrupt(zio);
 }
+
+IO_COMPLETION_ROUTINE vdev_disk_io_intrxxx;
+
+static NTSTATUS
+vdev_disk_io_intrxxx(PDEVICE_OBJECT DeviceObject, PIRP irp, PVOID Context)
+{
+	KEVENT *kevent = Context;
+
+	dprintf("%s: event\n", __func__);
+	KeSetEvent(kevent, 0, FALSE);
+	return STATUS_MORE_PROCESSING_REQUIRED;
+}
+
 
 static void
 vdev_disk_ioctl_free(zio_t *zio)
@@ -471,10 +510,11 @@ vdev_disk_io_start(zio_t *zio)
 {
 	vdev_t *vd = zio->io_vd;
 	vdev_disk_t *dvd = vd->vdev_tsd;
-	vdev_buf_t *vb;
 	struct dk_callback *dkc;
 	buf_t *bp;
 	int flags, error = 0;
+
+	dprintf("%s: 0x%llx 0x%llx \n", __func__, zio->io_offset, zio->io_size);
 
 	/*
 	 * If the vdev is closed, it's likely in the REMOVED or FAULTED state.
@@ -559,30 +599,101 @@ vdev_disk_io_start(zio_t *zio)
 	ASSERT(zio->io_type == ZIO_TYPE_READ || zio->io_type == ZIO_TYPE_WRITE);
 
 	/* Stop OSX from also caching our data */
-	flags |= B_NOCACHE | B_PASSIVE; // smd: also do B_PASSIVE for anti throttling test
+	flags |= B_NOCACHE | B_PASSIVE; // Windowsify me
 
 	zio->io_target_timestamp = zio_handle_io_delay(zio);
 
-	vb = kmem_alloc(sizeof (vdev_buf_t), KM_SLEEP);
+	/*
+	* If we use vdev_disk_io_intr() as the IoSetCompletionRoutine() we BSOD as
+	* the IoSetCompletionRoutine() is called in higher priority, and vdev_disk_io_intr()
+	* calls zio_taskq_dispatch() which uses mutex calls, and that is not allowed at
+	* that IRQ level. So for now we block waiting on IoSetCompletionRoutine() setting
+	* and Event, then we manually call vdev_disk_io_intr().
+	* We should change this to call zio_taskq_dispatch() before IO, but to a new
+	* taskq, which immediately blocks waiting for Event to be set. That way we
+	* as async, and not blocking.
+	*/
 
-	vb->vb_io = zio;
-	bp = &vb->vb_buf;
-
-	ASSERT(bp != NULL);
 	ASSERT(zio->io_data != NULL);
 	ASSERT(zio->io_size != 0);
 
-	//bioinit(bp);
-//	bp->b_flags = B_BUSY | flags;
-//	if (!(zio->io_flags & (ZIO_FLAG_IO_RETRY | ZIO_FLAG_TRYHARD)))
-//		bp->b_flags |= B_FAILFAST;
-//	bp->b_bcount = zio->io_size;
-//	bp->b_un.b_addr = zio->io_data;
-//	bp->b_lblkno = lbtodb(zio->io_offset);/
-//	bp->b_bufsize = zio->io_size;
-//	bp->b_iodone = (int (*)())vdev_disk_io_intr;
+	NTSTATUS status;
+	PIRP irp = NULL;
+	PIO_STACK_LOCATION irpStack = NULL;
+	KEVENT completionEvent;
 
+	IO_STATUS_BLOCK IoStatusBlock;
+	LARGE_INTEGER offset;
 
+	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
+
+	if (flags & B_READ) {
+		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ,
+			dvd->vd_DeviceObject,
+			zio->io_data,
+			(ULONG)zio->io_size,
+			&offset,
+			&IoStatusBlock);
+	} else if (flags & B_WRITE) {
+			irp = IoBuildAsynchronousFsdRequest(IRP_MJ_WRITE,
+			dvd->vd_DeviceObject,
+			zio->io_data,
+			(ULONG)zio->io_size,
+			&offset,
+			&IoStatusBlock);
+	}
+	
+	if (!irp) {
+		zio->io_error = EIO;
+		zio_interrupt(zio);
+		return;
+	}
+
+	KeInitializeEvent(&completionEvent, NotificationEvent, FALSE); 
+
+	irpStack = IoGetNextIrpStackLocation(irp);
+	if (irpStack == 0xffffffffffffffff)
+		panic("%s: bad irpStack\n", __func__);
+
+	irpStack->Flags |= SL_OVERRIDE_VERIFY_VOLUME; // SetFlag(IoStackLocation->Flags, SL_OVERRIDE_VERIFY_VOLUME);
+												  //SetFlag(ReadIrp->Flags, IRP_NOCACHE);
+	irpStack->FileObject = dvd->vd_FileObject;
+
+	IoSetCompletionRoutine(irp,
+		vdev_disk_io_intrxxx,
+		&completionEvent, // "Context" in vdev_disk_io_intr()
+		TRUE,
+		TRUE,
+		TRUE);
+
+	status = IoCallDriver(dvd->vd_DeviceObject, irp);
+
+	dprintf("%s: IoCallDriver %d\n", __func__, status);
+
+	switch (status) {
+	case STATUS_PENDING:
+		KeWaitForSingleObject(&completionEvent, Executive, KernelMode, FALSE, NULL); // SYNC
+		break;
+	case STATUS_SUCCESS:
+		break;
+	default:
+		break;
+	}
+
+	// Sets zio->io_error = irp->IoStatus.Status
+	vdev_disk_io_intr(dvd->vd_DeviceObject, irp, zio);
+
+	// Release irp
+	if (irp) {
+		while (irp->MdlAddress != NULL) {
+				PMDL NextMdl;
+				NextMdl = irp->MdlAddress->Next;
+				MmUnlockPages(irp->MdlAddress);
+				IoFreeMdl(irp->MdlAddress);
+				irp->MdlAddress = NextMdl;
+		}
+		IoFreeIrp(irp);
+	}
 }
 
 static void

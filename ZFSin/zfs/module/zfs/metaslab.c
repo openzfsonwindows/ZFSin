@@ -607,7 +607,9 @@ metaslab_group_destroy(metaslab_group_t *mg)
 	 * because we're done, and possibly removing the vdev.
 	 */
 	ASSERT(mg->mg_activation_count <= 0);
-
+#ifdef _KERNEL
+	//DbgBreakPoint();
+#endif
 	taskq_destroy(mg->mg_taskq);
 	avl_destroy(&mg->mg_metaslab_tree);
 	mutex_destroy(&mg->mg_lock);

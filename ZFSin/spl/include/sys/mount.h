@@ -44,7 +44,7 @@
 // Undo this OSX legacy
 typedef struct fsid { int32_t val[2]; } fsid_t;
 
-#pragma pack(4)
+//#pragma pack(4)
 
 struct vfsstatfs {
 	uint32_t        f_bsize;        /* fundamental file system block size */
@@ -65,7 +65,7 @@ struct vfsstatfs {
 	void            *f_reserved[2];         /* For future use == 0 */
 };
 
-#pragma pack()
+//#pragma pack()
 
 
 

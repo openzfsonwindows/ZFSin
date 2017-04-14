@@ -30,6 +30,8 @@ typedef struct multilist multilist_t;
 typedef struct multilist_sublist multilist_sublist_t;
 typedef unsigned int multilist_sublist_index_func_t(multilist_t *, void *);
 
+//#pragma pack(4)
+
 struct multilist_sublist {
 	/*
 	 * The mutex used internally to implement thread safe insertions
@@ -71,6 +73,9 @@ struct multilist {
 	 */
 	multilist_sublist_index_func_t	*ml_index_func;
 };
+
+//#pragma pack()
+
 
 void multilist_destroy(multilist_t *);
 void multilist_create(multilist_t *, size_t, size_t, unsigned int,

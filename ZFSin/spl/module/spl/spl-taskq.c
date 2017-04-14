@@ -2063,7 +2063,7 @@ taskq_destroy(taskq_t *tq)
 	cv_broadcast(&tq->tq_exit_cv);
 
 	while (tq->tq_nthreads != 0)
-		cv_wait(&tq->tq_wait_cv, &tq->tq_lock);
+		cv_wait(&tq->tq_wait_cv, &tq->tq_lock);  // this crashes, sometimes.
 
 	if (tq->tq_nthreads_max != 1)
 		kmem_free(tq->tq_threadlist, sizeof (kthread_t *) *

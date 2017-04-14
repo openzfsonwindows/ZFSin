@@ -38,6 +38,8 @@ typedef struct vdev_disk {
 	list_t		vd_ldi_cbs;
 	boolean_t	vd_ldi_offline;
 	HANDLE vd_lh;
+	PFILE_OBJECT vd_FileObject;
+	PDEVICE_OBJECT vd_DeviceObject;
 } vdev_disk_t;
 
 /*

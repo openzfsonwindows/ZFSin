@@ -47,7 +47,7 @@
  */
 
 //typedef struct list_head list_node_t;
-
+//#pragma pack(4)
 typedef struct list_node {
     struct list_node *list_next;
     struct list_node *list_prev;
@@ -60,6 +60,7 @@ typedef struct list {
 	uint32_t list_offset;
 	list_node_t list_head;
 } list_t;
+//#pragma pack()
 
 void list_create(list_t *, uint32_t, uint32_t);
 void list_destroy(list_t *);
@@ -82,8 +83,10 @@ int list_is_empty(list_t *);
 #define LIST_POISON1 NULL
 #define LIST_POISON2 NULL
 
-#define	list_d2l(a, obj) ((list_node_t *)(((char *)obj) + (a)->list_offset))
-#define	list_object(a, node) ((void *)(((char *)node) - (a)->list_offset))
+//#define	list_d2l(a, obj) ((list_node_t *)(((char *)obj) + (a)->list_offset))
+//#define	list_object(a, node) ((void *)(((char *)node) - (a)->list_offset))
+#define	list_d2l(a, obj) ((list_node_t *)(((uint64_t)obj) + (uint64_t)(a)->list_offset))
+#define	list_object(a, node) ((void *)(((uint64_t)node) - (uint64_t)(a)->list_offset))
 #define	list_empty(a) ((a)->list_head.list_next == &(a)->list_head)
 
 

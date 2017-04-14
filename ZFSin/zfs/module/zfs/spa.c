@@ -2537,7 +2537,6 @@ spa_load_impl(spa_t *spa, uint64_t pool_guid, nvlist_t *config,
 	if (error)
 		return (spa_vdev_err(rvd, VDEV_AUX_CORRUPT_DATA, EIO));
 	spa->spa_meta_objset = spa->spa_dsl_pool->dp_meta_objset;
-
 	if (spa_dir_prop(spa, DMU_POOL_CONFIG, &spa->spa_config_object) != 0)
 		return (spa_vdev_err(rvd, VDEV_AUX_CORRUPT_DATA, EIO));
 
@@ -4573,7 +4572,6 @@ spa_tryimport(nvlist_t *tryconfig)
 		spa_add_l2cache(spa, config);
 		spa_config_exit(spa, SCL_CONFIG, FTAG);
 	}
-
 	spa_unload(spa);
 	spa_deactivate(spa);
 	spa_remove(spa);
