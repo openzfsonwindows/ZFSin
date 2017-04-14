@@ -35,6 +35,7 @@
 #include <sys/trace_txg.h>
 
 //#define dprintf printf
+#define dprintf
 
 /*
  * ZFS Transaction Groups

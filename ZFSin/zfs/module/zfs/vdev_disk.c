@@ -514,7 +514,7 @@ vdev_disk_io_start(zio_t *zio)
 	buf_t *bp;
 	int flags, error = 0;
 
-	dprintf("%s: 0x%llx 0x%llx \n", __func__, zio->io_offset, zio->io_size);
+	dprintf("%s: type 0x%x offset 0x%llx len 0x%llx \n", __func__, zio->io_type, zio->io_offset, zio->io_size);
 
 	/*
 	 * If the vdev is closed, it's likely in the REMOVED or FAULTED state.
@@ -562,6 +562,7 @@ vdev_disk_io_start(zio_t *zio)
 				 * and will call vdev_disk_ioctl_done()
 				 * upon completion.
 				 */
+				zio_execute(zio);  // until we have ioctl
 				return;
 			}
 
@@ -634,7 +635,7 @@ vdev_disk_io_start(zio_t *zio)
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
-	} else if (flags & B_WRITE) {
+	} else {
 			irp = IoBuildAsynchronousFsdRequest(IRP_MJ_WRITE,
 			dvd->vd_DeviceObject,
 			zio->io_data,
@@ -668,7 +669,7 @@ vdev_disk_io_start(zio_t *zio)
 
 	status = IoCallDriver(dvd->vd_DeviceObject, irp);
 
-	dprintf("%s: IoCallDriver %d\n", __func__, status);
+	//dprintf("%s: IoCallDriver %d\n", __func__, status);
 
 	switch (status) {
 	case STATUS_PENDING:

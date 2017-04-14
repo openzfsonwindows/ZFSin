@@ -196,7 +196,7 @@ spa_history_log_sync(void *arg, dmu_tx_t *tx)
 	objset_t	*mos = spa->spa_meta_objset;
 	dmu_buf_t	*dbp;
 	spa_history_phys_t *shpp;
-	size_t		reclen;
+	uint32_t		reclen;
 	uint64_t	le_len;
 	char		*record_packed = NULL;
 	int		ret;

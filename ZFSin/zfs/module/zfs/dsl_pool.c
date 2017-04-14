@@ -612,6 +612,18 @@ dsl_pool_sync_done(dsl_pool_t *dp, uint64_t txg)
 int
 dsl_pool_sync_context(dsl_pool_t *dp)
 {
+#ifdef _KERNEL
+	DbgBreakPoint();
+#endif
+	kthread_t *tt = curthread;
+
+	if ((kthread_t *)curthread == dp->dp_tx.tx_sync_thread)
+		return 1;
+
+	if (spa_is_initializing(dp->dp_spa))
+		return 1;
+	return 0;
+
 	return ((kthread_t *)curthread == dp->dp_tx.tx_sync_thread ||
 	    spa_is_initializing(dp->dp_spa));
 }

@@ -972,7 +972,9 @@ vdev_probe_done(zio_t *zio)
 	spa_t *spa = zio->io_spa;
 	vdev_t *vd = zio->io_vd;
 	vdev_probe_stats_t *vps = zio->io_private;
-
+#ifdef _KERNEL
+//	DbgBreakPoint();
+#endif
 	ASSERT(vd->vdev_probe_zio != NULL);
 
 	if (zio->io_type == ZIO_TYPE_READ) {
@@ -1353,7 +1355,9 @@ vdev_open(vdev_t *vd)
 		vd->vdev_asize = asize;
 
 	vdev_set_min_asize(vd);
-
+#ifdef _KERNEL
+//	DbgBreakPoint();
+#endif
 	/*
 	 * Ensure we can issue some IO before declaring the
 	 * vdev open for business.
