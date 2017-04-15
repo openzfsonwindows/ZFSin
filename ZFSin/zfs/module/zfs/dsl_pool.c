@@ -613,11 +613,15 @@ int
 dsl_pool_sync_context(dsl_pool_t *dp)
 {
 #ifdef _KERNEL
-	DbgBreakPoint();
+	//DbgBreakPoint();
 #endif
-	kthread_t *tt = curthread;
+	kthread_t *tt;
+#ifdef _KERNEL
+	HANDLE PsGetCurrentThreadId();
+	tt = PsGetCurrentThreadId();
+#endif
 
-	if ((kthread_t *)curthread == dp->dp_tx.tx_sync_thread)
+	if ((kthread_t *)tt == dp->dp_tx.tx_sync_thread)
 		return 1;
 
 	if (spa_is_initializing(dp->dp_spa))
