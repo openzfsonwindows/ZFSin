@@ -288,6 +288,25 @@ void  zcfree (voidpf opaque, voidpf ptr)
 
 #endif /* SYS16BIT */
 
+#ifdef _KERNEL
+#include <sys/kmem.h>
+voidpf zcalloc(opaque, items, size)
+voidpf opaque;
+unsigned items;
+unsigned size;
+{
+	return kmem_alloc(items * size, KM_SLEEP);
+}
+
+void  zcfree(opaque, ptr)
+voidpf opaque;
+voidpf ptr;
+{
+	kmem_free(ptr, 0);
+}
+#endif
+
+
 
 #ifndef MY_ZCALLOC /* Any system without a special alloc function */
 

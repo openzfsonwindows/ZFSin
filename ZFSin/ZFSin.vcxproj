@@ -144,8 +144,8 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
@@ -153,8 +153,8 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
@@ -195,6 +195,17 @@
     <ClCompile Include="spl\module\spl\spl-vnode.c" />
     <ClCompile Include="spl\module\spl\spl-windows.c" />
     <ClCompile Include="spl\module\spl\spl-xdr.c" />
+    <ClCompile Include="zfs\lib\zlib-1.2.3\adler32.c" />
+    <ClCompile Include="zfs\lib\zlib-1.2.3\compress.c" />
+    <ClCompile Include="zfs\lib\zlib-1.2.3\contrib\masmx64\inffas8664.c" />
+    <ClCompile Include="zfs\lib\zlib-1.2.3\contrib\masmx86\gvmat32c.c" />
+    <ClCompile Include="zfs\lib\zlib-1.2.3\crc32.c" />
+    <ClCompile Include="zfs\lib\zlib-1.2.3\deflate.c" />
+    <ClCompile Include="zfs\lib\zlib-1.2.3\inffast.c" />
+    <ClCompile Include="zfs\lib\zlib-1.2.3\inflate.c" />
+    <ClCompile Include="zfs\lib\zlib-1.2.3\inftrees.c" />
+    <ClCompile Include="zfs\lib\zlib-1.2.3\trees.c" />
+    <ClCompile Include="zfs\lib\zlib-1.2.3\zutil.c" />
     <ClCompile Include="zfs\module\icp\algs\aes\aes_impl.c" />
     <ClCompile Include="zfs\module\icp\algs\aes\aes_modes.c" />
     <ClCompile Include="zfs\module\icp\algs\edonr\edonr.c" />

@@ -86,6 +86,9 @@
     <Filter Include="Source Files\SPL\zlib">
       <UniqueIdentifier>{46a0f593-3a81-470b-8936-c13bd26389a9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="zlib">
+      <UniqueIdentifier>{f68fe6c9-c72b-442b-b9e4-698115df2977}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="ZFSin.inf">
@@ -608,6 +611,39 @@
     </ClCompile>
     <ClCompile Include="zfs\module\zfs\zfs_windows.c">
       <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\lib\zlib-1.2.3\adler32.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\lib\zlib-1.2.3\compress.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\lib\zlib-1.2.3\crc32.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\lib\zlib-1.2.3\contrib\masmx86\gvmat32c.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\lib\zlib-1.2.3\contrib\masmx64\inffas8664.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\lib\zlib-1.2.3\inffast.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\lib\zlib-1.2.3\inftrees.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\lib\zlib-1.2.3\trees.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\lib\zlib-1.2.3\deflate.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\lib\zlib-1.2.3\zutil.c">
+      <Filter>zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\lib\zlib-1.2.3\inflate.c">
+      <Filter>zlib</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

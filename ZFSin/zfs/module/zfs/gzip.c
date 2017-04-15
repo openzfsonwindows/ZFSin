@@ -56,7 +56,7 @@ gzip_compress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 
 	ASSERT(d_len <= s_len);
 
-	if (/*compress_func(d_start, &dstlen, s_start, s_len, n)*/-99 != Z_OK) {
+	if (compress_func(d_start, &dstlen, s_start, s_len, n) != Z_OK) {
 		if (d_len != s_len)
 			return (s_len);
 
@@ -75,7 +75,7 @@ gzip_decompress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 
 	ASSERT(d_len >= s_len);
 
-	if (/*uncompress_func(d_start, &dstlen, s_start, s_len)*/-99 != Z_OK)
+	if (uncompress_func(d_start, &dstlen, s_start, s_len) != Z_OK)
 		return (-1);
 
 	return (0);
