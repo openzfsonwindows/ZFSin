@@ -38,6 +38,10 @@
  */
 
 
+#undef dprintf
+#define dprintf
+
+
 static void vdev_disk_close(vdev_t *);
 
 static void
@@ -440,6 +444,13 @@ vdev_disk_physio(vdev_t *vd, caddr_t data,
 }
 
 
+struct vdev_disk_callback_struct {
+	KEVENT Event;
+	zio_t *zio;
+	PIRP irp;
+};
+typedef struct vdev_disk_callback_struct vd_callback_t;
+
 
 /*
 * IO has finished callback, in Windows this is called as a different
@@ -447,10 +458,14 @@ vdev_disk_physio(vdev_t *vd, caddr_t data,
 * locking, like from kmem_free())
 */
 static void
-//vdev_disk_io_intr(buf_t *bp)
-vdev_disk_io_intr(PDEVICE_OBJECT DeviceObject, PIRP irp, PVOID Context)
+vdev_disk_io_intr(void *Context)
 {
-	zio_t *zio = Context;
+	vd_callback_t *vb = (vd_callback_t *)Context;
+	zio_t *zio = vb->zio;
+	PIRP irp = vb->irp;
+
+	// Wait for IoCompletionRoutine to have been called.
+	KeWaitForSingleObject(&vb->Event, Executive, KernelMode, FALSE, NULL); // SYNC
 
 	dprintf("%s: done\n", __func__);
 
@@ -468,7 +483,25 @@ vdev_disk_io_intr(PDEVICE_OBJECT DeviceObject, PIRP irp, PVOID Context)
 		dprintf("%s: size mismatch 0x%llx != 0x%llx\n",
 			irp->IoStatus.Information, zio->io_size);
 
+	// Release irp
+	if (irp) {
+		while (irp->MdlAddress != NULL) {
+			PMDL NextMdl;
+			NextMdl = irp->MdlAddress->Next;
+			MmUnlockPages(irp->MdlAddress);
+			IoFreeMdl(irp->MdlAddress);
+			irp->MdlAddress = NextMdl;
+		}
+		IoFreeIrp(irp);
+	}
+	irp = NULL;
+
+	kmem_free(vb, sizeof(vd_callback_t));
+	vb = NULL;
+
 	zio_delay_interrupt(zio);
+
+	thread_exit();
 }
 
 IO_COMPLETION_ROUTINE vdev_disk_io_intrxxx;
@@ -621,7 +654,7 @@ vdev_disk_io_start(zio_t *zio)
 	NTSTATUS status;
 	PIRP irp = NULL;
 	PIO_STACK_LOCATION irpStack = NULL;
-	KEVENT completionEvent;
+	//KEVENT completionEvent;
 
 	IO_STATUS_BLOCK IoStatusBlock;
 	LARGE_INTEGER offset;
@@ -650,7 +683,10 @@ vdev_disk_io_start(zio_t *zio)
 		return;
 	}
 
-	KeInitializeEvent(&completionEvent, NotificationEvent, FALSE); 
+	vd_callback_t *vb = (vd_callback_t *)kmem_alloc(sizeof(vd_callback_t), KM_SLEEP);
+	vb->zio = zio;
+	vb->irp = irp;
+	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
 
 	irpStack = IoGetNextIrpStackLocation(irp);
 	if (irpStack == 0xffffffffffffffff)
@@ -662,15 +698,26 @@ vdev_disk_io_start(zio_t *zio)
 
 	IoSetCompletionRoutine(irp,
 		vdev_disk_io_intrxxx,
-		&completionEvent, // "Context" in vdev_disk_io_intr()
-		TRUE,
-		TRUE,
-		TRUE);
+		&vb->Event, // "Context" in vdev_disk_io_intr()
+		TRUE, // On Success
+		TRUE, // On Error
+		TRUE);// On Cancel
+
+	// Start a thread to wait for IO completion, which is signalled
+	// by CompletionRouting setting event.
+	(void)thread_create(NULL, 0, vdev_disk_io_intr, vb, 0, &p0,
+		TS_RUN, minclsyspri);
 
 	status = IoCallDriver(dvd->vd_DeviceObject, irp);
 
 	//dprintf("%s: IoCallDriver %d\n", __func__, status);
 
+	// Since the IoCompletionRoute is always call from now, we can just
+	// return. vdev_disk_io_intr() will handle the io status
+
+
+	return;
+#if 0
 	switch (status) {
 	case STATUS_PENDING:
 		KeWaitForSingleObject(&completionEvent, Executive, KernelMode, FALSE, NULL); // SYNC
@@ -695,6 +742,7 @@ vdev_disk_io_start(zio_t *zio)
 		}
 		IoFreeIrp(irp);
 	}
+#endif
 }
 
 static void
