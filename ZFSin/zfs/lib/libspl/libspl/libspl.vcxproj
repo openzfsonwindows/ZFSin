@@ -46,6 +46,7 @@
     <ClCompile Include="..\gethrtime.c" />
     <ClCompile Include="..\getmntany.c" />
     <ClCompile Include="..\getopt.c" />
+    <ClCompile Include="..\getoptl.c" />
     <ClCompile Include="..\list.c" />
     <ClCompile Include="..\mkdirp.c" />
     <ClCompile Include="..\crc32.c" />

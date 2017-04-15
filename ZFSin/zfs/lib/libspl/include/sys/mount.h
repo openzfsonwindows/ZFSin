@@ -65,12 +65,7 @@
 #define	MS_GROUP	(MS_NOSUID|MS_NODEV)
 #define	MS_COMMENT	0
 
-#ifdef _WIN32
-#define	MS_FORCE	0x00000001
-#define MS_RDONLY	0x00000002
-#define MS_OVERLAY  0x00000004
-#define MS_OPTIONSTR	0x0100
-#endif
+#include <sys/zfs_mount.h>
 
 
 #ifdef __LINUX__

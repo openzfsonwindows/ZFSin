@@ -84,5 +84,8 @@
     <ClCompile Include="..\xdr_mem.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\getoptl.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

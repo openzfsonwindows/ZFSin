@@ -623,3 +623,114 @@ uint64_t GetFileDriveSize(HANDLE h)
 }
 
 
+void
+openlog(const char *ident, int logopt, int facility)
+{
+
+}
+
+void
+syslog(int priority, const char *message, ... )
+{
+
+}
+
+void
+closelog(void)
+{
+
+}
+
+int
+pipe(int fildes[2])
+{
+	return -1;
+}
+
+struct group *
+	getgrgid(gid_t gid)
+{
+	return NULL;
+}
+
+int
+unmount(const char *dir, int flags)
+{
+	return -1;
+}
+
+int socketpair(int *sv)
+{
+	int temp, s1, s2, result;
+	struct sockaddr_in saddr;
+	int nameLen;
+	unsigned long option_arg = 1;
+
+	nameLen = sizeof(saddr);
+
+	/* ignore address family for now; just stay with AF_INET */
+	temp = socket(AF_INET, SOCK_STREAM, 0);
+	if (temp == INVALID_SOCKET) return -1;
+
+	setsockopt(temp, SOL_SOCKET, SO_REUSEADDR, (void *)&option_arg,
+		sizeof(option_arg));
+
+	/* We *SHOULD* choose the correct sockaddr structure based
+	on the address family requested... */
+	memset(&saddr, 0, sizeof(saddr));
+
+	saddr.sin_family = AF_INET;
+	saddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	saddr.sin_port = 0; // give me a port
+
+	result = bind(temp, (struct sockaddr *)&saddr, nameLen);
+	if (result == SOCKET_ERROR) {
+		errno = WSAGetLastError();
+		closesocket(temp);
+		return -2;
+	}
+
+	// Don't care about error here, the connect will fail instead
+	listen(temp, 1);
+
+	// Fetch out the port that was given to us.
+	nameLen = sizeof(struct sockaddr_in);
+
+	result = getsockname(temp, (struct sockaddr *)&saddr, &nameLen);
+
+	if (result == INVALID_SOCKET) {
+		closesocket(temp);
+		return -4; /* error case */
+	}
+
+	s1 = socket(AF_INET, SOCK_STREAM, 0);
+	if (s1 == INVALID_SOCKET) {
+		closesocket(temp);
+		return -5;
+	}
+
+	nameLen = sizeof(struct sockaddr_in);
+
+	result = connect(s1, (struct sockaddr *)&saddr, nameLen);
+
+	if (result == INVALID_SOCKET) {
+		closesocket(temp);
+		closesocket(s1);
+		return -6; /* error case */
+	}
+
+	s2 = accept(temp, NULL, NULL);
+
+	closesocket(temp);
+
+	if (s2 == INVALID_SOCKET) {
+		closesocket(s1);
+		return -7;
+	}
+
+	sv[0] = s1; sv[1] = s2;
+
+	if ((sv[0] < 0) || (sv[1] < 0)) return -8;
+
+	return 0;  /* normal case */
+}

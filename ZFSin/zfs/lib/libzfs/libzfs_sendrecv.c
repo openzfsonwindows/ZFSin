@@ -257,8 +257,13 @@ cksummer(void *arg)
 	uint64_t physmem = 0;
 	uint64_t numbuckets;
 
-    len = sizeof(physmem);
+#if 0
+	len = sizeof(physmem);
     sysctlbyname("hw.memsize", &physmem, &len, NULL, 0);
+#endif
+	MEMORYSTATUSEX global;
+	GlobalMemoryStatusEx(&global);
+	physmem = global.ullTotalPhys;
 
 	ddt.max_ddt_size =
 	    MAX((physmem * MAX_DDT_PHYSMEM_PERCENT)/100,
@@ -387,7 +392,7 @@ cksummer(void *arg)
 			 * Use the existing checksum if it's dedup-capable,
 			 * else calculate a SHA256 checksum for it.
 			 */
-
+ 
 			if (ZIO_CHECKSUM_EQUAL(drrw->drr_key.ddk_cksum,
 			    zero_cksum) ||
 			    !DRR_IS_DEDUP_CAPABLE(drrw->drr_checksumflags)) {
@@ -395,9 +400,8 @@ cksummer(void *arg)
 				zio_cksum_t tmpsha256;
 
 				SHA256Init(&ctx);
-				SHA256Update(&ctx, buf, payload_size);
-				SHA256Final(&tmpsha256, &ctx);
-
+				SHA2Update(&ctx, buf, payload_size);
+				SHA2Final(&tmpsha256, &ctx);
 				drrw->drr_key.ddk_cksum.zc_word[0] =
 				    BE_64(tmpsha256.zc_word[0]);
 				drrw->drr_key.ddk_cksum.zc_word[1] =

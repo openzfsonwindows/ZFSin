@@ -53,6 +53,9 @@
     <ProjectReference Include="..\..\libshare\libshare\libshare.vcxproj">
       <Project>{91cd04e0-3a60-4092-bc71-9a20d91f3651}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\..\zlib-1.2.3\contrib\vstudio\vc8\zlibstat.vcxproj">
+      <Project>{745dec58-ebb3-47a9-a9b8-4c6627c01bf8}</Project>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{93BBE582-95D6-4CB4-9C3C-9825B6607453}</ProjectGuid>
