@@ -150,10 +150,37 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ✓ Compile cmd/zpool
 
-  ⃝ Port functions in libzpool, libzfs. Iterate disks, ioctl
+  ✓ Port functions in libzpool, libzfs. Iterate disks, ioctl
 
   ✓ Test ioctl from zpool to talk to kernel
 
-  ⃝ Port kernel `vdev_disk.c` / `vdev_file.c` to issue IO
+  ✓ Port kernel `vdev_disk.c` / `vdev_file.c` to issue IO
+
+  ✓ Port over cmd/zfs
 
   ⃝ Port kernel `zfs_vnops.c` / `zfs_vnops_windows.c`
+
+
+---
+
+# Design issues that need addressing.
+
+* Windows do not handle EFI labels, for now they are parsed with 
+libefi, and we send offset and size with the filename, that both
+libzfs and kernel will parse out and use. This works for a proof
+of concept.
+
+Possibly a more proper solution would be to write a thin virtual
+hard disk driver, which reads the EFI label and present just the
+partitions. 
+
+* vdev_disk.c spawns a thread to get around that IoCompletionRoutine 
+is called in a different context, to sleep until signalled. Is there
+a better way to do async in Windows?
+
+* ThreadId should be checked, using PsGetCurrentThreadId() but
+it makes zio_taskq_member(taskq_member()) crash. Investigate.
+
+* Functions in posix.c need sustenance.
+
+
