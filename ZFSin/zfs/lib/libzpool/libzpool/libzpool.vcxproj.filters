@@ -300,5 +300,8 @@
     <ClCompile Include="..\..\..\module\zfs\zfs_byteswap.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\module\zfs\abd.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

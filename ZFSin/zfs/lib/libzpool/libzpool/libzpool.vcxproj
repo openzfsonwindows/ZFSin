@@ -43,6 +43,7 @@
     <ClCompile Include="..\..\..\module\zcommon\zfs_uio.c" />
     <ClCompile Include="..\..\..\module\zcommon\zpool_prop.c" />
     <ClCompile Include="..\..\..\module\zcommon\zprop_common.c" />
+    <ClCompile Include="..\..\..\module\zfs\abd.c" />
     <ClCompile Include="..\..\..\module\zfs\arc.c" />
     <ClCompile Include="..\..\..\module\zfs\blkptr.c" />
     <ClCompile Include="..\..\..\module\zfs\bplist.c" />

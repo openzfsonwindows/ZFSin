@@ -449,6 +449,7 @@ struct vdev_disk_callback_struct {
 	KEVENT Event;
 	zio_t *zio;
 	PIRP irp;
+	void *b_addr;
 };
 typedef struct vdev_disk_callback_struct vd_callback_t;
 
@@ -480,6 +481,13 @@ vdev_disk_io_intr(void *Context)
 //	if (zio->io_error == 0 && bp->b_resid != 0)
 //		zio->io_error = SET_ERROR(EIO);
 	zio->io_error = (irp->IoStatus.Status != 0 ? EIO : 0);
+
+	if (zio->io_type == ZIO_TYPE_READ) {
+		abd_return_buf_copy(zio->io_abd, vb->b_addr, zio->io_size);
+	} else {
+		abd_return_buf(zio->io_abd, vb->b_addr, zio->io_size);
+	}
+
 	if (irp->IoStatus.Information != zio->io_size)
 		dprintf("%s: size mismatch 0x%llx != 0x%llx\n",
 			irp->IoStatus.Information, zio->io_size);
@@ -649,7 +657,6 @@ vdev_disk_io_start(zio_t *zio)
 	* as async, and not blocking.
 	*/
 
-	ASSERT(zio->io_data != NULL);
 	ASSERT(zio->io_size != 0);
 
 	NTSTATUS status;
@@ -662,32 +669,40 @@ vdev_disk_io_start(zio_t *zio)
 
 	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
 
+	vd_callback_t *vb = (vd_callback_t *)kmem_alloc(sizeof(vd_callback_t), KM_SLEEP);
+	vb->zio = zio;
+	vb->irp = irp;
+	if (zio->io_type == ZIO_TYPE_READ) {
+		vb->b_addr =
+			abd_borrow_buf(zio->io_abd, zio->io_size);
+	} else {
+		vb->b_addr =
+			abd_borrow_buf_copy(zio->io_abd, zio->io_size);
+	}
+	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
+
 	if (flags & B_READ) {
 		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ,
 			dvd->vd_DeviceObject,
-			zio->io_data,
+			vb->b_addr,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	} else {
 			irp = IoBuildAsynchronousFsdRequest(IRP_MJ_WRITE,
 			dvd->vd_DeviceObject,
-			zio->io_data,
+			vb->b_addr,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	}
 	
 	if (!irp) {
+		kmem_free(vb, sizeof(vd_callback_t));
 		zio->io_error = EIO;
 		zio_interrupt(zio);
 		return;
 	}
-
-	vd_callback_t *vb = (vd_callback_t *)kmem_alloc(sizeof(vd_callback_t), KM_SLEEP);
-	vb->zio = zio;
-	vb->irp = irp;
-	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
 
 	irpStack = IoGetNextIrpStackLocation(irp);
 	if (irpStack == 0xffffffffffffffff)

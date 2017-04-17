@@ -261,6 +261,7 @@
     <ClCompile Include="zfs\module\zcommon\zfs_prop.c" />
     <ClCompile Include="zfs\module\zcommon\zpool_prop.c" />
     <ClCompile Include="zfs\module\zcommon\zprop_common.c" />
+    <ClCompile Include="zfs\module\zfs\abd.c" />
     <ClCompile Include="zfs\module\zfs\arc.c" />
     <ClCompile Include="zfs\module\zfs\blkptr.c" />
     <ClCompile Include="zfs\module\zfs\bplist.c" />

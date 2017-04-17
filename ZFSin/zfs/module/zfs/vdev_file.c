@@ -301,6 +301,7 @@ struct vdev_file_callback_struct {
 	KEVENT Event;
 	zio_t *zio;
 	PIRP irp;
+	void *b_data;
 };
 typedef struct vdev_file_callback_struct vf_callback_t;
 
@@ -338,6 +339,12 @@ vdev_file_io_intr(void *Context)
 	//	if (zio->io_error == 0 && bp->b_resid != 0)
 	//		zio->io_error = SET_ERROR(EIO);
 	zio->io_error = (irp->IoStatus.Status != 0 ? EIO : 0);
+	if (zio->io_type == ZIO_TYPE_READ) {
+		abd_return_buf_copy(zio->io_abd, vb->b_data, zio->io_size);
+	} else {
+		abd_return_buf(zio->io_abd, vb->b_data, zio->io_size);
+	}
+
 	if (irp->IoStatus.Information != zio->io_size)
 		dprintf("%s: size mismatch 0x%llx != 0x%llx\n",
 			irp->IoStatus.Information, zio->io_size);
@@ -401,7 +408,6 @@ vdev_file_io_start(zio_t *zio)
 	zio->io_target_timestamp = zio_handle_io_delay(zio);
 
 
-	ASSERT(zio->io_data != NULL);
 	ASSERT(zio->io_size != 0);
 
 #ifdef _KERNEL
@@ -417,32 +423,41 @@ vdev_file_io_start(zio_t *zio)
 
 	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
 
+	vf_callback_t *vb = (vf_callback_t *)kmem_alloc(sizeof(vf_callback_t), KM_SLEEP);
+	vb->zio = zio;
+	vb->irp = irp;
+	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
+
+	if (zio->io_type == ZIO_TYPE_READ) {
+		vb->b_data =
+			abd_borrow_buf(zio->io_abd, zio->io_size);
+	} else {
+		vb->b_data =
+			abd_borrow_buf_copy(zio->io_abd, zio->io_size);
+	}
+
 	if (zio->io_type == ZIO_TYPE_READ) {
 		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ,
 			vf->vf_DeviceObject,
-			zio->io_data,
+			vb->b_data,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	} else {
 		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_WRITE,
 			vf->vf_DeviceObject,
-			zio->io_data,
+			vb->b_data,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	}
 
 	if (!irp) {
+		kmem_free(vb, sizeof(vf_callback_t));
 		zio->io_error = EIO;
 		zio_interrupt(zio);
 		return;
 	}
-
-	vf_callback_t *vb = (vf_callback_t *)kmem_alloc(sizeof(vf_callback_t), KM_SLEEP);
-	vb->zio = zio;
-	vb->irp = irp;
-	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
 
 	irpStack = IoGetNextIrpStackLocation(irp);
 
