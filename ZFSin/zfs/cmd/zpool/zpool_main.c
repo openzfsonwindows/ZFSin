@@ -6697,8 +6697,13 @@ get_history_one(zpool_handle_t *zhp, void *data)
 
 			tsec = fnvlist_lookup_uint64(records[i],
 			    ZPOOL_HIST_TIME);
-			(void) localtime_r(&tsec, &t);
-			(void) strftime(tbuf, sizeof (tbuf), "%F.%T", &t);
+#ifdef _WIN32
+			if (localtime_r(&tsec, &t) != NULL)
+				(void) strftime(tbuf, sizeof (tbuf), "%Y-%m-%d.%H:%M:%S", &t);
+#else
+			(void)localtime_r(&tsec, &t);
+			(void)strftime(tbuf, sizeof(tbuf), "%F.%T", &t);
+#endif
 		}
 
 		if (nvlist_exists(rec, ZPOOL_HIST_CMD)) {
