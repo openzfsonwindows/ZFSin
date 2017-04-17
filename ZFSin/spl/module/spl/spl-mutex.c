@@ -294,6 +294,11 @@ void spl_mutex_enter(kmutex_t *mp)
 	ExAcquireFastMutex((FAST_MUTEX *)&mp->m_lock);
 	//KeWaitForSingleObject((KMUTEX *)&mp->m_lock, Executive, KernelMode, FALSE, NULL);
     mp->m_owner = current_thread();
+
+	// Windows increases irql in fastmutex, this is not how
+	// we want to use mutex with unix
+	KeLowerIrql(PASSIVE_LEVEL);
+
 	//dprintf("mutex_enter %p\n", &mp->m_lock);
 #ifdef SPL_DEBUG_MUTEX
 	if (mp->leak) {
@@ -359,6 +364,7 @@ int spl_mutex_tryenter(kmutex_t *mp)
 	if (held == TRUE) {
 			mp->m_owner = current_thread();
 
+			KeLowerIrql(PASSIVE_LEVEL);
 #ifdef SPL_DEBUG_MUTEX
 	if (mp->leak) {
 		struct leak *leak = (struct leak *)mp->leak;
