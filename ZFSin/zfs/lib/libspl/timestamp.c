@@ -43,6 +43,8 @@ print_timestamp(uint_t timestamp_fmt)
 	/* We only need to retrieve this once per invocation */
 //	if (fmt == NULL)
 //		fmt = nl_langinfo(D_FMT);
+	if (fmt == NULL)
+		fmt = "%c";
 
 	if (timestamp_fmt == UDATE) {
 		(void) printf("%ld\n", t);
