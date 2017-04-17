@@ -135,7 +135,7 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ✓ Compile ZFS sources, stubbing out code as needed
 
-  ⃝ Include kernel zlib library
+  ✓ Include kernel zlib library
 
   ✓ Load and Unload SPL and ZFS code
 
