@@ -4788,7 +4788,7 @@ arc_kmem_reap_now(void)
  * This possible deadlock is avoided by always acquiring a hash lock
  * using mutex_tryenter() from arc_reclaim_thread().
  */
-
+/* ARGSUSED */
 static void
 #ifdef _WIN32
 arc_reclaim_thread(void *notused)
@@ -8744,6 +8744,7 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
  * This thread feeds the L2ARC at regular intervals.  This is the beating
  * heart of the L2ARC.
  */
+/* ARGSUSED */
 static void
 #ifdef _WIN32
 l2arc_feed_thread(void *notused)

@@ -530,13 +530,9 @@ dbuf_evict_one(void)
  * of the dbuf cache is at or below the maximum size. Once the dbuf is aged
  * out of the cache it is destroyed and becomes eligible for arc eviction.
  */
-#ifdef _WIN32
+/* ARGSUSED */
 static void
-dbuf_evict_thread(void *notused)
-#else
-static void
-dbuf_evict_thread(void)
-#endif
+dbuf_evict_thread(void *unused)
 {
 	callb_cpr_t cpr;
 
