@@ -297,6 +297,7 @@ void spl_mutex_enter(kmutex_t *mp)
 
 	// Windows increases irql in fastmutex, this is not how
 	// we want to use mutex with unix
+	// We should research and check if ExAcquireResourceExclusiveLite() is better for this
 	KeLowerIrql(PASSIVE_LEVEL);
 
 	//dprintf("mutex_enter %p\n", &mp->m_lock);

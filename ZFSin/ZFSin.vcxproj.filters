@@ -645,6 +645,9 @@
     <ClCompile Include="zfs\lib\zlib-1.2.3\inflate.c">
       <Filter>zlib</Filter>
     </ClCompile>
+    <ClCompile Include="spl\module\spl\spl-md5.c">
+      <Filter>Source Files\SPL</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h">

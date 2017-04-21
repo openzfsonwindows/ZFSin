@@ -1972,7 +1972,7 @@ static int
 zfs_ioc_objset_stats(zfs_cmd_t *zc)
 {
 	objset_t *os;
-	int error;
+	int error = 0;
 
 	error = dmu_objset_hold(zc->zc_name, FTAG, &os);
 	if (error == 0) {
@@ -5131,6 +5131,40 @@ zfs_ioc_events_seek(zfs_cmd_t *zc)
 	return (error);
 }
 
+
+/*
+* inputs:
+* zc_name		dataset name to mount
+* zc_value	path location to mount
+*
+* outputs:
+* return code
+*/
+int zfs_windows_mount(zfs_cmd_t *zc);
+
+static int
+zfs_ioc_mount(zfs_cmd_t *zc)
+{
+	dprintf("%s: enter\n", __func__);
+	return zfs_windows_mount(zc);
+}
+
+/*
+* inputs:
+* zc_name		dataset name to unmount
+* zc_value	path location to unmount
+*
+* outputs:
+* return code
+*/
+static int
+zfs_ioc_unmount(zfs_cmd_t *zc)
+{
+	dprintf("%s: enter\n", __func__);
+	return (ENOTSUP);
+}
+
+
 /*
  * inputs:
  * zc_name		name of new filesystem or snapshot
@@ -5697,6 +5731,15 @@ zfs_ioctl_init(void)
 							  zfs_secpolicy_config, NO_NAME, B_FALSE, POOL_CHECK_NONE);
 	zfs_ioctl_register_legacy(ZFS_IOC_EVENTS_SEEK, zfs_ioc_events_seek,
 							  zfs_secpolicy_config, NO_NAME, B_FALSE, POOL_CHECK_NONE);
+
+	/*
+	* Windows functions
+	*/
+	zfs_ioctl_register_legacy(ZFS_IOC_MOUNT, zfs_ioc_mount,
+		zfs_secpolicy_config, NO_NAME, B_FALSE, POOL_CHECK_NONE);
+	zfs_ioctl_register_legacy(ZFS_IOC_UNMOUNT, zfs_ioc_unmount,
+		zfs_secpolicy_config, NO_NAME, B_FALSE, POOL_CHECK_NONE);
+
 }
 
 
@@ -5982,7 +6025,14 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	ULONG               inBufLength; // Input buffer length
 	ULONG               outBufLength; // Output buffer length
 
-	dprintf("ZFS: zfsdev_ioctl\n");
+	dprintf("ZFS: zfsdev_ioctl: irql %d\n", KeGetCurrentIrql());
+
+	int top = 0;
+	if (IoGetTopLevelIrp() == NULL) {
+		IoSetTopLevelIrp(Irp);
+		top = 1;
+	}
+
 
 	PIO_STACK_LOCATION  irpSp;// Pointer to current stack location
 	irpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -6068,7 +6118,6 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 		zc->zc_nvlist_src, zc->zc_nvlist_src_size,
 		zc->zc_nvlist_dst, zc->zc_nvlist_dst_size,
 		zc->zc_dev);
-
 
 	zc->zc_dev = dev;
 
@@ -6176,12 +6225,12 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 
 		nvlist_free(outnvl);
 	} else {
-		dprintf("legacy: %p\n", vec->zvec_legacy_func);
+		dprintf("legacy: %p irql %d\n", vec->zvec_legacy_func, KeGetCurrentIrql());
 		error = vec->zvec_legacy_func(zc);
 	}
 
  out:
-	dprintf("ZFS: ioctl out\n");
+	dprintf("ZFS: ioctl out: irql level %d\n", KeGetCurrentIrql());
 	nvlist_free(innvl);
 
 	zc->zc_name[0] = '@';
@@ -6226,6 +6275,8 @@ end:
 	dprintf("ioctl out result %d\n", error);
 
 	Irp->IoStatus.Status = STATUS_SUCCESS; //error;
+
+	if (top) IoSetTopLevelIrp(NULL);
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 

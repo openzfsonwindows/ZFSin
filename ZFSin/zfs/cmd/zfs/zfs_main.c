@@ -5894,8 +5894,10 @@ share_mount_one(zfs_handle_t *zhp, int op, int flags, char *protocol,
 	    sizeof (shareopts), NULL, NULL, 0, B_FALSE) == 0);
 	verify(zfs_prop_get(zhp, ZFS_PROP_SHARESMB, smbshareopts,
 	    sizeof (smbshareopts), NULL, NULL, 0, B_FALSE) == 0);
+#if 0
 	verify(zfs_prop_get(zhp, ZFS_PROP_SHAREAFP, afpshareopts,
 	    sizeof (afpshareopts), NULL, NULL, 0, B_FALSE) == 0);
+#endif
 
 	if (op == OP_SHARE && strcmp(shareopts, "off") == 0 &&
 	    strcmp(smbshareopts, "off") == 0 &&
@@ -6898,8 +6900,8 @@ manual_mount(int argc, char **argv)
 			return (1);
 		}
 
-		ret = zmount(dataset, path, MS_OPTIONSTR | flags, MNTTYPE_ZFS,
-		    NULL, 0, mntopts, sizeof (mntopts));
+		//ret = zmount(dataset, path, MS_OPTIONSTR | flags, MNTTYPE_ZFS,
+		//    NULL, 0, mntopts, sizeof (mntopts));
 		syslog(LOG_NOTICE, "%s: zmount %s on %s returned %d\n", __func__,
 		    dataset, path, ret);
 		return (ret);

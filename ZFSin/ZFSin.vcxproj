@@ -179,6 +179,7 @@
     <ClCompile Include="spl\module\spl\spl-kobj.c" />
     <ClCompile Include="spl\module\spl\spl-kstat.c" />
     <ClCompile Include="spl\module\spl\spl-list.c" />
+    <ClCompile Include="spl\module\spl\spl-md5.c" />
     <ClCompile Include="spl\module\spl\spl-mount.c" />
     <ClCompile Include="spl\module\spl\spl-mutex.c" />
     <ClCompile Include="spl\module\spl\spl-policy.c" />

@@ -23,42 +23,6 @@
  * Copyright (c) 2013, 2016 Jorgen Lundman <lundman@lundman.net>
  */
 
-/*
- * OS X ZFS vnode operation wrappers.
- *
- * The argument structure layouts were obtained from:
- * http://www.opensource.apple.com/source/xnu/xnu-792.13.8/bsd/vfs/vfs_support.c
- * http://code.ohloh.net/project?pid=Ybsxw4FOQb8
- *
- * This file should contain primarily interface points; if an interface
- * definition is more than 100 lines long, parts of it should be refactored
- * into zfs_vnops_osx_lib.c.
- */
-
-/*
- * XXX GENERAL COMPATIBILITY ISSUES
- *
- * 'name' is a common argument, but in OS X (and FreeBSD), we need to pass
- * the componentname pointer, so other things can use them.  We should
- * change the 'name' argument to be an opaque name pointer, and define
- * OS-dependent macros that yield the desired results when needed.
- *
- * On OS X, VFS performs access checks before calling anything, so
- * zfs_zaccess_* calls are not used.  Not true on FreeBSD, though.  Perhaps
- * those calls should be conditionally #if 0'd?
- *
- * On OS X, VFS & I/O objects are often opaque, e.g. uio_t and struct vnode
- * require using functions to access elements of an object.  Should convert
- * the Solaris code to use macros on other platforms.
- *
- * OS X and FreeBSD appear to use similar zfs-vfs interfaces; see Apple's
- * comment in zfs_remove() about the fact that VFS holds the last ref while
- * in Solaris it's the ZFS code that does.  On FreeBSD, the code Apple
- * refers to here results in a panic if the branch is actually taken.
- *
- * OS X uses vnode_put() in place of VN_RELE - needs a #define?
- * (Already is, see vnode.h)
- */
 
 #include <sys/cred.h>
 #include <sys/vnode.h>
