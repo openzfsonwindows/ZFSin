@@ -490,6 +490,7 @@ check_disk(const char *path, blkid_cache cache, int force,
 	struct dk_gpt *vtoc;
 	char slice_path[MAXPATHLEN];
 	int err = 0;
+	int slice_err = 0;
 	int fd, i;
 
 	if (!iswholedisk)
@@ -548,7 +549,11 @@ check_disk(const char *path, blkid_cache cache, int force,
 		    "%ss%d", path, i+1);
 #endif
 
-		err = check_slice(slice_path, cache, force, isspare);
+		slice_err = check_slice(slice_path, cache, force, isspare);
+		
+		// Latch the first error that occurs
+		if (err == 0)
+			err = slice_err;
 	}
 
 	efi_free(vtoc);
