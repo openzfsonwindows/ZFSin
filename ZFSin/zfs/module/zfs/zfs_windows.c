@@ -31,38 +31,15 @@
 
 int zfs_start(void)
 {
-	dprintf("zfs: start\n");
 	zfs_ioctl_osx_init();
-	dprintf("zfs: zfs_ioctl_osx_init \n");
 	zfs_vfsops_init();
-	dprintf("zfs: zfs_vfsops_init\n");
 	system_taskq_init();
-	dprintf("zfs: system_taskq_init\n");
-#if 0
-	struct test_s { void *popo; };
-	typedef struct test_s test_t;
-	static kmem_cache_t *test_cache;
-
-	test_cache = kmem_cache_create("test_full", sizeof(test_t),
-		0, NULL, NULL, NULL, NULL, NULL, 0);
-
-
-	void *tq = kmem_cache_alloc(test_cache, KM_SLEEP);
-
-	kmem_cache_free(test_cache, tq);
-
-	kmem_cache_destroy(test_cache);
-#endif
 	return 0;
 }
 
 void zfs_stop(void)
 {
-	dprintf("zfs: stop\n");
 	system_taskq_fini();
-	dprintf("zfs: system_taskq_fini\n");
 	zfs_ioctl_osx_fini();
-	dprintf("zfs: zfs_ioctl_osx_fini\n");
 	zfs_vfsops_fini();
-	dprintf("zfs: zfs_vfsops_fini\n");
 }

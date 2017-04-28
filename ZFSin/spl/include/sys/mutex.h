@@ -33,6 +33,9 @@
 #ifdef _KERNEL
 //#include <libkern/locks.h>
 #include <wdm.h>
+//#include <ntddk.h>
+#include <intsafe.h>
+//#include <Ntifs.h>
 
 //#include <libkern/OSAtomic.h>
 //#include <kern/locks.h>

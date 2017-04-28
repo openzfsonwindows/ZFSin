@@ -55,15 +55,21 @@
 //#include <sys/ioccom.h>
 
 
+static PDEVICE_OBJECT ZFSDiskFileSystemDeviceObject = NULL;
+
 
 #ifdef _KERNEL
-//#include <sys/sysctl.h>
-//#include <sys/hfs_internal.h>
+
+DRIVER_INITIALIZE DriverEntry;
 
 unsigned int debug_vnop_osx_printf = 0;
 unsigned int zfs_vnop_ignore_negatives = 0;
 unsigned int zfs_vnop_ignore_positives = 0;
 unsigned int zfs_vnop_create_negatives = 1;
+#endif
+
+#ifdef ALLOC_PRAGMA
+#pragma alloc_text(INIT, DriverEntry)
 #endif
 
 #define	DECLARE_CRED(ap) \
@@ -3246,59 +3252,422 @@ zfs_znode_getvnode(znode_t *zp, zfsvfs_t *zfsvfs)
 	return (0);
 }
 
-/*
- * Maybe these should live in vfsops
- */
+#undef _NTDDK_
+#include <ntddk.h>
+#include <ntddscsi.h>
+#include <scsi.h>
+#include <ntddcdrm.h>
+#include <ntdddisk.h>
+#include <ntddstor.h>
+#include <ntintsafe.h>
+#include <mountmgr.h>
+
+// I have no idea what black magic is needed to get ntifs.h to define these
+
+#ifndef FsRtlEnterFileSystem
+#define FsRtlEnterFileSystem() { \
+	KeEnterCriticalRegion();     \
+}
+#endif
+#ifndef FsRtlExitFileSystem
+#define FsRtlExitFileSystem() { \
+    KeLeaveCriticalRegion();     \
+}
+#endif
+
+NTSTATUS dev_ioctl(PDEVICE_OBJECT DeviceObject, ULONG ControlCode, PVOID InputBuffer, ULONG InputBufferSize,
+	PVOID OutputBuffer, ULONG OutputBufferSize, BOOLEAN Override, IO_STATUS_BLOCK* iosb)
+{
+	PIRP Irp;
+	KEVENT Event;
+	NTSTATUS Status;
+	PIO_STACK_LOCATION Stack;
+	IO_STATUS_BLOCK IoStatus;
+
+	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+
+	Irp = IoBuildDeviceIoControlRequest(ControlCode,
+		DeviceObject,
+		InputBuffer,
+		InputBufferSize,
+		OutputBuffer,
+		OutputBufferSize,
+		FALSE,
+		&Event,
+		&IoStatus);
+
+	if (!Irp) return STATUS_INSUFFICIENT_RESOURCES;
+
+	if (Override) {
+		Stack = IoGetNextIrpStackLocation(Irp);
+		Stack->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
+	}
+
+	Status = IoCallDriver(DeviceObject, Irp);
+
+	if (Status == STATUS_PENDING) {
+		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+		Status = IoStatus.Status;
+	}
+
+	if (iosb)
+		*iosb = IoStatus;
+
+	return Status;
+}
+
+
+int zfs_vnop_mount(PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	PDEVICE_OBJECT DeviceToMount;
+	DeviceToMount = IrpSp->Parameters.MountVolume.DeviceObject;
+
+	dprintf("mount request for %p\n", DeviceToMount);
+
+	NTSTATUS Status;
+	MOUNTDEV_NAME mdn, *mdn2;
+	ULONG mdnsize;
+
+	Status = dev_ioctl(DeviceToMount, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, &mdn, sizeof(MOUNTDEV_NAME), TRUE, NULL);
+	if (Status != STATUS_SUCCESS && Status != STATUS_BUFFER_OVERFLOW)
+		return STATUS_UNRECOGNIZED_VOLUME;
+
+	mdnsize = offsetof(MOUNTDEV_NAME, Name[0]) + mdn.NameLength;
+	mdn2 = kmem_alloc(mdnsize, KM_SLEEP);
+
+	Status = dev_ioctl(DeviceToMount, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, mdn2, mdnsize, TRUE, NULL);
+	if (Status != STATUS_SUCCESS)
+		goto out;
+
+	ANSI_STRING ansi;
+	UNICODE_STRING uni;
+	RtlUnicodeStringInit(&uni, mdn2->Name);
+	RtlUnicodeStringToAnsiString(&ansi, &uni, TRUE);
+	dprintf("mount about '%s'\n", ansi.Buffer);
+	RtlFreeAnsiString(&ansi);
+out:
+	kmem_free(mdn2, mdnsize);
+	return STATUS_UNRECOGNIZED_VOLUME;
+}
+#if 0
+#define IRP_MJ_CREATE                   0x00
+#define IRP_MJ_CREATE_NAMED_PIPE        0x01
+#define IRP_MJ_CLOSE                    0x02
+#define IRP_MJ_READ                     0x03
+#define IRP_MJ_WRITE                    0x04
+#define IRP_MJ_QUERY_INFORMATION        0x05
+#define IRP_MJ_SET_INFORMATION          0x06
+#define IRP_MJ_QUERY_EA                 0x07
+#define IRP_MJ_SET_EA                   0x08
+#define IRP_MJ_FLUSH_BUFFERS            0x09
+#define IRP_MJ_QUERY_VOLUME_INFORMATION 0x0a
+#define IRP_MJ_SET_VOLUME_INFORMATION   0x0b
+#define IRP_MJ_DIRECTORY_CONTROL        0x0c
+#define IRP_MJ_FILE_SYSTEM_CONTROL      0x0d
+#define IRP_MJ_DEVICE_CONTROL           0x0e
+#define IRP_MJ_INTERNAL_DEVICE_CONTROL  0x0f
+#define IRP_MJ_SHUTDOWN                 0x10
+#define IRP_MJ_LOCK_CONTROL             0x11
+#define IRP_MJ_CLEANUP                  0x12
+#define IRP_MJ_CREATE_MAILSLOT          0x13
+#define IRP_MJ_QUERY_SECURITY           0x14
+#define IRP_MJ_SET_SECURITY             0x15
+#define IRP_MJ_POWER                    0x16
+#define IRP_MJ_SYSTEM_CONTROL           0x17
+#define IRP_MJ_DEVICE_CHANGE            0x18
+#define IRP_MJ_QUERY_QUOTA              0x19
+#define IRP_MJ_SET_QUOTA                0x1a
+#define IRP_MJ_PNP                      0x1b
+#endif
+
+char *major2str(int major, int minor)
+{
+	switch (major) {
+	case IRP_MJ_CREATE:
+		return "IRP_MJ_CREATE";
+	case IRP_MJ_CREATE_NAMED_PIPE:
+		return "IRP_MJ_CREATE_NAMED_PIPE";
+	case IRP_MJ_CLOSE:
+		return "IRP_MJ_CLOSE";
+	case IRP_MJ_READ:
+		return "IRP_MJ_READ";
+	case IRP_MJ_WRITE:
+		return "IRP_MJ_WRITE";
+	case IRP_MJ_QUERY_INFORMATION:
+		return "IRP_MJ_QUERY_INFORMATION";
+	case IRP_MJ_SET_INFORMATION:
+		return "IRP_MJ_SET_INFORMATION";
+	case IRP_MJ_QUERY_EA:
+		return "IRP_MJ_QUERY_EA";
+	case IRP_MJ_SET_EA:
+		return "IRP_MJ_SET_EA";
+	case IRP_MJ_FLUSH_BUFFERS:
+		return "IRP_MJ_FLUSH_BUFFERS";
+	case IRP_MJ_QUERY_VOLUME_INFORMATION:
+		return "IRP_MJ_QUERY_VOLUME_INFORMATION";
+	case IRP_MJ_SET_VOLUME_INFORMATION:
+		return "IRP_MJ_SET_VOLUME_INFORMATION";
+	case IRP_MJ_DIRECTORY_CONTROL:
+		return "IRP_MJ_DIRECTORY_CONTROL";
+	case IRP_MJ_FILE_SYSTEM_CONTROL:
+		switch (minor) {
+		case IRP_MN_KERNEL_CALL:
+			return "IRP_MJ_DIRECTORY_CONTROL(IRP_MN_KERNEL_CALL)";
+		case IRP_MN_MOUNT_VOLUME:
+			return "IRP_MJ_DIRECTORY_CONTROL(IRP_MN_MOUNT_VOLUME)";
+		case IRP_MN_USER_FS_REQUEST:
+			return "IRP_MJ_DIRECTORY_CONTROL(IRP_MN_USER_FS_REQUEST)";
+		case IRP_MN_VERIFY_VOLUME:
+			return "IRP_MJ_DIRECTORY_CONTROL(IRP_MN_VERIFY_VOLUME)";
+		case IRP_MN_LOAD_FILE_SYSTEM:
+			return "IRP_MJ_DIRECTORY_CONTROL(IRP_MN_LOAD_FILE_SYSTEM)";
+		}
+		return "IRP_MJ_FILE_SYSTEM_CONTROL";
+	case IRP_MJ_DEVICE_CONTROL:
+		return "IRP_MJ_DEVICE_CONTROL";
+	case IRP_MJ_INTERNAL_DEVICE_CONTROL:
+		return "IRP_MJ_INTERNAL_DEVICE_CONTROL";
+	case IRP_MJ_SHUTDOWN:
+		return "IRP_MJ_SHUTDOWN";
+	case IRP_MJ_LOCK_CONTROL:
+		return "IRP_MJ_LOCK_CONTROL";
+	case IRP_MJ_CLEANUP:
+		return "IRP_MJ_CLEANUP";
+	case IRP_MJ_CREATE_MAILSLOT:
+		return "IRP_MJ_CREATE_MAILSLOT";
+	case IRP_MJ_QUERY_SECURITY:
+		return "IRP_MJ_QUERY_SECURITY";
+	case IRP_MJ_SET_SECURITY:
+		return "IRP_MJ_SET_SECURITY";
+	case IRP_MJ_POWER:
+		return "IRP_MJ_POWER";
+	case IRP_MJ_SYSTEM_CONTROL:
+		return "IRP_MJ_SYSTEM_CONTROL";
+	case IRP_MJ_DEVICE_CHANGE:
+		return "IRP_MJ_DEVICE_CHANGE";
+	case IRP_MJ_QUERY_QUOTA:
+		return "IRP_MJ_QUERY_QUOTA";
+	case IRP_MJ_SET_QUOTA:
+		return "IRP_MJ_SET_QUOTA";
+	case IRP_MJ_PNP:
+		switch (minor) {
+		case IRP_MN_START_DEVICE:
+			return "IRP_MJ_PNP(IRP_MN_START_DEVICE)";
+		case IRP_MN_QUERY_REMOVE_DEVICE:
+			return "IRP_MJ_PNP(IRP_MN_QUERY_REMOVE_DEVICE)";
+		case IRP_MN_REMOVE_DEVICE:
+			return "IRP_MJ_PNP(IRP_MN_REMOVE_DEVICE)";
+		case IRP_MN_CANCEL_REMOVE_DEVICE:
+			return "IRP_MJ_PNP(IRP_MN_CANCEL_REMOVE_DEVICE)";
+		case IRP_MN_STOP_DEVICE:
+			return "IRP_MJ_PNP(IRP_MN_STOP_DEVICE)";
+		case IRP_MN_QUERY_STOP_DEVICE:
+			return "IRP_MJ_PNP(IRP_MN_QUERY_STOP_DEVICE)";
+		case IRP_MN_CANCEL_STOP_DEVICE:
+			return "IRP_MJ_PNP(IRP_MN_CANCEL_STOP_DEVICE)";
+		case IRP_MN_QUERY_DEVICE_RELATIONS:
+			return "IRP_MJ_PNP(IRP_MN_QUERY_DEVICE_RELATIONS)";
+		case IRP_MN_QUERY_INTERFACE:
+			return "IRP_MJ_PNP(IRP_MN_QUERY_INTERFACE)";
+		case IRP_MN_QUERY_RESOURCES:
+			return "IRP_MJ_PNP(IRP_MN_QUERY_RESOURCES)";
+		case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
+			return "IRP_MJ_PNP(IRP_MN_QUERY_RESOURCE_REQUIREMENTS)";
+		case IRP_MN_QUERY_CAPABILITIES:
+			return "IRP_MJ_PNP(IRP_MN_QUERY_CAPABILITIES)";
+		case IRP_MN_QUERY_DEVICE_TEXT:
+			return "IRP_MJ_PNP(IRP_MN_QUERY_DEVICE_TEXT)";
+		case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
+			return "IRP_MJ_PNP(IRP_MN_FILTER_RESOURCE_REQUIREMENTS)";
+		case IRP_MN_READ_CONFIG:
+			return "IRP_MJ_PNP(IRP_MN_READ_CONFIG)";
+		case IRP_MN_WRITE_CONFIG:
+			return "IRP_MJ_PNP(IRP_MN_WRITE_CONFIG)";
+		case IRP_MN_EJECT:
+			return "IRP_MJ_PNP(IRP_MN_EJECT)";
+		case IRP_MN_SET_LOCK:
+			return "IRP_MJ_PNP(IRP_MN_SET_LOCK)";
+		case IRP_MN_QUERY_ID:
+			return "IRP_MJ_PNP(IRP_MN_QUERY_ID)";
+		case IRP_MN_QUERY_PNP_DEVICE_STATE:
+			return "IRP_MJ_PNP(IRP_MN_QUERY_PNP_DEVICE_STATE)";
+		case IRP_MN_QUERY_BUS_INFORMATION:
+			return "IRP_MJ_PNP(IRP_MN_QUERY_BUS_INFORMATION)";
+		case IRP_MN_DEVICE_USAGE_NOTIFICATION:
+			return "IRP_MJ_PNP(IRP_MN_DEVICE_USAGE_NOTIFICATION)";
+		case IRP_MN_SURPRISE_REMOVAL: // SUPPLIES!
+			return "IRP_MJ_PNP(IRP_MN_SURPRISE_REMOVAL)";
+		}
+		return "IRP_MJ_PNP";
+	default:
+		break;
+	}
+	return "Unknown";
+}
+
+
+NTSTATUS QueryCapabilities(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	NTSTATUS				Status;
+	PDEVICE_CAPABILITIES	DeviceCapabilities;
+	DeviceCapabilities = IrpSp->Parameters.DeviceCapabilities.Capabilities;
+	DeviceCapabilities->SurpriseRemovalOK = TRUE;
+	DeviceCapabilities->LockSupported = TRUE;
+	DeviceCapabilities->EjectSupported = TRUE;
+	DeviceCapabilities->Removable = TRUE;
+	DeviceCapabilities->DockDevice = FALSE;
+	DeviceCapabilities->D1Latency = DeviceCapabilities->D2Latency = DeviceCapabilities->D3Latency = 0;
+	DeviceCapabilities->NoDisplayInUI = 0;
+	Irp->IoStatus.Information = sizeof(DEVICE_CAPABILITIES);
+
+	return STATUS_SUCCESS;
+}
+
+static PDEVICE_OBJECT vnop_deviceObject = NULL;
+extern NTSTATUS zfsdev_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+
+_Function_class_(IRP_MJ_CREATE)
+_Function_class_(DRIVER_DISPATCH)
+static NTSTATUS
+dispatcher(
+	_In_ void *VolumeDeviceObject,
+	_Inout_ PIRP Irp
+)
+{
+	BOOLEAN TopLevel = FALSE;
+	PIO_STACK_LOCATION IrpSp;
+	NTSTATUS Status;
+
+	PAGED_CODE();
+
+	dprintf("%s: enter\n", __func__);
+
+	//  If we were called with our file system device object instead of a
+	//  volume device object, just complete this request with STATUS_SUCCESS
+#if 0
+	if (vnop_deviceObject == VolumeDeviceObject) {
+		dprintf("%s: own object\n", __func__);
+		Irp->IoStatus.Status = STATUS_SUCCESS;
+		Irp->IoStatus.Information = FILE_OPENED;
+		IoCompleteRequest(Irp, IO_DISK_INCREMENT);
+		return STATUS_SUCCESS;
+	}
+#endif
+
+	FsRtlEnterFileSystem();
+
+	if (IoGetTopLevelIrp() == NULL) {
+		IoSetTopLevelIrp(Irp);
+		TopLevel = TRUE;
+	}
+
+	IrpSp = IoGetCurrentIrpStackLocation(Irp);
+	dprintf("%s: enter: major %d: minor %d: %s\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
+		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
+
+
+	Status = STATUS_NOT_IMPLEMENTED;
+
+	switch (IrpSp->MajorFunction) {
+
+	case IRP_MJ_DEVICE_CONTROL: 
+		{
+			/* Is it a ZFS ioctl? */
+			u_long cmd = IrpSp->Parameters.DeviceIoControl.IoControlCode;
+			if (cmd >= ZFS_IOC_FIRST &&
+				cmd < ZFS_IOC_LAST) {
+				Status = zfsdev_ioctl(VolumeDeviceObject, Irp);
+				break;
+			}
+			/* Not ZFS ioctl, handle Windows ones */
+			Status = 0;
+		}
+		break;
+
+	case IRP_MJ_CLEANUP:
+		Status = 0;
+		break;
+
+	case IRP_MJ_FILE_SYSTEM_CONTROL:
+		switch (IrpSp->MinorFunction) {
+		case IRP_MN_MOUNT_VOLUME:
+			Status = zfs_vnop_mount(Irp, IrpSp);
+			break;
+		}
+		break;
+
+	case IRP_MJ_PNP:
+		switch (IrpSp->MinorFunction) {
+		case IRP_MN_QUERY_CAPABILITIES:
+			Status = QueryCapabilities(VolumeDeviceObject, Irp, IrpSp);
+			break;
+		case IRP_MN_QUERY_DEVICE_RELATIONS:
+			Status = STATUS_NOT_IMPLEMENTED;
+			break;
+		}
+		break;
+	}
+
+	Irp->IoStatus.Status = Status;
+	if (!Status != STATUS_SUCCESS)
+		Irp->IoStatus.Information = 0;
+		
+	if (TopLevel) { IoSetTopLevelIrp(NULL); }
+	FsRtlExitFileSystem();
+
+	dprintf("%s: exit: %d\n", __func__, Status);
+	IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+	return Status;
+}
+
+
+void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject)
+{
+
+	vnop_deviceObject = deviceObject;
+	WIN_DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = (PDRIVER_DISPATCH)dispatcher; // zfs_ioctl.c
+	//WIN_DriverObject->MajorFunction[IRP_MJ_CREATE] = (PDRIVER_DISPATCH)ZFSFsdCreate;   // zfs_ioctl.c
+	//WIN_DriverObject->MajorFunction[IRP_MJ_CLOSE] = (PDRIVER_DISPATCH)ZFSFsdClose;     // zfs_ioctl.c
+	WIN_DriverObject->MajorFunction[IRP_MJ_READ] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_WRITE] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_EA] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_SET_EA] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_CLEANUP] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_SHUTDOWN] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_PNP] = (PDRIVER_DISPATCH)dispatcher;
+
+#if 0
+	RtlZeroMemory(&FilterCallbacks,
+		sizeof(FS_FILTER_CALLBACKS));
+
+	FilterCallbacks.SizeOfFsFilterCallbacks = sizeof(FS_FILTER_CALLBACKS);
+	FilterCallbacks.PreAcquireForSectionSynchronization = FatFilterCallbackAcquireForCreateSection;
+
+	Status = FsRtlRegisterFileSystemFilterCallbacks(DriverObject,
+		&FilterCallbacks);
+#endif
+
+}
+
+
 int
 zfs_vfsops_init(void)
 {
-//	struct vfs_fsentry vfe;
-
 	zfs_init();
-
-	/* Start thread to notify Finder of changes */
-//	zfs_start_notify_thread();
-
-//	vfe.vfe_vfsops = &zfs_vfsops_template;
-//	vfe.vfe_vopcnt = ZFS_VNOP_TBL_CNT;
-//	vfe.vfe_opvdescs = zfs_vnodeop_opv_desc_list;
-
-//	strlcpy(vfe.vfe_fsname, "zfs", MFSNAMELEN);
-
-	/*
-	 * Note: must set VFS_TBLGENERICMNTARGS with VFS_TBLLOCALVOL
-	 * to suppress local mount argument handling.
-	 */
-//	vfe.vfe_flags = VFS_TBLTHREADSAFE | VFS_TBLNOTYPENUM | VFS_TBLLOCALVOL |
-//	    VFS_TBL64BITREADY | VFS_TBLNATIVEXATTR | VFS_TBLGENERICMNTARGS |
-//	    VFS_TBLREADDIR_EXTENDED;
-
-#if	HAVE_PAGEOUT_V2
-	vfe.vfe_flags |= VFS_TBLVNOP_PAGEOUTV2;
-#endif
-
-#ifdef VFS_TBLCANMOUNTROOT  // From 10.12
-	vfe.vfe_flags |= VFS_TBLCANMOUNTROOT;
-#endif
-
-//	vfe.vfe_reserv[0] = 0;
-	//vfe.vfe_reserv[1] = 0;
-
-	//if (vfs_fsadd(&vfe, &zfs_vfsconf) != 0)
-	//	return (KERN_FAILURE);
-	//else
-	//	return (KERN_SUCCESS);
 	return 0;
 }
 
 int
 zfs_vfsops_fini(void)
 {
-
-//	zfs_stop_notify_thread();
-
 	zfs_fini();
-
-	//return (vfs_fsremove(zfs_vfsconf));
 	return 0;
 }

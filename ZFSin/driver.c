@@ -1,7 +1,7 @@
 #include <ntddk.h>
-#include <wdf.h>
+//#include <wdf.h>
 DRIVER_INITIALIZE DriverEntry;
-EVT_WDF_DRIVER_DEVICE_ADD ZFSin_Init;
+//EVT_WDF_DRIVER_DEVICE_ADD ZFSin_Init;
 
 extern int spl_start(void);
 extern int spl_stop(void);

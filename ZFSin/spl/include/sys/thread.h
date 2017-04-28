@@ -58,7 +58,7 @@ typedef struct _KTHREAD thread_t;
 
 typedef void (*thread_func_t)(void *);
 
-HANDLE PsGetCurrentThreadId();
+//HANDLE PsGetCurrentThreadId();
 
 // This should be ThreadId, but that dies in taskq_member,
 // for now, dsl_pool_sync_context calls it instead.

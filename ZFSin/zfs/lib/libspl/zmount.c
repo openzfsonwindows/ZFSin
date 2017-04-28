@@ -53,6 +53,10 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 	fprintf(stderr, "zmount(%s,%s) returns %d\n",
 		zhp->zfs_name, dir);
 
+	ret = SetVolumeMountPoint("E:\\", "\\\\?\\Device\\ZFS{0B1BB601-AF0B-32E8-A1D2-54C167AF6277}");
+	fprintf(stderr, "SetVolumeMountPoint %d\n",
+		zhp->zfs_name, dir);
+
 	return ret;
 }
 

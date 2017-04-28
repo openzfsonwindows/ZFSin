@@ -5140,7 +5140,7 @@ zfs_ioc_events_seek(zfs_cmd_t *zc)
 * outputs:
 * return code
 */
-int zfs_windows_mount(zfs_cmd_t *zc);
+int zfs_windows_mount(zfs_cmd_t *zc);  // move me to headers
 
 static int
 zfs_ioc_mount(zfs_cmd_t *zc)
@@ -5157,11 +5157,13 @@ zfs_ioc_mount(zfs_cmd_t *zc)
 * outputs:
 * return code
 */
+int zfs_windows_unmount(zfs_cmd_t *zc); // move me to headers
+
 static int
 zfs_ioc_unmount(zfs_cmd_t *zc)
 {
 	dprintf("%s: enter\n", __func__);
-	return (ENOTSUP);
+	return zfs_windows_unmount(zc);
 }
 
 
@@ -6005,11 +6007,11 @@ zfsdev_release(dev_t dev, int flags, int devtype, struct proc *p)
 
 
 #ifdef _WIN32
-static NTSTATUS
+NTSTATUS
 zfsdev_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 #else
 static int
-zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
+zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg, int xflag, struct proc *p)
 #endif
 {
 	zfs_cmd_t *zc;
@@ -6025,14 +6027,7 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	ULONG               inBufLength; // Input buffer length
 	ULONG               outBufLength; // Output buffer length
 
-	dprintf("ZFS: zfsdev_ioctl: irql %d\n", KeGetCurrentIrql());
-
-	int top = 0;
-	if (IoGetTopLevelIrp() == NULL) {
-		IoSetTopLevelIrp(Irp);
-		top = 1;
-	}
-
+	dprintf("ZFS: zfsdev_ioctl:\n");
 
 	PIO_STACK_LOCATION  irpSp;// Pointer to current stack location
 	irpSp = IoGetCurrentIrpStackLocation(Irp);
@@ -6040,25 +6035,25 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	inBufLength = irpSp->Parameters.DeviceIoControl.InputBufferLength;
 	outBufLength = irpSp->Parameters.DeviceIoControl.OutputBufferLength;
 
-	dprintf("ZFS: ioctl sizes: in %d out %d\n", inBufLength, outBufLength);
 	// It must have at least a zfs_cmd_t in there
-	if (inBufLength < sizeof(zfs_cmd_t) 
+	if (inBufLength < sizeof(zfs_cmd_t)
 		|| outBufLength < sizeof(zfs_cmd_t)) {
-		error = STATUS_INVALID_PARAMETER;
-		goto end;
+		dprintf("ioctl wrong size\n");
+		return STATUS_INVALID_PARAMETER;
 	}
 
 
 	// If minor > 0 it is an ioctl for zvol!
 #if 0
 	if (minor != 0 &&
-	    zfsdev_get_soft_state(minorx, ZSST_CTLDEV) == NULL) {
+		zfsdev_get_soft_state(minorx, ZSST_CTLDEV) == NULL) {
 		printf("Calling zvol ioctl minor %d \n", minorx);
 		return (zvol_ioctl(dev, cmd, arg, 0, NULL, NULL));
 	}
 #endif
 
 	cmd = irpSp->Parameters.DeviceIoControl.IoControlCode;
+	dprintf("ZFS: ioctl sizes: in %d out %d: cmd %x\n", inBufLength, outBufLength, cmd);
 
 #if 0
 	mutex_enter(&zfsdev_state_lock);
@@ -6069,6 +6064,12 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg,  int xflag, struct proc *p)
 	}
 	mutex_exit(&zfsdev_state_lock);
 #endif
+
+	if (cmd < ZFS_IOC_FIRST ||
+		cmd >= ZFS_IOC_LAST) {
+		dprintf("%s: ioctl outside range\n", __func__);
+		return STATUS_DRIVER_INTERNAL_ERROR;
+	}
 
 	vecnum = cmd - ZFS_IOC_FIRST;
 #ifdef illumos
@@ -6269,16 +6270,10 @@ end:
 	* Darwin ioctl does the actual copyout, and that we use FKIOCTL here.
 	* So we can change it directly.
 	*/
-	((zfs_cmd_t *)arg)->zc_ioc_error = error;
+	((zfs_cmd_t *)arg)->zc_ioc_error = error;  // We checked OtubufLen is == zfs_cmd_t
 
 
 	dprintf("ioctl out result %d\n", error);
-
-	Irp->IoStatus.Status = STATUS_SUCCESS; //error;
-
-	if (top) IoSetTopLevelIrp(NULL);
-
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
 	return STATUS_SUCCESS; // error;
 }
@@ -6427,13 +6422,14 @@ zfs_attach(void)
 //#define ZFS_DEV_KERNEL	L"\\Device\\ZFSCTL"
 //#define ZFS_DEV_DOS		L"\\DosDevices\\ZFS"
 //#define ZFS_DEV			"\\\\.\\ZFS"
+	extern void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject);
 
 	RtlInitUnicodeString(&ntUnicodeString, ZFS_DEV_KERNEL);
 	ntStatus = IoCreateDevice(
 		WIN_DriverObject,                   // Our Driver Object
 		0,                              // We don't use a device extension
 		&ntUnicodeString,               // Device name "\Device\SIOCTL"
-		FILE_DEVICE_UNKNOWN,            // Device type
+		FILE_DEVICE_DISK_FILE_SYSTEM,            // Device type
 		/*FILE_DEVICE_SECURE_OPEN*/ 0,     // Device characteristics
 		FALSE,                          // Not an exclusive device
 		&deviceObject);                // Returned ptr to Device Object
@@ -6446,10 +6442,12 @@ zfs_attach(void)
 	//
 	// Initialize the driver object with this driver's entry points.
 	//
-
-	WIN_DriverObject->MajorFunction[IRP_MJ_CREATE]         = zfsdev_open;
-	WIN_DriverObject->MajorFunction[IRP_MJ_CLOSE]          = zfsdev_release;
+	// Set them here, they are about to be overwritten, but vnops will keep these
+	// function ptrs to call us back. (or could just remove the 'static'...
+	WIN_DriverObject->MajorFunction[IRP_MJ_CREATE] = zfsdev_open;
+	WIN_DriverObject->MajorFunction[IRP_MJ_CLOSE] = zfsdev_release;
 	WIN_DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = zfsdev_ioctl;
+	zfs_windows_vnops_callback(deviceObject);
 
 	// Initialize a Unicode String containing the Win32 name
 	// for our device.
@@ -6465,6 +6463,11 @@ zfs_attach(void)
 		return -1;
 	}
 	dprintf("ZFS: created userland device symlink\n");
+
+extern 	VOID IoRegisterFileSystem(		_In_ PDEVICE_OBJECT DeviceObject	);
+
+	IoRegisterFileSystem(deviceObject);
+	ObReferenceObject(deviceObject);
 #endif
 
 
@@ -6500,9 +6503,10 @@ zfs_detach(void)
 
 	RtlInitUnicodeString(&uniWin32NameString, ZFS_DEV_DOS);
 	IoDeleteSymbolicLink(&uniWin32NameString);
-	if (deviceObject != NULL)
+	if (deviceObject != NULL) {
+		ObDereferenceObject(deviceObject);
 		IoDeleteDevice(deviceObject);
-
+	}
 #endif
 
 	mutex_destroy(&zfsdev_state_lock);

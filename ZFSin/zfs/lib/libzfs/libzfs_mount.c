@@ -745,7 +745,7 @@ void osx_start_spotlight(char *mountpoint)
 int
 zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 {
-	struct stat buf;
+	struct _stat64 buf;
 	char mountpoint[ZFS_MAXPROPLEN];
 	char mntopts[MNT_LINE_MAX];
 	char overlay[ZFS_MAXPROPLEN];
