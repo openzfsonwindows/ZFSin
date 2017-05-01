@@ -484,7 +484,7 @@ dmu_tx_hold_zap_impl(dmu_tx_hold_t *txh, const char *name)
 	if (dn == NULL)
 		return;
 
-	ASSERT3P(DMU_OT_BYTESWAP(dn->dn_type), ==, DMU_BSWAP_ZAP);
+	ASSERT3S(DMU_OT_BYTESWAP(dn->dn_type), ==, DMU_BSWAP_ZAP);
 
 	if (dn->dn_maxblkid == 0 || name == NULL) {
 		/*
