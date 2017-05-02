@@ -30,6 +30,7 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING Reg
 
 	spl_start();
 	zfs_start();
+
 	return STATUS_SUCCESS;
 }
 

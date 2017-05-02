@@ -95,6 +95,7 @@
 #include <../zfs_config.h>
 #ifdef _WIN32
 #include <sys/kstat_windows.h>
+#include <sys/zfs_windows.h>
 #endif
 
 //#define dprintf printf

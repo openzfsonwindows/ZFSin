@@ -48,7 +48,7 @@
 #include <sys/ubc.h>
 #include <sys/callb.h>
 #include <sys/unistd.h>
-
+#include <sys/zfs_windows.h>
 //#include <miscfs/fifofs/fifo.h>
 //#include <miscfs/specfs/specdev.h>
 //#include <vfs/vfs_support.h>
@@ -3261,6 +3261,8 @@ zfs_znode_getvnode(znode_t *zp, zfsvfs_t *zfsvfs)
 #include <ntddstor.h>
 #include <ntintsafe.h>
 #include <mountmgr.h>
+#include <Mountdev.h>
+#include <ntddvol.h>
 
 // I have no idea what black magic is needed to get ntifs.h to define these
 
@@ -3523,8 +3525,86 @@ NTSTATUS QueryCapabilities(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 	return STATUS_SUCCESS;
 }
 
+
+NTSTATUS pnp_query_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	zfs_mount_object_t *zmo;
+
+	dprintf("%s: query id type %d\n", __func__, IrpSp->Parameters.QueryId.IdType);
+
+	zmo = (zfs_mount_object_t *)DeviceObject->DeviceExtension;
+
+	Irp->IoStatus.Information = ExAllocatePoolWithTag(PagedPool, zmo->bus_name.Length + sizeof(UNICODE_NULL), '!OIZ');
+	if (Irp->IoStatus.Information == NULL) return STATUS_NO_MEMORY;
+
+	RtlCopyMemory(Irp->IoStatus.Information, zmo->bus_name.Buffer, zmo->bus_name.Length);
+
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS pnp_device_state(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+
+	Irp->IoStatus.Information |= PNP_DEVICE_NOT_DISABLEABLE;
+
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	// Return name in MOUNTDEV_NAME
+	PMOUNTDEV_NAME name;
+	zfs_mount_object_t *zmo;
+
+	zmo = (zfs_mount_object_t *)DeviceObject->DeviceExtension;
+
+	name = ExAllocatePoolWithTag(PagedPool, sizeof(MOUNTDEV_NAME) + zmo->name.Length, '!OIZ');
+	if (name == NULL) return STATUS_NO_MEMORY;
+
+	RtlCopyMemory(name->Name, zmo->name.Buffer, zmo->name.Length);
+	name->NameLength = zmo->name.Length;
+
+	Irp->IoStatus.Information = name;
+
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	PMOUNTDEV_UNIQUE_ID uniqueId;
+	WCHAR				deviceName[MAXIMUM_FILENAME_LENGTH];
+	ULONG				bufferLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
+	zfs_mount_object_t *zmo;
+
+	zmo = (zfs_mount_object_t *)DeviceObject->DeviceExtension;
+
+	if (bufferLength < sizeof(MOUNTDEV_UNIQUE_ID)) {
+		Irp->IoStatus.Information = sizeof(MOUNTDEV_UNIQUE_ID);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	uniqueId = (PMOUNTDEV_UNIQUE_ID)Irp->AssociatedIrp.SystemBuffer;
+	ASSERT(uniqueId != NULL);
+
+	uniqueId->UniqueIdLength = zmo->uuid.Length + 1 * sizeof(WCHAR); // includes null char
+
+	if (sizeof(USHORT) + uniqueId->UniqueIdLength < bufferLength) {
+		RtlCopyMemory((PCHAR)uniqueId->UniqueId, zmo->uuid.Buffer, zmo->uuid.Length);
+		uniqueId->UniqueId[zmo->uuid.Length] = UNICODE_NULL;
+		Irp->IoStatus.Information = FIELD_OFFSET(MOUNTDEV_UNIQUE_ID, UniqueId[0]) +
+			uniqueId->UniqueIdLength;
+		return STATUS_SUCCESS;
+	} else {
+		Irp->IoStatus.Information = sizeof(MOUNTDEV_UNIQUE_ID);
+		return STATUS_BUFFER_OVERFLOW;
+	}
+}
+
+
+#define IOCTL_VOLUME_BASE ((DWORD) 'V')
+#define IOCTL_VOLUME_GET_GPT_ATTRIBUTES      CTL_CODE(IOCTL_VOLUME_BASE,14,METHOD_BUFFERED,FILE_ANY_ACCESS)
+
 static PDEVICE_OBJECT vnop_deviceObject = NULL;
-extern NTSTATUS zfsdev_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 
 _Function_class_(IRP_MJ_CREATE)
 _Function_class_(DRIVER_DISPATCH)
@@ -3580,7 +3660,45 @@ dispatcher(
 				break;
 			}
 			/* Not ZFS ioctl, handle Windows ones */
-			Status = 0;
+			switch (cmd) {
+			case IOCTL_VOLUME_GET_GPT_ATTRIBUTES:
+				dprintf("IOCTL_VOLUME_GET_GPT_ATTRIBUTES\n");
+				Status = 0;
+				break;
+			case IOCTL_MOUNTDEV_QUERY_DEVICE_NAME:
+				dprintf("IOCTL_MOUNTDEV_QUERY_DEVICE_NAME\n");
+				Status = ioctl_query_device_name(VolumeDeviceObject, Irp, IrpSp);
+				break;
+			case IOCTL_MOUNTDEV_QUERY_UNIQUE_ID:
+				dprintf("IOCTL_MOUNTDEV_QUERY_UNIQUE_ID\n");
+				Status = ioctl_query_unique_id(VolumeDeviceObject, Irp, IrpSp);
+				break;
+			case IOCTL_MOUNTDEV_QUERY_STABLE_GUID:
+				dprintf("IOCTL_MOUNTDEV_QUERY_STABLE_GUID\n");
+				break;
+			case IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME:
+				dprintf("IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME\n");
+				break;
+			case IOCTL_VOLUME_ONLINE:
+				dprintf("IOCTL_VOLUME_ONLINE\n");
+				Status = STATUS_SUCCESS;
+				break;
+			case IOCTL_DISK_IS_WRITABLE:
+				dprintf("IOCTL_DISK_IS_WRITABLE\n");
+				Status = STATUS_SUCCESS;
+				break;
+			case IOCTL_DISK_MEDIA_REMOVAL:
+				dprintf("IOCTL_DISK_MEDIA_REMOVAL\n");
+				Status = STATUS_SUCCESS;
+				break;
+			case IOCTL_STORAGE_MEDIA_REMOVAL:
+				dprintf("IOCTL_STORAGE_MEDIA_REMOVAL\n");
+				Status = STATUS_SUCCESS;
+				break;
+			default:
+				dprintf("**** unknown Windows IOCTL: 0x%lx\n", cmd);
+			}
+
 		}
 		break;
 
@@ -3604,8 +3722,15 @@ dispatcher(
 		case IRP_MN_QUERY_DEVICE_RELATIONS:
 			Status = STATUS_NOT_IMPLEMENTED;
 			break;
+		case IRP_MN_QUERY_ID:
+			Status = pnp_query_id(VolumeDeviceObject, Irp, IrpSp);
+			break;
+		case IRP_MN_QUERY_PNP_DEVICE_STATE:
+			Status = pnp_device_state(VolumeDeviceObject, Irp, IrpSp);
+			break;
 		}
 		break;
+
 	}
 
 	Irp->IoStatus.Status = Status;

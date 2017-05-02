@@ -21,35 +21,31 @@
 /*
 * Copyright (c) 2017 Jorgen Lundman <lundman@lundman.net>
 */
-#include <sys/zfs_ioctl.h>
-#include <sys/zfs_znode.h>
-#include <sys/zvol.h>
 
-#include <sys/zfs_vnops.h>
-#include <sys/taskq.h>
+#ifndef SYS_WINDOWS_H_INCLUDED
+#define SYS_WINDOWS_H_INCLUDED
 
+
+struct zfs_mount_object {
+	zfsvfs_t *zfsvfs;
+	PDEVICE_OBJECT pdo;
+	UNICODE_STRING bus_name;
+	UNICODE_STRING name;
+	UNICODE_STRING uuid;
+	PDEVICE_OBJECT attached_device;
+};
+typedef struct zfs_mount_object zfs_mount_object_t;
+
+
+extern NTSTATUS dev_ioctl(PDEVICE_OBJECT DeviceObject, ULONG ControlCode, PVOID InputBuffer, ULONG InputBufferSize,
+	PVOID OutputBuffer, ULONG OutputBufferSize, BOOLEAN Override, IO_STATUS_BLOCK* iosb);
 
 extern int zfs_windows_mount(zfs_cmd_t *zc);
+extern int zfs_windows_unmount(zfs_cmd_t *zc);
+extern NTSTATUS zfsdev_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+extern void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject);
 
 
-int zfs_start(void)
-{
-	zfs_ioctl_osx_init();
-	zfs_vfsops_init();
-	system_taskq_init();
 
 
-	zfs_cmd_t zc;
-	strlcpy(zc.zc_name, "BOOM", 10);
-	strlcpy(zc.zc_value, "/BOOM", 10);
-	//zfs_windows_mount(&zc);
-
-	return 0;
-}
-
-void zfs_stop(void)
-{
-	system_taskq_fini();
-	zfs_ioctl_osx_fini();
-	zfs_vfsops_fini();
-}
+#endif

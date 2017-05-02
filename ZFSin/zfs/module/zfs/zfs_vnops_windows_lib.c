@@ -53,6 +53,8 @@
 #include <sys/types.h>
 #include <sys/w32_types.h>
 
+#include <sys/zfs_windows.h>
+
 extern int zfs_vnop_force_formd_normalized_output; /* disabled by default */
 
 int zfs_vfs_uuid_gen(const char *osname, uuid_t uuid);
@@ -213,8 +215,6 @@ fnv_32a_buf(void *buf, size_t len, uint32_t hval)
 * fill in disk information
 * broadcast information
 */
-NTSTATUS dev_ioctl(PDEVICE_OBJECT DeviceObject, ULONG ControlCode, PVOID InputBuffer, ULONG InputBufferSize,
-	PVOID OutputBuffer, ULONG OutputBufferSize, BOOLEAN Override, IO_STATUS_BLOCK* iosb);
 
 NTSTATUS mountmgr_add_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath) {
 	NTSTATUS Status;
@@ -240,6 +240,15 @@ NTSTATUS mountmgr_add_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devp
 	kmem_free(mmdlt, mmdltsize);
 
 	return Status;
+}
+
+int AsciiStringToUnicodeString(char *in, PUNICODE_STRING out)
+{
+	ANSI_STRING conv;
+	conv.Buffer = in;
+	conv.Length = strlen(in);
+	conv.MaximumLength = PATH_MAX;
+	return RtlAnsiStringToUnicodeString(out, &conv, TRUE);
 }
 
 int zfs_windows_mount(zfs_cmd_t *zc)
@@ -274,13 +283,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	status = RtlAnsiStringToUnicodeString(&volname, &pants, TRUE);
 
 	// What do we need to keep for each mount?
-	struct zfs_mount_object {
-		zfsvfs_t *zfsvfs;
-		PDEVICE_OBJECT pdo;
-		UNICODE_STRING bus_name;
-		PDEVICE_OBJECT attached_device;
-	};
-	typedef struct zfs_mount_object zfs_mount_object_t;
+
 
 	PDEVICE_OBJECT voldev;
 
@@ -294,9 +297,13 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	// Fill in our structs
 	voldev->SectorSize = 512; // Grab from dataset recordsize
 	voldev->Flags |= DO_DIRECT_IO;
+	voldev->Flags &= ~DO_DEVICE_INITIALIZING;
 
 	zfs_mount_object_t *zmo = voldev->DeviceExtension;
 	zmo->zfsvfs = NULL;  // Assign the zfsvfs eventually.
+	AsciiStringToUnicodeString(uuid_a, &zmo->uuid);
+	AsciiStringToUnicodeString(zc->zc_name, &zmo->name);
+
 
 	status = IoRegisterDeviceInterface(pdo, &GUID_DEVINTERFACE_VOLUME, NULL, &zmo->bus_name);
 	if (status != STATUS_SUCCESS)
@@ -335,9 +342,22 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 		UNICODE_STRING                  unicodeTargetVolumeName;
 		DWORD                           inputSize;
 		PMOUNTMGR_VOLUME_MOUNT_POINT input;
-		UNICODE_STRING volname2;
 
 		//RtlInitUnicodeString(&unicodeSourceVolumeName, L"");
+
+		char buf2[PATH_MAX];
+		//snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
+		snprintf(buf2, sizeof(buf2), "\\??\\Device\\ZFS{%s}", uuid_a);
+		dprintf("%s: new devstring '%s'\n", __func__, buf2);
+
+		UNICODE_STRING volname2;
+		ANSI_STRING pants2;
+
+		pants2.Buffer = buf2;
+		pants2.Length = strlen(buf2);
+		pants2.MaximumLength = PATH_MAX;
+		status = RtlAnsiStringToUnicodeString(&volname2, &pants2, TRUE);
+
 #if 0
 		RtlInitUnicodeString(&unicodeTargetVolumeName, L"\\??\\DosDevices\\C:\\BOOM");
 		//unicodeSourceVolumeName.Length -= sizeof(WCHAR);
@@ -354,7 +374,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 
 #if 1
 
-		status = mountmgr_add_drive_letter(deviceObject, &volname);
+		status = mountmgr_add_drive_letter(deviceObject, &volname2);
 
 #else
 		RtlInitUnicodeString(&unicodeTargetVolumeName, L"\\??\\Devices\\E:\\");
@@ -366,13 +386,13 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 		input = kmem_alloc(inputSize, KM_SLEEP);
 
 		input->SourceVolumeNameOffset = sizeof(MOUNTMGR_VOLUME_MOUNT_POINT);
-		input->SourceVolumeNameLength = volname.Length;
+		input->SourceVolumeNameLength = volname2.Length;
 		input->TargetVolumeNameOffset = input->SourceVolumeNameOffset +
 			input->SourceVolumeNameLength;
 		input->TargetVolumeNameLength = unicodeTargetVolumeName.Length;
 
 		RtlCopyMemory((PCHAR)input + input->SourceVolumeNameOffset,
-			volname.Buffer,
+			volname2.Buffer,
 			input->SourceVolumeNameLength);
 
 		RtlCopyMemory((PCHAR)input + input->TargetVolumeNameOffset,
