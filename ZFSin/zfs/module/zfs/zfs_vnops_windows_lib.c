@@ -216,7 +216,8 @@ fnv_32a_buf(void *buf, size_t len, uint32_t hval)
 * broadcast information
 */
 
-NTSTATUS mountmgr_add_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath) {
+NTSTATUS mountmgr_add_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath) 
+{
 	NTSTATUS Status;
 	ULONG mmdltsize;
 	MOUNTMGR_DRIVE_LETTER_TARGET* mmdlt;
@@ -242,6 +243,43 @@ NTSTATUS mountmgr_add_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devp
 	return Status;
 }
 
+NTSTATUS mountmgr_get_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath)
+{
+	MOUNTMGR_MOUNT_POINT point = { 0 };
+	MOUNTMGR_MOUNT_POINTS points;
+	PMOUNTMGR_MOUNT_POINTS ppoints = NULL;
+	int len;
+	NTSTATUS Status;
+
+	ppoints = &points;
+	Status = dev_ioctl(mountmgr, IOCTL_MOUNTMGR_QUERY_POINTS, &point, sizeof(MOUNTMGR_MOUNT_POINT), ppoints, sizeof(MOUNTMGR_MOUNT_POINTS), FALSE, NULL);
+
+	if (Status == STATUS_BUFFER_OVERFLOW) {
+		len = points.Size;
+		ppoints = kmem_alloc(len, KM_SLEEP);
+		Status = dev_ioctl(mountmgr, IOCTL_MOUNTMGR_QUERY_POINTS, &point, sizeof(MOUNTMGR_MOUNT_POINT), ppoints, len, FALSE, NULL);
+
+	}
+	dprintf("IOCTL_MOUNTMGR_QUERY_POINTS return %x\n", Status);
+
+	if (Status == STATUS_SUCCESS) {
+		for (int Index = 0; Index < ppoints->NumberOfMountPoints; Index++) {
+			PMOUNTMGR_MOUNT_POINT ipoint = ppoints->MountPoints + Index;
+			PUCHAR DeviceName = (PUCHAR)ppoints + ipoint->DeviceNameOffset;
+			PUCHAR SymbolicLinkName = (PUCHAR)ppoints + ipoint->SymbolicLinkNameOffset;
+
+			dprintf("   point %d: '%.*S' '%.*S'\n", Index, 
+				ipoint->DeviceNameLength / sizeof(WCHAR), DeviceName,
+				ipoint->SymbolicLinkNameLength / sizeof(WCHAR), SymbolicLinkName);
+		}
+	}
+
+
+	if (ppoints != NULL) kmem_free(ppoints, len);
+	return STATUS_SUCCESS;
+}
+
+
 int AsciiStringToUnicodeString(char *in, PUNICODE_STRING out)
 {
 	ANSI_STRING conv;
@@ -259,6 +297,22 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	char uuid_a[UUID_PRINTABLE_STRING_LENGTH];
 	PDEVICE_OBJECT pdo = NULL;
 
+
+	UNICODE_STRING name;
+	PFILE_OBJECT                        fileObject;
+	PDEVICE_OBJECT                      deviceObject;
+
+	RtlInitUnicodeString(&name, MOUNTMGR_DEVICE_NAME);
+	status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &fileObject,
+		&deviceObject);
+	if (status != STATUS_SUCCESS) return status;
+
+	dprintf("*** before creating mount\n");
+	status = mountmgr_get_drive_letter(deviceObject, NULL);
+
+
+	dprintf("*** creating mount\n");
+
 	status = IoReportDetectedDevice(WIN_DriverObject, InterfaceTypeUndefined, 0xFFFFFFFF, 0xFFFFFFFF,
 		NULL, NULL, 0, &pdo);
 	if (status != STATUS_SUCCESS) {
@@ -270,6 +324,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	zfs_vfs_uuid_unparse(uuid, uuid_a);
 
 	char buf[PATH_MAX];
+	//snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
 	//snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
 	snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
 	dprintf("%s: new devstring '%s'\n", __func__, buf);
@@ -303,7 +358,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	zmo->zfsvfs = NULL;  // Assign the zfsvfs eventually.
 	AsciiStringToUnicodeString(uuid_a, &zmo->uuid);
 	AsciiStringToUnicodeString(zc->zc_name, &zmo->name);
-
+	AsciiStringToUnicodeString(buf, &zmo->device_name);
 
 	status = IoRegisterDeviceInterface(pdo, &GUID_DEVINTERFACE_VOLUME, NULL, &zmo->bus_name);
 	if (status != STATUS_SUCCESS)
@@ -323,99 +378,102 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	//if (!NT_SUCCESS(Status))
 	//	WARN("IoRegisterPlugPlayNotification returned %08x\n", Status);
 
-
-	// Lookup to see if we have a "set" drive letter, or not, ask for next available.
-	// set drive letter
-	UNICODE_STRING name;
-	PFILE_OBJECT                        fileObject;
-	PDEVICE_OBJECT                      deviceObject;
-
-	RtlInitUnicodeString(&name, MOUNTMGR_DEVICE_NAME);
-	status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &fileObject,
-		&deviceObject);
-	if (status == STATUS_SUCCESS) {
-
-
-		// "\DosDevices\E:\FilesysD\mnt".
-
-		//UNICODE_STRING                  unicodeSourceVolumeName;
-		UNICODE_STRING                  unicodeTargetVolumeName;
-		DWORD                           inputSize;
-		PMOUNTMGR_VOLUME_MOUNT_POINT input;
-
-		//RtlInitUnicodeString(&unicodeSourceVolumeName, L"");
-
-		char buf2[PATH_MAX];
-		//snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
-		snprintf(buf2, sizeof(buf2), "\\??\\Device\\ZFS{%s}", uuid_a);
-		dprintf("%s: new devstring '%s'\n", __func__, buf2);
-
-		UNICODE_STRING volname2;
-		ANSI_STRING pants2;
-
-		pants2.Buffer = buf2;
-		pants2.Length = strlen(buf2);
-		pants2.MaximumLength = PATH_MAX;
-		status = RtlAnsiStringToUnicodeString(&volname2, &pants2, TRUE);
-
-#if 0
-		RtlInitUnicodeString(&unicodeTargetVolumeName, L"\\??\\DosDevices\\C:\\BOOM");
-		//unicodeSourceVolumeName.Length -= sizeof(WCHAR);
-		//unicodeTargetVolumeName.Length -= sizeof(WCHAR);
-
-		snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
-		dprintf("%s: new devstring '%s'\n", __func__, buf);
-
-		pants.Buffer = buf;
-		pants.Length = strlen(buf);
-		pants.MaximumLength = PATH_MAX;
-		status = RtlAnsiStringToUnicodeString(&volname2, &pants, TRUE);
-#endif
-
-#if 1
-
-		status = mountmgr_add_drive_letter(deviceObject, &volname2);
-
-#else
-		RtlInitUnicodeString(&unicodeTargetVolumeName, L"\\??\\Devices\\E:\\");
-		//RtlInitUnicodeString(&unicodeTargetVolumeName, L"\\Devices\\E:\\");
-
-		inputSize = sizeof(MOUNTMGR_VOLUME_MOUNT_POINT) +
-			volname.Length +
-			unicodeTargetVolumeName.Length;
-		input = kmem_alloc(inputSize, KM_SLEEP);
-
-		input->SourceVolumeNameOffset = sizeof(MOUNTMGR_VOLUME_MOUNT_POINT);
-		input->SourceVolumeNameLength = volname2.Length;
-		input->TargetVolumeNameOffset = input->SourceVolumeNameOffset +
-			input->SourceVolumeNameLength;
-		input->TargetVolumeNameLength = unicodeTargetVolumeName.Length;
-
-		RtlCopyMemory((PCHAR)input + input->SourceVolumeNameOffset,
-			volname2.Buffer,
-			input->SourceVolumeNameLength);
-
-		RtlCopyMemory((PCHAR)input + input->TargetVolumeNameOffset,
-			unicodeTargetVolumeName.Buffer,
-			input->TargetVolumeNameLength);
-
-//		((PWSTR)((PCHAR)input + input->SourceVolumeNameOffset))[1] = '?';
-//		((PWSTR)((PCHAR)input + input->TargetVolumeNameOffset))[1] = '?';
-
-		status = dev_ioctl(deviceObject, IOCTL_MOUNTMGR_VOLUME_MOUNT_POINT_CREATED, input, inputSize, NULL, 0, TRUE, NULL);
-		dprintf("IOCTL_MOUNTMGR_VOLUME_MOUNT_POINT_CREATED returns %x\n", status);
-		kmem_free(input, inputSize);
-
-#endif
-
-
-		ObDereferenceObject(fileObject);
-	}
-
 	status = IoSetDeviceInterfaceState(&zmo->bus_name, TRUE);
 	if (status != STATUS_SUCCESS)
 		dprintf("IoSetDeviceInterfaceState returned %08x\n", status);
 
+	// Lookup to see if we have a "set" drive letter, or not, ask for next available.
+	// set drive letter
+
+
+		// "\DosDevices\E:\FilesysD\mnt".
+	dprintf("*** after creating mount\n");
+
+	//UNICODE_STRING                  unicodeSourceVolumeName;
+	UNICODE_STRING                  unicodeTargetVolumeName;
+	DWORD                           inputSize;
+
+	//RtlInitUnicodeString(&unicodeSourceVolumeName, L"");
+
+	char buf2[PATH_MAX];
+	//snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
+	//snprintf(buf2, sizeof(buf2), "\\??\\Device\\ZFS{%s}", uuid_a);
+	snprintf(buf2, sizeof(buf2), "\\Volume{29217a8d-2ed2-11e7-baa7-ab3bc3128e46}");
+
+	dprintf("%s: new devstring '%s'\n", __func__, buf2);
+
+	UNICODE_STRING volname2;
+	ANSI_STRING pants2;
+
+	pants2.Buffer = buf2;
+	pants2.Length = strlen(buf2);
+	pants2.MaximumLength = PATH_MAX;
+	status = RtlAnsiStringToUnicodeString(&volname2, &pants2, TRUE);
+
+#if 0
+	RtlInitUnicodeString(&unicodeTargetVolumeName, L"\\??\\DosDevices\\C:\\BOOM");
+	//unicodeSourceVolumeName.Length -= sizeof(WCHAR);
+	//unicodeTargetVolumeName.Length -= sizeof(WCHAR);
+
+	snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
+	dprintf("%s: new devstring '%s'\n", __func__, buf);
+
+	pants.Buffer = buf;
+	pants.Length = strlen(buf);
+	pants.MaximumLength = PATH_MAX;
+	status = RtlAnsiStringToUnicodeString(&volname2, &pants, TRUE);
+#endif
+
+//#if 1
+
+	status = mountmgr_add_drive_letter(deviceObject, &volname);
+	//status = mountmgr_add_drive_letter(deviceObject, &volname2);
+
+//#else
+	PMOUNTMGR_CREATE_POINT_INPUT input;
+
+	//RtlInitUnicodeString(&unicodeTargetVolumeName, L"\\??\\Devices\\E:\\");
+	RtlInitUnicodeString(&unicodeTargetVolumeName, L"\\DosDevices\\C:\\BOOM");
+
+	inputSize = sizeof(MOUNTMGR_CREATE_POINT_INPUT) +
+		volname.Length +   // volname
+		unicodeTargetVolumeName.Length;
+	input = (PMOUNTMGR_CREATE_POINT_INPUT)
+		ExAllocatePool(PagedPool,
+			inputSize);
+
+	input->SymbolicLinkNameOffset = sizeof(MOUNTMGR_CREATE_POINT_INPUT);
+	input->SymbolicLinkNameLength = unicodeTargetVolumeName.Length;
+
+	RtlCopyMemory(
+		(PCHAR)input + input->SymbolicLinkNameOffset,
+		unicodeTargetVolumeName.Buffer,
+		unicodeTargetVolumeName.Length);
+
+	input->DeviceNameOffset = (USHORT)
+		(input->SymbolicLinkNameOffset + input->SymbolicLinkNameLength);
+	input->DeviceNameLength = volname.Length;
+
+	RtlCopyMemory(
+		(PCHAR)input + input->DeviceNameOffset,
+		volname.Buffer,
+		volname.Length);
+
+	dprintf("Setting '%wZ' \n", &volname);
+	dprintf("     to '%wZ' \n", &unicodeTargetVolumeName);
+
+	status = dev_ioctl(deviceObject, IOCTL_MOUNTMGR_CREATE_POINT, input, inputSize, NULL, 0, TRUE, NULL);
+	dprintf("IOCTL_MOUNTMGR_CREATE_POINT returns %x\n", status);
+
+	ExFreePool(input);
+//#endif
+
+	dprintf("*** giving up creating mount\n");
+	status = mountmgr_get_drive_letter(deviceObject, &volname);
+
+
+	// Finished with mountmgr
+	ObDereferenceObject(fileObject);
 	return status;
 }
 
@@ -1714,8 +1772,8 @@ zfs_vfs_uuid_unparse(uuid_t uuid, char *dst)
 		return (EINVAL);
 	}
 
-	snprintf(dst, UUID_PRINTABLE_STRING_LENGTH, "%02X%02X%02X%02X-"
-	    "%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+	snprintf(dst, UUID_PRINTABLE_STRING_LENGTH, "%02x%02x%02x%02x-"
+	    "%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
 	    uuid[0], uuid[1], uuid[2], uuid[3],
 	    uuid[4], uuid[5], uuid[6], uuid[7],
 	    uuid[8], uuid[9], uuid[10], uuid[11],

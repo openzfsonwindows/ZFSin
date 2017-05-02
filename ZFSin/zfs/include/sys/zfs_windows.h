@@ -30,6 +30,7 @@ struct zfs_mount_object {
 	zfsvfs_t *zfsvfs;
 	PDEVICE_OBJECT pdo;
 	UNICODE_STRING bus_name;
+	UNICODE_STRING device_name;
 	UNICODE_STRING name;
 	UNICODE_STRING uuid;
 	PDEVICE_OBJECT attached_device;

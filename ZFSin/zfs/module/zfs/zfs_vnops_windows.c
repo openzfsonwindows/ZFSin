@@ -3324,7 +3324,7 @@ int zfs_vnop_mount(PIRP Irp, PIO_STACK_LOCATION IrpSp)
 	PDEVICE_OBJECT DeviceToMount;
 	DeviceToMount = IrpSp->Parameters.MountVolume.DeviceObject;
 
-	dprintf("mount request for %p\n", DeviceToMount);
+	dprintf("*** mount request for %p\n", DeviceToMount);
 
 	NTSTATUS Status;
 	MOUNTDEV_NAME mdn, *mdn2;
@@ -3337,16 +3337,21 @@ int zfs_vnop_mount(PIRP Irp, PIO_STACK_LOCATION IrpSp)
 	mdnsize = offsetof(MOUNTDEV_NAME, Name[0]) + mdn.NameLength;
 	mdn2 = kmem_alloc(mdnsize, KM_SLEEP);
 
+	dprintf("mount strlen %d\n", mdn.NameLength);
+
 	Status = dev_ioctl(DeviceToMount, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, mdn2, mdnsize, TRUE, NULL);
 	if (Status != STATUS_SUCCESS)
 		goto out;
 
+	dprintf("mount about '%.*S'\n", mdn2->NameLength/sizeof(WCHAR), mdn2->Name);
+#if 0
 	ANSI_STRING ansi;
 	UNICODE_STRING uni;
 	RtlUnicodeStringInit(&uni, mdn2->Name);
 	RtlUnicodeStringToAnsiString(&ansi, &uni, TRUE);
 	dprintf("mount about '%s'\n", ansi.Buffer);
 	RtlFreeAnsiString(&ansi);
+#endif
 out:
 	kmem_free(mdn2, mdnsize);
 	return STATUS_UNRECOGNIZED_VOLUME;
@@ -3525,7 +3530,7 @@ NTSTATUS QueryCapabilities(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 	return STATUS_SUCCESS;
 }
 
-
+// THIS IS THE PNP DEVICE ID
 NTSTATUS pnp_query_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	zfs_mount_object_t *zmo;
@@ -3538,6 +3543,7 @@ NTSTATUS pnp_query_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	if (Irp->IoStatus.Information == NULL) return STATUS_NO_MEMORY;
 
 	RtlCopyMemory(Irp->IoStatus.Information, zmo->bus_name.Buffer, zmo->bus_name.Length);
+	dprintf("replying with '%.*S'\n", zmo->uuid.Length/sizeof(WCHAR), zmo->uuid.Buffer);
 
 	return STATUS_SUCCESS;
 }
@@ -3550,21 +3556,35 @@ NTSTATUS pnp_device_state(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCAT
 	return STATUS_SUCCESS;
 }
 
+
 NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	// Return name in MOUNTDEV_NAME
 	PMOUNTDEV_NAME name;
 	zfs_mount_object_t *zmo;
 
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(MOUNTDEV_NAME)) {
+		Irp->IoStatus.Information = sizeof(MOUNTDEV_NAME);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
 	zmo = (zfs_mount_object_t *)DeviceObject->DeviceExtension;
 
-	name = ExAllocatePoolWithTag(PagedPool, sizeof(MOUNTDEV_NAME) + zmo->name.Length, '!OIZ');
-	if (name == NULL) return STATUS_NO_MEMORY;
+	name = Irp->AssociatedIrp.SystemBuffer;
 
-	RtlCopyMemory(name->Name, zmo->name.Buffer, zmo->name.Length);
-	name->NameLength = zmo->name.Length;
+	name->NameLength = zmo->device_name.Length;
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < offsetof(MOUNTDEV_NAME, Name[0]) + name->NameLength) {
+		Irp->IoStatus.Information = sizeof(MOUNTDEV_NAME);
+		return STATUS_BUFFER_OVERFLOW;
+	}
+	//name = ExAllocatePoolWithTag(PagedPool, sizeof(MOUNTDEV_NAME) + zmo->name.Length, '!OIZ');
+	//if (name == NULL) return STATUS_NO_MEMORY;
 
-	Irp->IoStatus.Information = name;
+	RtlCopyMemory(name->Name, zmo->device_name.Buffer, zmo->device_name.Length);
+
+	//Irp->IoStatus.Information = name;
+	Irp->IoStatus.Information = offsetof(MOUNTDEV_NAME, Name[0]) + name->NameLength;
+	dprintf("replying with '%.*S'\n", name->NameLength/sizeof(WCHAR), name->Name);
 
 	return STATUS_SUCCESS;
 }
@@ -3586,13 +3606,15 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	uniqueId = (PMOUNTDEV_UNIQUE_ID)Irp->AssociatedIrp.SystemBuffer;
 	ASSERT(uniqueId != NULL);
 
-	uniqueId->UniqueIdLength = zmo->uuid.Length + 1 * sizeof(WCHAR); // includes null char
+	//uniqueId->UniqueIdLength = zmo->uuid.Length + 1 * sizeof(WCHAR); // includes null char
+	uniqueId->UniqueIdLength = zmo->uuid.Length;
 
 	if (sizeof(USHORT) + uniqueId->UniqueIdLength < bufferLength) {
 		RtlCopyMemory((PCHAR)uniqueId->UniqueId, zmo->uuid.Buffer, zmo->uuid.Length);
-		uniqueId->UniqueId[zmo->uuid.Length] = UNICODE_NULL;
+//		uniqueId->UniqueId[zmo->uuid.Length] = UNICODE_NULL;
 		Irp->IoStatus.Information = FIELD_OFFSET(MOUNTDEV_UNIQUE_ID, UniqueId[0]) +
 			uniqueId->UniqueIdLength;
+		dprintf("replying with '%.*S'\n", uniqueId->UniqueIdLength/sizeof(WCHAR), uniqueId->UniqueId);
 		return STATUS_SUCCESS;
 	} else {
 		Irp->IoStatus.Information = sizeof(MOUNTDEV_UNIQUE_ID);
@@ -3603,6 +3625,9 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 
 #define IOCTL_VOLUME_BASE ((DWORD) 'V')
 #define IOCTL_VOLUME_GET_GPT_ATTRIBUTES      CTL_CODE(IOCTL_VOLUME_BASE,14,METHOD_BUFFERED,FILE_ANY_ACCESS)
+
+#define IOCTL_VOLUME_POST_ONLINE    CTL_CODE(IOCTL_VOLUME_BASE, 25, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
+
 
 static PDEVICE_OBJECT vnop_deviceObject = NULL;
 
@@ -3728,6 +3753,22 @@ dispatcher(
 		case IRP_MN_QUERY_PNP_DEVICE_STATE:
 			Status = pnp_device_state(VolumeDeviceObject, Irp, IrpSp);
 			break;
+		case IRP_MN_QUERY_REMOVE_DEVICE:
+			dprintf("IRP_MN_QUERY_REMOVE_DEVICE\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IRP_MN_SURPRISE_REMOVAL:
+			dprintf("IRP_MN_SURPRISE_REMOVAL\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IRP_MN_REMOVE_DEVICE:
+			dprintf("IRP_MN_REMOVE_DEVICE\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IRP_MN_CANCEL_REMOVE_DEVICE:
+			dprintf("IRP_MN_CANCEL_REMOVE_DEVICE\n");
+			Status = STATUS_SUCCESS;
+			break;
 		}
 		break;
 
@@ -3740,7 +3781,7 @@ dispatcher(
 	if (TopLevel) { IoSetTopLevelIrp(NULL); }
 	FsRtlExitFileSystem();
 
-	dprintf("%s: exit: %d\n", __func__, Status);
+	dprintf("%s: exit: 0x%x\n", __func__, Status);
 	IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 	return Status;
 }
