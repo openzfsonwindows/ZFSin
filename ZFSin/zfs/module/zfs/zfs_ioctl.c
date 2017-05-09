@@ -2626,7 +2626,11 @@ zfs_set_prop_nvlist(const char *dsname, zprop_source_t source, nvlist_t *nvl,
 		}
 
 		/* Validate value type */
-		if (err == 0 && prop == ZPROP_INVAL) {
+		if (err == 0 && source == ZPROP_SRC_INHERITED) {
+			/* inherited properties are expected to be booleans */
+			if (nvpair_type(propval) != DATA_TYPE_BOOLEAN)
+				err = SET_ERROR(EINVAL);
+		} else if (err == 0 && prop == ZPROP_INVAL) {
 			if (zfs_prop_user(propname)) {
 				if (nvpair_type(propval) != DATA_TYPE_STRING)
 					err = SET_ERROR(EINVAL);
@@ -2671,7 +2675,11 @@ zfs_set_prop_nvlist(const char *dsname, zprop_source_t source, nvlist_t *nvl,
 			err = zfs_check_settable(dsname, pair, CRED());
 
 		if (err == 0) {
-			err = zfs_prop_set_special(dsname, source, pair);
+			if (source == ZPROP_SRC_INHERITED)
+				err = -1; /* does not need special handling */
+			else
+				err = zfs_prop_set_special(dsname, source,
+				    pair);
 			if (err == -1) {
 				/*
 				 * For better performance we build up a list of
@@ -2722,7 +2730,10 @@ zfs_set_prop_nvlist(const char *dsname, zprop_source_t source, nvlist_t *nvl,
 			if (nvpair_type(propval) == DATA_TYPE_STRING) {
 				strval = fnvpair_value_string(propval);
 				err = dsl_prop_set_string(dsname, propname,
-										  source, strval);
+				    source, strval);
+			} else if (nvpair_type(propval) == DATA_TYPE_BOOLEAN) {
+				err = dsl_prop_inherit(dsname, propname,
+				    source);
 			} else {
 				intval = fnvpair_value_uint64(propval);
 				err = dsl_prop_set_int(dsname, propname, source,
@@ -4677,7 +4688,7 @@ zfs_ioc_recv_impl(char *tofs, char *tosnap, char *origin, nvlist_t *recvprops,
 			nvlist_free(errlist);
 
 			if (clear_received_props(tofs, origrecvd,
-					first_recvd_props ? NULL : recvprops) != 0)
+			    first_recvd_props ? NULL : recvprops) != 0)
 				*errflags |= ZPROP_ERR_NOCLEAR;
 		} else {
 			*errflags |= ZPROP_ERR_NOCLEAR;
@@ -4733,6 +4744,36 @@ zfs_ioc_recv_impl(char *tofs, char *tosnap, char *origin, nvlist_t *recvprops,
 		}
 
 		local_delayprops = extract_delay_props(oprops);
+		(void) zfs_set_prop_nvlist(tofs, ZPROP_SRC_LOCAL,
+		    oprops, *errors);
+		(void) zfs_set_prop_nvlist(tofs, ZPROP_SRC_INHERITED,
+		    xprops, *errors);
+
+		nvlist_free(oprops);
+		nvlist_free(xprops);
+	}
+
+	if (localprops != NULL) {
+		nvlist_t *oprops = fnvlist_alloc();
+		nvlist_t *xprops = fnvlist_alloc();
+		nvpair_t *nvp = NULL;
+
+		while ((nvp = nvlist_next_nvpair(localprops, nvp)) != NULL) {
+			if (nvpair_type(nvp) == DATA_TYPE_BOOLEAN) {
+				/* -x property */
+				const char *name = nvpair_name(nvp);
+				zfs_prop_t prop = zfs_name_to_prop(name);
+				if (prop != ZPROP_INVAL) {
+					if (!zfs_prop_inheritable(prop))
+						continue;
+				} else if (!zfs_prop_user(name))
+					continue;
+				fnvlist_add_boolean(xprops, name);
+			} else {
+				/* -o property=value */
+				fnvlist_add_nvpair(oprops, nvp);
+			}
+		}
 		(void) zfs_set_prop_nvlist(tofs, ZPROP_SRC_LOCAL,
 		    oprops, *errors);
 		(void) zfs_set_prop_nvlist(tofs, ZPROP_SRC_INHERITED,
@@ -4844,9 +4885,9 @@ zfs_ioc_recv_impl(char *tofs, char *tosnap, char *origin, nvlist_t *recvprops,
 		 * first new-style receive.
 		 */
 		if (origrecvd != NULL &&
-			zfs_set_prop_nvlist(tofs, (first_recvd_props ?
-                ZPROP_SRC_LOCAL : ZPROP_SRC_RECEIVED),
-			    origrecvd, NULL) != 0) {
+		    zfs_set_prop_nvlist(tofs, (first_recvd_props ?
+		    ZPROP_SRC_LOCAL : ZPROP_SRC_RECEIVED),
+		    origrecvd, NULL) != 0) {
 			/*
 			 * We stashed the original properties but failed to
 			 * restore them.
@@ -4925,6 +4966,8 @@ out:
  * inputs:
  * zc_name		name of containing filesystem
  * zc_nvlist_src{_size}	nvlist of properties to apply
+ * zc_nvlist_conf{_size}	nvlist of properties to exclude
+ *			(DATA_TYPE_BOOLEAN) and override (everything else)
  * zc_value		name of snapshot to create
  * zc_string		name of clone origin (if DRR_FLAG_CLONE)
  * zc_cookie		file descriptor to recv from

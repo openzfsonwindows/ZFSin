@@ -27,6 +27,8 @@
  * All rights reserved
  * Copyright (c) 2013 Steven Hartland. All rights reserved.
  * Copyright 2015, OmniTI Computer Consulting, Inc. All rights reserved.
+ * Copyright 2016 Igor Kozhukhov <ikozhukhov@gmail.com>
+ * Copyright (c) 2017, loli10K <ezomori.nozomu@gmail.com>. All rights reserved.
  */
 
 #include <assert.h>
@@ -3183,7 +3185,8 @@ doagain:
 static int
 zfs_receive_package(libzfs_handle_t *hdl, int fd, const char *destname,
     recvflags_t *flags, dmu_replay_record_t *drr, zio_cksum_t *zc,
-    char **top_zfs, int cleanup_fd, uint64_t *action_handlep)
+    char **top_zfs, int cleanup_fd, uint64_t *action_handlep,
+    nvlist_t *cmdprops)
 {
 	nvlist_t *stream_nv = NULL;
 	avl_tree_t *stream_avl = NULL;
@@ -3360,7 +3363,7 @@ zfs_receive_package(libzfs_handle_t *hdl, int fd, const char *destname,
 		 */
 		error = zfs_receive_impl(hdl, destname, NULL, flags, fd,
 		    sendfs, stream_nv, stream_avl, top_zfs, cleanup_fd,
-		    action_handlep, sendsnap);
+		    action_handlep, sendsnap, cmdprops);
 		if (error == ENODATA) {
 			error = 0;
 			break;
@@ -3530,6 +3533,131 @@ recv_ecksum_set_aux(libzfs_handle_t *hdl, const char *target_snap,
 }
 
 /*
+ * Prepare a new nvlist of properties that are to override (-o) or be excluded
+ * (-x) from the received dataset
+ * recvprops: received properties from the send stream
+ * cmdprops: raw input properties from command line
+ * origprops: properties, both locally-set and received, currently set on the
+ *            target dataset if it exists, NULL otherwise.
+ * oxprops: valid output override (-o) and excluded (-x) properties
+ */
+static int
+zfs_setup_cmdline_props(libzfs_handle_t *hdl, zfs_type_t type, boolean_t zoned,
+    boolean_t recursive, boolean_t toplevel, nvlist_t *recvprops,
+    nvlist_t *cmdprops, nvlist_t *origprops, nvlist_t **oxprops,
+    const char *errbuf)
+{
+	nvpair_t *nvp;
+	nvlist_t *oprops, *voprops;
+	zfs_handle_t *zhp = NULL;
+	zpool_handle_t *zpool_hdl = NULL;
+	int ret = 0;
+
+	if (nvlist_empty(cmdprops))
+		return (0); /* No properties to override or exclude */
+
+	*oxprops = fnvlist_alloc();
+	oprops = fnvlist_alloc();
+
+	/*
+	 * first iteration: process excluded (-x) properties now and gather
+	 * added (-o) properties to be later processed by zfs_valid_proplist()
+	 */
+	nvp = NULL;
+	while ((nvp = nvlist_next_nvpair(cmdprops, nvp)) != NULL) {
+		const char *name = nvpair_name(nvp);
+		zfs_prop_t prop = zfs_name_to_prop(name);
+
+		/* "origin" is processed separately, don't handle it here */
+		if (prop == ZFS_PROP_ORIGIN)
+			continue;
+
+		/*
+		 * we're trying to override or exclude a property that does not
+		 * make sense for this type of dataset, but we don't want to
+		 * fail if the receive is recursive: this comes in handy when
+		 * the send stream contains, for instance, a child ZVOL and
+		 * we're trying to receive it with "-o atime=on"
+		 */
+		if (!zfs_prop_valid_for_type(prop, type, B_FALSE) &&
+		    !zfs_prop_user(name)) {
+			if (recursive)
+				continue;
+			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+			    "property '%s' does not apply to datasets of this "
+			    "type"), name);
+			ret = zfs_error(hdl, EZFS_BADPROP, errbuf);
+			goto error;
+		}
+
+		switch (nvpair_type(nvp)) {
+		case DATA_TYPE_BOOLEAN: /* -x property */
+			/*
+			 * DATA_TYPE_BOOLEAN is the way we're asked to "exclude"
+			 * a property: this is done by forcing an explicit
+			 * inherit on the destination so the effective value is
+			 * not the one we received from the send stream.
+			 * We do this only if the property is not already
+			 * locally-set, in which case its value will take
+			 * priority over the received anyway.
+			 */
+			if (nvlist_exists(origprops, name)) {
+				nvlist_t *attrs;
+
+				attrs = fnvlist_lookup_nvlist(origprops, name);
+				if (strcmp(fnvlist_lookup_string(attrs,
+				    ZPROP_SOURCE), ZPROP_SOURCE_VAL_RECVD) != 0)
+					continue;
+			}
+			/*
+			 * We can't force an explicit inherit on non-inheritable
+			 * properties: if we're asked to exclude this kind of
+			 * values we remove them from "recvprops" input nvlist.
+			 */
+			if (!zfs_prop_inheritable(prop) &&
+			    !zfs_prop_user(name) && /* can be inherited too */
+			    nvlist_exists(recvprops, name))
+				fnvlist_remove(recvprops, name);
+			else
+				fnvlist_add_nvpair(*oxprops, nvp);
+			break;
+		case DATA_TYPE_STRING: /* -o property=value */
+			fnvlist_add_nvpair(oprops, nvp);
+			break;
+		default:
+			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+			    "property '%s' must be a string or boolean"), name);
+			ret = zfs_error(hdl, EZFS_BADPROP, errbuf);
+			goto error;
+		}
+	}
+
+	if (toplevel) {
+		/* convert override strings properties to native */
+		if ((voprops = zfs_valid_proplist(hdl, ZFS_TYPE_DATASET,
+		    oprops, zoned, zhp, zpool_hdl, errbuf)) == NULL) {
+			ret = zfs_error(hdl, EZFS_BADPROP, errbuf);
+			goto error;
+		}
+
+		/* second pass: process "-o" properties */
+		fnvlist_merge(*oxprops, voprops);
+		fnvlist_free(voprops);
+	} else {
+		/* override props on child dataset are inherited */
+		nvp = NULL;
+		while ((nvp = nvlist_next_nvpair(oprops, nvp)) != NULL) {
+			const char *name = nvpair_name(nvp);
+			fnvlist_add_boolean(*oxprops, name);
+		}
+	}
+
+error:
+	fnvlist_free(oprops);
+	return (ret);
+}
+
+/*
  * Restores a backup of tosnap from the file descriptor specified by infd.
  */
 static int
@@ -3556,8 +3684,15 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 	zprop_errflags_t prop_errflags;
 	boolean_t recursive;
 	char *snapname = NULL;
-	char tmp_keylocation[MAXNAMELEN];
+	char destsnap[MAXPATHLEN * 2];
+	char origin[MAXNAMELEN];
+	char name[MAXPATHLEN];
 	nvlist_t *rcvprops = NULL; /* props received from the send stream */
+	nvlist_t *oxprops = NULL; /* override (-o) and exclude (-x) props */
+	nvlist_t *origprops = NULL; /* original props (if destination exists) */
+	zfs_type_t type;
+	boolean_t toplevel;
+	boolean_t zoned = B_FALSE;
 
 	begin_time = time(NULL);
 	bzero(tmp_keylocation, MAXNAMELEN);
@@ -3889,6 +4024,14 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 		 */
 		if (resuming && zfs_prop_get_int(zhp, ZFS_PROP_INCONSISTENT))
 			newfs = B_TRUE;
+
+		/* we want to know if we're zoned when validating -o|-x props */
+		zoned = zfs_prop_get_int(zhp, ZFS_PROP_ZONED);
+
+		/* gather existing properties on destination */
+		origprops = fnvlist_alloc();
+		fnvlist_merge(origprops, zhp->zfs_props);
+		fnvlist_merge(origprops, zhp->zfs_user_props);
 
 		zfs_close(zhp);
 	} else {
@@ -4242,14 +4385,63 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 	if (newprops)
 		nvlist_free(rcvprops);
 
+	nvlist_free(oxprops);
+	nvlist_free(origprops);
+
 	return (err);
+}
+
+/*
+ * Check properties we were asked to override (both -o|-x)
+ */
+static boolean_t
+zfs_receive_checkprops(libzfs_handle_t *hdl, nvlist_t *props,
+    const char *errbuf)
+{
+	nvpair_t *nvp;
+	zfs_prop_t prop;
+	const char *name;
+
+	nvp = NULL;
+	while ((nvp = nvlist_next_nvpair(props, nvp)) != NULL) {
+		name = nvpair_name(nvp);
+		prop = zfs_name_to_prop(name);
+
+		if (prop == ZPROP_INVAL) {
+			if (!zfs_prop_user(name)) {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "invalid property '%s'"), name);
+				return (B_FALSE);
+			}
+			continue;
+		}
+		/*
+		 * "origin" is readonly but is used to receive datasets as
+		 * clones so we don't raise an error here
+		 */
+		if (prop == ZFS_PROP_ORIGIN)
+			continue;
+
+		/*
+		 * cannot override readonly, set-once and other specific
+		 * settable properties
+		 */
+		if (zfs_prop_readonly(prop) || prop == ZFS_PROP_VERSION ||
+		    prop == ZFS_PROP_VOLSIZE) {
+			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+			    "invalid property '%s'"), name);
+			return (B_FALSE);
+		}
+	}
+
+	return (B_TRUE);
 }
 
 static int
 zfs_receive_impl(libzfs_handle_t *hdl, const char *tosnap,
     const char *originsnap, recvflags_t *flags, int infd, const char *sendfs,
     nvlist_t *stream_nv, avl_tree_t *stream_avl, char **top_zfs, int cleanup_fd,
-    uint64_t *action_handlep, const char *finalsnap)
+    uint64_t *action_handlep, const char *finalsnap, nvlist_t *cmdprops)
 {
 	int err;
 	dmu_replay_record_t drr, drr_noswap;
@@ -4261,6 +4453,11 @@ zfs_receive_impl(libzfs_handle_t *hdl, const char *tosnap,
 
 	(void) snprintf(errbuf, sizeof (errbuf), dgettext(TEXT_DOMAIN,
 	    "cannot receive"));
+
+	/* check cmdline props, raise an error if they cannot be received */
+	if (!zfs_receive_checkprops(hdl, cmdprops, errbuf)) {
+		return (zfs_error(hdl, EZFS_BADPROP, errbuf));
+	}
 
 	if (flags->isprefix &&
 	    !zfs_dataset_exists(hdl, tosnap, ZFS_TYPE_DATASET)) {
@@ -4356,12 +4553,12 @@ zfs_receive_impl(libzfs_handle_t *hdl, const char *tosnap,
 		}
 		return (zfs_receive_one(hdl, infd, tosnap, originsnap, flags,
 		    &drr, &drr_noswap, sendfs, stream_nv, stream_avl, top_zfs,
-		    cleanup_fd, action_handlep, finalsnap));
+		    cleanup_fd, action_handlep, finalsnap, cmdprops));
 	} else {
 		assert(DMU_GET_STREAM_HDRTYPE(drrb->drr_versioninfo) ==
 		    DMU_COMPOUNDSTREAM);
 		return (zfs_receive_package(hdl, infd, tosnap, flags, &drr,
-		    &zcksum, top_zfs, cleanup_fd, action_handlep));
+		    &zcksum, top_zfs, cleanup_fd, action_handlep, cmdprops));
 	}
 }
 
@@ -4446,7 +4643,7 @@ zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
 	VERIFY(cleanup_fd >= 0);
 
 	err = zfs_receive_impl(hdl, tosnap, originsnap, flags, infd, NULL, NULL,
-		stream_avl, &top_zfs, cleanup_fd, &action_handle, NULL);
+	    stream_avl, &top_zfs, cleanup_fd, &action_handle, NULL, props);
 
 	VERIFY(0 == close(cleanup_fd));
 #endif

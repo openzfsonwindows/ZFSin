@@ -838,6 +838,56 @@ lzc_receive_with_header(const char *snapname, nvlist_t *props,
 }
 
 /*
+ * Like lzc_receive, but allows the caller to pass all supported arguments
+ * and retrieve all values returned.  The only additional input parameter
+ * is 'cleanup_fd' which is used to set a cleanup-on-exit file descriptor.
+ *
+ * The following parameters all provide return values.  Several may be set
+ * in the failure case and will contain additional information.
+ *
+ * The 'read_bytes' value will be set to the total number of bytes read.
+ *
+ * The 'errflags' value will contain zprop_errflags_t flags which are
+ * used to describe any failures.
+ *
+ * The 'action_handle' is used to pass the handle for this guid/ds mapping.
+ * It should be set to zero on first call and will contain an updated handle
+ * on success, it should be passed in subsequent calls.
+ *
+ * The 'errors' nvlist contains an entry for each unapplied received
+ * property.  Callers are responsible for freeing this nvlist.
+ */
+int lzc_receive_one(const char *snapname, nvlist_t *props,
+    const char *origin, boolean_t force, boolean_t resumable, int input_fd,
+    const dmu_replay_record_t *begin_record, int cleanup_fd,
+    uint64_t *read_bytes, uint64_t *errflags, uint64_t *action_handle,
+    nvlist_t **errors)
+{
+	return (recv_impl(snapname, props, NULL, origin, force, resumable,
+	    input_fd, begin_record, cleanup_fd, read_bytes, errflags,
+	    action_handle, errors));
+}
+
+/*
+ * Like lzc_receive_one, but allows the caller to pass an additional 'cmdprops'
+ * argument.
+ *
+ * The 'cmdprops' nvlist contains both override ('zfs receive -o') and
+ * exclude ('zfs receive -x') properties. Callers are responsible for freeing
+ * this nvlist
+ */
+int lzc_receive_with_cmdprops(const char *snapname, nvlist_t *props,
+    nvlist_t *cmdprops, const char *origin, boolean_t force,
+    boolean_t resumable, int input_fd, const dmu_replay_record_t *begin_record,
+    int cleanup_fd, uint64_t *read_bytes, uint64_t *errflags,
+    uint64_t *action_handle, nvlist_t **errors)
+{
+	return (recv_impl(snapname, props, cmdprops, origin, force, resumable,
+	    input_fd, begin_record, cleanup_fd, read_bytes, errflags,
+	    action_handle, errors));
+}
+
+/*
  * Roll back this filesystem or volume to its most recent snapshot.
  * If snapnamebuf is not NULL, it will be filled in with the name
  * of the most recent snapshot.
