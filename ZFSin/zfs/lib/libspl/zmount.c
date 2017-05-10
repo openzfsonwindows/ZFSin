@@ -53,9 +53,19 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 	fprintf(stderr, "zmount(%s,%s) returns %d\n",
 		zhp->zfs_name, dir);
 
-	ret = SetVolumeMountPoint("E:\\", "\\\\?\\Device\\ZFS{0B1BB601-AF0B-32E8-A1D2-54C167AF6277}");
+	ret = SetVolumeMountPoint("E:\\", "\\\\?\\Device\\ZFS{0b1bb601-af0b-32e8-a1d2-54c167af6277}");
 	fprintf(stderr, "SetVolumeMountPoint %d\n",
 		zhp->zfs_name, dir);
+	ret = SetVolumeMountPoint("E:\\", "\\\\.\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}");
+	fprintf(stderr, "SetVolumeMountPoint %d\n",
+		zhp->zfs_name, dir);
+	//Creating symlink '\DosDevices\ZFS{0B1BB601-AF0B-32E8-A1D2-54C167AF6277}'
+	ret = DefineDosDevice(0, L"E:", L"\\\\.\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}");
+	fprintf(stderr, "DefineDosDevice %d: last %d\n", ret, GetLastError());
+	//   point 5: '' '\??\Volume{29217b66-2ed2-11e7-baa7-ab3bc3128e46}'
+
+	ret = DefineDosDevice(0, L"E:", L"\\\\.\\Volume{29217b66-2ed2-11e7-baa7-ab3bc3128e46}");
+	fprintf(stderr, "DefineDosDevice %d: last %d\n", ret, GetLastError());
 
 	return ret;
 }

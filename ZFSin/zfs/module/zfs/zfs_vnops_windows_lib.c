@@ -289,7 +289,7 @@ int AsciiStringToUnicodeString(char *in, PUNICODE_STRING out)
 	return RtlAnsiStringToUnicodeString(out, &conv, TRUE);
 }
 
-int zfs_windows_mount(zfs_cmd_t *zc)
+int zfs_windows_mountQ(zfs_cmd_t *zc)
 {
 	dprintf("%s: '%s' '%s'\n", __func__, zc->zc_name, zc->zc_value);
 	NTSTATUS status;
@@ -482,113 +482,435 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 #pragma comment(lib, "wdmsec.lib")
 
 
-int zfs_windows_mountY(zfs_cmd_t *zc)
+
+
+NTSTATUS
+DokanSendIoContlToMountManager(
+	__in PVOID	InputBuffer,
+	__in ULONG	Length
+)
+{
+	NTSTATUS		status;
+	UNICODE_STRING	mountManagerName;
+	PFILE_OBJECT    mountFileObject;
+	PDEVICE_OBJECT  mountDeviceObject;
+	PIRP			irp;
+	KEVENT			driverEvent;
+	IO_STATUS_BLOCK	iosb;
+
+	dprintf("=> DokanSendIoContlToMountManager\n");
+
+	RtlInitUnicodeString(&mountManagerName, MOUNTMGR_DEVICE_NAME);
+
+
+	status = IoGetDeviceObjectPointer(
+		&mountManagerName,
+		FILE_READ_ATTRIBUTES,
+		&mountFileObject,
+		&mountDeviceObject);
+
+	if (!NT_SUCCESS(status)) {
+		dprintf("  IoGetDeviceObjectPointer failed: 0x%x\n", status);
+		return status;
+	}
+
+	KeInitializeEvent(&driverEvent, NotificationEvent, FALSE);
+
+	irp = IoBuildDeviceIoControlRequest(
+		IOCTL_MOUNTMGR_VOLUME_ARRIVAL_NOTIFICATION,
+		mountDeviceObject,
+		InputBuffer,
+		Length,
+		NULL,
+		0,
+		FALSE,
+		&driverEvent,
+		&iosb);
+
+	if (irp == NULL) {
+		dprintf("  IoBuildDeviceIoControlRequest failed\n");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	status = IoCallDriver(mountDeviceObject, irp);
+
+	if (status == STATUS_PENDING) {
+		KeWaitForSingleObject(
+			&driverEvent, Executive, KernelMode, FALSE, NULL);
+	}
+	status = iosb.Status;
+
+	ObDereferenceObject(mountFileObject);
+	ObDereferenceObject(mountDeviceObject);
+
+	if (NT_SUCCESS(status)) {
+		dprintf("  IoCallDriver success\n");
+	} else {
+		dprintf("  IoCallDriver faield: 0x%x\n", status);
+	}
+
+	dprintf("<= DokanSendIoContlToMountManager\n");
+
+	return status;
+}
+
+NTSTATUS
+DokanSendVolumeArrivalNotification(
+	PUNICODE_STRING		DeviceName
+)
+{
+	NTSTATUS		status;
+	PMOUNTMGR_TARGET_NAME targetName;
+	ULONG			length;
+
+	dprintf("=> DokanSendVolumeArrivalNotification\n");
+
+	length = sizeof(MOUNTMGR_TARGET_NAME) + DeviceName->Length - 1;
+	targetName = ExAllocatePool(PagedPool, length);
+
+	if (targetName == NULL) {
+		dprintf("  can't allocate MOUNTMGR_TARGET_NAME\n");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	RtlZeroMemory(targetName, length);
+
+	targetName->DeviceNameLength = DeviceName->Length;
+	RtlCopyMemory(targetName->DeviceName, DeviceName->Buffer, DeviceName->Length);
+
+	status = DokanSendIoContlToMountManager(targetName, length);
+
+	if (NT_SUCCESS(status)) {
+		dprintf("  IoCallDriver success\n");
+	} else {
+		dprintf("  IoCallDriver failed: 0x%x\n", status);
+	}
+
+	ExFreePool(targetName);
+
+	dprintf("<= DokanSendVolumeArrivalNotification\n");
+
+	return status;
+}
+
+
+NTSTATUS
+DokanRegisterDeviceInterface(
+	__in PDRIVER_OBJECT		DriverObject,
+	__in PDEVICE_OBJECT		DeviceObject,
+	__in zfs_mount_object_t			*Dcb
+)
+{
+	PDEVICE_OBJECT	pnpDeviceObject = NULL;
+	NTSTATUS		status;
+
+	status = IoReportDetectedDevice(
+		DriverObject,
+		InterfaceTypeUndefined,
+		0,
+		0,
+		NULL,
+		NULL,
+		FALSE,
+		&pnpDeviceObject);
+
+	if (NT_SUCCESS(status)) {
+		dprintf("  IoReportDetectedDevice success\n");
+	} else {
+		dprintf("  IoReportDetectedDevice failed: 0x%x\n", status);
+		return status;
+	}
+
+	if (IoAttachDeviceToDeviceStack(pnpDeviceObject, DeviceObject) != NULL) {
+		dprintf("  IoAttachDeviceToDeviceStack success\n");
+	} else {
+		dprintf("  IoAttachDeviceToDeviceStack failed\n");
+	}
+
+	status = IoRegisterDeviceInterface(
+		pnpDeviceObject,
+		&GUID_DEVINTERFACE_DISK,
+		NULL,
+		&Dcb->device_name);
+
+	if (NT_SUCCESS(status)) {
+		dprintf("  IoRegisterDeviceInterface success: %wZ\n", &Dcb->device_name);
+	} else {
+		dprintf("  IoRegisterDeviceInterface failed: 0x%x\n", status);
+		return status;
+	}
+
+	status = IoSetDeviceInterfaceState(&Dcb->device_name, TRUE);
+
+	if (NT_SUCCESS(status)) {
+		dprintf("  IoSetDeviceInterfaceState success\n");
+	} else {
+		dprintf("  IoSetDeviceInterfaceState failed: 0x%x\n", status);
+		return status;
+	}
+
+	status = IoRegisterDeviceInterface(
+		pnpDeviceObject,
+		&MOUNTDEV_MOUNTED_DEVICE_GUID,
+		NULL,
+		&Dcb->fs_name);
+
+	if (NT_SUCCESS(status)) {
+		dprintf("  IoRegisterDeviceInterface success: %wZ\n", &Dcb->fs_name);
+	} else {
+		dprintf("  IoRegisterDeviceInterface failed: 0x%x\n", status);
+		return status;
+	}
+
+	status = IoSetDeviceInterfaceState(&Dcb->fs_name, TRUE);
+
+	if (NT_SUCCESS(status)) {
+		dprintf("  IoSetDeviceInterfaceState success\n");
+	} else {
+		dprintf("  IoSetDeviceInterfaceState failed: 0x%x\n", status);
+		return status;
+	}
+
+	return status;
+}
+
+
+
+
+int zfs_windows_mount(zfs_cmd_t *zc)
 {
 	dprintf("%s: '%s' '%s'\n", __func__, zc->zc_name, zc->zc_value);
 	NTSTATUS status;
 	uuid_t uuid;
 	char uuid_a[UUID_PRINTABLE_STRING_LENGTH];
 	PDEVICE_OBJECT pdo = NULL;
-
+#if 0
 	status = IoReportDetectedDevice(WIN_DriverObject, InterfaceTypeUndefined, 0xFFFFFFFF, 0xFFFFFFFF,
 		NULL, NULL, 0, &pdo);
 	if (status != STATUS_SUCCESS) {
 		dprintf("IoReportDetectedDevice returned %08x\n", status);
 		return status;
 	}
+#endif
 
 	zfs_vfs_uuid_gen(zc->zc_name, uuid);
 	zfs_vfs_uuid_unparse(uuid, uuid_a);
 
 	char buf[PATH_MAX];
 	//snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
-	snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
-	dprintf("%s: new devstring '%s'\n", __func__, buf);
+	WCHAR				diskDeviceNameBuf[MAXIMUM_FILENAME_LENGTH];    // L"¥¥Device¥Volume"
+	WCHAR				fsDeviceNameBuf[MAXIMUM_FILENAME_LENGTH];      // L"¥¥Device¥¥ZFS"
+	WCHAR				symbolicLinkNameBuf[MAXIMUM_FILENAME_LENGTH];  // L"¥¥DosDevices¥¥Global¥¥Volume"
+	UNICODE_STRING		diskDeviceName;
+	UNICODE_STRING		fsDeviceName;
+	UNICODE_STRING		symbolicLinkTarget;
 
-	UNICODE_STRING volname;
 	ANSI_STRING pants;
+	ULONG				deviceCharacteristics;
+	deviceCharacteristics = FILE_DEVICE_IS_MOUNTED;
+	deviceCharacteristics |= FILE_REMOVABLE_MEDIA;
 
+	snprintf(buf, sizeof(buf), "\\Device\\Volume{%s}", uuid_a);
 	pants.Buffer = buf;
 	pants.Length = strlen(buf);
 	pants.MaximumLength = PATH_MAX;
-	status = RtlAnsiStringToUnicodeString(&volname, &pants, TRUE);
+	status = RtlAnsiStringToUnicodeString(&diskDeviceName, &pants, TRUE);
+	dprintf("%s: new devstring '%wZ'\n", __func__, &diskDeviceName);
 
-	// What do we need to keep for each mount?
-	struct zfs_mount_object {
-		zfsvfs_t *zfsvfs;
-		PDEVICE_OBJECT pdo;
-		UNICODE_STRING bus_name;
-		PDEVICE_OBJECT attached_device;
-	};
-	typedef struct zfs_mount_object zfs_mount_object_t;
-
-	PDEVICE_OBJECT voldev;
-
-	status = IoCreateDevice(WIN_DriverObject, sizeof(zfs_mount_object_t), NULL, FILE_DEVICE_DISK, FILE_DEVICE_SECURE_OPEN, FALSE, &voldev);
-	if (status != STATUS_SUCCESS) {
-		dprintf("IoCreateDevice returned %08x\n", status);
-		RtlFreeUnicodeString(&volname);
-		return status;
-	}
-
-	// Fill in our structs
-	voldev->SectorSize = 512; // Grab from dataset recordsize
-	voldev->Flags |= DO_DIRECT_IO;
-
-	zfs_mount_object_t *zmo = voldev->DeviceExtension;
-	zmo->zfsvfs = NULL;  // Assign the zfsvfs eventually.
-
-	PDEVICE_OBJECT fsDeviceObject;
 	status = IoCreateDeviceSecure(WIN_DriverObject,			// DriverObject
 		sizeof(zfs_mount_object_t),			// DeviceExtensionSize
-		&volname,
-		FILE_DEVICE_DISK_FILE_SYSTEM,// DeviceType
-		0,							// DeviceCharacteristics
+		&diskDeviceName,
+		FILE_DEVICE_DISK,// DeviceType
+		deviceCharacteristics,							// DeviceCharacteristics
 		FALSE,						// Not Exclusive
 		&SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_RW_RES_R, // Default SDDL String
 		NULL, // Device Class GUID
-		&fsDeviceObject);				// DeviceObject
+		&diskDeviceObject);				// DeviceObject
 
 	if (status != STATUS_SUCCESS) {
 		dprintf("IoCreateDeviceSecure returned %08x\n", status);
 	}
 
+	zfs_mount_object_t *zmo_dcb = diskDeviceObject->DeviceExtension;
+	zmo_dcb->zfsvfs = NULL;  // Assign the zfsvfs eventually.
+	AsciiStringToUnicodeString(uuid_a, &zmo_dcb->uuid);
+	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
+	AsciiStringToUnicodeString(buf, &zmo_dcb->device_name);
 
-//	zmo->Identifier.Type = VCB;
-//	zmo->Identifier.Size = sizeof(zfs_mount_object_t);
-//
-//	zmo->DiskDevice = diskDeviceObject;
-//	zmo->DeviceExtension = deviceExtension;
+	snprintf(buf, sizeof(buf), "\\DosDevices\\Global\\Volume{%s}", uuid_a);
+	pants.Buffer = buf;
+	pants.Length = strlen(buf);
+	pants.MaximumLength = PATH_MAX;
+	status = RtlAnsiStringToUnicodeString(&symbolicLinkTarget, &pants, TRUE);
+	dprintf("%s: new symlink '%wZ'\n", __func__, &symbolicLinkTarget);
+	AsciiStringToUnicodeString(buf, &zmo_dcb->symlink_name);
+
+	snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
+	pants.Buffer = buf;
+	pants.Length = strlen(buf);
+	pants.MaximumLength = PATH_MAX;
+	status = RtlAnsiStringToUnicodeString(&fsDeviceName, &pants, TRUE);
+	dprintf("%s: new fsname '%wZ'\n", __func__, &fsDeviceName);
+	AsciiStringToUnicodeString(buf, &zmo_dcb->fs_name);
 
 
-//	deviceExtension->Vcb = zmo;
-	voldev->Vpb->DeviceObject = fsDeviceObject;
-	voldev->Vpb->RealDevice = fsDeviceObject;
-	voldev->Vpb->Flags = VPB_MOUNTED;
-#define VOLUME_LABEL L"ZFS"
-	voldev->Vpb->VolumeLabelLength = wcslen(VOLUME_LABEL) * sizeof(WCHAR);
-	swprintf(voldev->Vpb->VolumeLabel, VOLUME_LABEL);
-	voldev->Vpb->SerialNumber = 0x19831116;
 
-	//IoRegisterFileSystem(fsDeviceObject);
-	ObReferenceObject(fsDeviceObject);
-	ObReferenceObject(voldev);
+	diskDeviceObject->Flags |= DO_DIRECT_IO;
 
-	//
-	// Create a symbolic link for userapp to interact with the driver.
-	//
-	WCHAR symbolicLinkBuf[MAXIMUM_FILENAME_LENGTH];
-	UNICODE_STRING symbolicLinkName;
-
-	swprintf(symbolicLinkBuf, L"\\DosDevices\\ZFS{0B1BB601-AF0B-32E8-A1D2-54C167AF6277}");
-	RtlInitUnicodeString(&symbolicLinkName, symbolicLinkBuf);
-
-	status = IoCreateSymbolicLink(&symbolicLinkName, &volname);
+	status = IoCreateDeviceSecure(
+		WIN_DriverObject,		// DriverObject
+		sizeof(zfs_mount_object_t),	// DeviceExtensionSize
+		&fsDeviceName, // DeviceName
+		FILE_DEVICE_DISK_FILE_SYSTEM,			// DeviceType
+		deviceCharacteristics,	// DeviceCharacteristics
+		FALSE,				// Not Exclusive
+		&SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_RW_RES_R, // Default SDDL String
+		NULL,				// Device Class GUID
+		&fsDeviceObject);	// DeviceObject
 	if (status != STATUS_SUCCESS) {
-		dprintf("IoCreateSymbolicLink returned %08x\n", status);
+		dprintf("IoCreateDeviceSecure2 returned %08x\n", status);
 	}
 
-	RtlFreeUnicodeString(&volname);
+	zfs_mount_object_t *zmo_vcb = fsDeviceObject->DeviceExtension;
+
+	dprintf("WinDeviceObject : %p\n", WIN_DriverObject);
+	dprintf("diskDeviceObject: %p\n", diskDeviceObject);
+	dprintf("fsDeviceObject  : %p\n", fsDeviceObject);
+	snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
+	AsciiStringToUnicodeString(buf, &zmo_vcb->device_name);
+	AsciiStringToUnicodeString(buf, &zmo_vcb->fs_name);
+	AsciiStringToUnicodeString(uuid_a, &zmo_vcb->uuid);
+	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
+	snprintf(buf, sizeof(buf), "\\DosDevices\\Global\\Volume{%s}", uuid_a);
+	AsciiStringToUnicodeString(buf, &zmo_vcb->symlink_name);
+	zmo_vcb->deviceObject = diskDeviceObject;
+//	memcpy(zmo2, zmo, sizeof(*zmo2));
+
+	//ExInitializeFastMutex(&zmo_vcb->AdvancedFCBHeaderMutex);
+	//FsRtlSetupAdvancedHeader(&zmo_vcb->VolumeFileHeader, &zmo_vcb->AdvancedFCBHeaderMutex);
+
+
+
+	fsDeviceObject->Flags |= DO_DIRECT_IO;
+
+	if (diskDeviceObject->Vpb) {
+		// NOTE: This can be done by IoRegisterFileSystem + IRP_MN_MOUNT_VOLUME,
+		// however that causes BSOD inside filter manager on Vista x86 after mount
+		// (mouse hover on file).
+		// Probably FS_FILTER_CALLBACKS.PreAcquireForSectionSynchronization is
+		// not correctly called in that case.
+		diskDeviceObject->Vpb->DeviceObject = fsDeviceObject;
+		diskDeviceObject->Vpb->RealDevice = fsDeviceObject;
+		diskDeviceObject->Vpb->Flags |= VPB_MOUNTED;
+		diskDeviceObject->Vpb->VolumeLabelLength = wcslen(VOLUME_LABEL) * sizeof(WCHAR);
+		RtlStringCchCopyW(diskDeviceObject->Vpb->VolumeLabel,
+			sizeof(diskDeviceObject->Vpb->VolumeLabel) / sizeof(WCHAR),
+			VOLUME_LABEL);
+		diskDeviceObject->Vpb->SerialNumber = ZFS_SERIAL;
+	}
+
+	ObReferenceObject(fsDeviceObject);
+	ObReferenceObject(diskDeviceObject);
+
+	status = IoCreateSymbolicLink(&symbolicLinkTarget, &diskDeviceName);
+
+	if (!NT_SUCCESS(status)) {
+		if (diskDeviceObject->Vpb) {
+			diskDeviceObject->Vpb->DeviceObject = NULL;
+			diskDeviceObject->Vpb->RealDevice = NULL;
+			diskDeviceObject->Vpb->Flags = 0;
+		}
+		IoDeleteDevice(diskDeviceObject);
+		IoDeleteDevice(fsDeviceObject);
+		dprintf("  IoCreateSymbolicLink returned 0x%x\n", status);
+		return status;
+	}
+
+
+#if 1
+	dprintf("registering it\n");
+	UNICODE_STRING	interfaceName;
+	status = IoRegisterDeviceInterface(
+		fsDeviceObject,
+		&MOUNTDEV_MOUNTED_DEVICE_GUID,
+		NULL,
+		&interfaceName
+	);
+
+	if (NT_SUCCESS(status))
+		dprintf("  InterfaceName:%wZ\n", &interfaceName);
+	else
+		dprintf("  IoRegisterDeviceInterface failed %x\n", status);
+
+	status = IoSetDeviceInterfaceState(&interfaceName, TRUE);
+	if (NT_SUCCESS(status))
+		dprintf("  IoSetDeviceInterfaceState OK\n");
+	else
+		dprintf("  IoSetDeviceInterfaceState failed %x\n", status);
+#endif
+
+	// Mark devices as initialized
+	diskDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+	fsDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+
+	DokanSendVolumeArrivalNotification(&diskDeviceName);
+	DokanRegisterDeviceInterface(WIN_DriverObject, diskDeviceObject, zmo_dcb);
+
+
+	UNICODE_STRING name;
+	PFILE_OBJECT                        fileObject;
+	PDEVICE_OBJECT                      deviceObject;
+
+	RtlInitUnicodeString(&name, MOUNTMGR_DEVICE_NAME);
+	status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &fileObject,
+		&deviceObject);
+	status = mountmgr_add_drive_letter(deviceObject, &fsDeviceName);
+	status = mountmgr_get_drive_letter(deviceObject, &diskDeviceName);
+
+#if 0
+	PMOUNTMGR_CREATE_POINT_INPUT input;
+	UNICODE_STRING                  unicodeTargetVolumeName;
+	DWORD                           inputSize;
+
+	//RtlInitUnicodeString(&unicodeTargetVolumeName, L"\\??\\Devices\\E:\\");
+	RtlInitUnicodeString(&unicodeTargetVolumeName, L"\\DosDevices\\E:");
+
+	inputSize = sizeof(MOUNTMGR_CREATE_POINT_INPUT) +
+		symbolicLinkTarget.Length +   // **
+		unicodeTargetVolumeName.Length;
+	input = (PMOUNTMGR_CREATE_POINT_INPUT)
+		ExAllocatePool(PagedPool,
+			inputSize);
+
+	input->SymbolicLinkNameOffset = sizeof(MOUNTMGR_CREATE_POINT_INPUT);
+	input->SymbolicLinkNameLength = unicodeTargetVolumeName.Length;
+
+	RtlCopyMemory(
+		(PCHAR)input + input->SymbolicLinkNameOffset,
+		unicodeTargetVolumeName.Buffer,
+		unicodeTargetVolumeName.Length);
+
+	input->DeviceNameOffset = (USHORT)
+		(input->SymbolicLinkNameOffset + input->SymbolicLinkNameLength);
+	input->DeviceNameLength = fsDeviceName.Length;   // **
+
+	RtlCopyMemory(
+		(PCHAR)input + input->DeviceNameOffset,
+		fsDeviceName.Buffer,    // **
+		fsDeviceName.Length);   // **
+
+	dprintf("Setting '%wZ' \n", &fsDeviceName);   // **
+	dprintf("     to '%wZ' \n", &unicodeTargetVolumeName);
+
+	status = dev_ioctl(deviceObject, IOCTL_MOUNTMGR_CREATE_POINT, input, inputSize, NULL, 0, TRUE, NULL);
+	dprintf("IOCTL_MOUNTMGR_CREATE_POINT returns %x\n", status);
+
+	ExFreePool(input);
+#endif
+
+
+	ObDereferenceObject(fileObject);
+
 	return status;
 }
 

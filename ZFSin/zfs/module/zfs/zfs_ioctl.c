@@ -5936,7 +5936,7 @@ zfsdev_state_destroy(dev_t dev)
 }
 
 #ifdef _WIN32
-static NTSTATUS
+NTSTATUS
 zfsdev_open(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 #else
 static int
@@ -5951,10 +5951,6 @@ zfsdev_open(dev_t dev, int flags, int devtype, struct proc *p)
 	struct proc *p = NULL;
 	PAGED_CODE();
 
-	Irp->IoStatus.Status = STATUS_SUCCESS;
-	Irp->IoStatus.Information = 0;
-
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 #endif
 
 	dprintf("zfsdev_open, dev %d flag %02X devtype %d, proc is %p: thread %p\n",
@@ -5974,7 +5970,7 @@ zfsdev_open(dev_t dev, int flags, int devtype, struct proc *p)
 }
 
 #ifdef _WIN32
-static NTSTATUS
+NTSTATUS
 zfsdev_release(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 #else
 static int
@@ -5989,10 +5985,6 @@ zfsdev_release(dev_t dev, int flags, int devtype, struct proc *p)
 	struct proc *p = NULL;
 	PAGED_CODE();
 
-	Irp->IoStatus.Status = STATUS_SUCCESS;
-	Irp->IoStatus.Information = 0;
-
-	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 #endif
 
 	dprintf("zfsdev_release, dev %d flag %02X devtype %d, dev is %p, thread %p\n",
@@ -6415,11 +6407,9 @@ zfs_attach(void)
 
 #elif defined (_WIN32)
 
-	PDEVICE_OBJECT deviceObject = NULL;
 	NTSTATUS ntStatus;
 	UNICODE_STRING  ntUnicodeString;    // NT Device Name
 	UNICODE_STRING ntWin32NameString; // Win32 Name 
-	//  UNICODE_STRING DeviceName = RTL_CONSTANT_STRING(L"\\Device\\SNDBLST");
 //#define ZFS_DEV_KERNEL	L"\\Device\\ZFSCTL"
 //#define ZFS_DEV_DOS		L"\\DosDevices\\ZFS"
 //#define ZFS_DEV			"\\\\.\\ZFS"
@@ -6433,22 +6423,17 @@ zfs_attach(void)
 		FILE_DEVICE_DISK_FILE_SYSTEM,            // Device type
 		/*FILE_DEVICE_SECURE_OPEN*/ 0,     // Device characteristics
 		FALSE,                          // Not an exclusive device
-		&deviceObject);                // Returned ptr to Device Object
+		&ioctlDeviceObject);                // Returned ptr to Device Object
 
 	if (!NT_SUCCESS(ntStatus)) {
 		dprintf(("ZFS: Couldn't create the device object /dev/zfs (%s)\n", ZFS_DEV_KERNEL));
 		return ntStatus;
 	}
-	dprintf("ZFS: created kernel device node\n");
+	dprintf("ZFS: created kernel device node: %p\n", ioctlDeviceObject);
 	//
 	// Initialize the driver object with this driver's entry points.
 	//
-	// Set them here, they are about to be overwritten, but vnops will keep these
-	// function ptrs to call us back. (or could just remove the 'static'...
-	WIN_DriverObject->MajorFunction[IRP_MJ_CREATE] = zfsdev_open;
-	WIN_DriverObject->MajorFunction[IRP_MJ_CLOSE] = zfsdev_release;
-	WIN_DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = zfsdev_ioctl;
-	zfs_windows_vnops_callback(deviceObject);
+	zfs_windows_vnops_callback(ioctlDeviceObject);
 
 	// Initialize a Unicode String containing the Win32 name
 	// for our device.
@@ -6460,15 +6445,15 @@ zfs_attach(void)
 
 	if (!NT_SUCCESS(ntStatus)) {
 		dprintf(("ZFS: Couldn't create userland symbolic link to /dev/zfs (%s)\n", ZFS_DEV));
-		IoDeleteDevice(deviceObject);
+		IoDeleteDevice(ioctlDeviceObject);
 		return -1;
 	}
 	dprintf("ZFS: created userland device symlink\n");
 
 extern 	VOID IoRegisterFileSystem(		_In_ PDEVICE_OBJECT DeviceObject	);
 
-	IoRegisterFileSystem(deviceObject);
-	ObReferenceObject(deviceObject);
+	//IoRegisterFileSystem(ioctlDeviceObject);
+	ObReferenceObject(ioctlDeviceObject);
 #endif
 
 
