@@ -34,7 +34,6 @@ extern PDEVICE_OBJECT fsDeviceObject;
 #define ZFS_SERIAL (ULONG)'wZFS'
 #define VOLUME_LABEL			L"ZFS"
 
-
 struct zfs_mount_object {
 	zfsvfs_t *zfsvfs;
 	PDEVICE_OBJECT deviceObject;
