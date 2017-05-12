@@ -27,7 +27,9 @@
 
 /* Portions Copyright 2007 Jeremy Teo */
 /* Portions Copyright 2010 Robert Milkowski */
-/* Portions Copyright 2013 Jorgen Lundman */
+/* Portions Copyright 2013, 2017 Jorgen Lundman */
+
+#include <ntifs.h>
 
 #include <sys/types.h>
 #include <sys/param.h>
@@ -2516,18 +2518,22 @@ out:
  * We use 0 for '.', and 1 for '..'.  If this is the root of the filesystem,
  * we use the offset 2 for the '.zfs' directory.
  */
+/*
+ * uio points to a buffer to be filled with struct FILE_FULL_DIR_INFORMATION
+ * where the NextEntryOffset has value of next structure, or 0 when last.
+ * FileNameLength holds the length of the FileName to follow, then
+ * it has (variable) FileName immediately after the struct.
+ * If another FILE_FULL_DIR_INFORMATION struct is to follow, it has to be aligned to 8 bytes
+*/
 /* ARGSUSED */
 int
 zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_numdirent)
 {
 	int		error = 0;
-#if 0
+
 	znode_t		*zp = VTOZ(vp);
-#ifndef _WIN32
 	iovec_t		*iovp;
-#endif
-	dirent64_t	*eodp;
-	dirent_t	*odp;
+	FILE_FULL_DIR_INFORMATION *eodp;
 	zfsvfs_t	*zfsvfs = zp->z_zfsvfs;
 	objset_t	*os;
 	caddr_t		outbuf;
@@ -2539,16 +2545,18 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 	uint64_t	parent;
 	int		local_eof;
 	int		outcount;
-	int		error;
 	uint8_t		prefetch;
 	boolean_t	check_sysattrs;
 	uint8_t		type;
-    boolean_t	extended = (flags & VNODE_READDIR_EXTENDED);
     int		numdirent = 0;
     char		*bufptr;
     boolean_t	isdotdir = B_TRUE;
+	int flag_index_specified    = flags & SL_INDEX_SPECIFIED     ? 1 : 0;
+	int flag_restart_scan       = flags & SL_RESTART_SCAN        ? 1 : 0;
+	int flag_return_sigle_entry = flags & SL_RETURN_SINGLE_ENTRY ? 1 : 0;
 
-    dprintf("+zfs_readdir (extended %d)\n", extended);
+	dprintf("+zfs_readdir: Index %d, Restart %d, Single %d.\n",
+		flag_index_specified, flag_restart_scan, flag_return_sigle_entry);
 
 	ZFS_ENTER(zfsvfs);
 	ZFS_VERIFY_ZP(zp);
@@ -2605,25 +2613,10 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 	/*
 	 * Get space to change directory entries into fs independent format.
 	 */
-#ifdef _WIN32
 	bytes_wanted = uio_curriovlen(uio);
 	bufsize = (size_t)bytes_wanted;
 	outbuf = kmem_alloc(bufsize, KM_SLEEP);
 	bufptr = (char *)outbuf;
-#else
-	iovp = uio_curriovbase(uio);
-	bytes_wanted = iovp->iov_len;
-	if (uio->uio_segflg != UIO_SYSSPACE || uio_iovcnt(uio) != 1) {
-		bufsize = bytes_wanted;
-		outbuf = kmem_alloc(bufsize, KM_SLEEP);
-		odp = (struct dirent64 *)outbuf;
-	} else {
-		bufsize = bytes_wanted;
-		outbuf = NULL;
-		odp = (struct dirent64 *)iovp->iov_base;
-	}
-	eodp = (struct edirent *)odp;
-#endif
 
 	/*
 	 * If this VFS supports the system attribute view interface; and
@@ -2677,10 +2670,9 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 			type = DT_DIR;
 #endif
 		} else {
-#ifdef _WIN32
 			/* This is not a special case directory */
 			isdotdir = B_FALSE;
-#endif /* _WIN32 */
+
 
 			/*
 			 * Grab next entry.
@@ -2719,24 +2711,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 			}
 		}
 
-#ifndef _WIN32
-		if (flags & V_RDDIR_ACCFILTER) {
-			/*
-			 * If we have no access at all, don't include
-			 * this entry in the returned information
-			 */
-			znode_t	*ezp;
-			if (zfs_zget(zp->z_zfsvfs, objnum, &ezp) != 0)
-				goto skip_entry;
-			if (!zfs_has_access(ezp, cr)) {
-				VN_RELE(ZTOV(ezp));
-				goto skip_entry;
-			}
-			VN_RELE(ZTOV(ezp));
-		}
-#endif
 
-#ifdef _WIN32
 		/* Extract the object type for OSX to use */
 		if (isdotdir)
 			dtype = DT_DIR;
@@ -2758,23 +2733,36 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 			force_formd_normalized_output = 0;
 
 		if (force_formd_normalized_output)
-			namelen = MIN(extended ? MAXPATHLEN-1 : MAXNAMLEN, namelen * 3);
+			namelen = MIN(MAXNAMLEN, namelen * 3);
 
-//		reclen = DIRENT_RECLEN(namelen, extended);
-#else
-		if (flags & V_RDDIR_ENTFLAGS)
-			reclen = EDIRENT_RECLEN(strlen(zap.za_name));
-		else
-			reclen = DIRENT64_RECLEN(strlen(zap.za_name));
-#endif
+        //printf("readdir '%s' ext %d\n", zap.za_name, extended);
+
+		eodp = (FILE_FULL_DIR_INFORMATION  *)bufptr;
+		/* NOTE: d_seekoff is the offset for the *next* entry */
+		next = &(eodp->NextEntryOffset);
+		eodp->FileIndex = objnum;
+		//eodp->d_type = dtype;
 
 		/*
-		 * Will this entry fit in the buffer?
+		 * Do magic filename conversion for Windows here 
 		 */
+		namelen = strlen(zap.za_name);
+
+		UNICODE_STRING ucstr;
+		error = RtlUTF8ToUnicodeN(NULL, 0, &eodp->FileNameLength, zap.za_name, namelen);
+		ucstr.Buffer = &eodp->FileName;
+		error = RtlUTF8ToUnicodeN(&ucstr, eodp->FileNameLength, &eodp->FileNameLength, zap.za_name, namelen);
+
+		namelen = eodp->FileNameLength;
+
+		reclen = DIRENT_RECLEN(namelen);
+		/*
+		* Will this entry fit in the buffer?
+		*/
 		if (outcount + reclen > bufsize) {
 			/*
-			 * Did we manage to fit anything in the buffer?
-			 */
+			* Did we manage to fit anything in the buffer?
+			*/
 			if (!outcount) {
 				error = (EINVAL);
 				goto update;
@@ -2782,66 +2770,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 			break;
 		}
 
-        //printf("readdir '%s' ext %d\n", zap.za_name, extended);
-
-		if (extended) {
-			/*
-			 * Add extended flag entry:
-			 */
-			eodp = (dirent64_t  *)bufptr;
-			/* NOTE: d_seekoff is the offset for the *next* entry */
-			next = &(eodp->d_seekoff);
-			eodp->d_ino = objnum;
-			eodp->d_type = dtype;
-
-			/*
-			 * Mac OS X: non-ascii names are UTF-8 NFC on disk
-			 * so convert to NFD before exporting them.
-			 */
-			namelen = strlen(zap.za_name);
-			if (!force_formd_normalized_output ||
-			    utf8_normalizestr((const u_int8_t *)zap.za_name, namelen,
-			                      (u_int8_t *)eodp->d_name, &nfdlen,
-			                      MAXPATHLEN-1, UTF_DECOMPOSED) != 0) {
-				/* ASCII or normalization failed, just copy zap name. */
-                if ((namelen > 0))
-                    (void) bcopy(zap.za_name, eodp->d_name, namelen + 1);
-			} else {
-				/* Normalization succeeded (already in buffer). */
-				namelen = nfdlen;
-			}
-			eodp->d_namlen = namelen;
-			eodp->d_reclen = reclen = DIRENT_RECLEN(namelen, extended);
-
-		} else {
-			/*
-			 * Add normal entry:
-			 */
-
-			odp = (dirent_t  *)bufptr;
-			//odp = (dirent64_t  *)bufptr;
-			odp->d_ino = objnum;
-			odp->d_type = dtype;
-
-			/*
-			 * Mac OS X: non-ascii names are UTF-8 NFC on disk
-			 * so convert to NFD before exporting them.
-			 */
-			namelen = strlen(zap.za_name);
-			if (!force_formd_normalized_output ||
-			    utf8_normalizestr((const u_int8_t *)zap.za_name, namelen,
-			                      (u_int8_t *)odp->d_name, &nfdlen,
-			                      MAXNAMLEN, UTF_DECOMPOSED) != 0) {
-				/* ASCII or normalization failed, just copy zap name. */
-                if ((namelen > 0))
-                    (void) bcopy(zap.za_name, odp->d_name, namelen + 1);
-			} else {
-				/* Normalization succeeded (already in buffer). */
-				namelen = nfdlen;
-			}
-			odp->d_namlen = namelen;
-			odp->d_reclen = reclen = DIRENT_RECLEN(namelen, extended);
-		}
+		//eodp->d_namlen = namelen;
+		eodp->NextEntryOffset = reclen;
 
 		outcount += reclen;
 		bufptr += reclen;
@@ -2863,11 +2793,9 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 			offset += 1;
 		}
 
-		if (extended)
-            *next = offset;
+        *next = offset;
 	}
 	zp->z_zn_prefetch = B_FALSE; /* a lookup will re-enable pre-fetching */
-
 
     if ((error = uiomove(outbuf, (long)outcount, UIO_READ, uio))) {
 		/*
@@ -2894,7 +2822,7 @@ update:
 	ZFS_EXIT(zfsvfs);
 
     dprintf("-zfs_readdir: num %d\n", numdirent);
-#endif
+
 	return (error);
 }
 

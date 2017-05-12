@@ -3422,7 +3422,7 @@ char *major2str(int major, int minor)
 		case IRP_MN_NOTIFY_CHANGE_DIRECTORY:
 			return "IRP_MJ_DIRECTORY_CONTROL(IRP_MN_NOTIFY_CHANGE_DIRECTORY)";
 		case IRP_MN_QUERY_DIRECTORY:
-			return "**** IRP_MJ_DIRECTORY_CONTROL(IRP_MN_QUERY_DIRECTORY)";
+			return "IRP_MJ_DIRECTORY_CONTROL(IRP_MN_QUERY_DIRECTORY)";
 		}
 		return "IRP_MJ_DIRECTORY_CONTROL";
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
@@ -3552,11 +3552,11 @@ NTSTATUS QueryCapabilities(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 // THIS IS THE PNP DEVICE ID
 NTSTATUS pnp_query_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
-	zfs_mount_object_t *zmo;
+	mount_t *zmo;
 
 	dprintf("%s: query id type %d\n", __func__, IrpSp->Parameters.QueryId.IdType);
 
-	zmo = (zfs_mount_object_t *)DeviceObject->DeviceExtension;
+	zmo = (mount_t *)DeviceObject->DeviceExtension;
 
 	Irp->IoStatus.Information = ExAllocatePoolWithTag(PagedPool, zmo->bus_name.Length + sizeof(UNICODE_NULL), '!OIZ');
 	if (Irp->IoStatus.Information == NULL) return STATUS_NO_MEMORY;
@@ -3581,14 +3581,14 @@ NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 {
 	// Return name in MOUNTDEV_NAME
 	PMOUNTDEV_NAME name;
-	zfs_mount_object_t *zmo;
+	mount_t *zmo;
 
 	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(MOUNTDEV_NAME)) {
 		Irp->IoStatus.Information = sizeof(MOUNTDEV_NAME);
 		return STATUS_BUFFER_TOO_SMALL;
 	}
 
-	zmo = (zfs_mount_object_t *)DeviceObject->DeviceExtension;
+	zmo = (mount_t *)DeviceObject->DeviceExtension;
 
 	name = Irp->AssociatedIrp.SystemBuffer;
 
@@ -3613,9 +3613,9 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	PMOUNTDEV_UNIQUE_ID uniqueId;
 	WCHAR				deviceName[MAXIMUM_FILENAME_LENGTH];
 	ULONG				bufferLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
-	zfs_mount_object_t *zmo;
+	mount_t *zmo;
 
-	zmo = (zfs_mount_object_t *)DeviceObject->DeviceExtension;
+	zmo = (mount_t *)DeviceObject->DeviceExtension;
 
 	if (bufferLength < sizeof(MOUNTDEV_UNIQUE_ID)) {
 		Irp->IoStatus.Information = sizeof(MOUNTDEV_UNIQUE_ID);
@@ -3947,6 +3947,98 @@ NTSTATUS user_fs_request(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 	return Status;
 }
 
+NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	//FILE_FULL_DIR_INFORMATION *outptr = Irp->UserBuffer;
+	int flag_index_specified     = IrpSp->Flags & SL_INDEX_SPECIFIED     ? 1 : 0;
+	int flag_restart_scan        = IrpSp->Flags & SL_RESTART_SCAN        ? 1 : 0;
+	int flag_return_single_entry = IrpSp->Flags & SL_RETURN_SINGLE_ENTRY ? 1 : 0;
+	int bytes_out = 0;
+	int index = 0;
+	uio_t *uio;
+	int eof = 0;
+	int numdirent;
+	struct vnode vp;
+	int ret;
+	znode_t rootzp;
+	mount_t *zmo;
+	zfsvfs_t *zfsvfs;
+
+	DbgBreakPoint();
+
+	uio = uio_create(1, 0, UIO_SYSSPACE, UIO_WRITE);
+	uio_addiov(uio, Irp->UserBuffer, IrpSp->Parameters.QueryDirectory.Length);
+	// Offset is the cursor, < 3 is a re/start
+	uio_setoffset(uio, 0); 
+
+	// Grab the root zp
+	zmo = DeviceObject->DeviceExtension;
+	ASSERT(zmo->type == MOUNT_TYPE_VCB);
+
+	zfsvfs = vfs_fsprivate(zmo);
+
+	if (!zfsvfs) return STATUS_INTERNAL_ERROR;
+
+	ret = zfs_zget(zfsvfs, zfsvfs->z_root, &rootzp);
+
+	dprintf("%s: starting zfsvfs %p zget %d\n", __func__, zfsvfs, ret);
+
+	if (ret == 0) {
+
+		vp.v_data = &rootzp;
+		rootzp.z_vnode = &vp;
+
+		ret = zfs_readdir(&vp, uio, NULL, &eof, IrpSp->Flags, &numdirent);
+		VN_RELE(ZTOV(&rootzp));
+	}
+}
+
+
+NTSTATUS query_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
+
+	switch (IrpSp->Parameters.QueryDirectory.FileInformationClass) {
+
+	case FileBothDirectoryInformation:
+		dprintf("   %s FileBothDirectoryInformation\n", __func__);
+		break;
+	case FileDirectoryInformation:
+		dprintf("   %s FileDirectoryInformation\n", __func__);
+		break;
+	case FileFullDirectoryInformation: // ***
+		dprintf("   %s FileFullDirectoryInformation\n", __func__);
+		// Status = STATUS_NO_MORE_FILES;
+		// NextEntry += (ULONG)QuadAlign(BaseLength + BytesConverted);
+		Status = query_directory_FileFullDirectoryInformation(DeviceObject, Irp, IrpSp);
+		break;
+	case FileIdBothDirectoryInformation:
+		dprintf("   %s FileIdBothDirectoryInformation\n", __func__);
+		break;
+	case FileIdFullDirectoryInformation:
+		dprintf("   %s FileIdFullDirectoryInformation\n", __func__);
+		break;
+	case FileNamesInformation:
+		dprintf("   %s FileNamesInformation\n", __func__);
+		break;
+	case FileObjectIdInformation:
+		dprintf("   %s FileObjectIdInformation\n", __func__);
+		break;
+	case FileQuotaInformation:
+		dprintf("   %s FileQuotaInformation\n", __func__);
+		break;
+	case FileReparsePointInformation:
+		dprintf("   %s FileReparsePointInformation\n", __func__);
+		break;
+	default:
+		dprintf("   %s unkown 0x%x\n", __func__, IrpSp->Parameters.QueryDirectory.FileInformationClass);
+		break;
+	}
+
+	return Status;
+}
+
+
 NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	PFILE_OBJECT	fileObject;
@@ -4152,7 +4244,10 @@ diskDispatcher(
 			IrpSp->FileObject, IrpSp->FileObject ? IrpSp->FileObject->RelatedFileObject : NULL,
 			IrpSp->FileObject->FileName, IrpSp->Flags);
 		Status = STATUS_SUCCESS;
-		zfs_mount_object_t *zmo = DeviceObject->DeviceExtension;
+
+		mount_t *zmo = DeviceObject->DeviceExtension;
+		VERIFY(zmo->type == MOUNT_TYPE_DCB);
+
 		if (zmo->deviceObject != NULL)
 			IrpSp->FileObject->Vpb = zmo->deviceObject->Vpb;
 		else
@@ -4324,7 +4419,10 @@ fsDispatcher(
 		}
 
 		Status = STATUS_SUCCESS;
-		zfs_mount_object_t *zmo = DeviceObject->DeviceExtension;
+
+		mount_t *zmo = DeviceObject->DeviceExtension;
+		VERIFY(zmo->type == MOUNT_TYPE_VCB);
+
 		if (zmo->deviceObject != NULL)
 			IrpSp->FileObject->Vpb = zmo->deviceObject->Vpb;
 		else
@@ -4456,6 +4554,16 @@ fsDispatcher(
 
 	case IRP_MJ_QUERY_INFORMATION:
 		Status = query_information(DeviceObject, Irp, IrpSp);
+		break;
+
+	case IRP_MJ_DIRECTORY_CONTROL:
+		switch (IrpSp->MinorFunction) {
+		case IRP_MN_NOTIFY_CHANGE_DIRECTORY:
+			break;
+		case IRP_MN_QUERY_DIRECTORY:
+			Status = query_directory(DeviceObject, Irp, IrpSp);
+			break;
+		}
 		break;
 
 	case IRP_MJ_READ:

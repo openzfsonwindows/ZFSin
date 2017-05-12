@@ -25,7 +25,9 @@
 #ifndef SYS_WINDOWS_H_INCLUDED
 #define SYS_WINDOWS_H_INCLUDED
 
-//#include <Ntifs.h>
+
+#include <sys/mount.h>
+
 
 extern PDEVICE_OBJECT ioctlDeviceObject;
 extern PDEVICE_OBJECT diskDeviceObject;
@@ -33,23 +35,6 @@ extern PDEVICE_OBJECT fsDeviceObject;
 
 #define ZFS_SERIAL (ULONG)'wZFS'
 #define VOLUME_LABEL			L"ZFS"
-
-struct zfs_mount_object {
-	zfsvfs_t *zfsvfs;
-	PDEVICE_OBJECT deviceObject;
-	UNICODE_STRING bus_name;
-	UNICODE_STRING device_name;
-	UNICODE_STRING symlink_name;
-	UNICODE_STRING fs_name;
-	UNICODE_STRING name;
-	UNICODE_STRING uuid;
-	PDEVICE_OBJECT attached_device;
-
-	//SECTION_OBJECT_POINTERS SectionObjectPointers;
-	//FAST_MUTEX AdvancedFCBHeaderMutex;
-	//FSRTL_ADVANCED_FCB_HEADER VolumeFileHeader;
-};
-typedef struct zfs_mount_object zfs_mount_object_t;
 
 
 extern NTSTATUS dev_ioctl(PDEVICE_OBJECT DeviceObject, ULONG ControlCode, PVOID InputBuffer, ULONG InputBufferSize,

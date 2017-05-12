@@ -98,8 +98,7 @@ changelist_prefix(prop_changelist_t *clp)
 	int ret = 0;
 
 	if (clp->cl_prop != ZFS_PROP_MOUNTPOINT &&
-	    clp->cl_prop != ZFS_PROP_SHARESMB &&
-	    clp->cl_prop != ZFS_PROP_SHAREAFP)
+	    clp->cl_prop != ZFS_PROP_SHARESMB )
 		return (0);
 
 	for (cn = uu_list_first(clp->cl_list); cn != NULL;
@@ -132,9 +131,6 @@ changelist_prefix(prop_changelist_t *clp)
 				break;
 			case ZFS_PROP_SHARESMB:
 				(void) zfs_unshare_smb(cn->cn_handle, NULL);
-				break;
-			case ZFS_PROP_SHAREAFP:
-				(void) zfs_unshare_afp(cn->cn_handle, NULL);
 				break;
 			default:
 				break;
@@ -231,10 +227,6 @@ changelist_postfix(prop_changelist_t *clp)
 		    B_FALSE) == 0) && (strcmp(shareopts, "off") != 0));
 
 		sharesmb = ((zfs_prop_get(cn->cn_handle, ZFS_PROP_SHARESMB,
-		    shareopts, sizeof (shareopts), NULL, NULL, 0,
-		    B_FALSE) == 0) && (strcmp(shareopts, "off") != 0));
-
-		shareafp = ((zfs_prop_get(cn->cn_handle, ZFS_PROP_SHAREAFP,
 		    shareopts, sizeof (shareopts), NULL, NULL, 0,
 		    B_FALSE) == 0) && (strcmp(shareopts, "off") != 0));
 
@@ -355,8 +347,7 @@ changelist_unshare(prop_changelist_t *clp, zfs_share_proto_t *proto)
 	int ret = 0;
 
 	if (clp->cl_prop != ZFS_PROP_SHARENFS &&
-	    clp->cl_prop != ZFS_PROP_SHARESMB &&
-	    clp->cl_prop != ZFS_PROP_SHAREAFP)
+	    clp->cl_prop != ZFS_PROP_SHARESMB)
 		return (0);
 
 	for (cn = uu_list_first(clp->cl_list); cn != NULL;
@@ -582,7 +573,7 @@ changelist_gather(zfs_handle_t *zhp, zfs_prop_t prop, int gather_flags,
 	 */
 	if (prop == ZFS_PROP_NAME || prop == ZFS_PROP_ZONED ||
 	    prop == ZFS_PROP_MOUNTPOINT || prop == ZFS_PROP_SHARENFS ||
-	    prop == ZFS_PROP_SHARESMB || prop == ZFS_PROP_SHAREAFP) {
+	    prop == ZFS_PROP_SHARESMB ) {
 
 		if (zfs_prop_get(zhp, ZFS_PROP_MOUNTPOINT,
 		    property, sizeof (property),
@@ -646,8 +637,7 @@ changelist_gather(zfs_handle_t *zhp, zfs_prop_t prop, int gather_flags,
 
 	if (clp->cl_prop != ZFS_PROP_MOUNTPOINT &&
 	    clp->cl_prop != ZFS_PROP_SHARENFS &&
-	    clp->cl_prop != ZFS_PROP_SHARESMB &&
-	    clp->cl_prop != ZFS_PROP_SHAREAFP)
+	    clp->cl_prop != ZFS_PROP_SHARESMB)
 		return (clp);
 
 	/*

@@ -724,7 +724,7 @@ zfs_register_callbacks(struct mount *vfsp)
 	    zfsvfs);
 	error = error ? error : dsl_prop_register(ds,
 	    zfs_prop_to_name(ZFS_PROP_VSCAN), vscan_changed_cb, zfsvfs);
-#ifdef _WIN32
+#ifdef _APPLE_
 	error = error ? error : dsl_prop_register(ds,
 	    zfs_prop_to_name(ZFS_PROP_APPLE_BROWSE), finderbrowse_changed_cb, zfsvfs);
 	error = error ? error : dsl_prop_register(ds,
@@ -1118,10 +1118,10 @@ zfsvfs_init(zfsvfs_t *zfsvfs, objset_t *os)
 	if (error != 0)
 		return (error);
 	zfsvfs->z_acl_mode = (uint_t)val;
-
+#if __APPLE__
 	zfs_get_zplprop(os, ZFS_PROP_APPLE_LASTUNMOUNT, &val);
 	zfsvfs->z_last_unmount_time = val;
-
+#endif
 	/*
 	 * Fold case on file systems that are always or sometimes case
 	 * insensitive.
@@ -1405,19 +1405,18 @@ zfs_domount(struct mount *vfsp, dev_t mount_dev, char *osname, vfs_context_t *ct
 {
 dprintf("%s\n", __func__);
 	int error = 0;
-#if 0
 	zfsvfs_t *zfsvfs;
 #ifndef _WIN32
 	uint64_t recordsize, fsid_guid;
 	vnode_t *vp;
 #else
 	uint64_t mimic_hfs = 0;
-	struct timeval tv;
+//	struct timeval tv;
 #endif
 
 	ASSERT(vfsp);
 	ASSERT(osname);
-
+	DbgBreakPoint(); // ROGER
 	error = zfsvfs_create(osname, &zfsvfs);
 	if (error)
 		return (error);
@@ -1440,9 +1439,9 @@ dprintf("%s\n", __func__);
 	zfsvfs->z_rdev = mount_dev;
 
 	/* HFS sets this prior to mounting */
-	vfs_setflags(vfsp, (uint64_t)((unsigned int)MNT_DOVOLFS));
+	//vfs_setflags(vfsp, (uint64_t)((unsigned int)MNT_DOVOLFS));
 	/* Advisory locking should be handled at the VFS layer */
-	vfs_setlocklocal(vfsp);
+	//vfs_setlocklocal(vfsp);
 
 	/*
 	 * Record the mount time (for Spotlight)
@@ -1474,7 +1473,7 @@ dprintf("%s\n", __func__);
 	 * because that's where other Solaris filesystems put it.
 	 */
 
-#ifdef _WIN32
+#ifdef __APPLE__
 	error = dsl_prop_get_integer(osname, "com.apple.mimic_hfs", &mimic_hfs, NULL);
 	if (zfsvfs->z_rdev) {
 		struct vfsstatfs *vfsstatfs;
@@ -1498,12 +1497,6 @@ dprintf("%s\n", __func__);
 	    strlcpy(vfsstatfs->f_fstypename, "hfs", MFSTYPENAMELEN);
 	}
 
-#else
-	fsid_guid = dmu_objset_fsid_guid(zfsvfs->z_os);
-	ASSERT((fsid_guid & ~((1ULL<<56)-1)) == 0);
-	vfsp->vfs_fsid.val[0] = fsid_guid;
-	vfsp->vfs_fsid.val[1] = ((fsid_guid>>32) << 8) |
-	    vfsp->mnt_vfc->vfc_typenum & 0xFF;
 #endif
 
 	/*
@@ -1535,7 +1528,7 @@ dprintf("%s\n", __func__);
 			vfs_unbusy(fs_zfsvfs->z_vfs);
 		}
 		if (error) {
-			printf("file system '%s' is unmounted : error %d\n",
+			dprintf("file system '%s' is unmounted : error %d\n",
 			    fsname,
 			    error);
 			goto out;
@@ -1578,7 +1571,7 @@ dprintf("%s\n", __func__);
 	VOP_UNLOCK(vp, 0);
 #endif
 
-#if 1 // Want .zfs or not
+#if 0 // Want .zfs or not
 	if (!zfsvfs->z_issnap) {
 		zfsctl_create(zfsvfs);
     }
@@ -1590,7 +1583,7 @@ out:
 	} else {
 		atomic_inc_32(&zfs_active_fs_count);
 	}
-#endif
+
 	return (error);
 }
 
@@ -1987,8 +1980,7 @@ zfs_vfs_mount(struct mount *vfsp, vnode_t *mvp /*devvp*/,
               user_addr_t data, vfs_context_t *context)
 {
 	int		error = 0;
-#if 0
-	cred_t		*cr =  (cred_t *)vfs_context_ucred(context);
+	cred_t		*cr = NULL;//(cred_t *)vfs_context_ucred(context);
 	char		*osname = NULL;
 	char		*options = NULL;
 	uint64_t	flags = vfs_flags(vfsp);
@@ -1997,7 +1989,7 @@ zfs_vfs_mount(struct mount *vfsp, vnode_t *mvp /*devvp*/,
 	int		mflag = 0;
 
 #ifdef _WIN32
-    struct zfs_mount_args mnt_args;
+	struct zfs_mount_args *mnt_args = data;
 	size_t		osnamelen = 0;
 	uint32_t	cmdflags = 0;
 
@@ -2006,83 +1998,34 @@ dprintf("%s\n", __func__);
 	rdonly = vfs_isrdonly(vfsp);
 dprintf("%s cmdflags %u rdonly %d\n", __func__, cmdflags, rdonly);
 
-	if (!data) {
-		/*
-		 * From 10.12, if you set VFS_TBLCANMOUNTROOT, XNU will
-		 * call vfs_mountroot if set (and we can not set it), OR
-		 * call vfs_mount if not set. Since data is always passed NULL
-		 * in this case, we know we are supposed to call mountroot.
-		 */
-		printf("ZFS: vfs_mount -> vfs_mountroot\n");
-		return zfs_vfs_mountroot(vfsp, mvp, context);
-	}
-
 	/*
 	* Get the objset name (the "special" mount argument).
 	*/
 	if (data) {
-		// 10a286 renames fspec to datasetpath
 
-		// Clear the struct, so that "flags" is null if only given path.
-		bzero(&mnt_args, sizeof(mnt_args));
 		// Allocate string area
 		osname = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 
-		if (vfs_context_is64bit(context)) {
-			if ( (error = ddi_copyin((void *)data,
-			    (caddr_t)&mnt_args, sizeof(mnt_args), 0)) ) {
-				//cmn_err(CE_NOTE, "%s: error on mnt_args copyin %d",
-				printf("%s: error on mnt_args copyin %d\n",
-				    __func__, error);
-				goto out;
-			}
-		} else {
-			user32_addr_t tmp;
-			if ( (error = ddi_copyin((void *)data,
-			    (caddr_t)&tmp, sizeof(tmp), 0)) ) {
-				//cmn_err(CE_NOTE, "%s: error on mnt_args copyin32 %d",
-				printf("%s: error on mnt_args copyin32 %d\n",
-				    __func__, error);
-				goto out;
-			}
-			/* munge into LP64 addr */
-			mnt_args.fspec = (char *)CAST_USER_ADDR_T(tmp);
-		}
+		strlcpy(osname, mnt_args->fspec, MAXPATHLEN);
 
-		// Copy over the string
-		if ( (error = ddi_copyinstr((const void *)mnt_args.fspec, osname,
-		    MAXPATHLEN, &osnamelen)) ) {
-			//cmn_err(CE_NOTE, "%s: error on osname copyin %d",
-			printf("%s: error on osname copyin %d\n",
-			__func__, error);
-			goto out;
-		}
 	}
 
-	if (strncmp(osname, "/dev/disk", 9) == 0 &&
-	    (vfs_flags(vfsp) & MNT_ROOTFS) == 0) {
-		printf("%s osname %s skip\n", __func__, osname);
-		error = ENODEV;
-		goto out;
-	}
+	if (mnt_args->struct_size == sizeof(*mnt_args)) {
 
+		mflag = mnt_args->mflag;
 
-	if (mnt_args.struct_size == sizeof(mnt_args)) {
-
-		mflag = mnt_args.mflag;
-
-		options = kmem_alloc(mnt_args.optlen, KM_SLEEP);
-
-		error = ddi_copyin((const void *)mnt_args.optptr, (caddr_t)options,
-						   mnt_args.optlen, 0);
-	//dprintf("vfs_mount: fspec '%s' : mflag %04llx : optptr %p : optlen %d :"
-	printf("%s: fspec '%s' : mflag %04x : optptr %p : optlen %d :"
-	    " options %s\n", __func__,
-	    osname,
-	    mnt_args.mflag,
-	    mnt_args.optptr,
-	    mnt_args.optlen,
-	    options);
+		if (mnt_args->optlen) {
+			options = kmem_alloc(mnt_args->optlen, KM_SLEEP);
+			strlcpy(options, mnt_args->optptr, mnt_args->optlen);
+		}
+			//dprintf("vfs_mount: fspec '%s' : mflag %04llx : optptr %p : optlen %d :"
+		dprintf("%s: fspec '%s' : mflag %04x : optptr %p : optlen %d :"
+		    " options %s\n", __func__,
+			osname,
+			mnt_args->mflag,
+			mnt_args->optptr,
+			mnt_args->optlen,
+			options);
 	}
 
 //	(void) dnlc_purge_vfsp(vfsp, 0);
@@ -2111,35 +2054,6 @@ dprintf("%s cmdflags %u rdonly %d\n", __func__, cmdflags, rdonly);
 
 #endif
 
-#ifdef illumos
-	if (mvp->v_type != VDIR)
-		return (ENOTDIR);
-
-	mutex_enter(&mvp->v_lock);
-	if ((uap->flags & MS_REMOUNT) == 0 &&
-	    (uap->flags & MS_OVERLAY) == 0 &&
-	    (mvp->v_count != 1 || (mvp->v_flag & VROOT))) {
-		mutex_exit(&mvp->v_lock);
-		return (EBUSY);
-	}
-	mutex_exit(&mvp->v_lock);
-
-	/*
-	 * ZFS does not support passing unparsed data in via MS_DATA.
-	 * Users should use the MS_OPTIONSTR interface; this means
-	 * that all option parsing is already done and the options struct
-	 * can be interrogated.
-	 */
-	if ((uap->flags & MS_DATA) && uap->datalen > 0)
-#endif
-
-#if __FreeBSD__
-	if (!prison_allow(td->td_ucred, PR_ALLOW_MOUNT_ZFS))
-		return (EPERM);
-
-	if (vfs_getopt(vfsp->mnt_optnew, "from", (void **)&osname, NULL))
-		return (EINVAL);
-#endif	/* ! illumos */
 
 	/*
 	 * If full-owner-access is enabled and delegated administration is
@@ -2243,7 +2157,7 @@ dprintf("%s cmdflags %u rdonly %d\n", __func__, cmdflags, rdonly);
 	if (cmdflags & MNT_UPDATE) {
 
 		if (cmdflags & MNT_RELOAD) {
-			printf("%s: reload after fsck\n", __func__);
+			dprintf("%s: reload after fsck\n", __func__);
 			error = 0;
 			goto out;
 		}
@@ -2261,13 +2175,13 @@ dprintf("%s cmdflags %u rdonly %d\n", __func__, cmdflags, rdonly);
 			zfs_unregister_callbacks(zfsvfs);
 			error = zfs_register_callbacks(vfsp);
 			if (error) {
-				printf("%s: remount returned %d",
+				dprintf("%s: remount returned %d",
 				    __func__, error);
 			}
 		}
 
 		//if (zfsvfs->z_rdonly != 0 && vfs_iswriteupgrade(vfsp)) {
-		if (vfs_iswriteupgrade(vfsp)) {
+		if (0 /*vfs_iswriteupgrade(vfsp)*/) {
 			/* upgrade */
 			dprintf("%s: upgrade requested\n", __func__);
 			zfsvfs->z_rdonly = 0;
@@ -2275,7 +2189,7 @@ dprintf("%s cmdflags %u rdonly %d\n", __func__, cmdflags, rdonly);
 			zfs_unregister_callbacks(zfsvfs);
 			error = zfs_register_callbacks(vfsp);
 			if (error) {
-				printf("%s: remount returned %d",
+				dprintf("%s: remount returned %d",
 				    __func__, error);
 			}
 		}
@@ -2296,7 +2210,7 @@ dprintf("%s cmdflags %u rdonly %d\n", __func__, cmdflags, rdonly);
 	}
 
 	if (vfs_fsprivate(vfsp) != NULL) {
-		printf("already mounted\n");
+		dprintf("already mounted\n");
 		error = 0;
 		goto out;
 	}
@@ -2308,7 +2222,7 @@ dprintf("%s cmdflags %u rdonly %d\n", __func__, cmdflags, rdonly);
 
 	if (error) {
 		//cmn_err(CE_NOTE, "%s: zfs_domount returned %d\n",
-		printf("%s: zfs_domount returned %d\n",
+		dprintf("%s: zfs_domount returned %d\n",
 		    __func__, error);
 	error = 0;
 		goto out;
@@ -2334,20 +2248,19 @@ out:
 
 		//dprintf("%s: setting vfs flags\n", __func__);
 		/* Indicate to VFS that we support ACLs. */
-		vfs_setextendedsecurity(vfsp);
+//		vfs_setextendedsecurity(vfsp);
 	}
 
 	if (error)
-		printf("zfs_vfs_mount: error %d\n", error);
+		dprintf("zfs_vfs_mount: error %d\n", error);
 
 	if (osname)
 		kmem_free(osname, MAXPATHLEN);
 
 	if (options)
-		kmem_free(options, mnt_args.optlen);
+		kmem_free(options, mnt_args->optlen);
 #endif
 
-#endif
 	return (error);
 }
 
@@ -3144,7 +3057,7 @@ zfsvfs_t *zfsvfs = vfs_fsprivate(mp);
 		return (ret);
 	}
 
-#ifdef _WIN32
+#ifdef __APPLE__
 	if (!vfs_isrdonly(zfsvfs->z_vfs) &&
 		spa_writeable(dmu_objset_spa(zfsvfs->z_os)) &&
 		!(mntflags & MNT_FORCE)) {

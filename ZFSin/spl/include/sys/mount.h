@@ -67,9 +67,26 @@ struct vfsstatfs {
 
 //#pragma pack()
 
+enum mount_type {
+	MOUNT_TYPE_DCB = 231, // diskObject (most entries not used, should be own struct?)
+	MOUNT_TYPE_VCB        // fsObject 
+};
 
+typedef enum mount_type mount_type_t;
 
-struct mount;
+struct mount
+{
+	mount_type_t type;
+	void *fsprivate;
+	PDEVICE_OBJECT deviceObject;
+	UNICODE_STRING bus_name;
+	UNICODE_STRING device_name;
+	UNICODE_STRING symlink_name;
+	UNICODE_STRING fs_name;
+	UNICODE_STRING name;
+	UNICODE_STRING uuid;
+	PDEVICE_OBJECT attached_device;
+};
 typedef struct mount mount_t;
 #define LK_NOWAIT 1
 

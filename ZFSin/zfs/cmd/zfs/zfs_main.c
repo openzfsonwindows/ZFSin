@@ -6412,8 +6412,6 @@ unshare_unmount_path(int op, char *path, int flags, boolean_t is_manual)
 		    sizeof (nfs_mnt_prop), NULL, NULL, 0, B_FALSE) == 0);
 		verify(zfs_prop_get(zhp, ZFS_PROP_SHARESMB, smbshare_prop,
 		    sizeof (smbshare_prop), NULL, NULL, 0, B_FALSE) == 0);
-		verify(zfs_prop_get(zhp, ZFS_PROP_SHAREAFP, afpshare_prop,
-		    sizeof (afpshare_prop), NULL, NULL, 0, B_FALSE) == 0);
 
 		if (strcmp(nfs_mnt_prop, "off") == 0 &&
 		    strcmp(smbshare_prop, "off") == 0 &&
@@ -6575,10 +6573,6 @@ unshare_unmount(int op, int argc, char **argv)
 				    NULL, NULL, 0, B_FALSE) == 0);
 				if (strcmp(nfs_mnt_prop, "off") == 0)
 					continue;
-				verify(zfs_prop_get(zhp, ZFS_PROP_SHAREAFP,
-				    nfs_mnt_prop,
-				    sizeof (nfs_mnt_prop),
-				    NULL, NULL, 0, B_FALSE) == 0);
 				if (strcmp(nfs_mnt_prop, "off") == 0)
 					continue;
 				break;
@@ -6701,9 +6695,6 @@ unshare_unmount(int op, int argc, char **argv)
 			    NULL, NULL, 0, B_FALSE) == 0);
 			verify(zfs_prop_get(zhp, ZFS_PROP_SHARESMB,
 			    sharesmb, sizeof (sharesmb), NULL, NULL,
-			    0, B_FALSE) == 0);
-			verify(zfs_prop_get(zhp, ZFS_PROP_SHAREAFP,
-			    shareafp, sizeof (shareafp), NULL, NULL,
 			    0, B_FALSE) == 0);
 
 			if (strcmp(nfs_mnt_prop, "off") == 0 &&

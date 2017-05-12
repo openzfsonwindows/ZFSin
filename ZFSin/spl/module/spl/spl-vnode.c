@@ -666,7 +666,7 @@ int     vnode_getwithref(vnode_t *vp)
 
 void *vnode_fsnode(struct vnode *dvp)
 {
-	return NULL;
+	return dvp->v_data;
 }
 
 enum vtype      vnode_vtype(vnode_t *vp)

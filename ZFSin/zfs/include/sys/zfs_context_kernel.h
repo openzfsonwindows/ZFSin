@@ -90,11 +90,7 @@ extern "C" {
 typedef struct dirent dirent_t;
 typedef struct direntry dirent64_t;
 
-#define DIRENT_RECLEN(namelen, ext)  \
-        ((ext) ?  \
-        ((sizeof(dirent64_t) + (namelen) - (MAXPATHLEN-1) + 7) & ~7)  \
-        :  \
-        ((sizeof(dirent_t) - (NAME_MAX+1)) + (((namelen)+1 + 7) &~ 7)))
+#define DIRENT_RECLEN(namelen)  ((sizeof(FILE_FULL_DIR_INFORMATION) + (namelen) - (MAXPATHLEN-1) + 7) & ~7)  
 
 #define        CREATE_XATTR_DIR        0x04    /* Create extended attr dir */
 #define	kpreempt_disable()	((void)0)

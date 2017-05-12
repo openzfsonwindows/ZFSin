@@ -43,13 +43,14 @@ int     vfs_isrdonly(mount_t *mp)
 	return 0;
 }
 
-void *	vfs_fsprivate(mount_t *mp)
+void *vfs_fsprivate(mount_t *mp)
 {
-	return NULL;
+	return mp->fsprivate;
 }
 
-void    vfs_setfsprivate(mount_t *mp, void *mntdata)
+void vfs_setfsprivate(mount_t *mp, void *mntdata)
 {
+	mp->fsprivate = mntdata;
 }
 
 void    vfs_clearflags(mount_t *mp, uint64_t flags)
