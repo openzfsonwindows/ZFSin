@@ -2533,7 +2533,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 
 	znode_t		*zp = VTOZ(vp);
 	iovec_t		*iovp;
-	FILE_FULL_DIR_INFORMATION *eodp;
+	FILE_FULL_DIR_INFORMATION *eodp = NULL;
 	zfsvfs_t	*zfsvfs = zp->z_zfsvfs;
 	objset_t	*os;
 	caddr_t		outbuf;
@@ -2555,7 +2555,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 	int flag_restart_scan       = flags & SL_RESTART_SCAN        ? 1 : 0;
 	int flag_return_sigle_entry = flags & SL_RETURN_SINGLE_ENTRY ? 1 : 0;
 
-	dprintf("+zfs_readdir: Index %d, Restart %d, Single %d.\n",
+	dprintf("+zfs_readdir: Index %d, Restart %d, Single %d\n",
 		flag_index_specified, flag_restart_scan, flag_return_sigle_entry);
 
 	ZFS_ENTER(zfsvfs);
@@ -2739,8 +2739,18 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 
 		eodp = (FILE_FULL_DIR_INFORMATION  *)bufptr;
 		/* NOTE: d_seekoff is the offset for the *next* entry */
-		next = &(eodp->NextEntryOffset);
-		eodp->FileIndex = objnum;
+//		next = &(eodp->NextEntryOffset);
+
+		// Fill in information
+		eodp->FileIndex               = objnum;
+		eodp->AllocationSize.QuadPart = 512; // File size in block alignment
+		eodp->EndOfFile.QuadPart      = 511; // File size in bytes
+		eodp->ChangeTime.QuadPart     = gethrtime();
+		eodp->CreationTime.QuadPart   = gethrtime();
+		eodp->LastAccessTime.QuadPart = gethrtime();
+		eodp->LastWriteTime.QuadPart  = gethrtime();
+		eodp->EaSize                  = 0;
+		eodp->FileAttributes          = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
 		//eodp->d_type = dtype;
 
 		/*
@@ -2748,14 +2758,12 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 		 */
 		namelen = strlen(zap.za_name);
 
-		UNICODE_STRING ucstr;
+		// Check filename length
 		error = RtlUTF8ToUnicodeN(NULL, 0, &eodp->FileNameLength, zap.za_name, namelen);
-		ucstr.Buffer = &eodp->FileName;
-		error = RtlUTF8ToUnicodeN(&ucstr, eodp->FileNameLength, &eodp->FileNameLength, zap.za_name, namelen);
 
 		namelen = eodp->FileNameLength;
-
 		reclen = DIRENT_RECLEN(namelen);
+
 		/*
 		* Will this entry fit in the buffer?
 		*/
@@ -2769,6 +2777,12 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 			}
 			break;
 		}
+
+		// There is room, stuff in FileName...
+		error = RtlUTF8ToUnicodeN(eodp->FileName, eodp->FileNameLength, &eodp->FileNameLength, zap.za_name, namelen);
+		dprintf("%s: '%s' -> '%.*S'\n", __func__,
+			zap.za_name, eodp->FileNameLength / sizeof(WCHAR), eodp->FileName);
+
 
 		//eodp->d_namlen = namelen;
 		eodp->NextEntryOffset = reclen;
@@ -2793,17 +2807,22 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 			offset += 1;
 		}
 
-        *next = offset;
+
+		if (flag_return_sigle_entry) break;
+//        *next = offset;
 	}
+
+	// The last eodp should have Next offset of 0
+	if (eodp) eodp->NextEntryOffset = 0;
+
 	zp->z_zn_prefetch = B_FALSE; /* a lookup will re-enable pre-fetching */
 
-    if ((error = uiomove(outbuf, (long)outcount, UIO_READ, uio))) {
+	if ((error = uiomove(outbuf, (long)outcount, UIO_READ, uio))) {
 		/*
 		 * Reset the pointer.
 		 */
 		offset = uio_offset(uio);
     }
-
 
 update:
 	zap_cursor_fini(&zc);

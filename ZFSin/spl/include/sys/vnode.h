@@ -51,6 +51,7 @@
 struct vnode {
 	IRP v_irp;
 	void *v_data;
+	uint16_t v_type;
 };
 typedef struct vnode vnode_t;
 

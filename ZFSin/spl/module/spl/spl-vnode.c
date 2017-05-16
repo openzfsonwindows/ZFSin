@@ -646,12 +646,12 @@ uint32_t        vnode_vid(vnode_t *vp)
 
 int     vnode_isreg(vnode_t *vp)
 {
-	return 0;
+	return vp->v_type == VREG;
 }
 
 int     vnode_isdir(vnode_t *vp)
 {
-	return 0;
+	return vp->v_type == VDIR;
 }
 
 int     vnode_put(vnode_t *vp)
@@ -671,17 +671,17 @@ void *vnode_fsnode(struct vnode *dvp)
 
 enum vtype      vnode_vtype(vnode_t *vp)
 {
-	return VREG;
+	return vp->v_type;
 }
 
 int     vnode_isblk(vnode_t *vp)
 {
-	return 0;
+	return vp->v_type == VBLK;
 }
 
 int     vnode_ischr(vnode_t *vp)
 {
-	return 0;
+	return vp->v_type == VCHR;
 }
 
 int     vnode_isswap(vnode_t *vp)

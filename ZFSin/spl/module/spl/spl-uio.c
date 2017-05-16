@@ -51,6 +51,7 @@ uio_t *uio_create(int iovcount, off_t offset, int spacetype, int iodirection)
 
 	if (iovcount > 0) {
 		my_uio->uio_iov = kmem_alloc(iovcount * sizeof(iovec_t), KM_SLEEP);
+		memset(my_uio->uio_iov, 0, iovcount * sizeof(iovec_t));
 	}
 	else {
 		my_uio->uio_iov = NULL;
@@ -292,10 +293,10 @@ int spl_uiomove(const uint8_t *c_cp, uint32_t n, struct uio *uio)
 		switch ((int)uio->uio_segflg) {
 		case UIO_SYSSPACE:
 			if (uio->uio_rw == UIO_READ)
-				error = bcopy(cp, uio->uio_iov[uio->uio_index].iov_base,
+				/*error =*/ bcopy(cp, uio->uio_iov[uio->uio_index].iov_base,
 					acnt);
 			else
-				error = bcopy(uio->uio_iov[uio->uio_index].iov_base, cp,
+				/*error =*/ bcopy(uio->uio_iov[uio->uio_index].iov_base, cp,
 					acnt);
 			break;
 		default:

@@ -36,6 +36,17 @@ extern PDEVICE_OBJECT fsDeviceObject;
 #define ZFS_SERIAL (ULONG)'wZFS'
 #define VOLUME_LABEL			L"ZFS"
 
+// We have to remember "query directory" related items, like index and
+// search pattern. This is attached in IRP_MJ_CREATE to fscontext2
+#define ZFS_DIRLIST_MAGIC 0x6582feac
+struct zfs_dirlist {
+	uint32_t magic;       // Identifier
+	uint64_t uio_offset;  // Directory list offset
+	uint32_t dir_eof;     // Directory listing completed?
+						  // Search pattern
+};
+
+typedef struct zfs_dirlist zfs_dirlist_t;
 
 extern NTSTATUS dev_ioctl(PDEVICE_OBJECT DeviceObject, ULONG ControlCode, PVOID InputBuffer, ULONG InputBufferSize,
 	PVOID OutputBuffer, ULONG OutputBufferSize, BOOLEAN Override, IO_STATUS_BLOCK* iosb);

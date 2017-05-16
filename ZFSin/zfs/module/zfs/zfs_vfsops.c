@@ -1416,7 +1416,7 @@ dprintf("%s\n", __func__);
 
 	ASSERT(vfsp);
 	ASSERT(osname);
-	DbgBreakPoint(); // ROGER
+
 	error = zfsvfs_create(osname, &zfsvfs);
 	if (error)
 		return (error);

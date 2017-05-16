@@ -184,6 +184,7 @@ extern proc_t p0;
 
 #define strlcpy(D, S, N) strncpy_s((D), (N), (S), _TRUNCATE)
 #define strlcat(D, S, N) strncat_s((D), (N), (S), _TRUNCATE)
+#define strtok_r strtok_s
 
 #define htonl _byteswap_ulong
 
