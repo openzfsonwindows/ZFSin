@@ -229,7 +229,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if (dvp == NULL) {
 		char *brkt = NULL;
 		char *word;
-		DbgBreakPoint();
+	//	DbgBreakPoint();
 		// Iterate from root
 		error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
 		if (error == 0) {
@@ -294,6 +294,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	}
 
 	// Just open it, if the open was to a directory, add ccb
+	ASSERT(IrpSp->FileObject->FsContext == NULL);
 	if (vp == NULL) {
 		zfs_dirlist_t *zccb = kmem_alloc(sizeof(zfs_dirlist_t), KM_SLEEP);
 		ASSERT(IrpSp->FileObject->FsContext2 == NULL);
@@ -814,9 +815,19 @@ NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK
 	dprintf("   %s\n", __func__);
 	basic->ChangeTime.QuadPart = gethrtime();
 	basic->CreationTime.QuadPart = gethrtime();
-	basic->FileAttributes = FILE_ATTRIBUTE_NORMAL;
 	basic->LastAccessTime.QuadPart = gethrtime();
 	basic->LastWriteTime.QuadPart = gethrtime();
+	basic->FileAttributes = FILE_ATTRIBUTE_NORMAL;
+	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
+		struct vnode *vp = IrpSp->FileObject->FsContext;
+		VN_HOLD(vp);
+		znode_t *zp = VTOZ(vp);
+		if (S_ISDIR(zp->z_mode)) 
+			basic->FileAttributes = FILE_ATTRIBUTE_DIRECTORY;
+		else
+			basic->FileAttributes = FILE_ATTRIBUTE_NORMAL;
+		VN_RELE(vp);
+	}
 	return STATUS_SUCCESS;
 }
 
@@ -842,20 +853,42 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 {
 	UNICODE_STRING str;
 	RtlInitUnicodeString(&str, L"\\");
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+
+	if (FileObject == NULL || FileObject->FsContext == NULL)
+		return STATUS_INVALID_PARAMETER;
+
+	struct vnode *vp = FileObject->FsContext;
+	znode_t *zp = VTOZ(vp);
+	char strname[MAXPATHLEN + 2];
+	int error;
+	uint64_t parent;
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+
+	VN_HOLD(vp);
+	VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zfsvfs),
+		&parent, sizeof(parent)) == 0);
+
+	error = zap_value_search(zfsvfs->z_os, parent, zp->z_id,
+		ZFS_DIRENT_OBJ(-1ULL), strname);
+	
+	VN_RELE(vp);
+
+	if (error)
+		return STATUS_FILE_INVALID;
+
+	// Convert name
+	error = RtlUTF8ToUnicodeN(NULL, 0, &name->FileNameLength, strname, strlen(strname));
 
 	dprintf("%s: remaining space %d str.len %d struct size %d\n", __func__, IrpSp->Parameters.QueryFile.Length,
 		str.Length, sizeof(FILE_NAME_INFORMATION));
 
-	name->FileNameLength = str.Length;
-	if (IrpSp->Parameters.QueryFile.Length < offsetof(FILE_NAME_INFORMATION, FileName[0]) + str.Length) {
-		Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION) + str.Length;
+	Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION) + name->FileNameLength;
+	if (IrpSp->Parameters.QueryFile.Length < offsetof(FILE_NAME_INFORMATION, FileName[0]) + name->FileNameLength) {
 		return STATUS_BUFFER_OVERFLOW;
 	}
 
-	RtlCopyMemory(
-		(PCHAR)name->FileName,
-		str.Buffer,
-		str.Length);
+	error = RtlUTF8ToUnicodeN(name->FileName, name->FileNameLength, &name->FileNameLength, strname, strlen(strname));
 
 	dprintf("%s: hardcoded name of %wZ\n", __func__, &str);
 	return STATUS_SUCCESS;
