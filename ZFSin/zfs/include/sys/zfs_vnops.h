@@ -153,7 +153,7 @@ extern int    zfs_mkdir  ( vnode_t *dvp, char *dirname, vattr_t *vap,
 extern int    zfs_rmdir  ( vnode_t *dvp, char *name, vnode_t *cwd,
                            cred_t *cr, caller_context_t *ct, int flags);
 extern int    zfs_readdir( vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp,
-                           int flags, int *a_numdirent);
+                           int flags, int dirlistype, int *a_numdirent);
 extern int    zfs_fsync  ( vnode_t *vp, int syncflag,
                            cred_t *cr, caller_context_t *ct);
 extern int    zfs_getattr( vnode_t *vp, vattr_t *vap, int flags,

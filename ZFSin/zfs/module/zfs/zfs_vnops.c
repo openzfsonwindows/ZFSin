@@ -2527,7 +2527,7 @@ out:
 */
 /* ARGSUSED */
 int
-zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_numdirent)
+zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int dirlisttype, int *a_numdirent)
 {
 	int		error = 0;
 
@@ -2551,6 +2551,9 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
     int		numdirent = 0;
     char		*bufptr;
     boolean_t	isdotdir = B_TRUE;
+	void *nameptr = NULL;
+	PULONG namelenptr = NULL;
+	int structsize = 0;
 	int flag_index_specified    = flags & SL_INDEX_SPECIFIED     ? 1 : 0;
 	int flag_restart_scan       = flags & SL_RESTART_SCAN        ? 1 : 0;
 	int flag_return_sigle_entry = flags & SL_RETURN_SINGLE_ENTRY ? 1 : 0;
@@ -2588,6 +2591,16 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 	if ((*eofp = zp->z_unlinked) != 0) {
 		ZFS_EXIT(zfsvfs);
 		return (0);
+	}
+
+	// Make sure the dirlist type is a valid one
+	switch (dirlisttype) {
+	case FileFullDirectoryInformation:
+	case FileIdBothDirectoryInformation:
+		break;
+	default:
+		ZFS_EXIT(zfsvfs);
+		return ((EINVAL));
 	}
 
 	error = 0;
@@ -2737,32 +2750,54 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 
         //printf("readdir '%s' ext %d\n", zap.za_name, extended);
 
-		eodp = (FILE_FULL_DIR_INFORMATION  *)bufptr;
-		/* NOTE: d_seekoff is the offset for the *next* entry */
-//		next = &(eodp->NextEntryOffset);
+		switch (dirlisttype) {
 
-		// Fill in information
-		eodp->FileIndex               = objnum;
-		eodp->AllocationSize.QuadPart = 512; // File size in block alignment
-		eodp->EndOfFile.QuadPart      = 511; // File size in bytes
-		eodp->ChangeTime.QuadPart     = gethrtime();
-		eodp->CreationTime.QuadPart   = gethrtime();
-		eodp->LastAccessTime.QuadPart = gethrtime();
-		eodp->LastWriteTime.QuadPart  = gethrtime();
-		eodp->EaSize                  = 0;
-		eodp->FileAttributes          = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
-		//eodp->d_type = dtype;
+		case FileFullDirectoryInformation:
+			eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
+			// Fill in information
+			eodp->FileIndex = objnum;
+			eodp->AllocationSize.QuadPart = 512; // File size in block alignment
+			eodp->EndOfFile.QuadPart = 511; // File size in bytes
+			eodp->ChangeTime.QuadPart = gethrtime();
+			eodp->CreationTime.QuadPart = gethrtime();
+			eodp->LastAccessTime.QuadPart = gethrtime();
+			eodp->LastWriteTime.QuadPart = gethrtime();
+			eodp->EaSize = 0;
+			eodp->FileAttributes = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+			nameptr = eodp->FileName;
+			namelenptr = &eodp->FileNameLength;
+			structsize = sizeof(FILE_FULL_DIR_INFORMATION);
+			break;
 
+		case FileIdBothDirectoryInformation:
+			eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
+			FILE_ID_BOTH_DIR_INFORMATION *fibdi = (FILE_ID_BOTH_DIR_INFORMATION *)bufptr;
+			fibdi->AllocationSize.QuadPart = 512;
+			fibdi->EndOfFile.QuadPart = 511;
+			fibdi->ChangeTime.QuadPart = gethrtime();
+			fibdi->CreationTime.QuadPart = gethrtime();
+			fibdi->LastAccessTime.QuadPart = gethrtime();
+			fibdi->LastWriteTime.QuadPart = 0;
+			fibdi->EaSize = 0;
+			fibdi->FileAttributes = DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+			fibdi->FileId.QuadPart = objnum;
+			fibdi->FileIndex = objnum;
+			fibdi->ShortNameLength = 0;
+			nameptr = fibdi->FileName;
+			namelenptr = &fibdi->FileNameLength;
+			structsize = sizeof(FILE_ID_BOTH_DIR_INFORMATION);
+			break;
+		}
 		/*
 		 * Do magic filename conversion for Windows here 
 		 */
 		namelen = strlen(zap.za_name);
 
 		// Check filename length
-		error = RtlUTF8ToUnicodeN(NULL, 0, &eodp->FileNameLength, zap.za_name, namelen);
+		error = RtlUTF8ToUnicodeN(NULL, 0, namelenptr, zap.za_name, namelen);
 
-		namelen = eodp->FileNameLength;
-		reclen = DIRENT_RECLEN(namelen);
+		namelen = *namelenptr;
+		reclen = DIRENT_RECLEN(structsize + namelen);
 
 		/*
 		* Will this entry fit in the buffer?
@@ -2779,12 +2814,13 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 		}
 
 		// There is room, stuff in FileName...
-		error = RtlUTF8ToUnicodeN(eodp->FileName, eodp->FileNameLength, &eodp->FileNameLength, zap.za_name, namelen);
+		error = RtlUTF8ToUnicodeN(nameptr, *namelenptr, namelenptr, zap.za_name, namelen);
 		dprintf("%s: '%s' -> '%.*S'\n", __func__,
-			zap.za_name, eodp->FileNameLength / sizeof(WCHAR), eodp->FileName);
+			zap.za_name, *namelenptr / sizeof(WCHAR), nameptr);
 
 
 		//eodp->d_namlen = namelen;
+		// This assumes NextEntryOffset is the FIRST entry in all structs
 		eodp->NextEntryOffset = reclen;
 
 		outcount += reclen;
@@ -2809,10 +2845,10 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, int *eofp, int flags, int *a_nu
 
 
 		if (flag_return_sigle_entry) break;
-//        *next = offset;
 	}
 
 	// The last eodp should have Next offset of 0
+	// This assumes NextEntryOffset is the FIRST entry in all structs
 	if (eodp) eodp->NextEntryOffset = 0;
 
 	zp->z_zn_prefetch = B_FALSE; /* a lookup will re-enable pre-fetching */
