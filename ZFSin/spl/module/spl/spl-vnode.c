@@ -733,4 +733,19 @@ void    vnode_clearfsnode(vnode_t *vp)
 	return 0;
 }
 
+int   vnode_unlink(vnode_t *vp)
+{
+	return vp->v_unlink;
+}
 
+void   vnode_setunlink(vnode_t *vp)
+{
+	vp->v_unlink = 1;
+}
+
+void vnode_create(void *v_data, int type, struct vnode **vpp)
+{
+	*vpp = kmem_zalloc(sizeof(**vpp), KM_SLEEP);
+	(*vpp)->v_data = v_data;
+	(*vpp)->v_type = type;
+}

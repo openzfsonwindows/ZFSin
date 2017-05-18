@@ -685,9 +685,10 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	fsDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
 
-
+	// This makes it work in DOS
 	DokanSendVolumeArrivalNotification(&diskDeviceName);
-	//DokanRegisterDeviceInterface(WIN_DriverObject, diskDeviceObject, zmo_dcb);
+	// This makes it work in explorer
+	DokanRegisterDeviceInterface(WIN_DriverObject, diskDeviceObject, zmo_dcb);
 
 
 	UNICODE_STRING name;

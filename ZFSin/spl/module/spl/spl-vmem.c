@@ -3059,13 +3059,10 @@ static inline void
 spl_dprintf_bucket_span_sizes(void)
 {
 	// this doesn't have to be super-exact
-	dprintf("SPL: %s: ", __func__);
 	for (int i = VMEM_BUCKET_LOWBIT; i < VMEM_BUCKET_HIBIT; i++) {
 		int bnum = i - VMEM_BUCKET_LOWBIT;
 		vmem_t *bvmp = vmem_bucket_arena[bnum];
-		dprintf("%llu ", (uint64_t)bvmp->vm_min_import);
 	}
-	dprintf("\n");
 }
 
 static inline void
@@ -3198,7 +3195,6 @@ vmem_init(const char *heap_name,
 		char *buf = vmem_alloc(spl_default_arena, VMEM_NAMELEN + 21, VM_SLEEP);
 		(void) snprintf(buf, VMEM_NAMELEN + 20, "%s_%llu",
 		    "bucket", bucket_largest_size);
-		dprintf("SPL: %s creating arena %s (i == %d)\n", __func__, buf, i);
 		extern uint64_t real_total_memory;
 		if (real_total_memory > 0) {
 			// adjust minimum bucket span size for memory size
@@ -3209,9 +3205,6 @@ vmem_init(const char *heap_name,
 			const uint64_t s = MAX(b / 2ULL, m);
 			spl_bucket_tunable_large_span = MIN(b, 16ULL * m);
 			spl_bucket_tunable_small_span = s;
-			dprintf("SPL: %s: real_total_memory %llu, large spans %llu, small spans %llu\n",
-			    __func__, real_total_memory,
-			    spl_bucket_tunable_large_span, spl_bucket_tunable_small_span);
 		}
 		uint64_t minimum_allocsize = 0;
 		switch (i) {
@@ -3252,8 +3245,6 @@ vmem_init(const char *heap_name,
 			    bucket_largest_size * 4);
 			break;
 		}
-		dprintf("SPL: %s setting bucket %d (%d) to size %llu\n",
-		    __func__, i, (int)(1 << i), (uint64_t)minimum_allocsize);
 		const int bucket_number = i - VMEM_BUCKET_LOWBIT;
 		vmem_t *b = vmem_create(buf, NULL, 0, heap_quantum,
 		    xnu_alloc_throttled, xnu_free_throttled, spl_default_arena_parent,

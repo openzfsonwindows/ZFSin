@@ -40,10 +40,11 @@ extern PDEVICE_OBJECT fsDeviceObject;
 // search pattern. This is attached in IRP_MJ_CREATE to fscontext2
 #define ZFS_DIRLIST_MAGIC 0x6582feac
 struct zfs_dirlist {
-	uint32_t magic;       // Identifier
-	uint64_t uio_offset;  // Directory list offset
-	uint32_t dir_eof;     // Directory listing completed?
-						  // Search pattern
+	uint32_t magic;				// Identifier
+	uint64_t uio_offset;		// Directory list offset
+	uint32_t dir_eof;			// Directory listing completed?
+	int ContainsWildCards;      // searchname has wildcards
+	UNICODE_STRING searchname;  // Search pattern
 };
 
 typedef struct zfs_dirlist zfs_dirlist_t;

@@ -52,6 +52,7 @@ struct vnode {
 	IRP v_irp;
 	void *v_data;
 	uint16_t v_type;
+	int v_unlink;
 };
 typedef struct vnode vnode_t;
 
@@ -418,6 +419,9 @@ int     vnode_recycle(vnode_t *vp);
 int     vnode_isvroot(vnode_t *vp);
 mount_t *vnode_mount(vnode_t *vp);
 void    vnode_clearfsnode(vnode_t *vp);
+int   vnode_unlink(vnode_t *vp);
+void   vnode_setunlink(vnode_t *vp);
+void vnode_create(void *v_data, int type, struct vnode **vpp);
 
 #define VNODE_READDIR_EXTENDED 1
 
