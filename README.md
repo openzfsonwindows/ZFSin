@@ -158,23 +158,30 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ✓ Port over cmd/zfs
 
+  ✓ Add ioctl calls to MOUNT and create Volume to attach
+
+  ⃝ Add ioctl calls to UNMOUNT and detach and delete Volume
+
   ⃝ Port kernel `zfs_vnops.c` / `zfs_vnops_windows.c`
+  *  Implemented: open/read/write/close/mkdir/rmdir/create
+
+  ⃝ Correct file information (dates, size, etc)
 
 
 ---
 
 # Design issues that need addressing.
 
-* Windows do not handle EFI labels, for now they are parsed with 
+* Windows do not handle EFI labels, for now they are parsed with
 libefi, and we send offset and size with the filename, that both
 libzfs and kernel will parse out and use. This works for a proof
 of concept.
 
 Possibly a more proper solution would be to write a thin virtual
 hard disk driver, which reads the EFI label and present just the
-partitions. 
+partitions.
 
-* vdev_disk.c spawns a thread to get around that IoCompletionRoutine 
+* vdev_disk.c spawns a thread to get around that IoCompletionRoutine
 is called in a different context, to sleep until signalled. Is there
 a better way to do async in Windows?
 
@@ -182,5 +189,3 @@ a better way to do async in Windows?
 it makes zio_taskq_member(taskq_member()) crash. Investigate.
 
 * Functions in posix.c need sustenance.
-
-
