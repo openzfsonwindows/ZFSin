@@ -5146,7 +5146,6 @@ int zfs_windows_mount(zfs_cmd_t *zc);  // move me to headers
 static int
 zfs_ioc_mount(zfs_cmd_t *zc)
 {
-	dprintf("%s: enter\n", __func__);
 	return zfs_windows_mount(zc);
 }
 
@@ -6224,7 +6223,7 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg, int xflag, struct proc *p)
 	}
 
  out:
-	dprintf("ZFS: ioctl out: irql level %d\n", KeGetCurrentIrql());
+	dprintf("ZFS: ioctl out: %d\n", error);
 	nvlist_free(innvl);
 
 	zc->zc_name[0] = '@';

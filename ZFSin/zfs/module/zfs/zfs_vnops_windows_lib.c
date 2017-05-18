@@ -244,7 +244,7 @@ NTSTATUS mountmgr_add_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devp
 	return Status;
 }
 
-NTSTATUS mountmgr_get_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath)
+NTSTATUS mountmgr_get_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath, char *savename)
 {
 	MOUNTMGR_MOUNT_POINT point = { 0 };
 	MOUNTMGR_MOUNT_POINTS points;
@@ -261,20 +261,25 @@ NTSTATUS mountmgr_get_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devp
 		Status = dev_ioctl(mountmgr, IOCTL_MOUNTMGR_QUERY_POINTS, &point, sizeof(MOUNTMGR_MOUNT_POINT), ppoints, len, FALSE, NULL);
 
 	}
-	dprintf("IOCTL_MOUNTMGR_QUERY_POINTS return %x\n", Status);
-
+	dprintf("IOCTL_MOUNTMGR_QUERY_POINTS return %x - looking for '%S'\n", Status,
+		devpath->Buffer);
 	if (Status == STATUS_SUCCESS) {
 		for (int Index = 0; Index < ppoints->NumberOfMountPoints; Index++) {
 			PMOUNTMGR_MOUNT_POINT ipoint = ppoints->MountPoints + Index;
 			PUCHAR DeviceName = (PUCHAR)ppoints + ipoint->DeviceNameOffset;
 			PUCHAR SymbolicLinkName = (PUCHAR)ppoints + ipoint->SymbolicLinkNameOffset;
 
+			// Why is this hackery needed, we should be able to lookup the drive letter from volume name
 			dprintf("   point %d: '%.*S' '%.*S'\n", Index, 
 				ipoint->DeviceNameLength / sizeof(WCHAR), DeviceName,
 				ipoint->SymbolicLinkNameLength / sizeof(WCHAR), SymbolicLinkName);
+			if (wcsncmp(DeviceName, devpath->Buffer, ipoint->DeviceNameLength / sizeof(WCHAR)) == 0) {
+				ULONG len = 0;
+				RtlUnicodeToUTF8N(savename, MAXPATHLEN, &len, SymbolicLinkName, ipoint->SymbolicLinkNameLength);
+				savename[len] = 0;
+			}
 		}
 	}
-
 
 	if (ppoints != NULL) kmem_free(ppoints, len);
 	return STATUS_SUCCESS;
@@ -679,8 +684,10 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	diskDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 	fsDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
+
+
 	DokanSendVolumeArrivalNotification(&diskDeviceName);
-	DokanRegisterDeviceInterface(WIN_DriverObject, diskDeviceObject, zmo_dcb);
+	//DokanRegisterDeviceInterface(WIN_DriverObject, diskDeviceObject, zmo_dcb);
 
 
 	UNICODE_STRING name;
@@ -691,7 +698,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &fileObject,
 		&deviceObject);
 	status = mountmgr_add_drive_letter(deviceObject, &fsDeviceName);
-	status = mountmgr_get_drive_letter(deviceObject, &diskDeviceName);
+	status = mountmgr_get_drive_letter(deviceObject, &diskDeviceName, zc->zc_value);
 
 #if 0
 	PMOUNTMGR_CREATE_POINT_INPUT input;
@@ -736,7 +743,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 
 
 	ObDereferenceObject(fileObject);
-
+	status = STATUS_SUCCESS;
 	return status;
 }
 
