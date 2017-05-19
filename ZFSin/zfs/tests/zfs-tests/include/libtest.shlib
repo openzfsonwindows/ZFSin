@@ -24,6 +24,7 @@
 # Use is subject to license terms.
 # Copyright (c) 2012, 2017 by Delphix. All rights reserved.
 # Copyright 2016 Nexenta Systems, Inc.
+# Copyright (c) 2017 Lawrence Livermore National Security, LLC.
 # Copyright (c) 2017 Datto Inc.
 #
 
@@ -3234,6 +3235,46 @@ function format_zvol # volume_name blockdev mountpoint
 			log_fail "$NEWFS $ZVOL_DEVDIR/$VOL > /dev/null"
 		fi
 	fi
+}
+
+#
+# Sync data to the pool
+#
+# $1 pool name
+# $2 boolean to force uberblock (and config including zpool cache file) update
+#
+function sync_pool #pool <force>
+{
+	typeset pool=${1:-$TESTPOOL}
+	typeset force=${2:-false}
+
+	if [[ $force == true ]]; then
+		log_must zpool sync -f $pool
+	else
+		log_must zpool sync $pool
+	fi
+
+	return 0
+}
+
+#
+# Sync data to the pool
+#
+# $1 pool name
+# $2 boolean to force uberblock (and config including zpool cache file) update
+#
+function sync_pool #pool <force>
+{
+	typeset pool=${1:-$TESTPOOL}
+	typeset force=${2:-false}
+
+	if [[ $force == true ]]; then
+		log_must zpool sync -f $pool
+	else
+		log_must zpool sync $pool
+	fi
+
+	return 0
 }
 
 function unmount_fs_mountpoint # mountpoint

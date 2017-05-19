@@ -173,6 +173,9 @@
 .Oo Ar pool Oc Ns ...
 .Op Ar interval Op Ar count
 .Nm
+.Cm sync
+.Oo Ar pool Oc Ns ...
+.Nm
 .Cm upgrade
 .Nm
 .Cm upgrade
@@ -1801,6 +1804,18 @@ Only display status for pools that are exhibiting errors or are otherwise
 unavailable.
 Warnings about pools not using the latest on-disk format will not be included.
 .El
+.It Xo
+.Nm
+.Cm sync
+.Oo Ar pool Oc Ns ...
+.Xc
+This command forces all in-core dirty data to be written to the primary pool
+storage and not the ZIL.
+It will also update administrative information including quota reporting.
+Without arguments,
+.Sx zpool sync
+will sync all pools on the system.
+Otherwise, it will sync only the specified pool(s).
 .It Xo
 .Nm
 .Cm upgrade

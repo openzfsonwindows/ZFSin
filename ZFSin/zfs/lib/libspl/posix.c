@@ -526,6 +526,7 @@ char* getIoctlAsString(int cmdNo) {
 		case 0x84a: return "ZFS_IOC_POOL_CHECKPOINT";
 		case 0x84b: return "ZFS_IOC_POOL_DISCARD_CHECKPOINT";
 		case 0x84c: return "ZFS_IOC_POOL_INITIALIZE";
+		case 0x84d: return "ZFS_IOC_POOL_SYNC";
 
 		case 0x880: return "ZFS_IOC_EVENTS_NEXT";
 		case 0x881: return "ZFS_IOC_EVENTS_CLEAR";
