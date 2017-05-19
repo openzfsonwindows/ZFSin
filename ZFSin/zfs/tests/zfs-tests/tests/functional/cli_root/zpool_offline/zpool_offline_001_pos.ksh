@@ -34,7 +34,6 @@
 # 1. Create an array of correctly formed 'zpool offline' options
 # 2. Execute each element of the array.
 # 3. Verify use of each option is successful.
-#
 
 verify_runnable "global"
 
@@ -117,4 +116,4 @@ for disk in $DISKLIST; do
 	fi
 done
 
-log_pass "'zpool offline' with correct options succeeded"
+log_pass "'zpool offline -f' succeeded"
