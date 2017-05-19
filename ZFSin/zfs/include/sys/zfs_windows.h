@@ -36,6 +36,20 @@ extern PDEVICE_OBJECT fsDeviceObject;
 #define ZFS_SERIAL (ULONG)'wZFS'
 #define VOLUME_LABEL			L"ZFS"
 
+// ZFS time is 2* 64bit values, which are seconds, and nanoseconds since 1970
+// Windows time is 1 64bit value; representing the number of 100-nanosecond intervals since January 1, 1601 (UTC).
+// There's 116444736000000000 100ns between 1601 and 1970
+#define TIME_WINDOWS_TO_UNIX(WT, UT) do { \
+	(UT)[0] = ((WT) - 116444736000000000) / 10000000; \
+	(UT)[1] = (((WT) - 116444736000000000) * 100) % 1000000000; \
+	} while(0)
+
+#define TIME_UNIX_TO_WINDOWS(UT, WT) do { \
+	(WT) = ((UT)[1] / 100) + 116444736000000000; \
+	(WT) += (UT)[0] * 10000000; \
+	} while(0)
+
+
 // We have to remember "query directory" related items, like index and
 // search pattern. This is attached in IRP_MJ_CREATE to fscontext2
 #define ZFS_DIRLIST_MAGIC 0x6582feac

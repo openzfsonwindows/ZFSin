@@ -1643,17 +1643,6 @@ zfs_znode_free(znode_t *zp)
 {
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 
-#if 1 /* detect if we are about to release something actually locked */
-	uint64_t *mp = (uint64_t *)&zp->z_lock;
-	/* we know first entry in SPL mutex is "owner" and if mutex has been freed,
-	 * it should be 0.
-	 */
-	if (mp[0] != 0) {
-		panic("ZFS: about to znode_free a zp %p with active mutex %llx\n",
-			  zp, mp[0]);
-	}
-#endif
-
 	mutex_enter(&zfsvfs->z_znodes_lock);
 	zp->z_vnode = NULL;
 	POINTER_INVALIDATE(&zp->z_zfsvfs);

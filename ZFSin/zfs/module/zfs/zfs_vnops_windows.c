@@ -733,6 +733,7 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		return STATUS_BUFFER_TOO_SMALL;
 	}
 
+	// uniqueId appears to be CHARS not WCHARS, so this might need correcting?
 	uniqueId = (PMOUNTDEV_UNIQUE_ID)Irp->AssociatedIrp.SystemBuffer;
 	ASSERT(uniqueId != NULL);
 
@@ -756,7 +757,7 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	NTSTATUS Status;
-
+	int len;
 	Status = STATUS_NOT_IMPLEMENTED;
 
 	mount_t *zmo = DeviceObject->DeviceExtension;
@@ -781,24 +782,22 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 				Status = STATUS_BUFFER_TOO_SMALL;
 				break;
 			}
-			char osname[MAXNAMELEN];
-			dmu_objset_name(zfsvfs->z_os, osname);
-			FILE_FS_ATTRIBUTE_INFORMATION *out = Irp->AssociatedIrp.SystemBuffer;
 
-			Status = RtlUTF8ToUnicodeN(NULL, 0, &out->FileSystemNameLength, osname, strlen(osname));
-
-			if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + out->FileSystemNameLength) {
-				Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + out->FileSystemNameLength;
+			len = zmo->name.Length - sizeof(WCHAR);
+			if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + len) {
+				Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + len;
 				Status = STATUS_BUFFER_OVERFLOW;
 				break;
 			}
-
-			Status = RtlUTF8ToUnicodeN(out->FileSystemName, out->FileSystemNameLength, &out->FileSystemNameLength, osname, strlen(osname));
-			out->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_CASE_SENSITIVE_SEARCH | FILE_NAMED_STREAMS |
+			FILE_FS_ATTRIBUTE_INFORMATION *ffai = Irp->AssociatedIrp.SystemBuffer;
+			int s = sizeof(FILE_FS_ATTRIBUTE_INFORMATION);
+			ffai->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_CASE_SENSITIVE_SEARCH | FILE_NAMED_STREAMS |
 				FILE_PERSISTENT_ACLS | FILE_SUPPORTS_OBJECT_IDS | FILE_SUPPORTS_REPARSE_POINTS | FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS;
-			out->MaximumComponentNameLength = PATH_MAX;
+			ffai->MaximumComponentNameLength = PATH_MAX;
+			ffai->FileSystemNameLength = zmo->name.Length;
+			RtlCopyMemory(ffai->FileSystemName, zmo->name.Buffer,zmo->name.Length);
 
-			Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + out->FileSystemNameLength;
+			Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + len;
 			Status = STATUS_SUCCESS;
 		}	
 		break;
@@ -822,12 +821,12 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		dmu_objset_space(zfsvfs->z_os,
 			&refdbytes, &availbytes, &usedobjs, &availobjs);
 
-		FILE_FS_FULL_SIZE_INFORMATION *out = Irp->AssociatedIrp.SystemBuffer;
-		out->TotalAllocationUnits.QuadPart = (refdbytes + availbytes) / 512ULL;
-		out->ActualAvailableAllocationUnits.QuadPart = availbytes / 512ULL;
-		out->CallerAvailableAllocationUnits.QuadPart = availbytes / 512ULL;
-		out->BytesPerSector = 512;
-		out->SectorsPerAllocationUnit = 1;
+		FILE_FS_FULL_SIZE_INFORMATION *fffsi = Irp->AssociatedIrp.SystemBuffer;
+		fffsi->TotalAllocationUnits.QuadPart = (refdbytes + availbytes) / 512ULL;
+		fffsi->ActualAvailableAllocationUnits.QuadPart = availbytes / 512ULL;
+		fffsi->CallerAvailableAllocationUnits.QuadPart = availbytes / 512ULL;
+		fffsi->BytesPerSector = 512;
+		fffsi->SectorsPerAllocationUnit = 1;
 		Irp->IoStatus.Information = sizeof(FILE_FS_FULL_SIZE_INFORMATION);
 		Status = STATUS_SUCCESS;
 		break;
@@ -845,24 +844,23 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 				Status = STATUS_BUFFER_TOO_SMALL;
 				break;
 			}
-			int len = wcslen(VOLUME_LABEL) * sizeof(WCHAR);
-			// It has room for one wchar, so adjust.
-			len -= sizeof(WCHAR);
-			if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_VOLUME_INFORMATION) + len) {
-				Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION) + len;
-				Status = STATUS_BUFFER_OVERFLOW;
-				break;
-			}
-			FILE_FS_VOLUME_INFORMATION *out = Irp->AssociatedIrp.SystemBuffer;
-			out->VolumeSerialNumber = ZFS_SERIAL;
-			out->SupportsObjects = FALSE;
-			out->VolumeCreationTime.QuadPart = gethrtime();
-			out->VolumeLabelLength = len + sizeof(WCHAR);
-			RtlStringCchCopyW(out->VolumeLabel,
-				len,
-				VOLUME_LABEL);
 
-			Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION) + len;
+			/*
+			 * So it appears that VolumeInfo is special, we don't ever return OVERFLOW
+			 * but just stuff in as much of the name that will fit, even if it is just 1 char
+			 */
+
+			FILE_FS_VOLUME_INFORMATION *ffvi = Irp->AssociatedIrp.SystemBuffer;
+			ffvi->VolumeSerialNumber = ZFS_SERIAL;
+			ffvi->SupportsObjects = FALSE;
+			ffvi->VolumeCreationTime.QuadPart = gethrtime();
+
+			// There is room for one char in the struct
+			int space = IrpSp->Parameters.QueryVolume.Length - sizeof(FILE_FS_VOLUME_INFORMATION) + sizeof(ffvi->VolumeLabel);
+			space = MIN(space, zmo->name.Length);
+			ffvi->VolumeLabelLength = space;
+			RtlCopyMemory(ffvi->VolumeLabel, zmo->name.Buffer, space);
+			Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION) + space - sizeof(ffvi->VolumeLabel);
 			Status = STATUS_SUCCESS;
 		}
 		break;
@@ -875,7 +873,6 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		Status = STATUS_NOT_IMPLEMENTED;
 		break;
 	}
-
 	ZFS_EXIT(zfsvfs);
 	return Status;
 }
@@ -929,7 +926,7 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 		znode_t *zp = VTOZ(vp);
 		standard->Directory = S_ISDIR(zp->z_mode) ? TRUE : FALSE;
 		//         sa_object_size(zp->z_sa_hdl, &blksize, &nblks);
-		standard->AllocationSize.QuadPart = zp->z_size;  // space taken on disk, multiples of block size
+		standard->AllocationSize.QuadPart = P2PHASE(zp->z_size, zp->z_blksz);  // space taken on disk, multiples of block size
 		standard->EndOfFile.QuadPart = zp->z_size;       // byte size of file
 		standard->NumberOfLinks = zp->z_links;
 		VN_RELE(vp);
@@ -972,8 +969,10 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	}
 	VN_RELE(vp);
 
-	if (error)
+	if (error) {
+		dprintf("%s: invalid filename\n", __func__);
 		return STATUS_FILE_INVALID;
+	}
 
 	// Convert name
 	error = RtlUTF8ToUnicodeN(NULL, 0, &name->FileNameLength, strname, strlen(strname));
@@ -983,7 +982,7 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 
 	Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION) + name->FileNameLength;
 	if (IrpSp->Parameters.QueryFile.Length < offsetof(FILE_NAME_INFORMATION, FileName[0]) + name->FileNameLength) {
-			return STATUS_BUFFER_OVERFLOW;
+		return STATUS_BUFFER_OVERFLOW;
 	}
 
 	error = RtlUTF8ToUnicodeN(name->FileName, name->FileNameLength, &name->FileNameLength, strname, strlen(strname));
@@ -1008,6 +1007,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 			break;
 		}
 		FILE_ALL_INFORMATION *all = Irp->AssociatedIrp.SystemBuffer;
+		int s = sizeof(FILE_ALL_INFORMATION);
 		// First get the Name, to make sure we have room
 		IrpSp->Parameters.QueryFile.Length -= offsetof(FILE_ALL_INFORMATION, NameInformation);
 		Status = file_name_information(DeviceObject, Irp, IrpSp, &all->NameInformation);
@@ -1031,10 +1031,9 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		Status = file_position_information(DeviceObject, Irp, IrpSp, &all->PositionInformation);
 		if (Status != STATUS_SUCCESS) break;
 
-		all->AlignmentInformation.AlignmentRequirement = 1;
-
-		// Remove the size of everything up to FILE_NAME_INFORMATION so we only have that
-		// and any extra room for the filename to fill.
+		all->AccessInformation.AccessFlags = (FILE_GENERIC_READ | FILE_GENERIC_WRITE);
+		all->ModeInformation.Mode = FILE_SYNCHRONOUS_IO_NONALERT;
+		all->AlignmentInformation.AlignmentRequirement = 0;
 
 		break;
 	case FileAttributeTagInformation:
@@ -1223,8 +1222,9 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 
 	if (!zfsvfs) return STATUS_INTERNAL_ERROR;
 
-	dprintf("%s: starting vp %p Search pattern '%wZ'\n", __func__, dvp,
-		IrpSp->Parameters.QueryDirectory.FileName);
+	dprintf("%s: starting vp %p Search pattern '%wZ' type %d\n", __func__, dvp,
+		IrpSp->Parameters.QueryDirectory.FileName,
+		IrpSp->Parameters.QueryDirectory.FileInformationClass);
 
 	if (IrpSp->Parameters.QueryDirectory.FileName &&
 		IrpSp->Parameters.QueryDirectory.FileName->Buffer &&
@@ -1298,7 +1298,7 @@ NTSTATUS query_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		dprintf("   %s FileReparsePointInformation\n", __func__);
 		break;
 	default:
-		dprintf("   %s unkown 0x%x\n", __func__, IrpSp->Parameters.QueryDirectory.FileInformationClass);
+		dprintf("   %s unknown 0x%x\n", __func__, IrpSp->Parameters.QueryDirectory.FileInformationClass);
 		break;
 	}
 

@@ -602,7 +602,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	AsciiStringToUnicodeString(buf, &zmo_vcb->device_name);
 	AsciiStringToUnicodeString(buf, &zmo_vcb->fs_name);
 	AsciiStringToUnicodeString(uuid_a, &zmo_vcb->uuid);
-	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
+	AsciiStringToUnicodeString(zc->zc_name, &zmo_vcb->name);
 	snprintf(buf, sizeof(buf), "\\DosDevices\\Global\\Volume{%s}", uuid_a);
 	AsciiStringToUnicodeString(buf, &zmo_vcb->symlink_name);
 	zmo_vcb->deviceObject = diskDeviceObject;
@@ -634,9 +634,8 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 		diskDeviceObject->Vpb->RealDevice = fsDeviceObject;
 		diskDeviceObject->Vpb->Flags |= VPB_MOUNTED;
 		diskDeviceObject->Vpb->VolumeLabelLength = wcslen(VOLUME_LABEL) * sizeof(WCHAR);
-		RtlStringCchCopyW(diskDeviceObject->Vpb->VolumeLabel,
-			sizeof(diskDeviceObject->Vpb->VolumeLabel) / sizeof(WCHAR),
-			VOLUME_LABEL);
+		RtlCopyMemory(diskDeviceObject->Vpb->VolumeLabel,
+			VOLUME_LABEL, sizeof(VOLUME_LABEL));
 		diskDeviceObject->Vpb->SerialNumber = ZFS_SERIAL;
 	}
 

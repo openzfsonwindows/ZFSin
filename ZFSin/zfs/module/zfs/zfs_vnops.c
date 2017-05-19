@@ -2532,6 +2532,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 	int		error = 0;
 
 	znode_t		*zp = VTOZ(vp);
+	znode_t		*tzp;
 	iovec_t		*iovp;
 	FILE_FULL_DIR_INFORMATION *eodp = NULL;
 	zfsvfs_t	*zfsvfs = zp->z_zfsvfs;
@@ -2753,20 +2754,47 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 		if (force_formd_normalized_output)
 			namelen = MIN(MAXNAMLEN, namelen * 3);
 
-        //printf("readdir '%s' ext %d\n", zap.za_name, extended);
+//		DbgBreakPoint();
+		// Windows combines vnop_readdir and vnop_getattr, so we need to lookup
+		// a bunch of values, we try to do that as lightweight as possible.
+		znode_t dummy = { 0 };  // For "." and ".."
+		int get_zp = ENOENT;
+
+		tzp = &dummy;
+
+		// If "." use zp, if ".." use dzp, neither needs releasing. Otherwise, call zget.
+		if (offset == 0) 
+			tzp = zp;
+		else
+			get_zp = zfs_zget_ext(zfsvfs,
+				offset == 1 ? parent : objnum, &tzp,  // objnum is adjusted above
+				ZGET_FLAG_WITHOUT_VNODE);
+		// Is it worth warning about failing stat here?
+
+		// We need to fill in more fields.
+		sa_bulk_attr_t bulk[3];
+		int count = 0;
+		uint64_t mtime[2];
+		uint64_t ctime[2];
+		uint64_t crtime[2];
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs),  NULL, &mtime, 16);
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs),  NULL, &ctime, 16);
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
+		sa_bulk_lookup(tzp->z_sa_hdl, bulk, count);
+		// Is it worth warning about failed lookup here?		
+
 
 		switch (dirlisttype) {
-
+			
 		case FileFullDirectoryInformation:
 			eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
-			// Fill in information
-			eodp->FileIndex = objnum;
-			eodp->AllocationSize.QuadPart = 512; // File size in block alignment
-			eodp->EndOfFile.QuadPart = 511; // File size in bytes
-			eodp->ChangeTime.QuadPart = gethrtime();
-			eodp->CreationTime.QuadPart = gethrtime();
-			eodp->LastAccessTime.QuadPart = gethrtime();
-			eodp->LastWriteTime.QuadPart = gethrtime();
+			eodp->FileIndex = offset;
+			eodp->AllocationSize.QuadPart = P2PHASE(tzp->z_size, tzp->z_blksz); // File size in block alignment
+			eodp->EndOfFile.QuadPart = tzp->z_size; // File size in bytes
+			TIME_UNIX_TO_WINDOWS(mtime, eodp->LastWriteTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(ctime, eodp->ChangeTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(crtime, eodp->CreationTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(tzp->z_atime, eodp->LastAccessTime.QuadPart);
 			eodp->EaSize = 0;
 			eodp->FileAttributes = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
 			nameptr = eodp->FileName;
@@ -2777,16 +2805,16 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 		case FileIdBothDirectoryInformation:
 			eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 			FILE_ID_BOTH_DIR_INFORMATION *fibdi = (FILE_ID_BOTH_DIR_INFORMATION *)bufptr;
-			fibdi->AllocationSize.QuadPart = 512;
-			fibdi->EndOfFile.QuadPart = 511;
-			fibdi->ChangeTime.QuadPart = gethrtime();
-			fibdi->CreationTime.QuadPart = gethrtime();
-			fibdi->LastAccessTime.QuadPart = gethrtime();
-			fibdi->LastWriteTime.QuadPart = 0;
+			fibdi->AllocationSize.QuadPart = P2PHASE(zp->z_size, zp->z_blksz);
+			fibdi->EndOfFile.QuadPart = zp->z_size;
+			TIME_UNIX_TO_WINDOWS(mtime, fibdi->LastWriteTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(ctime, fibdi->ChangeTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(crtime, fibdi->CreationTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(tzp->z_atime, fibdi->LastAccessTime.QuadPart);
 			fibdi->EaSize = 0;
 			fibdi->FileAttributes = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
 			fibdi->FileId.QuadPart = objnum;
-			fibdi->FileIndex = objnum;
+			fibdi->FileIndex = offset;
 			fibdi->ShortNameLength = 0;
 			nameptr = fibdi->FileName;
 			namelenptr = &fibdi->FileNameLength;
@@ -2796,20 +2824,30 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 		case FileBothDirectoryInformation:
 			eodp = (FILE_BOTH_DIR_INFORMATION *)bufptr;
 			FILE_BOTH_DIR_INFORMATION *fbdi = (FILE_BOTH_DIR_INFORMATION *)bufptr;
-			fbdi->AllocationSize.QuadPart = 512;
-			fbdi->ChangeTime.QuadPart = gethrtime();
-			fbdi->CreationTime.QuadPart = gethrtime();
-			fbdi->LastAccessTime.QuadPart = gethrtime();
-			fbdi->LastWriteTime.QuadPart = gethrtime();
+			fbdi->AllocationSize.QuadPart = P2PHASE(zp->z_size, zp->z_blksz);
+			fbdi->EndOfFile.QuadPart = zp->z_size;
+			TIME_UNIX_TO_WINDOWS(mtime, fbdi->LastWriteTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(ctime, fbdi->ChangeTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(crtime, fbdi->CreationTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(tzp->z_atime, fbdi->LastAccessTime.QuadPart);
 			fbdi->EaSize = 0;
-			fbdi->EndOfFile.QuadPart = 511;
 			fbdi->FileAttributes = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
-			fbdi->FileIndex = objnum;
+			fbdi->FileIndex = offset;
 			fbdi->ShortNameLength = 0;
 			nameptr = fbdi->FileName;
 			namelenptr = &fbdi->FileNameLength;
 			structsize = sizeof(FILE_BOTH_DIR_INFORMATION);
 		}
+
+		// Release the zp
+		if (get_zp == 0) {
+			if (ZTOV(tzp) == NULL) {
+				zfs_zinactive(tzp);
+			} else {
+				VN_RELE(ZTOV(tzp));
+			}
+		}
+
 		/*
 		 * Do magic filename conversion for Windows here 
 		 */
