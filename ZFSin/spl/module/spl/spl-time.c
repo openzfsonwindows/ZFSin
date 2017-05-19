@@ -61,9 +61,12 @@ void
 gethrestime(struct timespec *ts)
 {
 	LARGE_INTEGER now;
-	KeQueryTickCount(&now);
-	ts = now.QuadPart;
-	//nanotime(ts);
+	uint64_t tv[2];
+	KeQuerySystemTimePrecise(&now);
+	TIME_WINDOWS_TO_UNIX(now.QuadPart, tv); 
+	// change macro to take 2 dst args, "sec and nsec" to avoid this step?
+	ts->tv_sec = tv[0];
+	ts->tv_nsec = tv[1];
 }
 
 time_t

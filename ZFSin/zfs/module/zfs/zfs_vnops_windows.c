@@ -126,6 +126,9 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	int error;
 	cred_t *cr = NULL;
 	char filename[MAXNAMELEN];
+	char *finalname;
+	char *brkt = NULL;
+	char *word;
 	PFILE_OBJECT FileObject;
 	ULONG outlen;
 	struct vnode *dvp = NULL;
@@ -254,10 +257,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	// We need to have a parent from here on.
 	if (dvp == NULL) {
-		char *brkt = NULL;
-		char *word;
 
-		DbgBreakPoint();
 		// Iterate from root
 		error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
 
@@ -324,6 +324,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		}
 	}
 
+	finalname = word ? word : filename;
+
 	// Here we have "dvp" of the directory. 
 	// "vp" if the final part was a file.
 	if (CreateDirectory) {
@@ -332,7 +334,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		vap.va_type = VDIR;
 		vap.va_mode = 0755;
 		//VATTR_SET(&vap, va_mode, 0755);
-		error = zfs_mkdir(dvp, filename, &vap, &vp, NULL,
+		error = zfs_mkdir(dvp, finalname, &vap, &vp, NULL,
 			NULL, 0, NULL);
 		if (error == 0) {
 
@@ -372,7 +374,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		vap.va_type = VREG;
 		vap.va_mode = 0644;
 
-		error = zfs_create(dvp, filename, &vap, 0, vap.va_mode, &vp, NULL);
+		error = zfs_create(dvp, finalname, &vap, 0, vap.va_mode, &vp, NULL);
 		if (error == 0) {
 			FileObject->FsContext = vp;
 			vnode_ref(vp); // Hold open reference, until CLOSE
@@ -1410,7 +1412,7 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		dprintf("  fileObject == NULL\n");
 		return STATUS_INVALID_PARAMETER;
 	}
-
+	DbgBreakPoint();
 	struct vnode *vp = fileObject->FsContext;
 	VN_HOLD(vp);
 	znode_t *zp = VTOZ(vp);
@@ -1429,11 +1431,12 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	else
 		uio_addiov(uio, Irp->AssociatedIrp.SystemBuffer, bufferLength);
 
+	char *t = uio_curriovbase(uio);
 	error = zfs_read(vp, uio, 0, NULL, NULL);
 	VN_RELE(vp);
 
 	// EOF?
-	if (uio_resid(uio) == 0)
+	if (bufferLength == uio_resid(uio)) 
 		Status = STATUS_END_OF_FILE;
 
 	// Update bytes read
@@ -1475,14 +1478,13 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	struct vnode *vp = fileObject->FsContext;
 	VN_HOLD(vp);
 	znode_t *zp = VTOZ(vp);
-
 	if (IrpSp->Parameters.Write.ByteOffset.LowPart == FILE_USE_FILE_POINTER_POSITION &&
 		IrpSp->Parameters.Write.ByteOffset.HighPart == -1) {
 		byteOffset = fileObject->CurrentByteOffset;
 	} else {
 		byteOffset = IrpSp->Parameters.Write.ByteOffset;
 	}
-
+	DbgBreakPoint();
 	uio_t *uio;
 	uio = uio_create(1, byteOffset.QuadPart, UIO_SYSSPACE, UIO_WRITE);
 	if (Irp->MdlAddress)
@@ -1494,7 +1496,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	VN_RELE(vp);
 
 	// EOF?
-	if (uio_resid(uio) == 0 && error == ENOSPC)
+	if ((bufferLength == uio_resid(uio)) && error == ENOSPC)
 		Status = STATUS_DISK_FULL;
 
 	// Update bytes read
