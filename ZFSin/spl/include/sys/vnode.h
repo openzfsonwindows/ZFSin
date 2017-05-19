@@ -48,11 +48,17 @@
  * Lets define a vnode struct that will hold everything needed for Windows
  * request to be handled.
  */
+#define VNODE_DEAD 1<<0
+
 struct vnode {
 	IRP v_irp;
+	uint32_t v_flags;
 	void *v_data;
 	uint16_t v_type;
 	int v_unlink;
+	uint32_t v_iocount;  // Short term holds
+	uint32_t v_usecount; // Long term holds
+	uint32_t v_id;
 };
 typedef struct vnode vnode_t;
 
@@ -422,6 +428,8 @@ void    vnode_clearfsnode(vnode_t *vp);
 int   vnode_unlink(vnode_t *vp);
 void   vnode_setunlink(vnode_t *vp);
 void vnode_create(void *v_data, int type, struct vnode **vpp);
+int vnode_ref(vnode_t *vp);
+void vnode_rele(vnode_t *vp);
 
 #define VNODE_READDIR_EXTENDED 1
 

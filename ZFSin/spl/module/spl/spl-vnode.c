@@ -551,7 +551,7 @@ int spl_vn_rdwr(enum uio_rw rw,
 void spl_rele_async(void *arg)
 {
     struct vnode *vp = (struct vnode *)arg;
-//    if (vp) vnode_put(vp);
+    if (vp) vnode_put(vp);
 }
 
 void vn_rele_async(struct vnode *vp, void *taskq)
@@ -634,14 +634,16 @@ int     vnode_vfsisrdonly(vnode_t *vp)
 	return 0;
 }
 
-int     vnode_getwithvid(vnode_t *vp, uint32_t id)
+int vnode_getwithvid(vnode_t *vp, uint32_t id)
 {
+	if (id != vp->v_id) return -1;
+	atomic_inc_32(&vp->v_iocount);
 	return 0;
 }
 
-uint32_t        vnode_vid(vnode_t *vp)
+uint32_t vnode_vid(vnode_t *vp)
 {
-	return 0;
+	return vp->v_id;
 }
 
 int     vnode_isreg(vnode_t *vp)
@@ -656,11 +658,16 @@ int     vnode_isdir(vnode_t *vp)
 
 int     vnode_put(vnode_t *vp)
 {
+	ASSERT(!(vp->v_flags & VNODE_DEAD));
+	ASSERT(vp->v_iocount > 0);
+	atomic_dec_32(&vp->v_iocount);
 	return 0;
 }
 
 int     vnode_getwithref(vnode_t *vp)
 {
+	ASSERT(!(vp->v_flags & VNODE_DEAD));
+	atomic_inc_32(&vp->v_iocount);
 	return 0;
 }
 
@@ -710,11 +717,21 @@ void ubc_setsize(struct vnode *vp, uint64_t size)
 
 int     vnode_isinuse(vnode_t *vp, int refcnt)
 {
+	if (((vp->v_usecount) >  refcnt))
+		return 1;
 	return 0;
 }
 
 int     vnode_recycle(vnode_t *vp)
 {
+	vp->v_flags |= VNODE_DEAD; // Mark it dead
+
+	if ((vp->v_usecount == 0) &&
+		(vp->v_iocount == 1)) {
+		// Free vp memory
+		kmem_free(vp, sizeof(*vp));
+	}
+
 	return 0;
 }
 
@@ -730,6 +747,7 @@ mount_t *vnode_mount(vnode_t *vp)
 
 void    vnode_clearfsnode(vnode_t *vp)
 {
+	vp->v_data = NULL;
 	return 0;
 }
 
@@ -743,9 +761,30 @@ void   vnode_setunlink(vnode_t *vp)
 	vp->v_unlink = 1;
 }
 
+int
+vnode_ref(vnode_t *vp)
+{
+	ASSERT(vp->v_iocount > 0);
+	ASSERT(!(vp->v_flags & VNODE_DEAD));
+	atomic_inc_32(&vp->v_usecount);
+	return 0;
+}
+
+void
+vnode_rele(vnode_t *vp)
+{
+	ASSERT(!(vp->v_flags & VNODE_DEAD));
+	ASSERT(vp->v_iocount > 0);
+	ASSERT(vp->v_usecount > 0);
+	atomic_dec_32(&vp->v_usecount);
+}
+
+static uint32_t vnode_vid_counter = 0;
 void vnode_create(void *v_data, int type, struct vnode **vpp)
 {
 	*vpp = kmem_zalloc(sizeof(**vpp), KM_SLEEP);
 	(*vpp)->v_data = v_data;
 	(*vpp)->v_type = type;
+	(*vpp)->v_id = atomic_inc_32_nv(&(vnode_vid_counter));
+	atomic_inc_32(&(*vpp)->v_iocount);
 }

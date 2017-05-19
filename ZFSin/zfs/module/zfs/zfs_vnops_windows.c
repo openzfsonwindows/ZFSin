@@ -173,6 +173,26 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	IsPagingFile = BooleanFlagOn(IrpSp->Flags, SL_OPEN_PAGING_FILE);
 	OpenTargetDirectory = BooleanFlagOn(IrpSp->Flags, SL_OPEN_TARGET_DIRECTORY);
 
+	/*
+	 *	CreateDisposition value	Action if file exists	Action if file does not exist
+		FILE_SUPERSEDE		Replace the file.		Create the file.
+		FILE_CREATE		Return an error.		Create the file.
+		FILE_OPEN		Open the file.		Return an error.
+		FILE_OPEN_IF		Open the file.		Create the file.
+		FILE_OVERWRITE		Open the file, and overwrite it.		Return an error.
+		FILE_OVERWRITE_IF		Open the file, and overwrite it.		Create the file.
+
+		IoStatus return codes:
+		FILE_CREATED
+		FILE_OPENED
+		FILE_OVERWRITTEN
+		FILE_SUPERSEDED
+		FILE_EXISTS
+		FILE_DOES_NOT_EXIST
+
+	*/
+	// Dir create/open is straight forward, do that here
+	// Files are harder, do that once we know if it exists.
 	CreateDirectory = (BOOLEAN)(DirectoryFile &&
 		((CreateDisposition == FILE_CREATE) ||
 		(CreateDisposition == FILE_OPEN_IF)));
@@ -182,8 +202,9 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		(CreateDisposition == FILE_OPEN_IF)));
 
 	CreateFile = (BOOLEAN)(
-		((CreateDisposition == FILE_OPEN) ||
-		(CreateDisposition == FILE_OPEN_IF)));
+		((CreateDisposition == FILE_CREATE) ||
+		(CreateDisposition == FILE_OPEN_IF) ||
+		(CreateDisposition == FILE_OVERWRITE_IF)));
 
 	// Convert incoming filename to utf8
 	error = RtlUnicodeToUTF8N(filename,	MAXNAMELEN,	&outlen,
@@ -211,6 +232,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (error == 0) {
 				vp = ZTOV(zp);
 				FileObject->FsContext = vp;
+				vnode_ref(vp); // Hold open reference, until CLOSE
 				VN_RELE(vp);
 
 				// A valid lookup gets a ccb attached
@@ -234,8 +256,11 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if (dvp == NULL) {
 		char *brkt = NULL;
 		char *word;
+
+		DbgBreakPoint();
 		// Iterate from root
 		error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
+
 		if (error == 0) {
 			dvp = ZTOV(zp);
 			for (word = strtok_r(filename, "/\\", &brkt);
@@ -248,15 +273,19 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				cn.cn_nameptr = word;
 				error = zfs_lookup(dvp, word,
 					&vp, &cn, cn.cn_nameiop, cr, /* flags */ 0);
-				VN_RELE(dvp);
 
 				if (error != 0) {
+					// If we are creating a file, allow it not to exist
+					if (CreateFile) break;
+
+					VN_RELE(dvp);
 					dvp = NULL;
 					break;
 				}
 				// If last lookup hit a non-directory type, we stop
 				zp = VTOZ(vp);
 				if (S_ISDIR(zp->z_mode)) {
+					VN_RELE(dvp);
 					dvp = vp;
 					vp = NULL;
 				} else {
@@ -314,6 +343,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			IrpSp->FileObject->FsContext2 = zccb;
 			FileObject->FsContext = vp;
 
+			vnode_ref(vp); // Hold open reference, until CLOSE
 			VN_RELE(vp);
 			Irp->IoStatus.Information = FILE_CREATED;
 			return STATUS_SUCCESS;
@@ -345,6 +375,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		error = zfs_create(dvp, filename, &vap, 0, vap.va_mode, &vp, NULL);
 		if (error == 0) {
 			FileObject->FsContext = vp;
+			vnode_ref(vp); // Hold open reference, until CLOSE
 			VN_RELE(vp);
 			Irp->IoStatus.Information = FILE_CREATED;
 			return STATUS_SUCCESS;
@@ -364,8 +395,14 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		zccb->dir_eof = 0;
 		IrpSp->FileObject->FsContext2 = zccb;
 		FileObject->FsContext = dvp;
+		VN_HOLD(dvp);
+		vnode_ref(dvp); // Hold open reference, until CLOSE
+		VN_RELE(dvp);
 	} else {
 		FileObject->FsContext = vp;
+		VN_HOLD(vp);
+		vnode_ref(vp); // Hold open reference, until CLOSE
+		VN_RELE(vp);
 	}
 
 	Irp->IoStatus.Information = FILE_OPENED;
@@ -1911,6 +1948,16 @@ fsDispatcher(
 
 	case IRP_MJ_CLOSE:
 		Status = STATUS_SUCCESS;
+
+		struct vnode *vp = IrpSp->FileObject->FsContext;
+		if (vp) {
+			VN_HOLD(vp);
+			vnode_rele(vp);
+			VN_RELE(vp);
+			dprintf("IRP_MJ_CLOSE: iocount %u usecount %u\n",
+				vp->v_iocount, vp->v_usecount);
+		}
+
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext2) {
 			zfs_dirlist_t *zccb = IrpSp->FileObject->FsContext2;
 			if (zccb->magic == ZFS_DIRLIST_MAGIC) {
@@ -1980,31 +2027,41 @@ fsDispatcher(
 			struct vnode *vp = IrpSp->FileObject->FsContext;
 			znode_t *zp = VTOZ(vp);
 			zfsvfs_t *zfsvfs = zp->z_zfsvfs;
-#if 0 // We need to add refcount to vp, and only free once 0
-			DbgBreakPoint();
-			// Decouple the nodes
-			ZTOV(zp) = NULL;
-			vnode_clearfsnode(vp); /* vp->v_data = NULL */
 
-			dprintf("IRP_MJ_CLEANUP: releasing zp %p and vp %p\n", zp, vp);
-
-			// Release znode
-			rw_enter(&zfsvfs->z_teardown_inactive_lock, RW_READER);
-			if (zp->z_sa_hdl == NULL)
-				zfs_znode_free(zp);
-			else
-				zfs_zinactive(zp);
-			rw_exit(&zfsvfs->z_teardown_inactive_lock);
-
-			// Free vp memory
-			kmem_free(vp, sizeof(*vp));
-#endif
+			dprintf("IRP_MJ_CLEANUP: iocount %u usecount %u\n",
+				vp->v_iocount, vp->v_usecount);
 
 			// Asked to delete?
 			if (vnode_unlink(vp)) {
 				delete_entry(DeviceObject, Irp, IrpSp);
 			}
 
+#if 1 // We need to add refcount to vp, and only free once 0
+
+			VN_HOLD(vp);
+
+			if (vp->v_iocount == 1 && vp->v_usecount == 0) { // fix vnode_isbusy()
+				
+				dprintf("IRP_MJ_CLEANUP: releasing zp %p and vp %p\n", zp, vp);
+
+				// Decouple the nodes
+				ZTOV(zp) = NULL;
+				vnode_clearfsnode(vp); /* vp->v_data = NULL */
+				vnode_recycle(vp); // releases hold - marks dead
+				vp = NULL;
+
+				// Release znode
+				rw_enter(&zfsvfs->z_teardown_inactive_lock, RW_READER);
+				if (zp->z_sa_hdl == NULL)
+					zfs_znode_free(zp);
+				else
+					zfs_zinactive(zp);
+				rw_exit(&zfsvfs->z_teardown_inactive_lock);
+
+			} else {
+				VN_RELE(vp);
+			}
+#endif
 
 			atomic_inc_64(&vnop_num_reclaims);
 		}
