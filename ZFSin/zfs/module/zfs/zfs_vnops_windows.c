@@ -128,7 +128,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	char filename[MAXNAMELEN];
 	char *finalname;
 	char *brkt = NULL;
-	char *word;
+	char *word = NULL;
 	PFILE_OBJECT FileObject;
 	ULONG outlen;
 	struct vnode *dvp = NULL;
@@ -378,6 +378,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		if (error == 0) {
 			FileObject->FsContext = vp;
 			vnode_ref(vp); // Hold open reference, until CLOSE
+			if (DeleteOnClose) vnode_setunlink(vp);
 			VN_RELE(vp);
 			Irp->IoStatus.Information = FILE_CREATED;
 			return STATUS_SUCCESS;
@@ -404,6 +405,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		FileObject->FsContext = vp;
 		VN_HOLD(vp);
 		vnode_ref(vp); // Hold open reference, until CLOSE
+		if (DeleteOnClose) vnode_setunlink(vp);
 		VN_RELE(vp);
 	}
 
@@ -1412,7 +1414,7 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		dprintf("  fileObject == NULL\n");
 		return STATUS_INVALID_PARAMETER;
 	}
-	DbgBreakPoint();
+
 	struct vnode *vp = fileObject->FsContext;
 	VN_HOLD(vp);
 	znode_t *zp = VTOZ(vp);
@@ -1484,7 +1486,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	} else {
 		byteOffset = IrpSp->Parameters.Write.ByteOffset;
 	}
-	DbgBreakPoint();
+
 	uio_t *uio;
 	uio = uio_create(1, byteOffset.QuadPart, UIO_SYSSPACE, UIO_WRITE);
 	if (Irp->MdlAddress)
@@ -1525,14 +1527,38 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	ULONG outlen;
 
 	if (IrpSp->FileObject->FsContext == NULL ||
-		IrpSp->FileObject->RelatedFileObject == NULL ||
-		IrpSp->FileObject->RelatedFileObject->FsContext == NULL ||
 		IrpSp->FileObject->FileName.Buffer == NULL ||
 		IrpSp->FileObject->FileName.Length == 0) {
 		dprintf("%s: called with missing arguments, can't delete\n", __func__);
-		return STATUS_INSTANCE_NOT_AVAILABLE;
+		return STATUS_INSTANCE_NOT_AVAILABLE; // FIXME
 	}
 
+	vp = IrpSp->FileObject->FsContext;
+
+	// If we are given a DVP, use it, if not, look up parent.
+	// both cases come out with dvp held.
+	if (IrpSp->FileObject->RelatedFileObject != NULL &&
+		IrpSp->FileObject->RelatedFileObject->FsContext != NULL) {
+
+		dvp = IrpSp->FileObject->RelatedFileObject->FsContext;
+		VN_HOLD(dvp);
+
+	} else {
+		uint64_t parent;
+		znode_t *zp = VTOZ(vp);
+		znode_t *dzp;
+
+		// No dvp, lookup parent
+		VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zp->z_zfsvfs),
+			&parent, sizeof(parent)) == 0);
+		error = zfs_zget(zp->z_zfsvfs, parent, &dzp);
+		if (error)
+			return STATUS_INSTANCE_NOT_AVAILABLE;  // FIXME 
+		dvp = ZTOV(dzp);
+	}
+
+	// Unfortunately, filename is littered with "\", clean it up,
+	// or search based on ID to get name?
 	dprintf("%s: deleting '%.*S'\n", __func__,
 		IrpSp->FileObject->FileName.Length / sizeof(WCHAR),
 		IrpSp->FileObject->FileName.Buffer);
@@ -1545,17 +1571,21 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 		return STATUS_ILLEGAL_CHARACTER;
 	}
 	filename[outlen] = 0;
-	dvp = IrpSp->FileObject->RelatedFileObject->FsContext;
-	vp = IrpSp->FileObject->FsContext;
 
-	VN_HOLD(dvp);
+	char *finalname;
+	if ((finalname = strrchr(filename, '\\')) != NULL)
+		finalname = &finalname[1];
+	else
+		finalname = filename;
+
+
 	if (vnode_isdir(vp)) {
 
-		error = zfs_rmdir(dvp, filename, NULL, NULL, NULL, 0);
+		error = zfs_rmdir(dvp, finalname, NULL, NULL, NULL, 0);
 
 	} else {
 
-		error = zfs_remove(dvp, filename, NULL, NULL, 0);
+		error = zfs_remove(dvp, finalname, NULL, NULL, 0);
 
 	}
 	VN_RELE(dvp);
