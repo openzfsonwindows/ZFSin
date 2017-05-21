@@ -38,6 +38,7 @@
 #include <sys/spa.h>
 #include <sys/spa_impl.h>
 #include <sys/kstat.h>
+#include <sys/abd.h>
 
 /*
  * ZFS I/O Scheduler

@@ -137,11 +137,20 @@ zio_init(void)
 	 * for each sixteenth-power of 2 below 128k and each eighth
 	 * power-of-two above 128k.
 	 */
+
+#define KMF_DEADBEEF    0x00000002      /* deadbeef checking */
+#define KMF_REDZONE             0x00000004      /* redzone checking */
+#define KMF_CONTENTS    0x00000008      /* freed-buffer content logging */
+#define KMF_LITE        0x00000100      /* lightweight debugging */
+#define KMF_HASH                0x00000200      /* cache has hash table */
+#define KMF_BUFTAG      (KMF_DEADBEEF | KMF_REDZONE)
+
 	for (c = 0; c < SPA_MAXBLOCKSIZE >> SPA_MINBLOCKSHIFT; c++) {
 		size_t size = (c + 1) << SPA_MINBLOCKSHIFT;
 		size_t p2 = size;
 		size_t align = 0;
-		size_t cflags = (size > zio_buf_debug_limit) ? KMC_NODEBUG : 0;
+		//size_t cflags = (size > zio_buf_debug_limit) ? KMC_NODEBUG : 0;
+		size_t cflags = KMF_BUFTAG | KMF_HASH | KMF_LITE;
 
 #ifdef _ILP32
 		/*
@@ -386,8 +395,13 @@ zio_subblock(zio_t *zio, abd_t *data, uint64_t size)
 {
 	ASSERT(zio->io_size > size);
 
-	if (zio->io_type == ZIO_TYPE_READ)
-		abd_copy(data, zio->io_abd, size);
+	if (zio->io_type == ZIO_TYPE_READ) {
+		ASSERT3P(data,!=,zio->io_abd);
+		ASSERT3S(data->abd_size,==,size);
+		ASSERT3S(zio->io_abd->abd_size,>=,size);
+		// copy first size bytes of zio->io_abd into data
+		abd_copy_off(data, zio->io_abd, 0, 0, size);
+	}
 }
 
 static void

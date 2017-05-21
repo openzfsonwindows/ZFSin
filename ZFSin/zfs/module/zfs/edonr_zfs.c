@@ -31,6 +31,7 @@
 #include <sys/abd.h>
 #include <sys/zfs_context.h>	/* For CTASSERT() */
 #include <sys/debug.h>
+#include <sys/abd.h>
 
 #define	EDONR_MODE		512
 #define	EDONR_BLOCK_SIZE	EdonR512_BLOCK_SIZE

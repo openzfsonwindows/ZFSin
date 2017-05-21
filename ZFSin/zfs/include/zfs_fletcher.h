@@ -42,6 +42,7 @@ extern "C" {
  */
 
 void fletcher_init(zio_cksum_t *);
+
 void fletcher_2_native(const void *, size_t, const void *, zio_cksum_t *);
 void fletcher_2_byteswap(const void *, size_t, const void *, zio_cksum_t *);
 int fletcher_2_incremental_native(void *, size_t, void *);

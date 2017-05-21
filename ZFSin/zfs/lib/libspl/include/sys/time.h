@@ -55,6 +55,11 @@
 #define	MSEC2NSEC(m)    ((hrtime_t)(m) * (NANOSEC / MILLISEC))
 #endif
 
+#ifndef USEC2NSEC
+#define     USEC2NSEC(u)    ((hrtime_t)(u) * (NANOSEC / MICROSEC))
+#endif
+
+
 #ifndef NSEC2MSEC
 #define	NSEC2MSEC(n)    ((n) / (NANOSEC / MILLISEC))
 #endif

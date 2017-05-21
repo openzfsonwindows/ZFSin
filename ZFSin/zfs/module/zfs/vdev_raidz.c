@@ -975,14 +975,17 @@ vdev_raidz_reconstruct_q(raidz_map_t *rm, int *tgts, int ntgts)
 		dst = rm->rm_col[x].rc_abd;
 
 		if (c == rm->rm_firstdatacol) {
-			abd_copy(dst, src, size);
+			ASSERT3P(dst,!=,src);
+			if (dst != src)
+				abd_copy(dst, src, size);
 			if (rm->rm_col[x].rc_size > size)
 				abd_zero_off(dst, size,
 				    rm->rm_col[x].rc_size - size);
 		} else {
 			ASSERT3U(size, <=, rm->rm_col[x].rc_size);
-			(void) abd_iterate_func2(dst, src, 0, 0, size,
-			    vdev_raidz_reconst_q_pre_func, NULL);
+			if (src != dst)
+				(void) abd_iterate_func2(dst, src, 0, 0, size,
+				    vdev_raidz_reconst_q_pre_func, NULL);
 			(void) abd_iterate_func(dst,
 			    size, rm->rm_col[x].rc_size - size,
 			    vdev_raidz_reconst_q_pre_tail_func, NULL);

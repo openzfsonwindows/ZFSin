@@ -52,6 +52,7 @@
  * more than) this number of metaslabs.
  */
 int metaslabs_per_vdev = 200;
+#include <sys/abd.h>
 
 /*
  * Virtual device management.

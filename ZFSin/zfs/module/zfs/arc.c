@@ -281,12 +281,15 @@
 
 #ifdef _WIN32
 #include <sys/kstat_windows.h>
+static void arc_abd_move_thr_init(void);
+static void arc_abd_move_thr_fini(void);
+static kcondvar_t arc_abd_move_thr_cv;
 #ifdef _KERNEL
-extern vmem_t *zio_arena;
-extern vmem_t *zio_metadata_arena;
+extern vmem_t *zio_arena_parent;
 extern vmem_t *heap_arena;
 static _Atomic int64_t reclaim_shrink_target = 0;
 #endif
+static boolean_t arc_abd_try_move(arc_buf_hdr_t *);
 #endif
 
 #ifndef _KERNEL
@@ -654,6 +657,24 @@ typedef struct arc_stats {
 	kstat_named_t arcstat_loaned_bytes;
 	kstat_named_t arcstat_dbuf_redirtied;
 	kstat_named_t arcstat_arc_no_grow;
+#ifdef __APPLE__
+	kstat_named_t abd_move_try;
+	kstat_named_t abd_move_no_small_qcache;
+	kstat_named_t abd_move_skip_young_abd;
+	kstat_named_t abd_move_buf_too_young;
+	kstat_named_t abd_move_buf_busy;
+	kstat_named_t abd_move_no_linear;
+	kstat_named_t abd_scan_passes;
+	kstat_named_t abd_scan_not_one_pass;
+	kstat_named_t abd_scan_mutex_skip;
+	kstat_named_t abd_scan_completed_list;
+	kstat_named_t abd_scan_list_timeout;
+	kstat_named_t abd_scan_big_arc;
+	kstat_named_t abd_scan_full_walk;
+	kstat_named_t abd_scan_skip_young;
+	kstat_named_t abd_scan_skip_nothing;
+	kstat_named_t abd_move_no_shared;
+#endif
 } arc_stats_t;
 
 static arc_stats_t arc_stats = {
@@ -743,6 +764,24 @@ static arc_stats_t arc_stats = {
 	{ "loaned_bytes", KSTAT_DATA_UINT64 },
 	{ "dbuf_redirtied", KSTAT_DATA_UINT64 },
 	{ "arc_no_grow", KSTAT_DATA_UINT64 },
+#ifdef __APPLE__
+	{ "arc_move_try",              KSTAT_DATA_UINT64 },
+	{ "arc_move_no_small_qcache",  KSTAT_DATA_UINT64 },
+	{ "arc_move_skip_young_abd",   KSTAT_DATA_UINT64 },
+	{ "arc_move_buf_too_young",    KSTAT_DATA_UINT64 },
+	{ "arc_move_buf_busy",         KSTAT_DATA_UINT64 },
+	{ "arc_move_no_linear",        KSTAT_DATA_UINT64 },
+	{ "abd_scan_passes",           KSTAT_DATA_UINT64 },
+	{ "abd_scan_not_one_pass",     KSTAT_DATA_UINT64 },
+	{ "abd_scan_not_mutex_skip",   KSTAT_DATA_UINT64 },
+	{ "abd_scan_completed_list",   KSTAT_DATA_UINT64 },
+	{ "abd_scan_list_timeout",     KSTAT_DATA_UINT64 },
+	{ "abd_scan_big_arc",          KSTAT_DATA_UINT64 },
+	{ "abd_scan_full_walk",        KSTAT_DATA_UINT64 },
+	{ "abd_scan_skip_young",       KSTAT_DATA_UINT64 },
+	{ "abd_scan_skip_nothing",     KSTAT_DATA_UINT64 },
+	{ "abd_move_no_shared",        KSTAT_DATA_UINT64 },
+#endif
 };
 
 #define	ARCSTAT(stat)	(arc_stats.stat.value.ui64)
@@ -1487,7 +1526,11 @@ arc_buf_is_shared(arc_buf_t *buf)
 	boolean_t shared = (buf->b_data != NULL &&
 	    buf->b_hdr->b_l1hdr.b_pabd != NULL &&
 	    abd_is_linear(buf->b_hdr->b_l1hdr.b_pabd) &&
+#ifndef __APPLE__
 	    buf->b_data == abd_to_buf(buf->b_hdr->b_l1hdr.b_pabd));
+#else
+	buf->b_data == abd_to_buf_ephemeral(buf->b_hdr->b_l1hdr.b_pabd));
+#endif
 	IMPLY(shared, HDR_SHARED_DATA(buf->b_hdr));
 	IMPLY(shared, ARC_BUF_SHARED(buf));
 	IMPLY(shared, ARC_BUF_COMPRESSED(buf) || ARC_BUF_LAST(buf));
@@ -1901,7 +1944,10 @@ arc_buf_try_copy_decompressed_data(arc_buf_t *buf)
 	 * There were no decompressed bufs, so there should not be a
 	 * checksum on the hdr either.
 	 */
+#ifdef _KERNEL
+	// XXX: ifdef out of userland because it causes zdb to die
 	EQUIV(!copied, hdr->b_l1hdr.b_freeze_cksum == NULL);
+#endif
 
 	return (copied);
 }
@@ -1980,7 +2026,10 @@ arc_buf_fill(arc_buf_t *buf, boolean_t compressed)
 		 */
 		if (arc_buf_try_copy_decompressed_data(buf)) {
 			/* Skip byteswapping and checksumming (already done) */
+#ifdef _KERNEL
+			// XXX #ifdef out of userland because it causes zdb to die
 			ASSERT3P(hdr->b_l1hdr.b_freeze_cksum, !=, NULL);
+#endif
 			return (0);
 		} else {
 			int error = zio_decompress_data(HDR_GET_COMPRESS(hdr),
@@ -4091,6 +4140,7 @@ arc_kmem_reap_now(void)
 	extern kmem_cache_t	*zio_data_buf_cache[];
 	extern kmem_cache_t	*range_seg_cache;
 	extern kmem_cache_t	*abd_chunk_cache;
+	extern vmem_t           *abd_chunk_arena;
 
 #ifdef _KERNEL
 	if (arc_meta_used >= arc_meta_limit) {
@@ -4129,16 +4179,12 @@ arc_kmem_reap_now(void)
 	extern kmem_cache_t *znode_cache;
 	if (znode_cache) kmem_cache_reap_now(znode_cache);
 
-	if (zio_arena != NULL) {
+	if (zio_arena_parent != NULL) {
 		/*
 		 * Ask the vmem arena to reclaim unused memory from its
 		 * quantum caches.
 		 */
-		vmem_qcache_reap(zio_arena);
-	}
-
-	if (zio_metadata_arena != NULL) {
-		vmem_qcache_reap(zio_metadata_arena);
+		vmem_qcache_reap(zio_arena_parent);
 	}
 #endif
 }
@@ -4198,6 +4244,8 @@ arc_reclaim_thread(void)
 			int64_t t = reclaim_shrink_target;
 			reclaim_shrink_target = 0;
 			arc_shrink(t);
+			extern kmem_cache_t	*abd_chunk_cache;
+			kmem_cache_reap_now(abd_chunk_cache);
 			IOSleep(1);
 		}
 
@@ -4214,9 +4262,15 @@ arc_reclaim_thread(void)
 		 */
 		evicted = arc_adjust();
 
+#ifdef __APPLE__
+		if (evicted > 64LL*1024LL*1024LL)
+			cv_signal(&arc_abd_move_thr_cv);
+#endif
+
 		int64_t free_memory = arc_available_memory();
 
 #if defined(_WIN32) && defined(_KERNEL)
+
 		int64_t post_adjust_manual_pressure = spl_free_manual_pressure_wrapper();
 		manual_pressure = MAX(manual_pressure,post_adjust_manual_pressure);
 		spl_free_set_pressure(0);
@@ -4240,6 +4294,11 @@ arc_reclaim_thread(void)
 		}
 
 		free_memory = post_adjust_free_memory;
+
+		if (free_memory >= 0 && manual_pressure <= 0 && evicted > 0) {
+			extern kmem_cache_t	*abd_chunk_cache;
+			kmem_cache_reap_now(abd_chunk_cache);
+		}
 
 		if (free_memory < 0 || manual_pressure > 0) {
 
@@ -4333,10 +4392,9 @@ arc_reclaim_thread(void)
 
 				int64_t total_freed = arc_shrink_freed + evicted;
 				if (total_freed >= huge_amount) {
-					if (zio_arena != NULL)
-						vmem_qcache_reap(zio_arena);
-					if (zio_metadata_arena != NULL)
-						vmem_qcache_reap(zio_metadata_arena);
+					if (zio_arena_parent != NULL)
+						vmem_qcache_reap(zio_arena_parent);
+					cv_signal(&arc_abd_move_thr_cv);
 				}
 			} else if (old_to_free > 0) {
 			  dprintf("ZFS: %s, (old_)to_free has returned to zero from %lld\n",
@@ -4512,11 +4570,11 @@ arc_adapt(int bytes, arc_state_t *state)
 	// fragmentation or because recently an allocation had to
 	// descend to the bucket arena
 
-	extern boolean_t spl_arc_no_grow(size_t, boolean_t);
+	extern boolean_t spl_arc_no_grow(size_t, boolean_t, kmem_cache_t **);
 	if (arc_no_grow ||
 	    spl_free_manual_pressure_wrapper() > 0 ||
 	    spl_free_wrapper() < (int64_t)bytes) {
-		if (spl_arc_no_grow((size_t)bytes, buf_is_metadata)) {
+		if (spl_arc_no_grow((size_t)bytes, buf_is_metadata, z)) {
 			// if we are likely to have to wait in our
 			// caller arc_get_data_buf(), then don't return
 			// early to it
@@ -4529,6 +4587,27 @@ arc_adapt(int bytes, arc_state_t *state)
 				reclaim_shrink_target += bytes;
 				cv_signal(&arc_reclaim_thread_cv);
 			}
+		} else {
+			/*
+			 * Among other things, abd weakens the signal
+			 * from spl_arc_no_grow() because the zio_ allocators
+			 * are only used for transient allocations, and so
+			 * almost always will be able to satisfy requests before
+			 * hitting the bucket layer.
+			 *
+			 * abd's new dynamics also can let tsize grow
+			 * very quickly immediately after a reclaim
+			 * releases a large number of chunks, while
+			 * memory sits unused in the spl bucket layer.
+			 *
+			 * When this is the case, enforce arc_no_grow.
+			 */
+			extern int64_t vmem_buckets_size(int);
+			int64_t buckets_free = vmem_buckets_size(VMEM_FREE);
+			int64_t fraction_phys = physmem * 12 / 100;
+
+			if (buckets_free > fraction_phys)
+				return;
 		}
 	}
 
@@ -5780,7 +5859,7 @@ arc_write_ready(zio_t *zio)
 			    arc_buf_size(buf));
 		}
 	} else {
-		ASSERT3P(buf->b_data, ==, abd_to_buf(zio->io_orig_abd));
+		ASSERT3P(buf->b_data, ==, abd_to_buf_ephemeral(zio->io_orig_abd));
 		ASSERT3U(zio->io_orig_size, ==, arc_buf_size(buf));
 		ASSERT3U(hdr->b_l1hdr.b_bufcnt, ==, 1);
 
@@ -6503,7 +6582,7 @@ arc_init(void)
 	if (zfs_arc_meta_min > 0) {
 		arc_meta_min = zfs_arc_meta_min;
 	} else {
-		arc_meta_min = arc_c_min / 2;
+		arc_meta_min = arc_c_min / 8;
 	}
 
 	if (zfs_arc_grow_retry > 0)
@@ -6564,11 +6643,18 @@ arc_init(void)
 		    zfs_dirty_data_max_max);
 	}
 	if (!zfs_dirty_data_max) dprintf("ZFS: ARC zfs_dirty_data_max is zero\n");
+
+#ifdef _WIN32
+	arc_abd_move_thr_init();
+#endif
 }
 
 void
 arc_fini(void)
 {
+#ifdef _WIN32
+	arc_abd_move_thr_fini();
+#endif
 	mutex_enter(&arc_reclaim_lock);
 	arc_reclaim_thread_exit = B_TRUE;
 	/*
@@ -7711,3 +7797,395 @@ l2arc_stop(void)
 		cv_wait(&l2arc_feed_thr_cv, &l2arc_feed_thr_lock);
 	mutex_exit(&l2arc_feed_thr_lock);
 }
+
+#ifdef __APPLE__
+#undef ZDB_DEBUG
+#ifdef _KERNEL
+#define fprintf(...)
+#elif !defined(ZDB_DEBUG)
+#define fprintf(...)
+#endif
+/*
+ * check that this header is movable, and if so ask abd to move it
+ * return B_TRUE if we have moved the abd
+ */
+static boolean_t
+arc_abd_try_move(arc_buf_hdr_t *hdr)
+{
+	ARCSTAT_BUMP(abd_move_try);
+
+	if (!HDR_HAS_L1HDR(hdr) || GHOST_STATE(hdr->b_l1hdr.b_state) ||
+	    !HDR_IN_HASH_TABLE(hdr)) {
+		fprintf(stderr, "a");
+		return (B_FALSE);
+	}
+
+	if (hdr->b_l1hdr.b_pabd == NULL) {
+		fprintf(stderr, "b");
+		return (B_FALSE);
+	}
+
+	if (HDR_SHARED_DATA(hdr) ||
+	    (hdr->b_l1hdr.b_buf != NULL &&
+		hdr->b_l1hdr.b_buf->b_data !=
+		hdr->b_l1hdr.b_pabd)) {
+		fprintf(stderr, "c");
+		ARCSTAT_BUMP(abd_move_no_shared);
+		return (B_FALSE);
+	}
+
+#ifdef _KERNEL
+	// check fragmentation:
+	// if there is little space in zfs_qcache (zio_arena_parent) then
+	// we should not bother moving
+
+	extern vmem_t *abd_chunk_arena, *zio_metadata_arena, *zio_arena;
+	const size_t qsize = vmem_size_semi_atomic(zio_arena_parent, VMEM_ALLOC);
+	const size_t aused = vmem_size_semi_atomic(abd_chunk_arena, VMEM_ALLOC);
+	const size_t mused = vmem_size_semi_atomic(zio_metadata_arena, VMEM_ALLOC);
+	const size_t dused = vmem_size_semi_atomic(zio_arena, VMEM_ALLOC);
+
+	const size_t totused = aused+mused+dused;
+
+	const size_t empty = qsize - totused;
+
+	if (empty <= (qsize >> 4)) {
+		ARCSTAT_BUMP(abd_move_no_small_qcache);
+		return (B_FALSE);
+	}
+
+	const hrtime_t fivemin = SEC2NSEC(5*60);
+#else
+	const hrtime_t fivemin = SEC2NSEC(11);  // small for testing in zdb
+#endif
+
+	const hrtime_t now = gethrtime();
+
+	if (hdr->b_l1hdr.b_pabd->abd_create_time + fivemin > now) {
+		ARCSTAT_BUMP(abd_move_skip_young_abd);
+#ifdef _KERNEL
+		return (B_FALSE);
+#endif
+	}
+
+	if (HDR_IO_IN_PROGRESS(hdr) ||
+	    ((hdr->b_flags & (ARC_FLAG_PREFETCH | ARC_FLAG_INDIRECT)) &&
+		ddi_get_lbolt() - hdr->b_l1hdr.b_arc_access <
+		arc_min_prefetch_lifespan)) {
+		ARCSTAT_BUMP(abd_move_buf_too_young);
+		fprintf(stderr, "f");
+		return (B_FALSE);
+	}
+
+	if (HDR_L2_WRITING(hdr)) {
+		ARCSTAT_BUMP(abd_move_buf_busy);
+		fprintf(stderr, "g");
+		return (B_FALSE);
+	}
+
+	if (refcount_count(&hdr->b_l1hdr.b_refcnt) > 0) {
+		fprintf(stderr, "h");
+		return (B_FALSE);
+	}
+
+	// (abd) FIXME: make it safe to move all linear
+	if (abd_is_linear(hdr->b_l1hdr.b_pabd)) {
+		ARCSTAT_BUMP(abd_move_no_linear);
+		fprintf(stderr, "j");
+		return (B_FALSE);
+	}
+
+
+#ifdef _KERNEL
+	return(abd_try_move(hdr->b_l1hdr.b_pabd));
+#else
+	if (abd_try_move(hdr->b_l1hdr.b_pabd) == B_TRUE) {
+		fprintf(stderr, "+");
+		return (B_TRUE);
+	} else {
+		fprintf(stderr, "-\n");
+		return (B_FALSE);
+	}
+#endif
+}
+
+
+/* move thread, like l2arc_thread() :
+ * periodically awaken, if kstat.spl.misc.spl_misc.spl_buckets_mem_free is high,
+ * then scan the lists like l2arc_write,
+ * but instead of writing we invoke arc_abd_try_move
+ */
+
+static kmutex_t arc_abd_move_thr_lock;
+static uint8_t arc_abd_move_thr_exit = 0;
+static void arc_abd_move_thread(void *notused);
+static boolean_t arc_abd_move_scan(void);
+
+static void
+arc_abd_move_thr_init(void)
+{
+	arc_abd_move_thr_exit = 0;
+
+	mutex_init(&arc_abd_move_thr_lock, NULL, MUTEX_DEFAULT, NULL);
+	cv_init(&arc_abd_move_thr_cv, NULL, CV_DEFAULT, NULL);
+
+	(void) thread_create(NULL, 0, arc_abd_move_thread, NULL, 0, &p0,
+	    TS_RUN, minclsyspri);
+}
+
+static void
+arc_abd_move_thr_fini(void)
+{
+	mutex_enter(&arc_abd_move_thr_lock);
+	cv_signal(&arc_abd_move_thr_cv);
+	arc_abd_move_thr_exit = 1;
+	while (arc_abd_move_thr_exit != 0)
+		cv_wait(&arc_abd_move_thr_cv, &arc_abd_move_thr_lock);
+	mutex_exit(&arc_abd_move_thr_lock);
+
+	mutex_destroy(&arc_abd_move_thr_lock);
+	cv_destroy(&arc_abd_move_thr_cv);
+}
+
+#ifdef _KERNEL
+#include <sys/vmem.h>
+#endif
+
+static void
+arc_abd_move_thread(void *notused)
+{
+	callb_cpr_t cpr;
+#ifdef _KERNEL
+	clock_t wait_time = SEC2NSEC(60);
+	const int64_t threshold = physmem * 5LL / 100LL;
+#else
+	clock_t wait_time = SEC2NSEC(5);
+#endif
+
+	CALLB_CPR_INIT(&cpr, &arc_abd_move_thr_lock, callb_generic_cpr, FTAG);
+
+	mutex_enter(&arc_abd_move_thr_lock);
+
+	while (arc_abd_move_thr_exit == 0) {
+		CALLB_CPR_SAFE_BEGIN(&cpr);
+		(void) cv_timedwait_hires(&arc_abd_move_thr_cv,
+		    &arc_abd_move_thr_lock, wait_time, 0, 0);
+		CALLB_CPR_SAFE_END(&cpr, &arc_abd_move_thr_lock);
+
+ 		if (arc_warm == B_FALSE) {
+			wait_time = SEC2NSEC(60);
+			continue;
+		}
+
+		wait_time = SEC2NSEC(6);
+
+#ifdef _KERNEL
+		int64_t buckets_free = vmem_buckets_size(VMEM_FREE);
+
+		if (buckets_free < threshold)
+			continue;
+#endif
+
+		if (arc_c > arc_c_min + ((arc_c_max - arc_c_min) >> 2)) {
+			ARCSTAT_BUMP(abd_scan_big_arc);
+			continue;
+		}
+
+		if(arc_abd_move_scan()) {
+#ifdef _KERNEL
+			/* we've moved something, so let's make everything
+			 * eligible for reaping now (new activity will update
+			 * this, probably before the next reap, which is likely
+			 * to be several seconds in the future)
+			 */
+
+			abd_kmem_depot_ws_zero();
+#endif
+		}
+
+	}
+	arc_abd_move_thr_exit = 0;
+	cv_broadcast(&arc_abd_move_thr_cv);
+	CALLB_CPR_EXIT(&cpr); // drops arc_abd_move_thr_lock
+	thread_exit();
+}
+
+/*
+ * borrow the skeleton of l2arc_write_buffers in ARC_WARM state
+ * namely we walk from the heads of lists, invoking arc_abd_try_move on
+ * sufficiently old headers
+ */
+
+/* return true if we have moved an abd */
+
+static boolean_t
+arc_abd_move_sublist(multilist_sublist_t *mls, boolean_t scan_forward, hrtime_t deadline)
+{
+
+	boolean_t moved_something = B_FALSE;
+
+	ASSERT(MUTEX_HELD(&mls->mls_lock));
+
+	hrtime_t now = gethrtime();
+
+	if (now >= deadline) {
+		ARCSTAT_BUMP(abd_scan_list_timeout);
+		return (moved_something);
+	}
+
+	boolean_t update_now = B_FALSE;
+	uint32_t steps = 0;
+
+	arc_buf_hdr_t *hdr, *hdr_next;
+
+	if (scan_forward)
+		hdr = multilist_sublist_head(mls);
+	else
+		hdr = multilist_sublist_tail(mls);
+
+
+	for(; hdr; hdr = hdr_next) {
+
+		steps++;
+
+		if (steps % 100)
+			update_now = B_TRUE;
+
+		if (update_now) {
+			update_now = B_FALSE;
+			now = gethrtime();
+			if (now > deadline) {
+				ARCSTAT_BUMP(abd_scan_list_timeout);
+				return(moved_something);
+			}
+		}
+
+		kmutex_t *hash_lock;
+
+		if (scan_forward)
+			hdr_next = multilist_sublist_next(mls, hdr);
+		else
+			hdr_next = multilist_sublist_prev(mls, hdr);
+
+		hash_lock = HDR_LOCK(hdr);
+		if (!mutex_tryenter(hash_lock)) {
+			/* skip this buffer rather than waiting */
+			ARCSTAT_BUMP(abd_scan_mutex_skip);
+			continue;
+		}
+
+		// hash_lock mutex held
+
+		/*  if there is nothing in this hdr to move */
+		if (!HDR_HAS_L1HDR(hdr) ||
+		    GHOST_STATE(hdr->b_l1hdr.b_state) ||
+		    !HDR_IN_HASH_TABLE(hdr) ||
+		    hdr->b_l1hdr.b_pabd == NULL) {
+			mutex_exit(hash_lock);
+			ARCSTAT_BUMP(abd_scan_skip_nothing);
+			continue;
+		}
+
+		const hrtime_t timediff = now - hdr->b_l1hdr.b_pabd->abd_create_time;
+#ifdef _KERNEL
+		const hrtime_t old_enough = SEC2NSEC(5*59); // cf. test in arc_abd_try_move()
+#else
+		const hrtime_t old_enough = SEC2NSEC(5); // small in order to test frequently
+#endif
+
+		if (timediff >= old_enough) {
+			if (arc_abd_try_move(hdr)) {
+				moved_something = B_TRUE;
+				update_now = B_TRUE;
+			}
+		} else {
+			ARCSTAT_BUMP(abd_scan_skip_young);
+		}
+
+		mutex_exit(hash_lock);
+	}
+
+	if (hdr == NULL) {
+		ASSERT3U(now,<=,deadline);
+		ARCSTAT_BUMP(abd_scan_completed_list);
+	}
+
+	return (moved_something);
+}
+
+static boolean_t
+arc_abd_move_scan(void)
+{
+	boolean_t moved_something = B_FALSE;
+	hrtime_t now = gethrtime();
+	extern int zfs_multilist_num_sublists;
+	const uint16_t maxpass = MAX(4, MAX(max_ncpus, zfs_multilist_num_sublists));
+	const hrtime_t end_sublist_delta = MSEC2NSEC(2);
+	const hrtime_t end_all_after = now + (end_sublist_delta * maxpass * 2LL);
+
+	/*
+	 * We process the multilists starting with a random choice of
+	 * filedata MRU and MFU and then metadata MRU and MFU
+	 * in that order.
+	 *
+	 * We want to process filedata first because it is the most likely
+	 * to have been scattered across many 4k abd slabs and 64k qcache
+	 * slabs, each of which may be shared by other abds.
+	 *
+	 * We scan the filedata sublists from their tails since the heads are
+	 * the newest allocations and thus are least likely to benefit from
+	 * the move process (if they are even movable yet).
+	 *
+	 * Conversely we scan the metadata sublists from their heads since those
+	 * are  most likely to be "kidnapping" old slabs (they will have been
+	 * pushed to the heads from promotion from MRU or re-access from
+	 * more-tailwards in the MFU) by having holes formed around them.
+	 *
+	 * On sufficiently fast or idle systems, the choice of
+	 * scanning direction is unlikley to matter much, as the whole
+	 * sublist will be walked.y    The try_order matters more since even
+	 * on fairly quick systems, there is likely to be more scan
+	 * timeouts than full walks.
+	 */
+	// 0, 1 == meta MFU MRU 2, 3 == file MFU MRU
+	const int try_order[4] = { 2, 3, 1, 0 };
+	const boolean_t scan_fwd[4] = { B_FALSE, B_FALSE, B_TRUE, B_TRUE };
+
+	uint16_t pass = 0;
+
+	for (; now <= end_all_after && pass < maxpass; pass++) {
+		for (int try = 0; try <= 3; try++) {
+
+			const hrtime_t end_sublist_after = MIN((now + end_sublist_delta), end_all_after);
+
+			// don't even grab the lock if we can't spend 10 microseconds
+			// scanning the list
+			if (now + USEC2NSEC(10) >= end_sublist_after) {
+				ARCSTAT_BUMP(abd_scan_list_timeout);
+				break;
+			}
+
+			multilist_sublist_t *mls = l2arc_sublist_lock(try_order[try]);
+
+			if(arc_abd_move_sublist(mls, scan_fwd[try], end_sublist_after))
+				moved_something = B_TRUE;
+
+			multilist_sublist_unlock(mls);
+
+			kpreempt(KPREEMPT_SYNC);
+
+			now = gethrtime();
+
+			if (now > end_all_after)
+				break;
+
+		}
+		ARCSTAT_BUMP(abd_scan_passes);
+	}
+	if (pass < 1)
+		ARCSTAT_BUMP(abd_scan_not_one_pass);
+	else if (pass >= maxpass)
+		ARCSTAT_BUMP(abd_scan_full_walk);
+	return (moved_something);
+}
+#endif
