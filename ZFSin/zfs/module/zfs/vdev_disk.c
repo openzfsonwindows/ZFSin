@@ -671,7 +671,6 @@ vdev_disk_io_start(zio_t *zio)
 
 	vd_callback_t *vb = (vd_callback_t *)kmem_alloc(sizeof(vd_callback_t), KM_SLEEP);
 	vb->zio = zio;
-	vb->irp = irp;
 	if (zio->io_type == ZIO_TYPE_READ) {
 		vb->b_addr =
 			abd_borrow_buf(zio->io_abd, zio->io_size);
@@ -703,6 +702,8 @@ vdev_disk_io_start(zio_t *zio)
 		zio_interrupt(zio);
 		return;
 	}
+
+	vb->irp = irp;
 
 	irpStack = IoGetNextIrpStackLocation(irp);
 	if (irpStack == 0xffffffffffffffff)

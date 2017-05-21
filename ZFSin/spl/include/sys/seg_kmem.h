@@ -63,6 +63,7 @@ extern "C" {
 //	extern int segkmem_reloc;	/* enable/disable segkmem relocatable pages */
 //	extern vmem_t *static_arena;	/* arena for caches to import static memory */
 //	extern vmem_t *static_alloc_arena;	/* arena for allocating static memory */
+	extern vmem_t *zio_arena_parent; /* qcaching for zio arenas and abd arena */
 	extern vmem_t *zio_arena;	/* arena for zio caches for file blocks */
 	extern vmem_t *zio_metadata_arena;	/* arena for zio caches for (zfs) metadata blocks */
 //	extern struct vnode kvps[];

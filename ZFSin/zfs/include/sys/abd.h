@@ -159,7 +159,7 @@ abd_zero(abd_t *abd, size_t size)
 void abd_init(void);
 void abd_fini(void);
 
-#ifdef __APPLE__
+#ifdef _WIN32
 boolean_t abd_try_move(abd_t *);
 void abd_kmem_depot_ws_zero(void);
 #endif

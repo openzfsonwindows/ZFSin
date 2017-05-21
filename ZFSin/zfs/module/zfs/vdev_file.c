@@ -425,7 +425,6 @@ vdev_file_io_start(zio_t *zio)
 
 	vf_callback_t *vb = (vf_callback_t *)kmem_alloc(sizeof(vf_callback_t), KM_SLEEP);
 	vb->zio = zio;
-	vb->irp = irp;
 	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
 
 	if (zio->io_type == ZIO_TYPE_READ) {
@@ -458,6 +457,8 @@ vdev_file_io_start(zio_t *zio)
 		zio_interrupt(zio);
 		return;
 	}
+
+	vb->irp = irp;
 
 	irpStack = IoGetNextIrpStackLocation(irp);
 

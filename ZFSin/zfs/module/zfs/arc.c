@@ -657,7 +657,7 @@ typedef struct arc_stats {
 	kstat_named_t arcstat_loaned_bytes;
 	kstat_named_t arcstat_dbuf_redirtied;
 	kstat_named_t arcstat_arc_no_grow;
-#ifdef __APPLE__
+#ifdef _WIN32
 	kstat_named_t abd_move_try;
 	kstat_named_t abd_move_no_small_qcache;
 	kstat_named_t abd_move_skip_young_abd;
@@ -764,7 +764,7 @@ static arc_stats_t arc_stats = {
 	{ "loaned_bytes", KSTAT_DATA_UINT64 },
 	{ "dbuf_redirtied", KSTAT_DATA_UINT64 },
 	{ "arc_no_grow", KSTAT_DATA_UINT64 },
-#ifdef __APPLE__
+#ifdef _WIN32
 	{ "arc_move_try",              KSTAT_DATA_UINT64 },
 	{ "arc_move_no_small_qcache",  KSTAT_DATA_UINT64 },
 	{ "arc_move_skip_young_abd",   KSTAT_DATA_UINT64 },
@@ -1526,7 +1526,7 @@ arc_buf_is_shared(arc_buf_t *buf)
 	boolean_t shared = (buf->b_data != NULL &&
 	    buf->b_hdr->b_l1hdr.b_pabd != NULL &&
 	    abd_is_linear(buf->b_hdr->b_l1hdr.b_pabd) &&
-#ifndef __APPLE__
+#ifndef _WIN32
 	    buf->b_data == abd_to_buf(buf->b_hdr->b_l1hdr.b_pabd));
 #else
 	buf->b_data == abd_to_buf_ephemeral(buf->b_hdr->b_l1hdr.b_pabd));
@@ -4262,7 +4262,7 @@ arc_reclaim_thread(void)
 		 */
 		evicted = arc_adjust();
 
-#ifdef __APPLE__
+#ifdef _WIN32
 		if (evicted > 64LL*1024LL*1024LL)
 			cv_signal(&arc_abd_move_thr_cv);
 #endif
@@ -4570,7 +4570,7 @@ arc_adapt(int bytes, arc_state_t *state)
 	// fragmentation or because recently an allocation had to
 	// descend to the bucket arena
 
-	extern boolean_t spl_arc_no_grow(size_t, boolean_t, kmem_cache_t **);
+	extern boolean_t spl_arc_no_grow(uint32_t, boolean_t, kmem_cache_t **);
 	if (arc_no_grow ||
 	    spl_free_manual_pressure_wrapper() > 0 ||
 	    spl_free_wrapper() < (int64_t)bytes) {
@@ -7798,7 +7798,7 @@ l2arc_stop(void)
 	mutex_exit(&l2arc_feed_thr_lock);
 }
 
-#ifdef __APPLE__
+#ifdef _WIN32
 #undef ZDB_DEBUG
 #ifdef _KERNEL
 #define fprintf(...)
@@ -8154,7 +8154,7 @@ arc_abd_move_scan(void)
 	uint16_t pass = 0;
 
 	for (; now <= end_all_after && pass < maxpass; pass++) {
-		for (int try = 0; try <= 3; try++) {
+		for (int xtry = 0; xtry <= 3; xtry++) {
 
 			const hrtime_t end_sublist_after = MIN((now + end_sublist_delta), end_all_after);
 
@@ -8165,9 +8165,9 @@ arc_abd_move_scan(void)
 				break;
 			}
 
-			multilist_sublist_t *mls = l2arc_sublist_lock(try_order[try]);
+			multilist_sublist_t *mls = l2arc_sublist_lock(try_order[xtry]);
 
-			if(arc_abd_move_sublist(mls, scan_fwd[try], end_sublist_after))
+			if(arc_abd_move_sublist(mls, scan_fwd[xtry], end_sublist_after))
 				moved_something = B_TRUE;
 
 			multilist_sublist_unlock(mls);

@@ -237,6 +237,7 @@ extern "C" {
 		uint32_t			slab_stuck_offset;	/* unmoved buffer offset */
 		uint16_t			slab_later_count;	/* cf KMEM_CBRC_LATER */
 		uint16_t			slab_flags;			/* bits to mark the slab */
+		hrtime_t                        slab_create_time;       /* when was slab created? */
 	} kmem_slab_t;
 
 #define	KMEM_HASH_INITIAL	64

@@ -128,7 +128,7 @@ void segkmem_free(vmem_t *vmp, void *inaddr, size_t size);
 
 uint64_t segkmem_total_mem_allocated = 0;	/* Total memory held allocated */
 vmem_t *heap_arena;							/* primary kernel heap arena */
-vmem_t *zio_arena_parent = NULL;
+vmem_t *zio_arena_parent;                       /* qcaches for zio and abd arenas */
 vmem_t *zio_arena;							/* arena for allocating file data */
 vmem_t *zio_metadata_arena;                                             /* and for allocation of zfs metadata */
 
@@ -249,15 +249,19 @@ segkmem_zio_init()
 
 	extern vmem_t *spl_heap_arena;
 
-	zio_arena_parent = NULL;
+	zio_arena_parent = vmem_create("zfs_qcache", NULL, 0,
+	    PAGESIZE, vmem_alloc, vmem_free, spl_heap_arena,
+	    16 * 1024, VM_SLEEP | VMC_TIMEFREE);
+
+	ASSERT(zio_arena_parent != NULL);
 
 	zio_arena = vmem_create("zfs_file_data", NULL, 0,
-	    PAGESIZE, vmem_alloc, vmem_free, spl_heap_arena,
-	    64 * 1024, VM_SLEEP);
+	    PAGESIZE, vmem_alloc, vmem_free, zio_arena_parent,
+	    0, VM_SLEEP);
 
 	zio_metadata_arena = vmem_create("zfs_metadata", NULL, 0,
-	    PAGESIZE, vmem_alloc, vmem_free, spl_heap_arena,
-	    64 * 1024, VM_SLEEP);
+	    PAGESIZE, vmem_alloc, vmem_free, zio_arena_parent,
+	    0, VM_SLEEP);
 
 	ASSERT(zio_arena != NULL);
 	ASSERT(zio_metadata_arena != NULL);
@@ -274,5 +278,8 @@ segkmem_zio_fini(void)
 	}
 	if (zio_metadata_arena) {
 		vmem_destroy(zio_metadata_arena);
+	}
+	if (zio_arena_parent) {
+		vmem_destroy(zio_arena_parent);
 	}
 }
