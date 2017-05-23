@@ -62,7 +62,7 @@ ServiceBinary  = %12%\ZFSin.sys
 ;--- ZFSin_Device Coinstaller installation ------
 ;
 
-[DestinationDirs]
+[DestinationDirsX]
 ZFSin_Device_CoInstaller_CopyFiles = 11
 
 [ZFSin_Device.NT.CoInstallers]
@@ -75,7 +75,7 @@ HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfC
 [ZFSin_Device_CoInstaller_CopyFiles]
 WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
 
-[SourceDisksFiles]
+[SourceDisksFilesX]
 WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with SourceDisksNames
 
 [ZFSin_Device.NT.Wdf]
