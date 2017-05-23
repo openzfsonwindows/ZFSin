@@ -162,10 +162,11 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ⃝ Add ioctl calls to UNMOUNT and detach and delete Volume
 
-  ⃝ Port kernel `zfs_vnops.c` / `zfs_vnops_windows.c`
-  *  Implemented: open/read/write/close/mkdir/rmdir/create
+  ✓ Port kernel `zfs_vnops.c` / `zfs_vnops_windows.c`
+  *  Many special cases missing, flags to create/read/etc
 
-  ⃝ Correct file information (dates, size, etc)
+  ✓ Correct file information (dates, size, etc)
+
 
 
 ---
