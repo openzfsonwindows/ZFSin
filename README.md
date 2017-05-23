@@ -167,6 +167,11 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ✓ Correct file information (dates, size, etc)
 
+  ✓ Basic DOS usage
+  *  Missing rename
+
+  ⃝ Simple Notepad text edit
+  *  Reading is blank, writes fail.
 
 
 ---
@@ -190,3 +195,9 @@ a better way to do async in Windows?
 it makes zio_taskq_member(taskq_member()) crash. Investigate.
 
 * Functions in posix.c need sustenance.
+
+* The Volume created for MOUNT has something wrong with it, we are
+  unable to query it for mountpoint, currently has to string compare a
+  list of all mounts. Possibly also related is that we can not call
+  any of the functions to set mountpoint to change it. This needs to
+  be researched.
