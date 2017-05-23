@@ -1148,6 +1148,9 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 	case FileHardLinkInformation:
 		dprintf("%s: FileHardLinkInformation\n", __func__);
 		break;
+	case FileRemoteProtocolInformation:
+		dprintf("%s: FileRemoteProtocolInformation\n", __func__);
+		break;
 	default:
 		dprintf("%s: unknown class 0x%x\n", __func__, IrpSp->Parameters.QueryFile.FileInformationClass);
 		break;
@@ -1196,6 +1199,10 @@ NTSTATUS user_fs_request(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 	case FSCTL_GET_REPARSE_POINT:
 		dprintf("    FSCTL_GET_REPARSE_POINT\n");
 		Status = STATUS_NOT_A_REPARSE_POINT;
+		break;
+	case FSCTL_CREATE_OR_GET_OBJECT_ID:
+		dprintf("    FSCTL_CREATE_OR_GET_OBJECT_ID\n");
+		Status = STATUS_INVALID_PARAMETER;
 		break;
 	default:
 		dprintf("%s: unknown class 0x%x\n", __func__, IrpSp->Parameters.FileSystemControl.FsControlCode);
@@ -1290,23 +1297,18 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 	VN_RELE(dvp);
 
 	if (ret == 0) {
+
 		// Remember directory index for next time
 		zccb->uio_offset = uio_offset(uio);
 
 		// Set correct buffer size returned.
 		Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - uio_resid(uio);
 
-		// Return saying there are entries in buffer
-		Status = STATUS_SUCCESS;
-	}
-
-	// If single, we don't save the searchname
-	if (flag_return_single_entry &&
-		zccb->searchname.Buffer != NULL &&
-		zccb->searchname.Length != 0) {
-		kmem_free(zccb->searchname.Buffer, zccb->searchname.Length);
-		zccb->searchname.Buffer = NULL;
-		zccb->searchname.Length = 0;
+		// Return saying there are entries in buffer, or, end if no data
+		if (Irp->IoStatus.Information == 0)
+			Status = STATUS_NO_MORE_FILES;
+		else
+			Status = STATUS_SUCCESS;
 	}
 
 	// Release uio
@@ -2158,6 +2160,7 @@ fsDispatcher(
 	case IRP_MJ_DIRECTORY_CONTROL:
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_NOTIFY_CHANGE_DIRECTORY:
+			Status = STATUS_SUCCESS;
 			break;
 		case IRP_MN_QUERY_DIRECTORY:
 			Status = query_directory(DeviceObject, Irp, IrpSp);
@@ -2214,6 +2217,7 @@ dispatcher(
 	}
 
 	IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
 	dprintf("%s: enter: major %d: minor %d: %s\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
 		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
 

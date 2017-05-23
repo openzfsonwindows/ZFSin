@@ -758,6 +758,7 @@ int   vnode_unlink(vnode_t *vp)
 
 void   vnode_setunlink(vnode_t *vp)
 {
+	dprintf("%s: \n", __func__);
 	vp->v_unlink = 1;
 }
 
