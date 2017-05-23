@@ -2876,8 +2876,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 		// There is room, stuff in FileName...
 		error = RtlUTF8ToUnicodeN(nameptr, *namelenptr, namelenptr, zap.za_name, namelen);
-		dprintf("%s: '%s' -> '%.*S'\n", __func__,
-			zap.za_name, *namelenptr / sizeof(WCHAR), nameptr);
+		dprintf("%s: '%.*S' -> '%s'\n", __func__,
+			*namelenptr / sizeof(WCHAR), nameptr, zap.za_name);
 
 		// Did they provide a search pattern
 		if (zccb->searchname.Buffer && zccb->searchname.Length) {
