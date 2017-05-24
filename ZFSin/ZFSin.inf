@@ -10,9 +10,6 @@ Provider=%ManufacturerName%
 CatalogFile=ZFSin.cat
 DriverVer= ; TODO: set DriverVer in stampinf property pages
 
-[DestinationDirs]
-DefaultDestDir = 12
-
 ; ================= Class section =====================
 
 [ClassInstall32]
@@ -25,10 +22,6 @@ HKR,,DeviceType,0x10001,0x11
 
 [SourceDisksNames]
 1 = %DiskName%,,,""
-
-[SourceDisksFiles]
-ZFSin.sys  = 1,,
-zpool.exe  = 1,,
 
 ;*****************************************
 ; Install Section
@@ -62,7 +55,8 @@ ServiceBinary  = %12%\ZFSin.sys
 ;--- ZFSin_Device Coinstaller installation ------
 ;
 
-[DestinationDirsX]
+[DestinationDirs]
+DefaultDestDir = 12
 ZFSin_Device_CoInstaller_CopyFiles = 11
 
 [ZFSin_Device.NT.CoInstallers]
@@ -75,8 +69,9 @@ HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfC
 [ZFSin_Device_CoInstaller_CopyFiles]
 WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
 
-[SourceDisksFilesX]
+[SourceDisksFiles]
 WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with SourceDisksNames
+ZFSin.sys  = 1,,
 
 [ZFSin_Device.NT.Wdf]
 KmdfService =  ZFSin, ZFSin_wdfsect

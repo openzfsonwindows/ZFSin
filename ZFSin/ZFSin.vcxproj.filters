@@ -26,9 +26,6 @@
     <Filter Include="Source Files\ZFS\module">
       <UniqueIdentifier>{b5512f23-3918-418c-8681-69818b6c3cfe}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\ZFS\cmd">
-      <UniqueIdentifier>{a6f7b80d-0232-45ec-83c8-90760936a2bd}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\ZFS\module\zfs">
       <UniqueIdentifier>{c53d26d1-7390-42f9-a34c-7f8d9bcafd69}</UniqueIdentifier>
     </Filter>

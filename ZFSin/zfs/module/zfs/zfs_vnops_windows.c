@@ -19,8 +19,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright (c) 2013 Will Andrews <will@firepipe.net>
- * Copyright (c) 2013, 2016 Jorgen Lundman <lundman@lundman.net>
+ * Copyright (c) 2017 Jorgen Lundman <lundman@lundman.net>
  */
 
 #undef _NTDDK_
