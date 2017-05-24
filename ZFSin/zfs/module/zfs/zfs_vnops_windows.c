@@ -1074,7 +1074,6 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		*neededlen, sizeof(FILE_NAME_INFORMATION));
 
 	ULONG to_copy = *neededlen;
-	DbgBreakPoint();
 
 	Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION) + to_copy;
 	if (IrpSp->Parameters.QueryFile.Length < offsetof(FILE_NAME_INFORMATION, FileName[0]) + to_copy) {
