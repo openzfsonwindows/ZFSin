@@ -1,4 +1,6 @@
+=== Unix to Windows porting notes ===
 
+<lundman@lundman.net>
 
 All the IO Request Packets (IRP) all come in through the same set of function handlers, which can get a bit noisy. So ioctls from userland to, say, listing datasets, come in to the same place, as requests to list a directory, and volume creation notifications, etc etc. It gets a bit noisy.
 
@@ -18,3 +20,9 @@ As long as there are valid entries in the return buf, it needs to return STATUS_
 directory-listings also can be passed a filename, either with wildcards or not, which you have to match against. This is only given in the first call, so that is stored in ccb.
 
 Deleting files and directories are done a little differently. It calls IRP_MJ_CREATE to open a handle to the file or directory, then calls IRP_SET_INFORMATION with type FileDispositionInformation, which has a single entry "delete". Then it calls IRP_MJ_CLOSE, and eventually IRP_MJ_CLEANUP. And if this is the final reference to the file/directory, we call vnop_remove/vnop_rmdir. The "delete flag" is stored in the vnode, using the new vnode_setunlink() and vnode_unlink() calls.
+
+Many IRP calls that take structs will check the input size matches that of sizeof(struct). A few structs will paste variable length information, like that of Filename, at the end of the struct. A few observations have come up;
+
+* Often the struct has WCHAR filename[1], which means you can always fit the first (wide) character of the name, and the returned Length needs to be adjusted to be one character less than the filename length.
+
+* Those structs that take a variable name will also check if the full name will fit, and if it does not, returns STATUS_BUFFER_OVERFLOW. But, it is expected to fill in as much of the name that fits. Other data, like in the case of FileAllInformation struct, need to be valid, even though we return "error" and partial filename.

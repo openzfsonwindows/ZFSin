@@ -8,17 +8,27 @@ https://developer.microsoft.com/en-us/windows/downloads/virtual-machines
 
 and create two VMs.
 
+The newer VM images comes with Visual Studio 2017, but this is
+currently not compatible with Kernel Development. At the moment, the
+correct version to use is Visual Studio 2015 update 3. You can
+download and install it for free. But it can be a challenge to find as
+Microsoft hides it well. They also put VCredist 2008, 2012, 2013 and
+2017 on there but skipped 2015 for some reason. They dropped the ball
+that day. You will have to use Add/Remove Programs to uninstall 2017
+version before you can install 2015.
+
 * Host (running Visual Studio and Kernel Debugger)
 * Target (runs the compiled kernel module)
 
-It is recommended that the VMs are placed on static IP, as they
-can change IP with all the crashes, and you have to configure the remote kernel development again.
+It is recommended that the VMs are placed on static IP, as they can
+change IP with all the crashes, and you have to configure the remote
+kernel development again.
 
 Go download the Windows Driver Kit 10
 
 https://developer.microsoft.com/en-us/windows/hardware/windows-driver-kit
 
-and install on both VMs.
+and install on both VMs. You will need both the SDK and WDK.
 
 
 On Target VM, complete the guide specified here, under
@@ -45,38 +55,50 @@ On the Host VM, continue the guide to configure Visual Studio 2015.
 * Click "Next >"
 
 It now confirms that it talked to the Target, and note here that
-"Host IP" it that of the Host VM, for me, "172.16.248.102", and not to be confused by the Target IP entered on previous screen.
+"Host IP" it that of the Host VM, for me, "172.16.248.102", and not to
+be confused by the Target IP entered on previous screen.
 
 * Click "Next >"
 
 Watch and wait as remote items are installed on the Target VM. It
 will most likely reboot the Target VM as well.
 
-I've had dialog boxes pop up and I agree to installation, but I am not sure they are supposed to. They probably shouldn't, it would seem it failed
-to put WDKRemoteUser in Administators group. If that happens, use "lusrmgr.msc" to correct it.
+I've had dialog boxes pop up and I agree to installation, but I am not
+sure they are supposed to. They probably shouldn't, it would seem it
+failed to put WDKRemoteUser in Administators group. If that happens,
+use "lusrmgr.msc" to correct it.
 
-The task "Creating system restore point" will most likely fail and that is acceptable, however, if other tasks fail, you may need to retry until they work.
+The task "Creating system restore point" will most likely fail and
+that is acceptable, however, if other tasks fail, you may need to
+retry until they work.
 
-At the end of the run, the output window offers a link to the full log, which is worth reading if you encounter issues.
+At the end of the run, the output window offers a link to the full
+log, which is worth reading if you encounter issues.
 
-When things fail, I start a CMD prompt as Administrator, and paste in the commands that fail, from the log file. It would be nice if this process just worked though.
+When things fail, I start a CMD prompt as Administrator, and paste in
+the commands that fail, from the log file. It would be nice if this
+process just worked though.
 
 If your version of .NET newer, just move along.
 
 The Target VM should reboot, and login as "WDKRemoteUser".
 
 
+It is recommended you get GIT bash for Windows and install:
 
-On Host VM with Visual Studio 2015, you may need to download the
-GitHub extension if you intend to be part of development environment.
-
-https://visualstudio.github.com/
+https://git-scm.com/downloads
 
 
 ---
 
 
 Host and Target VMs are now configured.
+
+First time you load the project it might default to
+
+Debug : ARM
+
+you probably want to change ARM ==> X64.
 
 * Load ZFSin solution
 * Menu > Debug > ZFSin Properties
