@@ -47,7 +47,12 @@
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/sysmacros.h>
+#ifdef _LITTLE_ENDIAN
+#include <sys/byteorder.h>
+#define	HAVE_HTONL
+#endif
 #define	_SHA2_IMPL
+#undef SHA256
 #include <sys/sha2.h>
 #include <sys/sha2_consts.h>
 
@@ -56,7 +61,7 @@
 
 #else
 
-#ifndef __APPLE__
+#ifndef _WIN32
 #pragma weak SHA256Update = SHA2Update
 #pragma weak SHA384Update = SHA2Update
 #pragma weak SHA512Update = SHA2Update
@@ -76,10 +81,6 @@
 #undef __amd64
 #endif
 
-#ifdef _LITTLE_ENDIAN
-#include <sys/byteorder.h>
-#define	HAVE_HTONL
-#endif
 
 static void Encode(uint8_t *, uint32_t *, size_t);
 static void Encode64(uint8_t *, uint64_t *, size_t);
