@@ -556,6 +556,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	AsciiStringToUnicodeString(uuid_a, &zmo_dcb->uuid);
 	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
 	AsciiStringToUnicodeString(buf, &zmo_dcb->device_name);
+	zmo_dcb->deviceObject = diskDeviceObject;
 
 	snprintf(buf, sizeof(buf), "\\DosDevices\\Global\\Volume{%s}", uuid_a);
 	pants.Buffer = buf;
@@ -605,7 +606,8 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	AsciiStringToUnicodeString(zc->zc_name, &zmo_vcb->name);
 	snprintf(buf, sizeof(buf), "\\DosDevices\\Global\\Volume{%s}", uuid_a);
 	AsciiStringToUnicodeString(buf, &zmo_vcb->symlink_name);
-	zmo_vcb->deviceObject = diskDeviceObject;
+	zmo_vcb->deviceObject = fsDeviceObject;
+	zmo_vcb->diskDeviceObject = diskDeviceObject;
 
 	// Call ZFS and have it setup a mount "zfsvfs"
 	struct zfs_mount_args mnt_args;
@@ -747,7 +749,13 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	return status;
 }
 
+void FreeUnicodeString(PUNICODE_STRING s)
+{
+	if (s->Buffer) ExFreePool(s->Buffer);
+	s->Buffer = NULL;
+}
 
+extern int getzfsvfs(const char *dsname, zfsvfs_t **zfvp);
 
 int zfs_windows_unmount(zfs_cmd_t *zc)
 {
@@ -755,7 +763,38 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 	// IRP_MN_REMOVE_DEVICE
 	// FsRtlNotifyVolumeEvent(, FSRTL_VOLUME_DISMOUNT);
 
-	return ENOTSUP;
+	// Use name, lookup zfsvfs
+	// use zfsvfs to get mount_t
+	// mount_t has deviceObject, names etc.
+	mount_t *zmo;
+	zfsvfs_t *zfsvfs;
+
+	if (getzfsvfs(zc->zc_name, &zfsvfs) == 0) {
+
+		zmo = zfsvfs->z_vfs;
+		ASSERT(zmo->type == MOUNT_TYPE_VCB);
+
+		IoDeleteSymbolicLink(&zmo->symlink_name);
+
+		FreeUnicodeString(&zmo->symlink_name);
+		FreeUnicodeString(&zmo->device_name);
+		FreeUnicodeString(&zmo->fs_name);
+		FreeUnicodeString(&zmo->uuid);
+
+		if (zmo->diskDeviceObject->Vpb) {
+			zmo->diskDeviceObject->Vpb->DeviceObject = NULL;
+			zmo->diskDeviceObject->Vpb->RealDevice = NULL;
+			zmo->diskDeviceObject->Vpb->Flags = 0;
+		}
+
+		// fsDeviceObject
+		IoDeleteDevice(zmo->deviceObject);
+		// diskDeviceObject
+		IoDeleteDevice(zmo->diskDeviceObject);
+		// counter to getzfvfs
+		vfs_unbusy(zfsvfs->z_vfs);
+	}
+	return 0;
 }
 
 

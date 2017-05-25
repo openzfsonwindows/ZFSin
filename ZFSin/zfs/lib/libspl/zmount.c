@@ -122,41 +122,25 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 	return ret;
 }
 
-#if 0
+
+
 int
-zmount(const char *spec, const char *dir, int mflag, char *fstype,
-    char *dataptr, int datalen, char *optptr, int optlen)
+zunmount(zfs_handle_t *zhp, const char *dir, int mflag)
 {
-	int rv = 0;
-	struct zfs_mount_args mnt_args;
-	char *rpath = NULL;
-	assert(spec != NULL);
-	assert(dir != NULL);
-	assert(fstype != NULL);
-	assert(mflag >= 0);
-	assert(strcmp(fstype, MNTTYPE_ZFS) == 0);
-	assert(dataptr == NULL);
-	assert(datalen == 0);
-	assert(optptr != NULL);
-	assert(optlen > 0);
+	int ret = 0;
 
-	mnt_args.fspec = spec;
-	mnt_args.mflag = mflag;
-	mnt_args.optptr = optptr;
-	mnt_args.optlen = optlen;
-	mnt_args.struct_size = sizeof(mnt_args);
+	// mount 'spec' "tank/joe" on path 'dir' "/home/joe".
+	fprintf(stderr, "zunmount(%s,%s) running\r\n",
+		zhp->zfs_name, dir); fflush(stderr);
+	zfs_cmd_t zc = { "\0" };
 
-	/* There is a bug in XNU where /var/tmp is resolved as
-	 * "private/var/tmp" without the leading "/", and both mount(2) and
-	 * diskutil mount avoid this by calling realpath() first. So we will
-	 * do the same.
-	 */
-	rpath = realpath(dir, NULL);
+	(void)strlcpy(zc.zc_name, zhp->zfs_name, sizeof(zc.zc_name));
+	(void)strlcpy(zc.zc_value, dir, sizeof(zc.zc_value));
 
-	rv = mount(fstype, rpath ? rpath : dir, 0, &mnt_args);
+	ret = zfs_ioctl(zhp->zfs_hdl, ZFS_IOC_UNMOUNT, &zc);
 
-	if (rpath) free(rpath);
-	return rv;
+	fprintf(stderr, "zunmount(%s,%s) returns %d\n",
+		zhp->zfs_name, dir, ret);
+
+	return ret;
 }
-#endif
-

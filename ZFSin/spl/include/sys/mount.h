@@ -79,13 +79,13 @@ struct mount
 	mount_type_t type;
 	void *fsprivate;
 	PDEVICE_OBJECT deviceObject;
+	PDEVICE_OBJECT diskDeviceObject;
 	UNICODE_STRING bus_name;
 	UNICODE_STRING device_name;
 	UNICODE_STRING symlink_name;
 	UNICODE_STRING fs_name;
 	UNICODE_STRING name;
 	UNICODE_STRING uuid;
-	PDEVICE_OBJECT attached_device;
 };
 typedef struct mount mount_t;
 #define LK_NOWAIT 1

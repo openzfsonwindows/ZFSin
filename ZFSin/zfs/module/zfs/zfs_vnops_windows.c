@@ -759,12 +759,14 @@ NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	return STATUS_SUCCESS;
 }
 
+// Query Unique id uses 1 byte chars.
 NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	PMOUNTDEV_UNIQUE_ID uniqueId;
 	WCHAR				deviceName[MAXIMUM_FILENAME_LENGTH];
 	ULONG				bufferLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
 	mount_t *zmo;
+	char osname[MAXNAMELEN];
 
 	zmo = (mount_t *)DeviceObject->DeviceExtension;
 
@@ -773,19 +775,23 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		return STATUS_BUFFER_TOO_SMALL;
 	}
 
+	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+	if (zfsvfs == NULL) {
+		strcpy(osname, "unknown");
+	} else {
+		dmu_objset_name(zfsvfs->z_os, osname);
+	}
+
 	// uniqueId appears to be CHARS not WCHARS, so this might need correcting?
 	uniqueId = (PMOUNTDEV_UNIQUE_ID)Irp->AssociatedIrp.SystemBuffer;
-	ASSERT(uniqueId != NULL);
 
-	//uniqueId->UniqueIdLength = zmo->uuid.Length + 1 * sizeof(WCHAR); // includes null char
-	uniqueId->UniqueIdLength = zmo->symlink_name.Length;
+	uniqueId->UniqueIdLength = strlen(osname);  
 
 	if (sizeof(USHORT) + uniqueId->UniqueIdLength < bufferLength) {
-		RtlCopyMemory((PCHAR)uniqueId->UniqueId, zmo->symlink_name.Buffer, zmo->symlink_name.Length);
-//		uniqueId->UniqueId[zmo->uuid.Length] = UNICODE_NULL;
+		RtlCopyMemory((PCHAR)uniqueId->UniqueId, osname, uniqueId->UniqueIdLength);
 		Irp->IoStatus.Information = FIELD_OFFSET(MOUNTDEV_UNIQUE_ID, UniqueId[0]) +
 			uniqueId->UniqueIdLength;
-		dprintf("replying with '%.*S'\n", uniqueId->UniqueIdLength/sizeof(WCHAR), uniqueId->UniqueId);
+		dprintf("replying with '%.*s'\n", uniqueId->UniqueIdLength, uniqueId->UniqueId);
 		return STATUS_SUCCESS;
 	} else {
 		Irp->IoStatus.Information = sizeof(MOUNTDEV_UNIQUE_ID);
@@ -816,7 +822,7 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 
 	case FileFsAttributeInformation:   // ***
 		{
-			dprintf("%s: FileFsAttributeInformation\n", __func__);
+			dprintf("* %s: FileFsAttributeInformation\n", __func__);
 			if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_ATTRIBUTE_INFORMATION)) {
 				Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION);
 				Status = STATUS_BUFFER_TOO_SMALL;
@@ -842,16 +848,16 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		}	
 		break;
 	case FileFsControlInformation:
-		dprintf("%s: FileFsControlInformation\n", __func__);
+		dprintf("* %s: FileFsControlInformation\n", __func__);
 		break;
 	case FileFsDeviceInformation:
-		dprintf("%s: FileFsDeviceInformation\n", __func__);
+		dprintf("* %s: FileFsDeviceInformation\n", __func__);
 		break;
 	case FileFsDriverPathInformation:
-		dprintf("%s: FileFsDriverPathInformation\n", __func__);
+		dprintf("* %s: FileFsDriverPathInformation\n", __func__);
 		break;
 	case FileFsFullSizeInformation:   //**
-		dprintf("%s: FileFsFullSizeInformation\n", __func__);
+		dprintf("* %s: FileFsFullSizeInformation\n", __func__);
 		if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_FULL_SIZE_INFORMATION)) {
 			Irp->IoStatus.Information = sizeof(FILE_FS_FULL_SIZE_INFORMATION);
 			Status = STATUS_BUFFER_TOO_SMALL;
@@ -871,14 +877,14 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		Status = STATUS_SUCCESS;
 		break;
 	case FileFsObjectIdInformation:
-		dprintf("%s: FileFsObjectIdInformation\n", __func__);
+		dprintf("* %s: FileFsObjectIdInformation\n", __func__);
 		break;
 	case FileFsSizeInformation:
-		dprintf("%s: FileFsSizeInformation\n", __func__);
+		dprintf("* %s: FileFsSizeInformation\n", __func__);
 		break;
 	case FileFsVolumeInformation:    // *** 
 		{
-			dprintf("%s: FileFsVolumeInformation\n", __func__);
+			dprintf("* %s: FileFsVolumeInformation\n", __func__);
 			if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_VOLUME_INFORMATION)) {
 				Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION);
 				Status = STATUS_BUFFER_TOO_SMALL;
@@ -905,11 +911,11 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		}
 		break;
 	case FileFsSectorSizeInformation:
-		dprintf("%s: FileFsSectorSizeInformation\n", __func__);
+		dprintf("* %s: FileFsSectorSizeInformation\n", __func__);
 		Status = STATUS_NOT_IMPLEMENTED;
 		break;
 	default:
-		dprintf("%s: unknown class 0x%x\n", __func__, IrpSp->Parameters.QueryVolume.FsInformationClass);
+		dprintf("* %s: unknown class 0x%x\n", __func__, IrpSp->Parameters.QueryVolume.FsInformationClass);
 		Status = STATUS_NOT_IMPLEMENTED;
 		break;
 	}
@@ -1084,7 +1090,7 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 
 	error = RtlUTF8ToUnicodeN(name->FileName, to_copy, &name->FileNameLength, strname, strlen(strname));
 
-	dprintf("%s: returning name of %.*S\n", __func__, name->FileNameLength / sizeof(WCHAR), name->FileName);
+	dprintf("* %s: returning name of %.*S\n", __func__, name->FileNameLength / sizeof(WCHAR), name->FileName);
 	return Status;
 }
 
@@ -1133,7 +1139,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 		break;
 	case FileAttributeTagInformation:
-		dprintf("%s: FileAttributeTagInformation\n", __func__);
+		dprintf("* %s: FileAttributeTagInformation\n", __func__);
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 			FILE_ATTRIBUTE_TAG_INFORMATION *tag = Irp->AssociatedIrp.SystemBuffer;
 			struct vnode *vp = IrpSp->FileObject->FsContext;
@@ -1145,7 +1151,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		}
 		break;
 	case FileBasicInformation:
-		dprintf("%s: FileBasicInformation\n", __func__);	
+		dprintf("* %s: FileBasicInformation\n", __func__);	
 		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_BASIC_INFORMATION)) {
 			Irp->IoStatus.Information = sizeof(FILE_BASIC_INFORMATION);
 			Status = STATUS_BUFFER_TOO_SMALL;
@@ -1155,16 +1161,16 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		Irp->IoStatus.Information = sizeof(FILE_BASIC_INFORMATION);
 		break;
 	case FileCompressionInformation:
-		dprintf("%s: FileCompressionInformation\n", __func__);
+		dprintf("* %s: FileCompressionInformation\n", __func__);
 		break;
 	case FileEaInformation:
-		dprintf("%s: FileEaInformation\n", __func__);
+		dprintf("* %s: FileEaInformation\n", __func__);
 		break;
 	case FileInternalInformation:
-		dprintf("%s: FileInternalInformation\n", __func__);
+		dprintf("* %s: FileInternalInformation\n", __func__);
 		break;
 	case FileNameInformation:
-		dprintf("%s: FileNameInformation\n", __func__);
+		dprintf("* %s: FileNameInformation\n", __func__);
 		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_NAME_INFORMATION)) {
 			Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION);
 			Status = STATUS_BUFFER_TOO_SMALL;
@@ -1179,7 +1185,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 			Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION) + name->FileNameLength;
 		break;
 	case FileNetworkOpenInformation:   
-		dprintf("%s: FileNetworkOpenInformation\n", __func__);
+		dprintf("* %s: FileNetworkOpenInformation\n", __func__);
 		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_NETWORK_OPEN_INFORMATION)) {
 			Irp->IoStatus.Information = sizeof(FILE_NETWORK_OPEN_INFORMATION);
 			Status = STATUS_BUFFER_TOO_SMALL;
@@ -1189,7 +1195,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		Irp->IoStatus.Information = sizeof(FILE_NETWORK_OPEN_INFORMATION);
 		break;
 	case FilePositionInformation:
-		dprintf("%s: FilePositionInformation\n", __func__);
+		dprintf("* %s: FilePositionInformation\n", __func__);
 		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_POSITION_INFORMATION)) {
 			Irp->IoStatus.Information = sizeof(FILE_POSITION_INFORMATION);
 			Status = STATUS_BUFFER_TOO_SMALL;
@@ -1199,7 +1205,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		Irp->IoStatus.Information = sizeof(FILE_POSITION_INFORMATION);
 		break;
 	case FileStandardInformation:
-		dprintf("%s: FileStandardInformation\n", __func__);
+		dprintf("* %s: FileStandardInformation\n", __func__);
 		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_STANDARD_INFORMATION)) {
 			Irp->IoStatus.Information = sizeof(FILE_STANDARD_INFORMATION);
 			Status = STATUS_BUFFER_TOO_SMALL;
@@ -1209,16 +1215,16 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		Irp->IoStatus.Information = sizeof(FILE_STANDARD_INFORMATION);
 		break;
 	case FileStreamInformation:
-		dprintf("%s: FileStreamInformation\n", __func__);
+		dprintf("* %s: FileStreamInformation\n", __func__);
 		break;
 	case FileHardLinkInformation:
-		dprintf("%s: FileHardLinkInformation\n", __func__);
+		dprintf("* %s: FileHardLinkInformation\n", __func__);
 		break;
 	case FileRemoteProtocolInformation:
-		dprintf("%s: FileRemoteProtocolInformation\n", __func__);
+		dprintf("* %s: FileRemoteProtocolInformation\n", __func__);
 		break;
 	default:
-		dprintf("%s: unknown class 0x%x\n", __func__, IrpSp->Parameters.QueryFile.FileInformationClass);
+		dprintf("* %s: unknown class 0x%x\n", __func__, IrpSp->Parameters.QueryFile.FileInformationClass);
 		break;
 	}
 
@@ -1271,7 +1277,7 @@ NTSTATUS user_fs_request(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		Status = STATUS_INVALID_PARAMETER;
 		break;
 	default:
-		dprintf("%s: unknown class 0x%x\n", __func__, IrpSp->Parameters.FileSystemControl.FsControlCode);
+		dprintf("* %s: unknown class 0x%x\n", __func__, IrpSp->Parameters.FileSystemControl.FsControlCode);
 		break;
 	}
 
@@ -1421,13 +1427,13 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 
 	switch (IrpSp->Parameters.SetFile.FileInformationClass) {
 	case FileAllocationInformation: // set allocation size, refreserve?
-		dprintf("FileAllocationInformation\n");
+		dprintf("* FileAllocationInformation\n");
 		break;
 	case FileBasicInformation: // chmod
-		dprintf("FileBasicInformation\n");
+		dprintf("* FileBasicInformation\n");
 		break;
 	case FileDispositionInformation: // unlink
-		dprintf("FileDispositionInformation\n");
+		dprintf("* FileDispositionInformation\n");
 		FILE_DISPOSITION_INFORMATION *fdi = Irp->AssociatedIrp.SystemBuffer;
 		if (fdi->DeleteFile) {
 			if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
@@ -1440,22 +1446,22 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		}
 		break;
 	case FileEndOfFileInformation: // extend?
-		dprintf("FileEndOfFileInformation\n");
+		dprintf("* FileEndOfFileInformation\n");
 		break;
 	case FileLinkInformation: // symlink
-		dprintf("FileLinkInformation\n");
+		dprintf("* FileLinkInformation\n");
 		break;
 	case FilePositionInformation: // seek
-		dprintf("FilePositionInformation\n");
+		dprintf("* FilePositionInformation\n");
 		break;
 	case FileRenameInformation: // vnop_rename
-		dprintf("FileRenameInformation\n");
+		dprintf("* FileRenameInformation\n");
 		break;
 	case FileValidDataLengthInformation:  // truncate?
-		dprintf("FileValidDataLengthInformation\n");
+		dprintf("* FileValidDataLengthInformation\n");
 		break;
 	default:
-		dprintf("%s: unknown type\n", __func__);
+		dprintf("* %s: unknown type\n", __func__);
 		break;
 	}
 
@@ -1840,16 +1846,12 @@ diskDispatcher(
 			IrpSp->FileObject->Vpb = zmo->deviceObject->Vpb;
 		else
 			IrpSp->FileObject->Vpb = DeviceObject->Vpb;
-		dprintf("Setting FileObject->Vpb to %p\n", IrpSp->FileObject->Vpb);
-		if (IrpSp->Parameters.Create.Options & FILE_DIRECTORY_FILE) {
-			Status = STATUS_NOT_A_DIRECTORY;
-		} else {
+//		dprintf("Setting FileObject->Vpb to %p\n", IrpSp->FileObject->Vpb);
 			//SetFileObjectForVCB(IrpSp->FileObject, zmo);
 			//IrpSp->FileObject->SectionObjectPointer = &zmo->SectionObjectPointers;
 			//IrpSp->FileObject->FsContext = &zmo->VolumeFileHeader;
-			Irp->IoStatus.Information = FILE_OPENED;
-			Status = STATUS_SUCCESS;
-		}
+		Irp->IoStatus.Information = FILE_OPENED;
+		Status = STATUS_SUCCESS;
 		break;
 	case IRP_MJ_CLOSE:
 		Status = STATUS_SUCCESS;
@@ -1922,7 +1924,7 @@ diskDispatcher(
 	break;
 
 	case IRP_MJ_CLEANUP:
-		Status = 0;
+		Status = STATUS_SUCCESS;
 		break;
 
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
@@ -2017,7 +2019,7 @@ fsDispatcher(
 			IrpSp->FileObject->Vpb = zmo->deviceObject->Vpb;
 		else
 			IrpSp->FileObject->Vpb = DeviceObject->Vpb;
-		dprintf("Setting FileObject->Vpb to %p\n", IrpSp->FileObject->Vpb);
+	//	dprintf("Setting FileObject->Vpb to %p\n", IrpSp->FileObject->Vpb);
 
 
 		//
@@ -2301,7 +2303,10 @@ dispatcher(
 	if (TopLevel) { IoSetTopLevelIrp(NULL); }
 	FsRtlExitFileSystem();
 
-	dprintf("%s: exit: 0x%x Information 0x%x\n", __func__, Status, Irp->IoStatus.Information);
+	dprintf("%s: exit: 0x%x %s Information 0x%x\n", __func__, Status, 
+		Status == STATUS_SUCCESS ? "OK" :
+		Status == STATUS_BUFFER_OVERFLOW ? "Overflow" : "****",
+		Irp->IoStatus.Information);
 	IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 	return Status;
 }

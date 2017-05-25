@@ -267,6 +267,166 @@ statfs2mnttab(struct statfs *sfs, struct mnttab *mp)
 	mp->mnt_fssubtype = sfs->f_fssubtype;
 }
 
+void DisplayVolumePaths(char *VolumeName)
+{
+	DWORD  CharCount = MAX_PATH + 1;
+	char *Names = NULL;
+	char *NameIdx = NULL;
+	BOOL   Success = FALSE;
+
+	for (;;) {
+		//
+		//  Allocate a buffer to hold the paths.
+		Names = (char *) malloc(CharCount);
+
+		if (!Names)	return;
+
+		//
+		//  Obtain all of the paths
+		//  for this volume.
+		Success = GetVolumePathNamesForVolumeName(
+			VolumeName, Names, CharCount, &CharCount
+		);
+
+		if (Success) break;
+
+		if (GetLastError() != ERROR_MORE_DATA) break;
+
+		//
+		//  Try again with the
+		//  new suggested size.
+		free(Names);
+		Names = NULL;
+	}
+
+	if (Success) {
+		//
+		//  Display the various paths.
+		for (NameIdx = Names;
+			NameIdx[0] != '\0';
+			NameIdx += strlen(NameIdx) + 1) {
+			printf("  %s", NameIdx);
+		}
+		printf("\n");
+	}
+
+	if (Names != NULL) {
+		free(Names);
+		Names = NULL;
+	}
+
+	return;
+}
+
+typedef struct _MOUNTDEV_NAME {
+	USHORT NameLength;
+	WCHAR  Name[1];
+} MOUNTDEV_NAME, *PMOUNTDEV_NAME;
+#define IOCTL_MOUNTDEV_QUERY_DEVICE_NAME 0x004d0008
+typedef struct _MOUNTDEV_UNIQUE_ID {
+	USHORT  UniqueIdLength;
+	UCHAR   UniqueId[1];
+} MOUNTDEV_UNIQUE_ID;
+typedef MOUNTDEV_UNIQUE_ID *PMOUNTDEV_UNIQUE_ID;
+#define IOCTL_MOUNTDEV_QUERY_UNIQUE_ID 0x4d0000
+
+int getfsstat(struct statfs *buf, int bufsize, int flags)
+{
+	char name[256];
+	HANDLE vh;
+	int count = 0;
+	MOUNTDEV_UNIQUE_ID *UID = NULL;
+
+	// If buf is NULL, return number of entries
+	vh = FindFirstVolume(name, sizeof(name));
+	if (vh == INVALID_HANDLE_VALUE) return -1;
+
+	do {
+		char *s = name;
+
+		// Still room in out buffer?
+		if (buf && (bufsize < sizeof(struct statfs))) break;
+
+
+		// We must skip the "\\?\" start
+		if (s[0] == '\\' &&
+			s[1] == '\\' &&
+			s[2] == '?' &&
+			s[3] == '\\')
+			s = &s[4];
+		// We must eat the final "\\"
+		int trail = strlen(name) - 1;
+		if (name[trail] == '\\')
+			name[trail] = 0;
+
+		// Query DOS
+		char DeviceName[256];
+		int CharCount;
+		CharCount = QueryDosDevice(s, DeviceName, sizeof(DeviceName));
+
+		// Restore trailing "\\"
+		if (name[trail] == 0)
+			name[trail] = '\\';
+
+//		printf("%s: volume '%s' device '%s'\n", __func__, name, DeviceName);
+//		DisplayVolumePaths(name);
+
+		// Open DeviceName, and query it for dataset name
+		HANDLE h;
+
+		name[2] = '.'; // "\\?\" -> "\\.\" 
+
+		// We open the devices returned; like "'\\.\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}'" and
+		// query its Unique ID, where we return the dataset name. "BOOM"
+
+		h = CreateFile(name, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+//		printf("Open '%s': %d : getlast %d\n", name, h, GetLastError());
+		fflush(stdout);
+		if (h != INVALID_HANDLE_VALUE) {
+			char *dataset;
+			char cheat[1024];
+			UID = cheat;
+			DWORD Size;
+			BOOL gotname = FALSE;
+
+			gotname = DeviceIoControl(h, IOCTL_MOUNTDEV_QUERY_UNIQUE_ID, NULL, 0, UID, sizeof(cheat) - 1, &Size, NULL);
+//			printf("deviocon %d: namelen %d\n", status, UID->UniqueIdLength);
+			if (gotname) {
+				UID->UniqueId[UID->UniqueIdLength] = 0; // Kernel doesn't null terminate
+				printf("'%s' ==> '%s'\n", name, UID->UniqueId);
+			} else
+				UID = NULL;
+			CloseHandle(h);
+		}
+
+		// We found a mount here, add it.
+		if (buf) {
+			memset(buf, 0, sizeof(*buf));
+			if (UID) {
+				// Look up mountpoint
+				strlcpy(buf->f_mntfromname, UID->UniqueId, sizeof(buf->f_mntfromname));
+				strlcpy(buf->f_fstypename, MNTTYPE_ZFS, sizeof(buf->f_fstypename));
+				strlcpy(buf->f_mntonname, "/BOOM", sizeof(buf->f_mntonname)); // FIXME, hardcoded
+			} else {
+				strlcpy(buf->f_mntfromname, DeviceName, sizeof(buf->f_mntfromname));
+				strlcpy(buf->f_fstypename, "UKN", sizeof(buf->f_fstypename));
+				strlcpy(buf->f_mntonname, name, sizeof(buf->f_mntonname));
+			}
+			UID = NULL;
+			buf++; // Go to next struct.
+			bufsize -= sizeof(*buf);
+		}
+
+		count++;
+
+	} while (FindNextVolume(vh, name, sizeof(name)) != 0);
+	FindVolumeClose(vh);
+	//printf("%s: returning %d structures\n", __func__, count);
+	return count;
+}
+
+
+
 static int
 statfs_init(void)
 {
@@ -277,14 +437,14 @@ statfs_init(void)
 		free(gsfs);
 		gsfs = NULL;
 	}
-//	allfs = getfsstat(NULL, 0, MNT_NOWAIT);
+	allfs = getfsstat(NULL, 0, MNT_NOWAIT);
 	if (allfs == -1)
 		goto fail;
 	gsfs = malloc(sizeof(gsfs[0]) * allfs * 2);
 	if (gsfs == NULL)
 		goto fail;
-	//allfs = getfsstat(gsfs, (long)(sizeof(gsfs[0]) * allfs * 2),
-      //                MNT_NOWAIT);
+	allfs = getfsstat(gsfs, (long)(sizeof(gsfs[0]) * allfs * 2),
+		MNT_NOWAIT);
 	if (allfs == -1)
 		goto fail;
 	sfs = realloc(gsfs, allfs * sizeof(gsfs[0]));

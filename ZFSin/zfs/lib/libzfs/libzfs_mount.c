@@ -466,33 +466,10 @@ do_mount(const char *src, const char *mntpt, char *opts)
 #endif /* __LINUX__ */
 
 static int
-do_unmount(const char *mntpt, int flags)
+do_unmount(zfs_handle_t *zhp, const char *mntpt, int flags)
 {
-	char force_opt[] = "force";
-#ifdef __LINUX__
-	char lazy_opt[] = "-l";
-#endif /* __LINUX__ */
-	char *argv[7] = {
-	    "/usr/sbin/diskutil",
-	    "unmount",
-	    NULL, NULL, NULL, NULL };
-	int rc, count = 2;
-
-	if (flags & MS_FORCE) {
-		argv[count] = force_opt;
-		count++;
-	}
-
-#ifdef __LINUX__
-	if (flags & MS_DETACH) {
-		argv[count] = lazy_opt;
-		count++;
-	}
-#endif /* __LINUX__ */
-
-	argv[count] = (char *)mntpt;
-	rc = libzfs_run_process(argv[0], argv, STDOUT_VERBOSE|STDERR_VERBOSE);
-
+	int rc;
+	rc = zunmount(zhp, mntpt, flags);
 	return (rc ? EINVAL : 0);
 }
 
@@ -949,12 +926,12 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
  * Unmount a single filesystem.
  */
 static int
-unmount_one(libzfs_handle_t *hdl, const char *mountpoint, int flags)
+unmount_one(zfs_handle_t *zhp, const char *mountpoint, int flags)
 {
     int error;
-    error = do_unmount(mountpoint, flags);
+    error = do_unmount(zhp, mountpoint, flags);
     if (error != 0) {
-        return (zfs_error_fmt(hdl, EZFS_UMOUNTFAILED,
+        return (zfs_error_fmt(zhp->zfs_hdl, EZFS_UMOUNTFAILED,
                               dgettext(TEXT_DOMAIN, "cannot unmount '%s'"),
                     mountpoint));
     }
@@ -1003,7 +980,7 @@ zfs_unmount(zfs_handle_t *zhp, const char *mountpoint, int flags)
 #endif
 		return (-1);
 
-		if (unmount_one(hdl, mntpt, flags) != 0) {
+		if (unmount_one(zhp, mntpt, flags) != 0) {
 			free(mntpt);
 #ifdef __illumos__
 			(void) zfs_shareall(zhp);
@@ -1716,7 +1693,7 @@ zpool_disable_datasets(zpool_handle_t *zhp, boolean_t force)
 		if (entry.mnt_fstype == NULL ||
 		    strncmp(entry.mnt_special, zhp->zpool_name, namelen) != 0 ||
 		    (entry.mnt_special[namelen] != '/' &&
-#ifdef __APPLE__
+#ifdef _WIN32
 		    /*
 		     * On OS X, '@' is possible too since we're temporarily
 		     * allowing manual snapshot mounting.
@@ -1816,7 +1793,7 @@ zpool_disable_datasets(zpool_handle_t *zhp, boolean_t force)
 	 * appropriate.
 	 */
 	for (i = 0; i < used; i++) {
-		if (unmount_one(hdl, mountpoints[i], flags) != 0)
+		if (unmount_one(datasets[i], mountpoints[i], flags) != 0)
 			goto out;
 	}
 
