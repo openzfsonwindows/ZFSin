@@ -2293,11 +2293,16 @@ dispatcher(
 
 	if (DeviceObject == ioctlDeviceObject)
 		Status = ioctlDispatcher(DeviceObject, Irp, IrpSp);
-	else if (DeviceObject == diskDeviceObject)
-		Status = diskDispatcher(DeviceObject, Irp, IrpSp);
-	else if (DeviceObject == fsDeviceObject)
-		Status = fsDispatcher(DeviceObject, Irp, IrpSp);
-	
+	else {
+		mount_t *zmo = DeviceObject->DeviceExtension;
+		if (zmo && zmo->type == MOUNT_TYPE_DCB)
+			Status = diskDispatcher(DeviceObject, Irp, IrpSp);
+		else if (zmo && zmo->type == MOUNT_TYPE_VCB)
+			Status = fsDispatcher(DeviceObject, Irp, IrpSp);
+		else
+			DbgBreakPoint();
+	}
+
 	Irp->IoStatus.Status = Status;
 
 	if (TopLevel) { IoSetTopLevelIrp(NULL); }
