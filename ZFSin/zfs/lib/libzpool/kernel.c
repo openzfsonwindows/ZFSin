@@ -695,7 +695,7 @@ vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
 	vnode_t *vp;
 	int old_umask = 0;
 	char *realpath;
-	struct stat st;
+	struct _stat64 st;
 	int err;
 
 	realpath = umem_alloc(MAXPATHLEN, UMEM_NOFAIL);
@@ -865,7 +865,7 @@ vn_close(vnode_t *vp)
 int
 fop_getattr(vnode_t *vp, vattr_t *vap)
 {
-	struct stat st;
+	struct _stat64 st;
 	int err;
 
 	if (fstat_blk(vp->v_fd, &st) == -1) {
@@ -1086,7 +1086,7 @@ kobj_close_file(struct _buf *file)
 int
 kobj_get_filesize(struct _buf *file, uint64_t *size)
 {
-	struct stat st;
+	struct _stat64 st;
 	vnode_t *vp = (vnode_t *)file->_fd;
 
 	if (fstat(vp->v_fd, &st) == -1) {

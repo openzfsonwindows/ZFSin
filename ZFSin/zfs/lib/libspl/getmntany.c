@@ -134,7 +134,7 @@ openat64(int dirfd, const char *path, int flags, ...)
 }
 
 int
-fstatat64(int dirfd, const char *path, struct stat *statbuf, int flag)
+fstatat64(int dirfd, const char *path, struct _stat64 *statbuf, int flag)
 {
 	int cwdfd, error;
 

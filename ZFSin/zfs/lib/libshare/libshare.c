@@ -351,7 +351,7 @@ process_share(sa_handle_impl_t impl_handle, sa_share_impl_t impl_share,
     char *options, char *description, char *dataset,
     boolean_t from_sharetab)
 {
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	int rc;
 	char *resource_dup = NULL, *dataset_dup = NULL;
 	boolean_t new_share;

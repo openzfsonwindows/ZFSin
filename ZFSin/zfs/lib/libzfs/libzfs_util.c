@@ -815,7 +815,7 @@ libzfs_load_module(const char *module)
 #if defined __APPLE__
 	char *argv[4] = {"/sbin/kextload", NULL, (char *)0};
 	char *modpath = NULL;
-	struct stat s1, s2;
+	struct _stat64 s1, s2;
 
 
     /* Check if zfs is already loaded */
@@ -1008,7 +1008,7 @@ zfs_get_pool_handle(const zfs_handle_t *zhp)
 zfs_handle_t *
 zfs_path_to_zhandle(libzfs_handle_t *hdl, char *path, zfs_type_t argtype)
 {
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	struct extmnttab entry;
 	int ret;
 

@@ -805,7 +805,7 @@ zpool_do_labelclear(int argc, char **argv)
 {
 	char vdev[MAXPATHLEN];
 	char *name = NULL;
-	struct stat st;
+	struct _stat64 st;
 	int c, fd, ret = 0;
 	nvlist_t *config;
 	pool_state_t state;

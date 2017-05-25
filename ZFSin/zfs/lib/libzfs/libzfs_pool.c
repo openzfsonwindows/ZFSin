@@ -460,7 +460,7 @@ zpool_valid_proplist(libzfs_handle_t *hdl, const char *poolname,
 	char *strval;
 	uint64_t intval;
 	char *slash, *check;
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	zpool_handle_t *zhp;
 	nvlist_t *nvroot;
 
@@ -4244,7 +4244,7 @@ find_start_block(nvlist_t *config)
 int
 zpool_label_disk_wait(char *path, int timeout)
 {
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	int i;
 
 	/*

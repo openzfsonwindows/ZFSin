@@ -620,7 +620,7 @@ is_whole_disk(const char *path)
  */
 static int
 is_shorthand_path(const char *arg, char *path,
-                  struct stat *statbuf, boolean_t *wholedisk)
+                  struct _stat64 *statbuf, boolean_t *wholedisk)
 {
 	int error;
 
@@ -703,7 +703,7 @@ static nvlist_t *
 make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 {
 	char path[MAXPATHLEN];
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	nvlist_t *vdev = NULL;
 	char *type = NULL;
 	boolean_t wholedisk = B_FALSE;
@@ -922,7 +922,7 @@ get_replication(nvlist_t *nvroot, boolean_t fatal)
 			for (c = 0; c < children; c++) {
 				nvlist_t *cnv = child[c];
 				char *path;
-				struct stat statbuf;
+				struct _stat64 statbuf;
 				uint64_t size = -1ULL;
 				char *childtype;
 				int fd, err;
@@ -1232,7 +1232,7 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 	char devpath[MAXPATHLEN];
 	char udevpath[MAXPATHLEN];
 	uint64_t wholedisk;
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	int is_exclusive = 0;
 	int fd;
 	int ret;

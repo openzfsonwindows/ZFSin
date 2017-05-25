@@ -231,7 +231,7 @@ is_shared(libzfs_handle_t *hdl, const char *mountpoint, zfs_share_proto_t proto)
 static boolean_t
 dir_is_empty_stat(const char *dirname)
 {
-	struct stat st;
+	struct _stat64 st;
 
 	/*
 	 * We only want to return false if the given path is a non empty
@@ -556,7 +556,7 @@ zfs_add_options(zfs_handle_t *zhp, char *options, int len)
 static boolean_t
 should_update_icon(FILE *current_icon)
 {
-	struct stat sbuf;
+	struct _stat64 sbuf;
 	off_t current_icon_size;
 	CC_MD5_CTX ctx;
 	size_t n;
@@ -597,7 +597,7 @@ zfs_mount_seticon(const char *mountpoint)
 	/* For a root file system, add a volume icon. */
 	ssize_t attrsize;
 	uint16_t finderinfo[16];
-	struct stat sbuf;
+	struct _stat64 sbuf;
 	char *path;
 	FILE *dstfp, *srcfp;
 	unsigned char buf[1024];
@@ -884,7 +884,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 		 */
 		char *path;
 		if (asprintf(&path, "%s/.metadata_never_index", mountpoint) > 0) {
-			struct stat stsb;
+			struct _stat64 stsb;
 			/* UTC: Fri, 01 May 2015 00:00:00 +0000 */
 			if (!stat(path, &stsb) && (stsb.st_mtime < 1430438400)) {
 				unlink(path);
@@ -899,7 +899,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 		 */
 		{
 			char *path;
-			struct stat stsb;
+			struct _stat64 stsb;
 			if (asprintf(&path,
 				"%s/.Trashes", mountpoint) > 0) {
 

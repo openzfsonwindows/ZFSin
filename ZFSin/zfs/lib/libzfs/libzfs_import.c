@@ -877,7 +877,7 @@ label_offset(uint64_t size, int l)
 int
 zpool_read_label(int fd, nvlist_t **config, int *num_labels)
 {
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	int l, count = 0;
 	vdev_label_t *label;
 	nvlist_t *expected_config = NULL;
@@ -1223,7 +1223,7 @@ zpool_open_func(void *arg)
 {
 	rdsk_node_t *rn = arg;
 #ifdef _WIN32
-	struct stat statbuf;
+	struct _stat64 statbuf;
 #else
 	struct stat64 statbuf;
 #endif
@@ -1383,7 +1383,7 @@ static void
 zpool_open_func_win(void *arg)
 {
 	rdsk_node_t *rn = arg;
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	nvlist_t *config;
 	int num_labels;
 	HANDLE fd;
@@ -1507,7 +1507,7 @@ zpool_open_func_win(void *arg)
 int
 zpool_clear_label(int fd)
 {
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	int l;
 	vdev_label_t *label;
 	uint64_t size;
@@ -2208,7 +2208,7 @@ zpool_find_import_cached(libzfs_handle_t *hdl, const char *cachefile,
 {
 	char *buf;
 	int fd;
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	nvlist_t *raw, *src, *dst;
 	nvlist_t *pools;
 	nvpair_t *elem;

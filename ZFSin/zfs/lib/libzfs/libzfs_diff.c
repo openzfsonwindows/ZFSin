@@ -487,7 +487,7 @@ static int
 find_shares_object(differ_info_t *di)
 {
 	char fullpath[MAXPATHLEN];
-	struct stat sb = { 0 };
+	struct _stat64 sb = { 0 };
 
 	(void) strlcpy(fullpath, di->dsmnt, MAXPATHLEN);
 	(void) strlcat(fullpath, ZDIFF_SHARESDIR, MAXPATHLEN);
