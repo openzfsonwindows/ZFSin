@@ -113,13 +113,7 @@ O Hardware ID Driver Update
 Root\ZFSin
 
 
-To receive the Debug Prints on Host, you need to move
-
-contrib/DebugPrints.reg
-
-to the Target VM, and run it. Or you can run DbgView on the
-Target VM to see the prints on that VM.
-
+You can run DbgView on the Target VM to see the kernel prints on that VM.
 
 
 Run the compiled Target
@@ -223,3 +217,6 @@ it makes zio_taskq_member(taskq_member()) crash. Investigate.
   list of all mounts. Possibly also related is that we can not call
   any of the functions to set mountpoint to change it. This needs to
   be researched.
+
+* Find a way to get system RAM in SPL, so we can size up the kmem as
+expected. Currently fixed at 1GB.
