@@ -288,12 +288,14 @@
     <ClCompile Include="zfs\module\zcommon\zpool_prop.c" />
     <ClCompile Include="zfs\module\zcommon\zprop_common.c" />
     <ClCompile Include="zfs\module\zfs\abd.c" />
+    <ClCompile Include="zfs\module\zfs\aggsum.c" />
     <ClCompile Include="zfs\module\zfs\arc.c" />
     <ClCompile Include="zfs\module\zfs\blkptr.c" />
     <ClCompile Include="zfs\module\zfs\bplist.c" />
     <ClCompile Include="zfs\module\zfs\bpobj.c" />
     <ClCompile Include="zfs\module\zfs\bptree.c" />
     <ClCompile Include="zfs\module\zfs\bqueue.c" />
+    <ClCompile Include="zfs\module\zfs\cityhash.c" />
     <ClCompile Include="zfs\module\zfs\dbuf.c" />
     <ClCompile Include="zfs\module\zfs\dbuf_stats.c" />
     <ClCompile Include="zfs\module\zfs\ddt.c" />

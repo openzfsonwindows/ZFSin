@@ -327,5 +327,11 @@
     <ClCompile Include="..\..\..\module\zfs\zthr.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\module\zfs\aggsum.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\module\zfs\cityhash.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

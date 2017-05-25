@@ -44,12 +44,14 @@
     <ClCompile Include="..\..\..\module\zcommon\zpool_prop.c" />
     <ClCompile Include="..\..\..\module\zcommon\zprop_common.c" />
     <ClCompile Include="..\..\..\module\zfs\abd.c" />
+    <ClCompile Include="..\..\..\module\zfs\aggsum.c" />
     <ClCompile Include="..\..\..\module\zfs\arc.c" />
     <ClCompile Include="..\..\..\module\zfs\blkptr.c" />
     <ClCompile Include="..\..\..\module\zfs\bplist.c" />
     <ClCompile Include="..\..\..\module\zfs\bpobj.c" />
     <ClCompile Include="..\..\..\module\zfs\bptree.c" />
     <ClCompile Include="..\..\..\module\zfs\bqueue.c" />
+    <ClCompile Include="..\..\..\module\zfs\cityhash.c" />
     <ClCompile Include="..\..\..\module\zfs\dbuf.c" />
     <ClCompile Include="..\..\..\module\zfs\dbuf_stats.c" />
     <ClCompile Include="..\..\..\module\zfs\ddt.c" />
