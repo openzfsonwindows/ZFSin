@@ -240,13 +240,12 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 
 	ObjectAttributes.Length = sizeof(OBJECT_ATTRIBUTES);
 	ObjectAttributes.RootDirectory = NULL;
-	ObjectAttributes.Attributes = 0; /*OBJ_CASE_INSENSITIVE;*/
+	ObjectAttributes.Attributes = /*OBJ_CASE_INSENSITIVE |*/ OBJ_KERNEL_HANDLE; 
 	ObjectAttributes.ObjectName = &UnicodeFilespec;
 	ObjectAttributes.SecurityDescriptor = NULL;
 	ObjectAttributes.SecurityQualityOfService = NULL;
 	IO_STATUS_BLOCK iostatus;
 
-//DbgBreakPoint();
 	ntstatus = ZwCreateFile(&dvd->vd_lh,
 		spa_mode(spa) == FREAD ? GENERIC_READ | SYNCHRONIZE : GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE,
 		&ObjectAttributes,
@@ -263,6 +262,7 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 		error = 0;
 	} else {
 		error = EINVAL; // GetLastError();
+		dvd->vd_lh = NULL;
 	}
 
 	/*
@@ -416,6 +416,7 @@ vdev_disk_close(vdev_t *vd)
 		// Close file
 		ZwClose(dvd->vd_lh);
 	}
+
 	dvd->vd_lh = NULL;
 	dvd->vd_FileObject = NULL;
 	dvd->vd_DeviceObject = NULL;
