@@ -182,8 +182,8 @@ extern proc_t p0;
 #define bcmp(b1, b2, len) (memcmp((b2), (b1), (len)))
 //int snprintf(char *s, int l, char *fmt, ...);
 
-#define strlcpy(D, S, N) strncpy_s((D), (N), (S), _TRUNCATE)
-#define strlcat(D, S, N) strncat_s((D), (N), (S), _TRUNCATE)
+extern uint32_t strlcpy(register char* s, register const char* t, register uint32_t n);
+extern uint32_t strlcat(register char* s, register const char* t, register uint32_t n);
 #define strtok_r strtok_s
 
 #define htonl _byteswap_ulong

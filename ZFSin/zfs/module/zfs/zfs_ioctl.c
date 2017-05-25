@@ -6226,8 +6226,6 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg, int xflag, struct proc *p)
 	dprintf("ZFS: ioctl out: %d\n", error);
 	nvlist_free(innvl);
 
-	zc->zc_name[0] = '@';
-
 	//arg = Irp->UserBuffer;
 	arg = irpSp->Parameters.DeviceIoControl.Type3InputBuffer;
 	rc = ddi_copyout(zc, (void *)arg, sizeof (zfs_cmd_t), flag);

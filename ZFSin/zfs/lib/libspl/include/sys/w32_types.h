@@ -107,11 +107,6 @@ typedef struct timespec			timestruc_t; /* definition per SVr4 */
 typedef struct timespec			timespec_t;
 
 
-#define strlcpy(D, S, N) strncpy_s((D), (N), (S), _TRUNCATE)
-#define strlcat(D, S, N) strncat_s((D), (N), (S), _TRUNCATE)
-
-
-
 /*
  * Definitions remaining from previous partial support for 64-bit file
  * offsets.  This partial support for devices greater than 2gb requires

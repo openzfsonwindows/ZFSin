@@ -734,3 +734,53 @@ int socketpair(int *sv)
 
 	return 0;  /* normal case */
 }
+
+extern uint32_t
+strlcpy(register char* s, register const char* t, register uint32_t n)
+{
+	const char*     o = t;
+
+	if (n)
+		do
+		{
+			if (!--n)
+			{
+				*s = 0;
+				break;
+			}
+		} while (*s++ = *t++);
+		if (!n)
+			while (*t++);
+		return t - o - 1;
+}
+
+extern uint32_t
+strlcat(register char* s, register const char* t, register uint32_t n)
+{
+	register size_t m;
+	const char*     o = t;
+
+	if (m = n)
+	{
+		while (n && *s)
+		{
+			n--;
+			s++;
+		}
+		m -= n;
+		if (n)
+			do
+			{
+				if (!--n)
+				{
+					*s = 0;
+					break;
+				}
+			} while (*s++ = *t++);
+		else
+			*s = 0;
+	}
+	if (!n)
+		while (*t++);
+	return (t - o) + m - 1;
+}
