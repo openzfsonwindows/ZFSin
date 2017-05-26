@@ -406,7 +406,7 @@ int getfsstat(struct statfs *buf, int bufsize, int flags)
 				// Look up mountpoint
 				strlcpy(buf->f_mntfromname, UID->UniqueId, sizeof(buf->f_mntfromname));
 				strlcpy(buf->f_fstypename, MNTTYPE_ZFS, sizeof(buf->f_fstypename));
-				strlcpy(buf->f_mntonname, "/BOOM", sizeof(buf->f_mntonname)); // FIXME, hardcoded
+				strlcpy(buf->f_mntonname, UID->UniqueId, sizeof(buf->f_mntonname)); // FIXME, should be mountpoint!
 			} else {
 				strlcpy(buf->f_mntfromname, DeviceName, sizeof(buf->f_mntfromname));
 				strlcpy(buf->f_fstypename, "UKN", sizeof(buf->f_fstypename));

@@ -629,7 +629,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	mnt_args.fspec  = zc->zc_name;
 
 	status = zfs_vfs_mount(zmo_vcb, NULL, &mnt_args, NULL);
-	dprintf("%s: zfs_vfs_mount() returns %d\n", status);
+	dprintf("%s: zfs_vfs_mount() returns %d\n", __func__, status);
 
 	if (status) {
 		zfs_release_mount(zmo_vcb);

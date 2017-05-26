@@ -796,10 +796,10 @@ NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	PMOUNTDEV_UNIQUE_ID uniqueId;
-	WCHAR				deviceName[MAXIMUM_FILENAME_LENGTH];
 	ULONG				bufferLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
 	mount_t *zmo;
 	char osname[MAXNAMELEN];
+	ULONG len;
 
 	zmo = (mount_t *)DeviceObject->DeviceExtension;
 
@@ -808,12 +808,8 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		return STATUS_BUFFER_TOO_SMALL;
 	}
 
-	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
-	if (zfsvfs == NULL) {
-		strcpy(osname, "unknown");
-	} else {
-		dmu_objset_name(zfsvfs->z_os, osname);
-	}
+	RtlUnicodeToUTF8N(osname, MAXPATHLEN, &len, zmo->name.Buffer, zmo->name.Length);
+	osname[len] = 0;
 
 	// uniqueId appears to be CHARS not WCHARS, so this might need correcting?
 	uniqueId = (PMOUNTDEV_UNIQUE_ID)Irp->AssociatedIrp.SystemBuffer;
