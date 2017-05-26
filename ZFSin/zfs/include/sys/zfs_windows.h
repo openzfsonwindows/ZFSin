@@ -30,8 +30,6 @@
 
 
 extern PDEVICE_OBJECT ioctlDeviceObject;
-extern PDEVICE_OBJECT diskDeviceObject;
-extern PDEVICE_OBJECT fsDeviceObject;
 
 #define ZFS_SERIAL (ULONG)'wZFS'
 #define VOLUME_LABEL			L"ZFS"
@@ -62,6 +60,7 @@ extern void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject);
 NTSTATUS zfsdev_open(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTSTATUS zfsdev_release(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 
+int zfs_vnop_recycle(znode_t *zp, int force);
 
 
 #endif

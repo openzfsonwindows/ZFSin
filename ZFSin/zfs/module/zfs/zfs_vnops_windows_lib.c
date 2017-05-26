@@ -494,7 +494,25 @@ DokanRegisterDeviceInterface(
 }
 
 
+void FreeUnicodeString(PUNICODE_STRING s)
+{
+	if (s->Buffer) ExFreePool(s->Buffer);
+	s->Buffer = NULL;
+}
 
+void zfs_release_mount(mount_t *zmo)
+{
+	FreeUnicodeString(&zmo->symlink_name);
+	FreeUnicodeString(&zmo->device_name);
+	FreeUnicodeString(&zmo->fs_name);
+	FreeUnicodeString(&zmo->uuid);
+
+	if (zmo->diskDeviceObject->Vpb) {
+		zmo->diskDeviceObject->Vpb->DeviceObject = NULL;
+		zmo->diskDeviceObject->Vpb->RealDevice = NULL;
+		zmo->diskDeviceObject->Vpb->Flags = 0;
+	}
+}
 
 int zfs_windows_mount(zfs_cmd_t *zc)
 {
@@ -503,14 +521,8 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	uuid_t uuid;
 	char uuid_a[UUID_PRINTABLE_STRING_LENGTH];
 	PDEVICE_OBJECT pdo = NULL;
-#if 0
-	status = IoReportDetectedDevice(WIN_DriverObject, InterfaceTypeUndefined, 0xFFFFFFFF, 0xFFFFFFFF,
-		NULL, NULL, 0, &pdo);
-	if (status != STATUS_SUCCESS) {
-		dprintf("IoReportDetectedDevice returned %08x\n", status);
-		return status;
-	}
-#endif
+	PDEVICE_OBJECT diskDeviceObject = NULL;
+	PDEVICE_OBJECT fsDeviceObject = NULL;
 
 	zfs_vfs_uuid_gen(zc->zc_name, uuid);
 	zfs_vfs_uuid_unparse(uuid, uuid_a);
@@ -618,6 +630,18 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 
 	status = zfs_vfs_mount(zmo_vcb, NULL, &mnt_args, NULL);
 	dprintf("%s: zfs_vfs_mount() returns %d\n", status);
+
+	if (status) {
+		zfs_release_mount(zmo_vcb);
+		zfs_release_mount(zmo_dcb);
+		ObReferenceObject(fsDeviceObject);
+		ObReferenceObject(diskDeviceObject);
+		IoDeleteDevice(diskDeviceObject);
+		IoDeleteDevice(fsDeviceObject);
+		return status;
+	}
+
+
 
 	//ExInitializeFastMutex(&zmo_vcb->AdvancedFCBHeaderMutex);
 	//FsRtlSetupAdvancedHeader(&zmo_vcb->VolumeFileHeader, &zmo_vcb->AdvancedFCBHeaderMutex);
@@ -749,11 +773,6 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	return status;
 }
 
-void FreeUnicodeString(PUNICODE_STRING s)
-{
-	if (s->Buffer) ExFreePool(s->Buffer);
-	s->Buffer = NULL;
-}
 
 extern int getzfsvfs(const char *dsname, zfsvfs_t **zfvp);
 
@@ -768,33 +787,47 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 	// mount_t has deviceObject, names etc.
 	mount_t *zmo;
 	zfsvfs_t *zfsvfs;
+	int error = EBUSY;
+	znode_t *zp;
+	//int rdonly;
 
 	if (getzfsvfs(zc->zc_name, &zfsvfs) == 0) {
 
 		zmo = zfsvfs->z_vfs;
 		ASSERT(zmo->type == MOUNT_TYPE_VCB);
 
+		// Purge all znodes. Find a Windowsy way to do this, in vflush()
+		while ((zp = list_head(&zfsvfs->z_all_znodes)) != NULL) {
+
+			// Recycling the node will remove it from the list
+			zfs_vnop_recycle(zp, 1);
+		}
+
+		// Flush volume
+		//rdonly = !spa_writeable(dmu_objset_spa(zfsvfs->z_os));
+
+		error = zfs_vfs_unmount(zmo, 0, NULL);
+		dprintf("%s: zfs_vfs_unmount %d\n", __func__, error);
+		if (error) goto out_unlock;
+
+		// Release devices
+
 		IoDeleteSymbolicLink(&zmo->symlink_name);
 
-		FreeUnicodeString(&zmo->symlink_name);
-		FreeUnicodeString(&zmo->device_name);
-		FreeUnicodeString(&zmo->fs_name);
-		FreeUnicodeString(&zmo->uuid);
-
-		if (zmo->diskDeviceObject->Vpb) {
-			zmo->diskDeviceObject->Vpb->DeviceObject = NULL;
-			zmo->diskDeviceObject->Vpb->RealDevice = NULL;
-			zmo->diskDeviceObject->Vpb->Flags = 0;
-		}
+		zfs_release_mount(zmo);
 
 		// fsDeviceObject
 		IoDeleteDevice(zmo->deviceObject);
 		// diskDeviceObject
 		IoDeleteDevice(zmo->diskDeviceObject);
+
+		error = 0;
+
+out_unlock:
 		// counter to getzfvfs
 		vfs_unbusy(zfsvfs->z_vfs);
 	}
-	return 0;
+	return error;
 }
 
 

@@ -433,4 +433,13 @@ void vnode_rele(vnode_t *vp);
 
 #define VNODE_READDIR_EXTENDED 1
 
+#define SKIPSYSTEM      0x0001          /* vflush: skip vnodes marked VSYSTEM */
+#define FORCECLOSE      0x0002          /* vflush: force file closeure */
+#define WRITECLOSE      0x0004          /* vflush: only close writeable files */
+#define SKIPSWAP        0x0008          /* vflush: skip vnodes marked VSWAP */
+#define SKIPROOT        0x0010          /* vflush: skip root vnodes marked VROOT */
+#define NULLVP NULL
+
+int     vflush(struct mount *mp, struct vnode *skipvp, int flags);
+
 #endif /* SPL_VNODE_H */

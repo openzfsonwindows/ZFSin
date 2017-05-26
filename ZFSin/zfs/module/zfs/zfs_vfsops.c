@@ -2957,7 +2957,7 @@ int
 zfs_vfs_unmount(struct mount *mp, int mntflags, vfs_context_t *context)
 {
 dprintf("%s\n", __func__);
-#if 0
+
 zfsvfs_t *zfsvfs = vfs_fsprivate(mp);
 	//kthread_t *td = (kthread_t *)curthread;
 	objset_t *os;
@@ -3010,7 +3010,9 @@ zfsvfs_t *zfsvfs = vfs_fsprivate(mp);
 			//ASSERT(zfsvfs->z_ctldir->v_count == 1);
 		}
         dprintf("z_ctldir destroy\n");
+#ifndef _WIN32
 		zfsctl_destroy(zfsvfs);
+#endif
 		ASSERT(zfsvfs->z_ctldir == NULL);
 	}
 
@@ -3051,7 +3053,9 @@ zfsvfs_t *zfsvfs = vfs_fsprivate(mp);
 
 	if ((ret != 0) && !(mntflags & MNT_FORCE)) {
 		if (!zfsvfs->z_issnap) {
+#ifndef _WIN32
 			zfsctl_create(zfsvfs);
+#endif
 			//ASSERT(zfsvfs->z_ctldir != NULL);
 		}
 		return (ret);
@@ -3153,8 +3157,10 @@ zfsvfs_t *zfsvfs = vfs_fsprivate(mp);
 	/*
 	 * We can now safely destroy the '.zfs' directory node.
 	 */
+#ifndef _WIN32
 	if (zfsvfs->z_ctldir != NULL)
 		zfsctl_destroy(zfsvfs);
+#endif
 #if 0
 	if (zfsvfs->z_issnap) {
 		vnode_t *svp = vfsp->mnt_vnodecovered;
@@ -3168,7 +3174,7 @@ zfsvfs_t *zfsvfs = vfs_fsprivate(mp);
 	zfs_freevfs(zfsvfs->z_vfs);
 
     dprintf("-unmount\n");
-#endif
+
 	return (0);
 }
 

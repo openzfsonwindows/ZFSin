@@ -80,8 +80,6 @@
 
 
 PDEVICE_OBJECT ioctlDeviceObject = NULL;
-PDEVICE_OBJECT diskDeviceObject = NULL;
-PDEVICE_OBJECT fsDeviceObject = NULL;
 
 
 #ifdef _KERNEL
@@ -410,6 +408,41 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	Irp->IoStatus.Information = FILE_OPENED;
 	return STATUS_SUCCESS;
+}
+
+
+int zfs_vnop_recycle(znode_t *zp, int force)
+{
+	struct vnode *vp = ZTOV(zp);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+
+	VN_HOLD(vp);
+
+	if ((force != 0)  ||  
+		(vp->v_iocount == 1 && vp->v_usecount == 0)) { // fix vnode_isbusy()
+
+		dprintf("IRP_MJ_CLEANUP: releasing zp %p and vp %p\n", zp, vp);
+
+		// Decouple the nodes
+		ZTOV(zp) = NULL;
+		vnode_clearfsnode(vp); /* vp->v_data = NULL */
+		vnode_recycle(vp); // releases hold - marks dead
+		vp = NULL;
+
+		// Release znode
+		rw_enter(&zfsvfs->z_teardown_inactive_lock, RW_READER);
+		if (zp->z_sa_hdl == NULL)
+			zfs_znode_free(zp);
+		else
+			zfs_zinactive(zp);
+		rw_exit(&zfsvfs->z_teardown_inactive_lock);
+
+	} else {
+		VN_RELE(vp);
+	}
+
+	atomic_inc_64(&vnop_num_reclaims);
+	return 0;
 }
 
 
@@ -2138,34 +2171,9 @@ fsDispatcher(
 				delete_entry(DeviceObject, Irp, IrpSp);
 			}
 
-#if 1 // We need to add refcount to vp, and only free once 0
 
-			VN_HOLD(vp);
+			zfs_vnop_recycle(VTOZ(vp), 0);
 
-			if (vp->v_iocount == 1 && vp->v_usecount == 0) { // fix vnode_isbusy()
-				
-				dprintf("IRP_MJ_CLEANUP: releasing zp %p and vp %p\n", zp, vp);
-
-				// Decouple the nodes
-				ZTOV(zp) = NULL;
-				vnode_clearfsnode(vp); /* vp->v_data = NULL */
-				vnode_recycle(vp); // releases hold - marks dead
-				vp = NULL;
-
-				// Release znode
-				rw_enter(&zfsvfs->z_teardown_inactive_lock, RW_READER);
-				if (zp->z_sa_hdl == NULL)
-					zfs_znode_free(zp);
-				else
-					zfs_zinactive(zp);
-				rw_exit(&zfsvfs->z_teardown_inactive_lock);
-
-			} else {
-				VN_RELE(vp);
-			}
-#endif
-
-			atomic_inc_64(&vnop_num_reclaims);
 		}
 		Status = STATUS_SUCCESS;
 		break;

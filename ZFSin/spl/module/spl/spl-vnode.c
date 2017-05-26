@@ -789,3 +789,12 @@ void vnode_create(void *v_data, int type, struct vnode **vpp)
 	(*vpp)->v_id = atomic_inc_32_nv(&(vnode_vid_counter));
 	atomic_inc_32(&(*vpp)->v_iocount);
 }
+
+
+
+int vflush(struct mount *mp, struct vnode *skipvp, int flags)
+{
+	// Figure out how to flush files in Windows
+
+	return 0;
+}
