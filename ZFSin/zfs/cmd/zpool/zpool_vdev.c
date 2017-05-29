@@ -715,7 +715,11 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 	 * 'path'.  We detect whether this is a device of file afterwards by
 	 * checking the st_mode of the file.
 	 */
-	if (arg[0] == '/') {
+	if (arg[0] == '/'
+#ifdef _WIN32
+		|| arg[0] == '\\'
+#endif
+		) {
 		/*
 		 * Complete device or file path.  Exact type is determined by
 		 * examining the file descriptor afterwards.  Symbolic links
