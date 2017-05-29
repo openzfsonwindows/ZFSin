@@ -1328,6 +1328,7 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	error = RtlUTF8ToUnicodeN(name->FileName, to_copy, &name->FileNameLength, strname, strlen(strname));
 
 	dprintf("* %s: returning name of %.*S\n", __func__, name->FileNameLength / sizeof(WCHAR), name->FileName);
+
 	return Status;
 }
 
@@ -1374,6 +1375,10 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		else
 			Irp->IoStatus.Information = sizeof(FILE_ALL_INFORMATION) + all->NameInformation.FileNameLength - sizeof(WCHAR);
 
+		dprintf("Input size 0x%x namelen 0x%x ret size 0x%x\n",
+			sizeof(FILE_ALL_INFORMATION),
+			all->NameInformation.FileNameLength,
+			Irp->IoStatus.Information);
 		break;
 	case FileAttributeTagInformation:
 		dprintf("* %s: FileAttributeTagInformation\n", __func__);
@@ -1600,24 +1605,26 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 		dprintf("%s: setting up search '%.*S'\n", __func__, zccb->searchname.Length / sizeof(WCHAR), zccb->searchname.Buffer);
 	}
 
-
 	VN_HOLD(dvp);
 	ret = zfs_readdir(dvp, uio, NULL, zccb, IrpSp->Flags, IrpSp->Parameters.QueryDirectory.FileInformationClass, &numdirent);
 	VN_RELE(dvp);
 
 	if (ret == 0) {
 
-		// Remember directory index for next time
-		zccb->uio_offset = uio_offset(uio);
-
 		// Set correct buffer size returned.
 		Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - uio_resid(uio);
 
-		// Return saying there are entries in buffer, or, end if no data
+		// Return saying there are entries in buffer, or, ]
+		// if we sent same data previously, but now EOF send NO MORE,
+		// or if there was nothing sent at all (search pattern failed), send NO SUCH
 		if (Irp->IoStatus.Information == 0)
-			Status = STATUS_NO_MORE_FILES;
+			Status = (zccb->uio_offset == 0) ? STATUS_NO_SUCH_FILE : STATUS_NO_MORE_FILES;
 		else
 			Status = STATUS_SUCCESS;
+
+		// Remember directory index for next time
+		zccb->uio_offset = uio_offset(uio);
+
 	}
 
 	// Release uio
