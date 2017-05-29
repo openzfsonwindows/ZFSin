@@ -2762,6 +2762,9 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 		tzp = &dummy;
 
+
+		// This can be improved as we do not need to zget if we are using search pattern
+
 		// If "." use zp, if ".." use dzp, neither needs releasing. Otherwise, call zget.
 		if (offset == 0) 
 			tzp = zp;

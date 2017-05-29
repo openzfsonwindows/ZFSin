@@ -118,6 +118,83 @@ uint64_t vnop_num_vnodes = 0;
  */
 
 
+
+int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, char **lastname, struct vnode **dvpp, struct vnode **vpp)
+{
+	int error;
+	znode_t *zp;
+	struct vnode *dvp = NULL;
+	struct vnode *vp = NULL;
+	char *word = NULL;
+	char *brkt = NULL;
+	struct componentname cn;
+
+	// Handle the case where dvp is given and not NULL?
+	// dvp = *dvpp;
+
+	// Iterate from root
+	error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
+
+	if (error == 0) {
+		dvp = ZTOV(zp);
+		for (word = strtok_r(filename, "/\\", &brkt);
+			word;
+			word = strtok_r(NULL, "/\\", &brkt)) {
+
+			cn.cn_nameiop = LOOKUP;
+			cn.cn_flags = ISLASTCN;
+			cn.cn_namelen = strlen(word);
+			cn.cn_nameptr = word;
+			error = zfs_lookup(dvp, word,
+				&vp, &cn, cn.cn_nameiop, NULL, /* flags */ 0);
+
+			if (error != 0) {
+
+				// If we are creating a file, or looking up parent,
+				// allow it not to exist
+				if (finalpartmaynotexist) break;
+
+				VN_RELE(dvp);
+				dvp = NULL;
+				break;
+			}
+			// If last lookup hit a non-directory type, we stop
+			zp = VTOZ(vp);
+			if (S_ISDIR(zp->z_mode)) {
+				VN_RELE(dvp);
+				dvp = vp;
+				vp = NULL;
+			} else {
+				VN_RELE(vp);
+				break;
+			} // is dir or not
+
+		} // for word
+		if (dvp) VN_RELE(dvp);
+	}
+
+	if (!dvp) {
+		dprintf("%s: failed to find dvp\n", __func__);
+		return ENOENT;
+	}
+	if (!vp && !finalpartmaynotexist)
+		return ENOENT;
+
+	if (lastname) {
+		*lastname = word;
+	}
+
+	if (dvpp != NULL)
+		*dvpp = dvp;
+	if (vpp != NULL)
+		*vpp = vp;
+
+	return 0;
+}
+
+
+
+
 int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 {
 	int error;
@@ -171,6 +248,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	CreateDisposition = (Options >> 24) & 0x000000ff;
 
 	IsPagingFile = BooleanFlagOn(IrpSp->Flags, SL_OPEN_PAGING_FILE);
+
+	// Open the directory instead of the file
 	OpenTargetDirectory = BooleanFlagOn(IrpSp->Flags, SL_OPEN_TARGET_DIRECTORY);
 
 	/*
@@ -255,6 +334,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// We need to have a parent from here on.
 	if (dvp == NULL) {
 
+//		error = zfs_find_dvp_vp(zfsvfs, filename, &lastname, &dvp, &vp);
+
 		// Iterate from root
 		error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
 
@@ -272,8 +353,10 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 					&vp, &cn, cn.cn_nameiop, cr, /* flags */ 0);
 
 				if (error != 0) {
-					// If we are creating a file, allow it not to exist
-					if (CreateFile) break;
+
+					// If we are creating a file, or looking up parent,
+					// allow it not to exist
+					if (CreateFile || OpenTargetDirectory) break;
 
 					VN_RELE(dvp);
 					dvp = NULL;
@@ -322,6 +405,25 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	}
 
 	finalname = word ? word : filename;
+
+	if (OpenTargetDirectory) {
+		if (dvp) {
+			dprintf("%s: opening PARENT directory\n", __func__);
+			zfs_dirlist_t *zccb = kmem_alloc(sizeof(zfs_dirlist_t), KM_SLEEP);
+			ASSERT(IrpSp->FileObject->FsContext2 == NULL);
+			zccb->magic = ZFS_DIRLIST_MAGIC;
+			zccb->uio_offset = 0;
+			zccb->dir_eof = 0;
+			IrpSp->FileObject->FsContext2 = zccb;
+			FileObject->FsContext = dvp;
+			VN_HOLD(dvp);
+			vnode_ref(dvp); // Hold open reference, until CLOSE
+			VN_RELE(dvp);
+			return STATUS_SUCCESS;
+		}
+		return STATUS_OBJECT_PATH_NOT_FOUND;
+	}
+
 
 	// Here we have "dvp" of the directory. 
 	// "vp" if the final part was a file.
@@ -966,14 +1068,117 @@ NTSTATUS lock_control(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	return Status;
 }
 
+NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	NTSTATUS Status;
+	/*
+	The file name string in the FileName member must be specified in one of the following forms.
+	A simple file name. (The RootDirectory member is NULL.) In this case, the file is simply renamed within the same directory.
+	That is, the rename operation changes the name of the file but not its location.
+
+	A fully qualified file name. (The RootDirectory member is NULL.) In this case, the rename operation changes the name and location of the file.
+
+	A relative file name. In this case, the RootDirectory member contains a handle to the target directory for the rename operation. The file name itself must be a simple file name.
+
+	NOTE: The RootDirectory handle thing never happens, and no sample source (including fastfat) handles it.
+	*/
+
+	FILE_RENAME_INFORMATION *ren = Irp->AssociatedIrp.SystemBuffer;
+	dprintf("* FileRenameInformation: %.*S\n", ren->FileNameLength / sizeof(WCHAR), ren->FileName);
+
+	ASSERT(ren->RootDirectory == NULL);
+
+	// So, use FileObject to get VP.
+	// Use VP to lookup parent.
+	// Use Filename to find destonation dvp, and vp if it exists.
+	if (IrpSp->FileObject == NULL || IrpSp->FileObject->FsContext == NULL)
+		return STATUS_INVALID_PARAMETER;
+
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	struct vnode *fvp = FileObject->FsContext;
+	znode_t *zp = VTOZ(fvp);
+	znode_t *dzp = NULL;
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+	int error;
+	ULONG outlen;
+	char *remainder = NULL;
+	char buffer[MAXNAMELEN], *filename;
+	struct vnode *tdvp = NULL, *tvp = NULL, *fdvp = NULL;
+	uint64_t parent;
+
+	// Convert incoming filename to utf8
+	error = RtlUnicodeToUTF8N(buffer, MAXNAMELEN, &outlen,
+		ren->FileName, ren->FileNameLength);
+
+	if (error != STATUS_SUCCESS &&
+		error != STATUS_SOME_NOT_MAPPED) {
+		return STATUS_ILLEGAL_CHARACTER;
+	}
+
+	// Output string is only null terminated if input is, so do so now.
+	buffer[outlen] = 0;
+	filename = buffer;
+
+	// Filename is often "\??\E:\name" so we want to eat everything up to the "\name"
+	if ((filename[0] == '\\') &&
+		(filename[1] == '?') &&
+		(filename[2] == '?') &&
+		(filename[3] == '\\') &&
+		/* [4] drive letter */
+		(filename[5] == ':') &&
+		(filename[6] == '\\'))
+		filename = &filename[6];
+
+	error = zfs_find_dvp_vp(zfsvfs, filename, 1, &remainder, &tdvp, &tvp);
+	if (error) {
+		return STATUS_OBJECTID_NOT_FOUND;
+	}
+
+	// If we have a "tvp" here, then something exists where we are to rename
+	if (tvp && !ren->ReplaceIfExists) {
+		return STATUS_OBJECT_NAME_EXISTS;
+	}
+
+
+	VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zfsvfs),
+		&parent, sizeof(parent)) == 0);
+
+	// Fetch fdvp
+	error = zfs_zget(zfsvfs, parent, &dzp);
+	if (error) {
+		return STATUS_OBJECTID_NOT_FOUND;
+	}
+
+	char fromname[MAXPATHLEN + 2];
+	error = zap_value_search(zfsvfs->z_os, dzp->z_id, zp->z_id,
+		ZFS_DIRENT_OBJ(-1ULL), fromname);
+	if (error) {
+		return STATUS_OBJECTID_NOT_FOUND;
+	}
+
+
+	fdvp = ZTOV(dzp);
+	VN_HOLD(fvp);
+	VN_HOLD(tdvp);
+	// We now hold everything but "tvp".
+
+	error = zfs_rename(fdvp, fromname, 
+		tdvp, remainder ? remainder : filename,
+		NULL, NULL, 0);
+
+	// Release all holds
+	VN_RELE(tdvp);
+	VN_RELE(fdvp);
+	VN_RELE(fvp);
+
+	return error;
+}
+
+
+
 NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_BASIC_INFORMATION *basic)
 {
 	dprintf("   %s\n", __func__);
-	basic->ChangeTime.QuadPart = gethrtime();
-	basic->CreationTime.QuadPart = gethrtime();
-	basic->LastAccessTime.QuadPart = gethrtime();
-	basic->LastWriteTime.QuadPart = gethrtime();
-	basic->FileAttributes = FILE_ATTRIBUTE_NORMAL;
 	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 		struct vnode *vp = IrpSp->FileObject->FsContext;
 		VN_HOLD(vp);
@@ -999,8 +1204,10 @@ NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK
 		else
 			basic->FileAttributes = FILE_ATTRIBUTE_NORMAL;
 		VN_RELE(vp);
+		return STATUS_SUCCESS;
 	}
-	return STATUS_SUCCESS;
+	dprintf("   %s failing\n", __func__);
+	return STATUS_OBJECT_PATH_NOT_FOUND;
 }
 
 NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_STANDARD_INFORMATION *standard)
@@ -1022,9 +1229,9 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 		standard->NumberOfLinks = zp->z_links;
 		standard->DeletePending = vnode_unlink(vp) ? TRUE : FALSE;
 		VN_RELE(vp);
+		return STATUS_SUCCESS;
 	}
-
-	return STATUS_SUCCESS;
+	return STATUS_OBJECT_PATH_NOT_FOUND;
 }
 
 NTSTATUS file_position_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_POSITION_INFORMATION *position)
@@ -1064,9 +1271,10 @@ NTSTATUS file_network_open_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 		netopen->EndOfFile.QuadPart = zp->z_size;
 		netopen->FileAttributes = S_ISDIR(zp->z_mode) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
 		VN_RELE(vp);
+		return STATUS_SUCCESS;
 	}
 
-	return STATUS_SUCCESS;
+	return STATUS_OBJECT_PATH_NOT_FOUND;
 }
 
 NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_NAME_INFORMATION *name, PULONG neededlen)
@@ -1099,7 +1307,7 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 
 	if (error) {
 		dprintf("%s: invalid filename\n", __func__);
-		return STATUS_FILE_INVALID;
+		return STATUS_OBJECT_PATH_NOT_FOUND;
 	}
 
 	// Convert name
@@ -1451,7 +1659,6 @@ NTSTATUS query_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 
 NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
-	FILE_DISPOSITION_INFORMATION *set;
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 
 	switch (IrpSp->Parameters.SetFile.FileInformationClass) {
@@ -1484,7 +1691,7 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		dprintf("* FilePositionInformation\n");
 		break;
 	case FileRenameInformation: // vnop_rename
-		dprintf("* FileRenameInformation\n");
+		Status = file_rename_information(DeviceObject, Irp, IrpSp);
 		break;
 	case FileValidDataLengthInformation:  // truncate?
 		dprintf("* FileValidDataLengthInformation\n");
