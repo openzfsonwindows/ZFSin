@@ -184,7 +184,6 @@ Windows Updates run, you can disable those in gpedit.msc
   ✓ Correct file information (dates, size, etc)
 
   ✓ Basic DOS usage
-  *  Missing rename
 
   ⃝ Simple Notepad text edit
   *  Reading is blank, writes fail.
