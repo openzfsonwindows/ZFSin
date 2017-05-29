@@ -20,7 +20,7 @@ fsDevice which gets the vnop requests from the mounted ZFS filesystem.
 IRP_MJ_CREATE appears to serve the purpose of vnop_lookup, vnop_open,
 vnop_mkdir, and vnop_create. The "create" in this context is more in
 the line of "create a handle to file/dir" - existing, or creating,
-entries.
+entries. It has a flag to open "parent" of a file entry as well.
 
 We will use "fscontext" for the vnode *vp pointer, which gets you
 znode_t pointer via VTOZ() macro.
@@ -51,13 +51,14 @@ wildcards or not, which you have to match against. This is only given
 in the first call, so that is stored in ccb.
 
 Deleting files and directories are done a little differently. It calls
-IRP_MJ_CREATE to open a handle to the file or directory, then calls
+IRP_MJ_CREATE to open a handle to the directory, then calls
 IRP_SET_INFORMATION with type FileDispositionInformation, which has a
 single entry "delete". Then it calls IRP_MJ_CLOSE, and eventually
-IRP_MJ_CLEANUP. And if this is the final reference to the
-file/directory, we call vnop_remove/vnop_rmdir. The "delete flag" is
-stored in the vnode, using the new vnode_setunlink() and
-vnode_unlink() calls.
+IRP_MJ_CLEANUP. And if this is the final reference to the directory,
+we call vnop_rmdir. For files, it calls IRP_MJ_CREATE with the flag
+DELETE_ON_CLOSE, and closes the file. The IRP_MJ_CLEANUP handler is
+eventually called. The "delete flag" is stored in the vnode, using the
+new vnode_setunlink() and vnode_unlink() calls.
 
 Many IRP calls that take structs will check the input size matches
 that of sizeof(struct). A few structs will paste variable length

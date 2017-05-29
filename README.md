@@ -219,3 +219,17 @@ it makes zio_taskq_member(taskq_member()) crash. Investigate.
 
 * Find a way to get system RAM in SPL, so we can size up the kmem as
 expected. Currently fixed at 1GB.
+
+* Creating filebased pools would look like:
+```
+# fsutil file createnew C:\poolfile.bin 200000000
+# zpool.exe create TEST \\?\C:\poolfile.bin
+```
+
+Note that "\\?\C:\" needs to be escaped in bash shell, ie
+"\\\\?\\C:\\".
+
+```
+        TEST                   ONLINE       0     0     0
+        \??\C:\poolfile.bin  ONLINE       0     0     0
+```
