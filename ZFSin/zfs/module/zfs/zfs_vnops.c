@@ -2907,8 +2907,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				skip_this_entry);
 		}
 
-		//eodp->d_namlen = namelen;
-		// This assumes NextEntryOffset is the FIRST entry in all structs
+
 		if (!skip_this_entry) {
 			eodp->NextEntryOffset = reclen;
 

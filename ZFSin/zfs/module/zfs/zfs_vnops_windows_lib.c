@@ -360,12 +360,11 @@ DokanSendIoContlToMountManager(
 	status = iosb.Status;
 
 	ObDereferenceObject(mountFileObject);
-	ObDereferenceObject(mountDeviceObject);
 
 	if (NT_SUCCESS(status)) {
 		dprintf("  IoCallDriver success\n");
 	} else {
-		dprintf("  IoCallDriver faield: 0x%x\n", status);
+		dprintf("  IoCallDriver failed: 0x%x\n", status);
 	}
 
 	dprintf("<= DokanSendIoContlToMountManager\n");
@@ -529,9 +528,9 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 
 	char buf[PATH_MAX];
 	//snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
-	WCHAR				diskDeviceNameBuf[MAXIMUM_FILENAME_LENGTH];    // L"¥¥Device¥Volume"
-	WCHAR				fsDeviceNameBuf[MAXIMUM_FILENAME_LENGTH];      // L"¥¥Device¥¥ZFS"
-	WCHAR				symbolicLinkNameBuf[MAXIMUM_FILENAME_LENGTH];  // L"¥¥DosDevices¥¥Global¥¥Volume"
+	WCHAR				diskDeviceNameBuf[MAXIMUM_FILENAME_LENGTH];    // L"\\Device\\Volume"
+	WCHAR				fsDeviceNameBuf[MAXIMUM_FILENAME_LENGTH];      // L"\\Device\\ZFS"
+	WCHAR				symbolicLinkNameBuf[MAXIMUM_FILENAME_LENGTH];  // L"\\DosDevices\\Global\\Volume"
 	UNICODE_STRING		diskDeviceName;
 	UNICODE_STRING		fsDeviceName;
 	UNICODE_STRING		symbolicLinkTarget;

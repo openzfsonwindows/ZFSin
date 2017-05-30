@@ -234,7 +234,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if (FileObject->RelatedFileObject != NULL) {
 		FileObject->Vpb = FileObject->RelatedFileObject->Vpb;
 	}
-
+	
 	DirectoryFile = BooleanFlagOn(Options, FILE_DIRECTORY_FILE);
 	NonDirectoryFile = BooleanFlagOn(Options, FILE_NON_DIRECTORY_FILE);
 	NoIntermediateBuffering = BooleanFlagOn(Options, FILE_NO_INTERMEDIATE_BUFFERING);
@@ -862,7 +862,9 @@ NTSTATUS pnp_device_state(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCAT
 	return STATUS_SUCCESS;
 }
 
-
+//
+// If overflow, set Information to sizeof(MOUNTDEV_NAME), and NameLength to required size.
+//
 NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	// Return name in MOUNTDEV_NAME
@@ -895,6 +897,8 @@ NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 }
 
 // Query Unique id uses 1 byte chars.
+// If overflow, set Information to sizeof(MOUNTDEV_UNIQUE_ID), and NameLength to required size.
+//
 NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	PMOUNTDEV_UNIQUE_ID uniqueId;
@@ -930,12 +934,12 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	}
 }
 
-
 NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	NTSTATUS Status;
 	int len;
 	Status = STATUS_NOT_IMPLEMENTED;
+	int space;
 
 	mount_t *zmo = DeviceObject->DeviceExtension;
 	if (!zmo ||
@@ -946,37 +950,40 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
 
-
 	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
 
 	switch (IrpSp->Parameters.QueryVolume.FsInformationClass) {
 
-	case FileFsAttributeInformation:   // ***
-		{
-			dprintf("* %s: FileFsAttributeInformation\n", __func__);
-			if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_ATTRIBUTE_INFORMATION)) {
-				Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION);
-				Status = STATUS_BUFFER_TOO_SMALL;
-				break;
-			}
+	case FileFsAttributeInformation:  
+		//
+		// If overflow, set Information to input_size and NameLength to what we fit.
+		//
 
-			len = zmo->name.Length - sizeof(WCHAR);
-			if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + len) {
-				Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + len;
-				Status = STATUS_BUFFER_OVERFLOW;
-				break;
-			}
-			FILE_FS_ATTRIBUTE_INFORMATION *ffai = Irp->AssociatedIrp.SystemBuffer;
-			int s = sizeof(FILE_FS_ATTRIBUTE_INFORMATION);
-			ffai->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_CASE_SENSITIVE_SEARCH | FILE_NAMED_STREAMS |
-				FILE_PERSISTENT_ACLS | FILE_SUPPORTS_OBJECT_IDS | FILE_SUPPORTS_REPARSE_POINTS | FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS;
-			ffai->MaximumComponentNameLength = PATH_MAX;
-			ffai->FileSystemNameLength = zmo->name.Length;
-			RtlCopyMemory(ffai->FileSystemName, zmo->name.Buffer,zmo->name.Length);
+		dprintf("* %s: FileFsAttributeInformation\n", __func__);
+		if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_ATTRIBUTE_INFORMATION)) {
+			Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION);
+			Status = STATUS_BUFFER_TOO_SMALL;
+			break;
+		}
 
-			Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + len;
+		FILE_FS_ATTRIBUTE_INFORMATION *ffai = Irp->AssociatedIrp.SystemBuffer;
+		ffai->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_CASE_SENSITIVE_SEARCH | FILE_NAMED_STREAMS |
+			FILE_PERSISTENT_ACLS | FILE_SUPPORTS_OBJECT_IDS | FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS;
+		ffai->MaximumComponentNameLength = PATH_MAX;
+
+		// There is room for one char in the struct
+		// Assuming VolumeLabel to be "ZFS".
+		space = IrpSp->Parameters.QueryVolume.Length - offsetof(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName[0]);
+		space = MIN(space, zmo->name.Length);
+		ffai->FileSystemNameLength = space;
+		RtlCopyMemory(ffai->FileSystemName, zmo->name.Buffer, space);
+		Irp->IoStatus.Information = offsetof(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName[0]) + zmo->name.Length;
+
+		if (space < zmo->name.Length)
+			Status = STATUS_BUFFER_OVERFLOW;
+		else
 			Status = STATUS_SUCCESS;
-		}	
+
 		break;
 	case FileFsControlInformation:
 		dprintf("* %s: FileFsControlInformation\n", __func__);
@@ -1013,33 +1020,40 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 	case FileFsSizeInformation:
 		dprintf("* %s: FileFsSizeInformation\n", __func__);
 		break;
-	case FileFsVolumeInformation:    // *** 
-		{
-			dprintf("* %s: FileFsVolumeInformation\n", __func__);
-			if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_VOLUME_INFORMATION)) {
-				Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION);
-				Status = STATUS_BUFFER_TOO_SMALL;
-				break;
-			}
-
-			/*
-			 * So it appears that VolumeInfo is special, we don't ever return OVERFLOW
-			 * but just stuff in as much of the name that will fit, even if it is just 1 char
-			 */
-
-			FILE_FS_VOLUME_INFORMATION *ffvi = Irp->AssociatedIrp.SystemBuffer;
-			ffvi->VolumeSerialNumber = ZFS_SERIAL;
-			ffvi->SupportsObjects = FALSE;
-			ffvi->VolumeCreationTime.QuadPart = gethrtime();
-
-			// There is room for one char in the struct
-			int space = IrpSp->Parameters.QueryVolume.Length - sizeof(FILE_FS_VOLUME_INFORMATION) + sizeof(ffvi->VolumeLabel);
-			space = MIN(space, zmo->name.Length);
-			ffvi->VolumeLabelLength = space;
-			RtlCopyMemory(ffvi->VolumeLabel, zmo->name.Buffer, space);
-			Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION) + space - sizeof(ffvi->VolumeLabel);
-			Status = STATUS_SUCCESS;
+	case FileFsVolumeInformation:   
+		//
+		// If overflow, set Information to input_size and NameLength to required size.
+		//
+		dprintf("* %s: FileFsVolumeInformation\n", __func__);
+		if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_VOLUME_INFORMATION)) {
+			Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION);
+			Status = STATUS_BUFFER_TOO_SMALL;
+			break;
 		}
+
+		/*
+			* So it appears that VolumeInfo is special, we don't ever return OVERFLOW
+			* but just stuff in as much of the name that will fit, even if it is just 1 char
+			*/
+
+		FILE_FS_VOLUME_INFORMATION *ffvi = Irp->AssociatedIrp.SystemBuffer;
+		ffvi->VolumeSerialNumber = ZFS_SERIAL;
+		ffvi->SupportsObjects = FALSE;
+		KeQuerySystemTimePrecise(&ffvi->VolumeCreationTime);
+
+		// There is room for one char in the struct
+		// This ends up being the name of the disk in Explorer, so send dataset name
+		space = IrpSp->Parameters.QueryVolume.Length - offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel[0]);
+		space = MIN(space, zmo->name.Length);
+		ffvi->VolumeLabelLength = zmo->name.Length;
+		RtlCopyMemory(ffvi->VolumeLabel, zmo->name.Buffer, space);
+		Irp->IoStatus.Information = offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel[0]) + zmo->name.Length;
+
+		if (space < zmo->name.Length)
+			Status = STATUS_BUFFER_OVERFLOW;
+		else
+			Status = STATUS_SUCCESS; 
+
 		break;
 	case FileFsSectorSizeInformation:
 		dprintf("* %s: FileFsSectorSizeInformation\n", __func__);
@@ -1206,6 +1220,7 @@ NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK
 		VN_RELE(vp);
 		return STATUS_SUCCESS;
 	}
+	ASSERT(basic->FileAttributes != 0);
 	dprintf("   %s failing\n", __func__);
 	return STATUS_OBJECT_PATH_NOT_FOUND;
 }
@@ -1277,7 +1292,11 @@ NTSTATUS file_network_open_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 	return STATUS_OBJECT_PATH_NOT_FOUND;
 }
 
-NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_NAME_INFORMATION *name, PULONG neededlen)
+
+//
+// If overflow, set Information to input_size and NameLength to required size.
+//
+NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_NAME_INFORMATION *name, PULONG usedspace)
 {
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
 
@@ -1311,23 +1330,26 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	}
 
 	// Convert name
-	error = RtlUTF8ToUnicodeN(NULL, 0, neededlen, strname, strlen(strname));
+	error = RtlUTF8ToUnicodeN(NULL, 0, &name->FileNameLength, strname, strlen(strname));
 
 	dprintf("%s: remaining space %d str.len %d struct size %d\n", __func__, IrpSp->Parameters.QueryFile.Length,
-		*neededlen, sizeof(FILE_NAME_INFORMATION));
+		name->FileNameLength, sizeof(FILE_NAME_INFORMATION));
 
-	ULONG to_copy = *neededlen;
 
-	Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION) + to_copy;
-	if (IrpSp->Parameters.QueryFile.Length < offsetof(FILE_NAME_INFORMATION, FileName[0]) + to_copy) {
-		// We are to return OVERFLOW, but also copy in as much as will fit.
-		to_copy = IrpSp->Parameters.QueryFile.Length - sizeof(FILE_NAME_INFORMATION) + sizeof(name->FileName);
+	int space = IrpSp->Parameters.QueryFile.Length - offsetof(FILE_NAME_INFORMATION, FileName[0]);
+	space = MIN(space, name->FileNameLength);
+
+	error = RtlUTF8ToUnicodeN(name->FileName, space, NULL, strname, strlen(strname));
+
+	if (space < name->FileNameLength)
 		Status = STATUS_BUFFER_OVERFLOW;
-	}
+	else
+		Status = STATUS_SUCCESS;
 
-	error = RtlUTF8ToUnicodeN(name->FileName, to_copy, &name->FileNameLength, strname, strlen(strname));
+	// Return how much of the filename we actually used.
+	if (usedspace) *usedspace = space - sizeof(name->FileName);
 
-	dprintf("* %s: returning name of %.*S\n", __func__, name->FileNameLength / sizeof(WCHAR), name->FileName);
+	dprintf("* %s: partial name of %.*S\n", __func__, space / sizeof(WCHAR), name->FileName);
 
 	return Status;
 }
@@ -1336,6 +1358,7 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
+	ULONG usedspace;
 
 	switch (IrpSp->Parameters.QueryFile.FileInformationClass) {
 			
@@ -1348,10 +1371,8 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 			break;
 		}
 		FILE_ALL_INFORMATION *all = Irp->AssociatedIrp.SystemBuffer;
-		int s = sizeof(FILE_ALL_INFORMATION);
-		ULONG neededlen;
-		// Even if the name does not fit, the other information should be correct
 
+		// Even if the name does not fit, the other information should be correct
 		Status = file_basic_information(DeviceObject, Irp, IrpSp, &all->BasicInformation);
 		if (Status != STATUS_SUCCESS) break;
 		Status = file_standard_information(DeviceObject, Irp, IrpSp, &all->StandardInformation);
@@ -1365,15 +1386,12 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 		// First get the Name, to make sure we have room
 		IrpSp->Parameters.QueryFile.Length -= offsetof(FILE_ALL_INFORMATION, NameInformation);
-		Status = file_name_information(DeviceObject, Irp, IrpSp, &all->NameInformation, &neededlen);
+		Status = file_name_information(DeviceObject, Irp, IrpSp, &all->NameInformation, &usedspace);
 		IrpSp->Parameters.QueryFile.Length += offsetof(FILE_ALL_INFORMATION, NameInformation);
 
 		// file_name_information sets FileNameLength, so update size to be ALL struct not NAME struct
 		// However, there is room for one char in the struct, so subtract that from total.
-		if (Status == STATUS_BUFFER_OVERFLOW)
-			Irp->IoStatus.Information = sizeof(FILE_ALL_INFORMATION) + neededlen - sizeof(WCHAR);
-		else
-			Irp->IoStatus.Information = sizeof(FILE_ALL_INFORMATION) + all->NameInformation.FileNameLength - sizeof(WCHAR);
+		Irp->IoStatus.Information = sizeof(FILE_ALL_INFORMATION) + usedspace;
 
 		dprintf("Input size 0x%x namelen 0x%x ret size 0x%x\n",
 			sizeof(FILE_ALL_INFORMATION),
@@ -1382,8 +1400,8 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		break;
 	case FileAttributeTagInformation:
 		dprintf("* %s: FileAttributeTagInformation\n", __func__);
+		FILE_ATTRIBUTE_TAG_INFORMATION *tag = Irp->AssociatedIrp.SystemBuffer;
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
-			FILE_ATTRIBUTE_TAG_INFORMATION *tag = Irp->AssociatedIrp.SystemBuffer;
 			struct vnode *vp = IrpSp->FileObject->FsContext;
 			VN_HOLD(vp);
 			tag->FileAttributes = vnode_isdir(vp) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
@@ -1391,6 +1409,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 			Irp->IoStatus.Information = sizeof(FILE_ATTRIBUTE_TAG_INFORMATION);
 			Status = STATUS_SUCCESS;
 		}
+		ASSERT(tag->FileAttributes != 0);
 		break;
 	case FileBasicInformation:
 		dprintf("* %s: FileBasicInformation\n", __func__);	
@@ -1412,6 +1431,9 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		dprintf("* %s: FileInternalInformation\n", __func__);
 		break;
 	case FileNameInformation:
+		//
+		// If overflow, set Information to input_size and NameLength to required size.
+		//
 		dprintf("* %s: FileNameInformation\n", __func__);
 		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_NAME_INFORMATION)) {
 			Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION);
@@ -1420,11 +1442,8 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		}
 		FILE_NAME_INFORMATION *name = Irp->AssociatedIrp.SystemBuffer;
 
-		Status = file_name_information(DeviceObject, Irp, IrpSp, name, &neededlen);
-		if (Status == STATUS_BUFFER_OVERFLOW)
-			Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION) + neededlen;
-		else
-			Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION) + name->FileNameLength;
+		Status = file_name_information(DeviceObject, Irp, IrpSp, name, &usedspace);
+		Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION) + usedspace;
 		break;
 	case FileNetworkOpenInformation:   
 		dprintf("* %s: FileNetworkOpenInformation\n", __func__);
