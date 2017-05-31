@@ -2808,8 +2808,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 		case FileIdBothDirectoryInformation:
 			eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 			FILE_ID_BOTH_DIR_INFORMATION *fibdi = (FILE_ID_BOTH_DIR_INFORMATION *)bufptr;
-			fibdi->AllocationSize.QuadPart = P2PHASE(zp->z_size, zp->z_blksz);
-			fibdi->EndOfFile.QuadPart = zp->z_size;
+			fibdi->AllocationSize.QuadPart = P2PHASE(tzp->z_size, tzp->z_blksz);
+			fibdi->EndOfFile.QuadPart = tzp->z_size;
 			TIME_UNIX_TO_WINDOWS(mtime, fibdi->LastWriteTime.QuadPart);
 			TIME_UNIX_TO_WINDOWS(ctime, fibdi->ChangeTime.QuadPart);
 			TIME_UNIX_TO_WINDOWS(crtime, fibdi->CreationTime.QuadPart);
@@ -2827,8 +2827,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 		case FileBothDirectoryInformation:
 			eodp = (FILE_BOTH_DIR_INFORMATION *)bufptr;
 			FILE_BOTH_DIR_INFORMATION *fbdi = (FILE_BOTH_DIR_INFORMATION *)bufptr;
-			fbdi->AllocationSize.QuadPart = P2PHASE(zp->z_size, zp->z_blksz);
-			fbdi->EndOfFile.QuadPart = zp->z_size;
+			fbdi->AllocationSize.QuadPart = P2PHASE(tzp->z_size, tzp->z_blksz);
+			fbdi->EndOfFile.QuadPart = tzp->z_size;
 			TIME_UNIX_TO_WINDOWS(mtime, fbdi->LastWriteTime.QuadPart);
 			TIME_UNIX_TO_WINDOWS(ctime, fbdi->ChangeTime.QuadPart);
 			TIME_UNIX_TO_WINDOWS(crtime, fbdi->CreationTime.QuadPart);

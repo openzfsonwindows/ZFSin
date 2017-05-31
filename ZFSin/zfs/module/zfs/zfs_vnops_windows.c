@@ -870,6 +870,7 @@ NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	// Return name in MOUNTDEV_NAME
 	PMOUNTDEV_NAME name;
 	mount_t *zmo;
+	NTSTATUS Status;
 
 	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(MOUNTDEV_NAME)) {
 		Irp->IoStatus.Information = sizeof(MOUNTDEV_NAME);
@@ -880,20 +881,21 @@ NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 
 	name = Irp->AssociatedIrp.SystemBuffer;
 
+	int space = IrpSp->Parameters.DeviceIoControl.OutputBufferLength - sizeof(MOUNTDEV_NAME);
+	space = MIN(space, zmo->device_name.Length);
 	name->NameLength = zmo->device_name.Length;
-	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < offsetof(MOUNTDEV_NAME, Name[0]) + name->NameLength) {
-		Irp->IoStatus.Information = sizeof(MOUNTDEV_NAME);
-		return STATUS_BUFFER_OVERFLOW;
-	}
-	//name = ExAllocatePoolWithTag(PagedPool, sizeof(MOUNTDEV_NAME) + zmo->name.Length, '!OIZ');
-	//if (name == NULL) return STATUS_NO_MEMORY;
-	RtlCopyMemory(name->Name, zmo->device_name.Buffer, zmo->device_name.Length);
+	RtlCopyMemory(name->Name, zmo->device_name.Buffer, space + sizeof(name->Name));
+	Irp->IoStatus.Information = sizeof(MOUNTDEV_NAME) + space;
 
-	//Irp->IoStatus.Information = name;
-	Irp->IoStatus.Information = offsetof(MOUNTDEV_NAME, Name[0]) + name->NameLength;
-	dprintf("replying with '%.*S'\n", name->NameLength/sizeof(WCHAR), name->Name);
+	if (space < zmo->device_name.Length)
+		Status = STATUS_BUFFER_OVERFLOW;
+	else
+		Status = STATUS_SUCCESS;
+	ASSERT(Irp->IoStatus.Information <= IrpSp->Parameters.DeviceIoControl.OutputBufferLength);
 
-	return STATUS_SUCCESS;
+	dprintf("replying with '%.*S'\n", space + sizeof(name->Name) /sizeof(WCHAR), name->Name);
+
+	return Status;
 }
 
 // Query Unique id uses 1 byte chars.
@@ -973,17 +975,17 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 
 		// There is room for one char in the struct
 		// Assuming VolumeLabel to be "ZFS".
-		space = IrpSp->Parameters.QueryVolume.Length - offsetof(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName[0]);
+		space = IrpSp->Parameters.QueryVolume.Length - sizeof(FILE_FS_ATTRIBUTE_INFORMATION);
 		space = MIN(space, zmo->name.Length);
-		ffai->FileSystemNameLength = space;
-		RtlCopyMemory(ffai->FileSystemName, zmo->name.Buffer, space);
-		Irp->IoStatus.Information = offsetof(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName[0]) + zmo->name.Length;
+		ffai->FileSystemNameLength = space + sizeof(ffai->FileSystemName);
+		RtlCopyMemory(ffai->FileSystemName, zmo->name.Buffer, space + sizeof(ffai->FileSystemName));
+		Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + space;
 
 		if (space < zmo->name.Length)
 			Status = STATUS_BUFFER_OVERFLOW;
 		else
 			Status = STATUS_SUCCESS;
-
+		ASSERT(Irp->IoStatus.Information <= IrpSp->Parameters.QueryVolume.Length);
 		break;
 	case FileFsControlInformation:
 		dprintf("* %s: FileFsControlInformation\n", __func__);
@@ -1031,11 +1033,6 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 			break;
 		}
 
-		/*
-			* So it appears that VolumeInfo is special, we don't ever return OVERFLOW
-			* but just stuff in as much of the name that will fit, even if it is just 1 char
-			*/
-
 		FILE_FS_VOLUME_INFORMATION *ffvi = Irp->AssociatedIrp.SystemBuffer;
 		ffvi->VolumeSerialNumber = ZFS_SERIAL;
 		ffvi->SupportsObjects = FALSE;
@@ -1043,17 +1040,18 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 
 		// There is room for one char in the struct
 		// This ends up being the name of the disk in Explorer, so send dataset name
-		space = IrpSp->Parameters.QueryVolume.Length - offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel[0]);
+		space = IrpSp->Parameters.QueryVolume.Length - sizeof(FILE_FS_VOLUME_INFORMATION);
 		space = MIN(space, zmo->name.Length);
 		ffvi->VolumeLabelLength = zmo->name.Length;
-		RtlCopyMemory(ffvi->VolumeLabel, zmo->name.Buffer, space);
-		Irp->IoStatus.Information = offsetof(FILE_FS_VOLUME_INFORMATION, VolumeLabel[0]) + zmo->name.Length;
+		RtlCopyMemory(ffvi->VolumeLabel, zmo->name.Buffer, space + sizeof(ffvi->VolumeLabel));
+		Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION) + space;
 
 		if (space < zmo->name.Length)
 			Status = STATUS_BUFFER_OVERFLOW;
 		else
 			Status = STATUS_SUCCESS; 
 
+		ASSERT(Irp->IoStatus.Information <= IrpSp->Parameters.QueryVolume.Length);
 		break;
 	case FileFsSectorSizeInformation:
 		dprintf("* %s: FileFsSectorSizeInformation\n", __func__);
@@ -1303,6 +1301,13 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	if (FileObject == NULL || FileObject->FsContext == NULL)
 		return STATUS_INVALID_PARAMETER;
 
+
+	if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_NAME_INFORMATION)) {
+		Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+
 	struct vnode *vp = FileObject->FsContext;
 	znode_t *zp = VTOZ(vp);
 	char strname[MAXPATHLEN + 2];
@@ -1329,25 +1334,29 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		return STATUS_OBJECT_PATH_NOT_FOUND;
 	}
 
-	// Convert name
+	// Convert name, setting FileNameLength to how much we need
 	error = RtlUTF8ToUnicodeN(NULL, 0, &name->FileNameLength, strname, strlen(strname));
 
 	dprintf("%s: remaining space %d str.len %d struct size %d\n", __func__, IrpSp->Parameters.QueryFile.Length,
 		name->FileNameLength, sizeof(FILE_NAME_INFORMATION));
 
-
-	int space = IrpSp->Parameters.QueryFile.Length - offsetof(FILE_NAME_INFORMATION, FileName[0]);
+	// Calculate how much room there is for filename, after the struct and its first wchar
+	int space = IrpSp->Parameters.QueryFile.Length - sizeof(FILE_NAME_INFORMATION);
 	space = MIN(space, name->FileNameLength);
 
-	error = RtlUTF8ToUnicodeN(name->FileName, space, NULL, strname, strlen(strname));
+	ASSERT(space >= 0);
+
+	// Copy over as much as we can, including the first wchar
+	error = RtlUTF8ToUnicodeN(name->FileName, space + sizeof(name->FileName), NULL, strname, strlen(strname));
 
 	if (space < name->FileNameLength)
 		Status = STATUS_BUFFER_OVERFLOW;
 	else
 		Status = STATUS_SUCCESS;
 
-	// Return how much of the filename we actually used.
-	if (usedspace) *usedspace = space - sizeof(name->FileName);
+	// Return how much of the filename we copied after the first wchar
+	// which is used with sizeof(struct) to work out how much bigger the return is.
+	if (usedspace) *usedspace = space; // Space will always be 2 or more, since struct has room for 1 wchar
 
 	dprintf("* %s: partial name of %.*S\n", __func__, space / sizeof(WCHAR), name->FileName);
 
