@@ -226,8 +226,8 @@ get_osx_hostspec(const char *solaris_hostspec, char **posx_hostspec)
 		// Check if they use "/" notation
 		slash = strchr(solaris_hostspec, '/');
 		if (slash) {
-			bits = atoi(++slash);
-			mask = ~(0xFFFFFFFF >> bits);
+			bits = atoi(&slash[1]);
+			mask = (bits >= 32) ? 0xFFFFFFFF : ~(0xFFFFFFFF >> bits);
 			*slash = 0;
 		} else {
 			// No slash, check how many dots we got.
