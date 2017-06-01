@@ -248,7 +248,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	CreateDisposition = (Options >> 24) & 0x000000ff;
 
 	IsPagingFile = BooleanFlagOn(IrpSp->Flags, SL_OPEN_PAGING_FILE);
-
+	ASSERT(!IsPagingFile);
+	//ASSERT(!OpenRequiringOplock);
 	// Open the directory instead of the file
 	OpenTargetDirectory = BooleanFlagOn(IrpSp->Flags, SL_OPEN_TARGET_DIRECTORY);
 
@@ -334,6 +335,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// We need to have a parent from here on.
 	if (dvp == NULL) {
 
+		// Change code to use function above
 //		error = zfs_find_dvp_vp(zfsvfs, filename, &lastname, &dvp, &vp);
 
 		// Iterate from root
@@ -898,6 +900,135 @@ NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	return Status;
 }
 
+#if 00
+**** unknown Windows IOCTL : 0x700a0 40 : IOCTL_DISK_GET_DRIVE_GEOMETRY_EX
+* *** unknown Windows IOCTL : 0x74004 1 : IOCTL_DISK_GET_PARTITION_INFO
+* *** unknown Windows IOCTL : 0x2d0c14 IOCTL_VOLUME_IS_IO_CAPABLE
+* user_fs_request : unknown class 0x90240 OP_LOCK
+* *** unknown Windows IOCTL : 0x560000 IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS
+* *** unknown Windows IOCTL : 0x70048 IOCTL_DISK_GET_PARTITION_INFO_EX
+* *** unknown Windows IOCTL : 0x2d0c14 IOCTL_STORAGE_GET_HOTPLUG_INFO
+* user_fs_request : unknown class 0x903bc unknown?
+
+#endif
+  
+// This is how Windows Samples handle it
+typedef struct _DISK_GEOMETRY_EX_INTERNAL {
+		DISK_GEOMETRY Geometry;
+		LARGE_INTEGER DiskSize;
+		DISK_PARTITION_INFO Partition;
+		DISK_DETECTION_INFO Detection;
+} DISK_GEOMETRY_EX_INTERNAL, *PDISK_GEOMETRY_EX_INTERNAL;
+
+NTSTATUS ioctl_disk_get_drive_geometry_ex(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < FIELD_OFFSET(DISK_GEOMETRY_EX, Data)) {
+		Irp->IoStatus.Information = sizeof(DISK_GEOMETRY_EX);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	mount_t *zmo = DeviceObject->DeviceExtension;
+	if (!zmo ||
+		(zmo->type != MOUNT_TYPE_VCB &&
+			zmo->type != MOUNT_TYPE_DCB)) {
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+
+	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
+
+	uint64_t refdbytes, availbytes, usedobjs, availobjs;
+	dmu_objset_space(zfsvfs->z_os,
+		&refdbytes, &availbytes, &usedobjs, &availobjs);
+
+
+	DISK_GEOMETRY_EX_INTERNAL *geom = Irp->AssociatedIrp.SystemBuffer;
+	geom->DiskSize.QuadPart = availbytes + refdbytes;
+	geom->Geometry.BytesPerSector = 512;
+	geom->Geometry.MediaType = FixedMedia;
+
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength >= FIELD_OFFSET(DISK_GEOMETRY_EX_INTERNAL, Detection)) {
+		geom->Partition.SizeOfPartitionInfo = sizeof(geom->Partition);
+		geom->Partition.PartitionStyle = PARTITION_STYLE_GPT;
+		//geom->Partition.Gpt.DiskId = 0;
+	}
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength >= sizeof(DISK_GEOMETRY_EX_INTERNAL)) {
+		geom->Detection.SizeOfDetectInfo = sizeof(geom->Detection);
+
+	}
+	ZFS_EXIT(zfsvfs); 
+
+	Irp->IoStatus.Information = MIN(IrpSp->Parameters.DeviceIoControl.OutputBufferLength, sizeof(DISK_GEOMETRY_EX_INTERNAL));
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS ioctl_disk_get_partition_info(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(PARTITION_INFORMATION)) {
+		Irp->IoStatus.Information = sizeof(PARTITION_INFORMATION);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	mount_t *zmo = DeviceObject->DeviceExtension;
+	if (!zmo ||
+		(zmo->type != MOUNT_TYPE_VCB &&
+			zmo->type != MOUNT_TYPE_DCB)) {
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+
+	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
+
+	uint64_t refdbytes, availbytes, usedobjs, availobjs;
+	dmu_objset_space(zfsvfs->z_os,
+		&refdbytes, &availbytes, &usedobjs, &availobjs);
+
+	PARTITION_INFORMATION *part = Irp->AssociatedIrp.SystemBuffer;
+
+	part->PartitionLength.QuadPart = availbytes + refdbytes;
+	part->StartingOffset.QuadPart = 0;
+	part->BootIndicator = FALSE;
+	part->PartitionNumber = (ULONG)(-1L);
+	part->HiddenSectors = (ULONG)(1L);
+	part->RecognizedPartition = TRUE;
+	part->RewritePartition = FALSE;
+	part->PartitionType = 'ZFS';
+
+	ZFS_EXIT(zfsvfs);
+
+	Irp->IoStatus.Information = sizeof(PARTITION_INFORMATION);
+
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS ioctl_volume_is_io_capable(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS ioctl_storage_get_hotplug_info(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(STORAGE_HOTPLUG_INFO)) {
+		Irp->IoStatus.Information = sizeof(STORAGE_HOTPLUG_INFO);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	STORAGE_HOTPLUG_INFO *hot = Irp->AssociatedIrp.SystemBuffer;
+	hot->Size = sizeof(STORAGE_HOTPLUG_INFO);
+	hot->MediaRemovable = TRUE;
+	hot->DeviceHotplug = TRUE;
+	hot->MediaHotplug = FALSE;
+	hot->WriteCacheEnableOverride = NULL;
+
+	Irp->IoStatus.Information = sizeof(STORAGE_HOTPLUG_INFO);
+	return STATUS_SUCCESS;
+}
+
+
 // Query Unique id uses 1 byte chars.
 // If overflow, set Information to sizeof(MOUNTDEV_UNIQUE_ID), and NameLength to required size.
 //
@@ -970,7 +1101,7 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 
 		FILE_FS_ATTRIBUTE_INFORMATION *ffai = Irp->AssociatedIrp.SystemBuffer;
 		ffai->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_CASE_SENSITIVE_SEARCH | FILE_NAMED_STREAMS |
-			FILE_PERSISTENT_ACLS | FILE_SUPPORTS_OBJECT_IDS | FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS;
+			FILE_PERSISTENT_ACLS | /*FILE_SUPPORTS_OBJECT_IDS |*/ FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS;
 		ffai->MaximumComponentNameLength = PATH_MAX;
 
 		// There is room for one char in the struct
@@ -1211,10 +1342,8 @@ NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK
 		TIME_UNIX_TO_WINDOWS(crtime, basic->CreationTime.QuadPart);
 		TIME_UNIX_TO_WINDOWS(zp->z_atime, basic->LastAccessTime.QuadPart);
 
-		if (S_ISDIR(zp->z_mode)) 
-			basic->FileAttributes = FILE_ATTRIBUTE_DIRECTORY;
-		else
-			basic->FileAttributes = FILE_ATTRIBUTE_NORMAL;
+		basic->FileAttributes = S_ISDIR(zp->z_mode) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+
 		VN_RELE(vp);
 		return STATUS_SUCCESS;
 	}
@@ -1250,8 +1379,7 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 NTSTATUS file_position_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_POSITION_INFORMATION *position)
 {
 	dprintf("   %s\n", __func__);
-	IrpSp->FileObject->CurrentByteOffset.QuadPart;
-	position->CurrentByteOffset.QuadPart = 0;
+
 	if (IrpSp->FileObject)
 		position->CurrentByteOffset.QuadPart = IrpSp->FileObject->CurrentByteOffset.QuadPart;
 	return STATUS_SUCCESS;
@@ -1358,16 +1486,66 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	// which is used with sizeof(struct) to work out how much bigger the return is.
 	if (usedspace) *usedspace = space; // Space will always be 2 or more, since struct has room for 1 wchar
 
-	dprintf("* %s: partial name of %.*S\n", __func__, space / sizeof(WCHAR), name->FileName);
+	dprintf("* %s: partial name of %.*S\n", __func__, space + sizeof(name->FileName) / sizeof(WCHAR), name->FileName);
 
 	return Status;
 }
+
+
+//
+// If overflow, set Information to input_size and NameLength to required size.
+//
+NTSTATUS file_stream_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_STREAM_INFORMATION *stream, PULONG usedspace)
+{
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	NTSTATUS Status;
+
+	if (FileObject == NULL || FileObject->FsContext == NULL)
+		return STATUS_INVALID_PARAMETER;
+
+	if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_STREAM_INFORMATION)) {
+		Irp->IoStatus.Information = sizeof(FILE_STREAM_INFORMATION);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	struct vnode *vp = FileObject->FsContext;
+	znode_t *zp = VTOZ(vp);
+
+	UNICODE_STRING name;
+	RtlInitUnicodeString(&name, L"::$DATA");
+	stream->NextEntryOffset = 0;
+	stream->StreamAllocationSize.QuadPart = P2PHASE(zp->z_size, zp->z_blksz);
+	stream->StreamSize.QuadPart = zp->z_size;
+
+	int space = IrpSp->Parameters.QueryFile.Length - sizeof(FILE_STREAM_INFORMATION);
+	space = MIN(space, name.Length);
+	stream->StreamNameLength = name.Length;
+	ASSERT(space >= 0);
+	// Copy over as much as we can, including the first wchar
+	RtlCopyMemory(stream->StreamName, name.Buffer, space + sizeof(stream->StreamName));
+
+	Irp->IoStatus.Information = sizeof(FILE_STREAM_INFORMATION) + space;
+
+	if (space < name.Length)
+		Status = STATUS_BUFFER_OVERFLOW;
+	else
+		Status = STATUS_SUCCESS;
+
+	return Status;
+}
+
 
 
 NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 	ULONG usedspace;
+	struct vnode *vp = NULL;
+
+	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
+		vp = IrpSp->FileObject->FsContext;
+		VN_HOLD(vp);
+	}
 
 	switch (IrpSp->Parameters.QueryFile.FileInformationClass) {
 			
@@ -1389,8 +1567,9 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		Status = file_position_information(DeviceObject, Irp, IrpSp, &all->PositionInformation);
 		if (Status != STATUS_SUCCESS) break;
 
-		all->AccessInformation.AccessFlags = (FILE_GENERIC_READ | FILE_GENERIC_WRITE);
-		all->ModeInformation.Mode = FILE_SYNCHRONOUS_IO_NONALERT;
+		all->AccessInformation.AccessFlags = GENERIC_ALL | GENERIC_EXECUTE | GENERIC_READ | GENERIC_WRITE;
+		if (vp)
+			all->ModeInformation.Mode = vnode_unlink(vp) ? FILE_DELETE_ON_CLOSE : 0;
 		all->AlignmentInformation.AlignmentRequirement = 0;
 
 		// First get the Name, to make sure we have room
@@ -1410,11 +1589,8 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 	case FileAttributeTagInformation:
 		dprintf("* %s: FileAttributeTagInformation\n", __func__);
 		FILE_ATTRIBUTE_TAG_INFORMATION *tag = Irp->AssociatedIrp.SystemBuffer;
-		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
-			struct vnode *vp = IrpSp->FileObject->FsContext;
-			VN_HOLD(vp);
+		if (vp) {
 			tag->FileAttributes = vnode_isdir(vp) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
-			VN_RELE(vp);
 			Irp->IoStatus.Information = sizeof(FILE_ATTRIBUTE_TAG_INFORMATION);
 			Status = STATUS_SUCCESS;
 		}
@@ -1486,6 +1662,10 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		break;
 	case FileStreamInformation:
 		dprintf("* %s: FileStreamInformation\n", __func__);
+
+		PFILE_STREAM_INFORMATION fsi = Irp->AssociatedIrp.SystemBuffer;
+		Status = file_stream_information(DeviceObject, Irp, IrpSp, fsi, &usedspace);
+		Irp->IoStatus.Information = sizeof(FILE_STREAM_INFORMATION) + usedspace;
 		break;
 	case FileHardLinkInformation:
 		dprintf("* %s: FileHardLinkInformation\n", __func__);
@@ -1498,6 +1678,10 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		break;
 	}
 
+	if (vp) {
+		VN_RELE(vp);
+		vp = NULL;
+	}
 	return Status;
 }
 
@@ -1536,7 +1720,28 @@ NTSTATUS user_fs_request(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		break;
 	case FSCTL_IS_VOLUME_DIRTY:
 		dprintf("    FSCTL_IS_VOLUME_DIRTY\n");
-		Status = STATUS_INVALID_PARAMETER;
+		PULONG VolumeState;
+
+		if (Irp->AssociatedIrp.SystemBuffer)
+			VolumeState = Irp->AssociatedIrp.SystemBuffer;
+		else
+			VolumeState = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, LowPagePriority | MdlMappingNoExecute);
+
+		if (VolumeState == NULL) {
+			Status = STATUS_INSUFFICIENT_RESOURCES;
+			break;
+		}
+
+		if (IrpSp->Parameters.FileSystemControl.OutputBufferLength < sizeof(ULONG)) {
+			Status = STATUS_INVALID_PARAMETER;
+			break;
+		}
+
+		*VolumeState = 0;
+		if (0)
+			SetFlag(*VolumeState, VOLUME_IS_DIRTY);
+		Irp->IoStatus.Information = sizeof(ULONG);
+		Status = STATUS_SUCCESS;
 		break;
 	case FSCTL_GET_REPARSE_POINT:
 		dprintf("    FSCTL_GET_REPARSE_POINT\n");
@@ -1545,6 +1750,22 @@ NTSTATUS user_fs_request(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 	case FSCTL_CREATE_OR_GET_OBJECT_ID:
 		dprintf("    FSCTL_CREATE_OR_GET_OBJECT_ID\n");
 		Status = STATUS_INVALID_PARAMETER;
+		break;
+	case FSCTL_REQUEST_OPLOCK:
+		dprintf("    FSCTL_REQUEST_OPLOCK: \n" );
+#if 0 //not yet, store oplock in znode, init on open etc.
+		PREQUEST_OPLOCK_INPUT_BUFFER *req = Irp->AssociatedIrp.SystemBuffer;
+		int InputBufferLength = IrpSp->Parameters.FileSystemControl.InputBufferLength;
+		int OutputBufferLength = IrpSp->Parameters.FileSystemControl.OutputBufferLength;
+
+		if ((InputBufferLength < sizeof(REQUEST_OPLOCK_INPUT_BUFFER)) || 
+			(OutputBufferLength < sizeof(REQUEST_OPLOCK_OUTPUT_BUFFER))) {
+			return STATUS_BUFFER_TOO_SMALL;
+		}
+		OPLOCK oplock;
+		FsRtlInitializeOplock(&oplock);
+		Status = FsRtlOplockFsctrl(&oplock, Irp, 0);
+#endif
 		break;
 	default:
 		dprintf("* %s: unknown class 0x%x\n", __func__, IrpSp->Parameters.FileSystemControl.FsControlCode);
@@ -1747,7 +1968,10 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	LARGE_INTEGER	byteOffset;
 	NTSTATUS Status = STATUS_SUCCESS;
 	int error; 
-	dprintf("   %s\n", __func__);
+
+	dprintf("   %s minor type %d flags 0x%x mdl %d System %d User %d\n", __func__, IrpSp->MinorFunction, 
+		DeviceObject->Flags, (Irp->MdlAddress != 0), (Irp->AssociatedIrp.SystemBuffer != 0), 
+		(Irp->UserBuffer != 0));
 
 	bufferLength = IrpSp->Parameters.Read.Length;
 	if (bufferLength == 0)
@@ -1782,16 +2006,20 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	error = zfs_read(vp, uio, 0, NULL, NULL);
 	VN_RELE(vp);
 
-	// EOF?
-	if (bufferLength == uio_resid(uio)) 
-		Status = STATUS_END_OF_FILE;
-
 	// Update bytes read
 	Irp->IoStatus.Information = bufferLength - uio_resid(uio);
 
+	if (Irp->IoStatus.Information == 0)
+		Status = STATUS_END_OF_FILE;
+
 	// Update the file offset
-	fileObject->CurrentByteOffset.QuadPart =
-		byteOffset.QuadPart + Irp->IoStatus.Information;
+	if ((Status == STATUS_SUCCESS) &&
+		(fileObject->Flags & FO_SYNCHRONOUS_IO) &&
+		!(Irp->Flags & IRP_PAGING_IO)) {
+		// update current byte offset only when synchronous IO and not pagind IO
+		fileObject->CurrentByteOffset.QuadPart =
+			byteOffset.QuadPart + Irp->IoStatus.Information;
+	}
 
 	uio_free(uio);
 
@@ -2029,7 +2257,7 @@ ioctlDispatcher(
 			default:
 				dprintf("**** unknown Windows IOCTL: 0x%lx\n", cmd);
 			}
-
+			
 		}
 		break;
 
@@ -2245,7 +2473,6 @@ diskDispatcher(
 }
 
 
-
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS
 fsDispatcher(
@@ -2388,6 +2615,22 @@ fsDispatcher(
 			dprintf("IOCTL_STORAGE_CHECK_VERIFY\n");
 			Status = STATUS_SUCCESS;
 			break;
+		case IOCTL_DISK_GET_DRIVE_GEOMETRY_EX:
+			dprintf("IOCTL_DISK_GET_DRIVE_GEOMETRY_EX\n");
+			Status = ioctl_disk_get_drive_geometry_ex(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_DISK_GET_PARTITION_INFO:
+			dprintf("IOCTL_DISK_GET_PARTITION_INFO\n");
+			Status = ioctl_disk_get_partition_info(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_VOLUME_IS_IO_CAPABLE:
+			dprintf("IOCTL_VOLUME_IS_IO_CAPABLE\n");
+			Status = ioctl_volume_is_io_capable(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_STORAGE_GET_HOTPLUG_INFO:
+			dprintf("IOCTL_STORAGE_GET_HOTPLUG_INFO\n");
+			Status = ioctl_storage_get_hotplug_info(DeviceObject, Irp, IrpSp);
+			break;
 		default:
 			dprintf("**** unknown Windows IOCTL: 0x%lx\n", cmd);
 		}
@@ -2496,6 +2739,22 @@ fsDispatcher(
 }
 
 
+char *common_status_str(NTSTATUS Status)
+{
+	switch (Status) {
+	case STATUS_SUCCESS:
+		return "OK";
+	case STATUS_BUFFER_OVERFLOW:
+		return "Overflow";
+	case STATUS_END_OF_FILE:
+		return "EOF";
+	case STATUS_NO_MORE_FILES:
+		return "NoMoreFiles";
+	default:
+		return "<*****>";
+	}
+}
+
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS
 dispatcher(
@@ -2555,8 +2814,7 @@ dispatcher(
 	FsRtlExitFileSystem();
 
 	dprintf("%s: exit: 0x%x %s Information 0x%x\n", __func__, Status, 
-		Status == STATUS_SUCCESS ? "OK" :
-		Status == STATUS_BUFFER_OVERFLOW ? "Overflow" : "****",
+		common_status_str(Status),
 		Irp->IoStatus.Information);
 	IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 	return Status;
