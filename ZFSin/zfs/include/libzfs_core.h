@@ -21,6 +21,8 @@
 
 /*
  * Copyright (c) 2012, 2014 by Delphix. All rights reserved.
+ * Copyright (c) 2014 Integros [integros.com]
+ * Copyright 2017 RackTop Systems.
  */
 
 #ifndef	_LIBZFS_CORE_H
@@ -49,6 +51,7 @@ int lzc_snapshot(nvlist_t *, nvlist_t *, nvlist_t **);
 int lzc_create(const char *, enum lzc_dataset_type, nvlist_t *, uint8_t *,
     uint_t);
 int lzc_clone(const char *, const char *, nvlist_t *);
+int lzc_promote(const char *, char *, int);
 int lzc_destroy_snaps(nvlist_t *, boolean_t, nvlist_t **);
 int lzc_bookmark(nvlist_t *, nvlist_t **);
 int lzc_get_bookmarks(const char *, nvlist_t *, nvlist_t **);
