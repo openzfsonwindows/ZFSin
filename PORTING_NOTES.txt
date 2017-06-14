@@ -75,3 +75,15 @@ name will fit, and if it does not, returns STATUS_BUFFER_OVERFLOW.
 But, it is expected to fill in as much of the name that fits. Other
 data, like in the case of FileAllInformation struct, need to be valid,
 even though we return "error" and partial filename.
+
+The STATUS_BUFFER_OVERFLOW case is a bit annoying. It would seem how
+it should be handled differents depending on IRP called. I have come
+across:
+
+* FileNameLength should be set to "required" length, and Information
+size should be the same (no bigger) than input size.
+
+* FileNameLength should be set to how much we could fit, even if it is
+just one character, and Information size is set to size required to
+fit everything. Not sure this is true any longer? It is always the
+former case, and my misunderstanding...

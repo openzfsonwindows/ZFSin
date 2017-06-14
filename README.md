@@ -176,7 +176,7 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ✓ Add ioctl calls to MOUNT and create Volume to attach
 
-  ⃝ Add ioctl calls to UNMOUNT and detach and delete Volume
+  ✓ Add ioctl calls to UNMOUNT and detach and delete Volume
 
   ✓ Port kernel `zfs_vnops.c` / `zfs_vnops_windows.c`
   *  Many special cases missing, flags to create/read/etc
@@ -185,8 +185,9 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ✓ Basic DOS usage
 
-  ⃝ Simple Notepad text edit
-  *  Reading is blank, writes fail.
+  ✓ Simple Notepad text edit, executables also work.
+
+  ✓ Basic drag'n'drop in Explorer
 
 
 ---
@@ -224,12 +225,10 @@ expected. Currently fixed at 1GB.
 ```
 # fsutil file createnew C:\poolfile.bin 200000000
 # zpool.exe create TEST \\?\C:\poolfile.bin
-```
 
 Note that "\\?\C:\" needs to be escaped in bash shell, ie
 "\\\\?\\C:\\".
 
-```
         TEST                   ONLINE       0     0     0
         \??\C:\poolfile.bin  ONLINE       0     0     0
 ```
