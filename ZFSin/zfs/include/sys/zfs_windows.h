@@ -28,7 +28,6 @@
 
 #include <sys/mount.h>
 
-
 extern PDEVICE_OBJECT ioctlDeviceObject;
 
 #define ZFS_SERIAL (ULONG)'wZFS'

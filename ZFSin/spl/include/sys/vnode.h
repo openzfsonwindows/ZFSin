@@ -59,6 +59,9 @@ struct vnode {
 	uint32_t v_iocount;  // Short term holds
 	uint32_t v_usecount; // Long term holds
 	uint32_t v_id;
+
+	// Windows specific fields that doesn't really fit with protected API stuff
+	SECTION_OBJECT_POINTERS SectionObjectPointers;
 };
 typedef struct vnode vnode_t;
 

@@ -55,7 +55,7 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 
 	fprintf(stderr, "'%s' mounted on %s\r\n", zc.zc_name, zc.zc_value);
 
-#if 0
+#if 1
 	char out[MAXPATHLEN];
 	DWORD outlen;
 

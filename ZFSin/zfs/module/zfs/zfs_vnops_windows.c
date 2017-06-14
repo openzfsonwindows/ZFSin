@@ -400,7 +400,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (error) {
 				dprintf("%s: failed to find vp in dvp\n", __func__);
 				Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-				return STATUS_OBJECT_PATH_NOT_FOUND;
+				return STATUS_OBJECT_NAME_NOT_FOUND;
 			}
 			VN_RELE(vp);
 		}
@@ -423,7 +423,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			VN_RELE(dvp);
 			return STATUS_SUCCESS;
 		}
-		return STATUS_OBJECT_PATH_NOT_FOUND;
+		return STATUS_OBJECT_NAME_NOT_FOUND;
 	}
 
 
@@ -452,21 +452,21 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			return STATUS_SUCCESS;
 		}
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-		return STATUS_OBJECT_PATH_NOT_FOUND;
+		return STATUS_OBJECT_PATH_NOT_FOUND;  // failed to create error?
 	}
 
 	// If they requested just directory, fail non directories
 	if (DirectoryFile && vp != NULL && !vnode_isdir(vp)) {
 		dprintf("%s: asked for directory but found file\n", __func__);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-		return STATUS_OBJECT_PATH_NOT_FOUND;
+		return STATUS_OBJECT_NAME_NOT_FOUND; // wanted dir, found file error
 	}
 
 	// Asked for non-directory, but we got directory
 	if (NonDirectoryFile && !CreateFile && vp == NULL) {
 		dprintf("%s: asked for file but found directory\n", __func__);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-		return STATUS_OBJECT_PATH_NOT_FOUND;
+		return STATUS_OBJECT_NAME_NOT_FOUND; // wanted file, found dir error
 	}
 
 	if (CreateFile) {
@@ -480,15 +480,16 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			FileObject->FsContext = vp;
 			vnode_ref(vp); // Hold open reference, until CLOSE
 			if (DeleteOnClose) vnode_setunlink(vp);
+			FileObject->SectionObjectPointer = &vp->SectionObjectPointers;
 			VN_RELE(vp);
 			Irp->IoStatus.Information = FILE_CREATED;
 			return STATUS_SUCCESS;
 		}
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-		return STATUS_OBJECT_PATH_NOT_FOUND;
+		return STATUS_OBJECT_NAME_NOT_FOUND; // create file error
 	}
 
-
+	SECTION_OBJECT_POINTERS SectionObjectPointers;
 	// Just open it, if the open was to a directory, add ccb
 	ASSERT(IrpSp->FileObject->FsContext == NULL);
 	if (vp == NULL) {
@@ -507,6 +508,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		VN_HOLD(vp);
 		vnode_ref(vp); // Hold open reference, until CLOSE
 		if (DeleteOnClose) vnode_setunlink(vp);
+		FileObject->SectionObjectPointer = &vp->SectionObjectPointers;
 		VN_RELE(vp);
 	}
 
@@ -526,6 +528,12 @@ int zfs_vnop_recycle(znode_t *zp, int force)
 		(vp->v_iocount == 1 && vp->v_usecount == 0)) { // fix vnode_isbusy()
 
 		dprintf("IRP_MJ_CLEANUP: releasing zp %p and vp %p\n", zp, vp);
+
+		if (vp->SectionObjectPointers.DataSectionObject != NULL) {
+			CcFlushCache( &vp->SectionObjectPointers, NULL, 0, NULL );
+			CcPurgeCacheSection(&vp->SectionObjectPointers, NULL, 0, FALSE);
+		}
+
 
 		// Decouple the nodes
 		ZTOV(zp) = NULL;
@@ -922,6 +930,7 @@ typedef struct _DISK_GEOMETRY_EX_INTERNAL {
 
 NTSTATUS ioctl_disk_get_drive_geometry_ex(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
+	dprintf("%s: \n", __func__);
 	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < FIELD_OFFSET(DISK_GEOMETRY_EX, Data)) {
 		Irp->IoStatus.Information = sizeof(DISK_GEOMETRY_EX);
 		return STATUS_BUFFER_TOO_SMALL;
@@ -965,6 +974,7 @@ NTSTATUS ioctl_disk_get_drive_geometry_ex(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 
 NTSTATUS ioctl_disk_get_partition_info(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
+	dprintf("%s: \n", __func__);
 
 	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(PARTITION_INFORMATION)) {
 		Irp->IoStatus.Information = sizeof(PARTITION_INFORMATION);
@@ -1006,11 +1016,13 @@ NTSTATUS ioctl_disk_get_partition_info(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 
 NTSTATUS ioctl_volume_is_io_capable(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
+	dprintf("%s: \n", __func__);
 	return STATUS_SUCCESS;
 }
 
 NTSTATUS ioctl_storage_get_hotplug_info(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
+	dprintf("%s: \n", __func__);
 
 	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(STORAGE_HOTPLUG_INFO)) {
 		Irp->IoStatus.Information = sizeof(STORAGE_HOTPLUG_INFO);
@@ -1039,6 +1051,8 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	mount_t *zmo;
 	char osname[MAXNAMELEN];
 	ULONG len;
+
+	dprintf("%s: \n", __func__);
 
 	zmo = (mount_t *)DeviceObject->DeviceExtension;
 
@@ -1112,9 +1126,9 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		RtlCopyMemory(ffai->FileSystemName, zmo->name.Buffer, space + sizeof(ffai->FileSystemName));
 		Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + space;
 
-		if (space < zmo->name.Length)
-			Status = STATUS_BUFFER_OVERFLOW;
-		else
+//		if (space < zmo->name.Length)
+//			Status = STATUS_BUFFER_OVERFLOW;
+//		else
 			Status = STATUS_SUCCESS;
 		ASSERT(Irp->IoStatus.Information <= IrpSp->Parameters.QueryVolume.Length);
 		break;
@@ -1349,7 +1363,7 @@ NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK
 	}
 	ASSERT(basic->FileAttributes != 0);
 	dprintf("   %s failing\n", __func__);
-	return STATUS_OBJECT_PATH_NOT_FOUND;
+	return STATUS_OBJECT_NAME_NOT_FOUND;
 }
 
 NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_STANDARD_INFORMATION *standard)
@@ -1373,7 +1387,7 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 		VN_RELE(vp);
 		return STATUS_SUCCESS;
 	}
-	return STATUS_OBJECT_PATH_NOT_FOUND;
+	return STATUS_OBJECT_NAME_NOT_FOUND;
 }
 
 NTSTATUS file_position_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_POSITION_INFORMATION *position)
@@ -1499,6 +1513,8 @@ NTSTATUS file_stream_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 {
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
 	NTSTATUS Status;
+
+	dprintf("%s: \n", __func__);
 
 	if (FileObject == NULL || FileObject->FsContext == NULL)
 		return STATUS_INVALID_PARAMETER;
@@ -1969,9 +1985,18 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	NTSTATUS Status = STATUS_SUCCESS;
 	int error; 
 
-	dprintf("   %s minor type %d flags 0x%x mdl %d System %d User %d\n", __func__, IrpSp->MinorFunction, 
+	if (FlagOn(IrpSp->MinorFunction, IRP_MN_COMPLETE)) {
+		dprintf("%s: IRP_MN_COMPLETE\n", __func__);
+		CcMdlReadComplete(IrpSp->FileObject, Irp->MdlAddress);
+		// Mdl is now deallocated.
+		Irp->MdlAddress = NULL;
+		return STATUS_SUCCESS;
+	}
+
+	dprintf("   %s minor type %d flags 0x%x mdl %d System %d User %d paging %d\n", __func__, IrpSp->MinorFunction, 
 		DeviceObject->Flags, (Irp->MdlAddress != 0), (Irp->AssociatedIrp.SystemBuffer != 0), 
-		(Irp->UserBuffer != 0));
+		(Irp->UserBuffer != 0),
+		FlagOn(Irp->Flags, IRP_PAGING_IO));
 
 	bufferLength = IrpSp->Parameters.Read.Length;
 	if (bufferLength == 0)
@@ -2037,7 +2062,16 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	LARGE_INTEGER	byteOffset;
 	NTSTATUS Status = STATUS_SUCCESS;
 	int error;
-	dprintf("   %s\n", __func__);
+
+	if (FlagOn(IrpSp->MinorFunction, IRP_MN_COMPLETE)) {
+		dprintf("%s: IRP_MN_COMPLETE\n", __func__);
+		CcMdlWriteComplete(IrpSp->FileObject, &IrpSp->Parameters.Write.ByteOffset, Irp->MdlAddress);
+		// Mdl is now deallocated.
+		Irp->MdlAddress = NULL;
+		return STATUS_SUCCESS;
+	}
+
+	dprintf("   %s paging %d\n", __func__, FlagOn(Irp->Flags, IRP_PAGING_IO));
 
 	bufferLength = IrpSp->Parameters.Write.Length;
 	if (bufferLength == 0)
@@ -2505,7 +2539,7 @@ fsDispatcher(
 		if (IrpSp && IrpSp->FileObject && IrpSp->FileObject->FileName.Buffer &&
 			_wcsicmp(IrpSp->FileObject->FileName.Buffer, L"\\autorun.inf") == 0) {
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-			Status = STATUS_OBJECT_PATH_NOT_FOUND;
+			Status = STATUS_OBJECT_NAME_NOT_FOUND;
 			break;
 		}
 
@@ -2820,6 +2854,51 @@ dispatcher(
 	return Status;
 }
 
+
+NTSTATUS ZFSCallbackAcquireForCreateSection(
+	IN PFS_FILTER_CALLBACK_DATA CallbackData,
+	OUT PVOID *CompletionContext
+)
+/*++
+Routine Description:
+This is the callback routine for MM to use to acquire the file exclusively.
+NOTE:  This routine expects the default FSRTL routine to be used to release
+the resource.  If this routine is ever changed to acquire something
+other than main, a corresponding release routine will be required.
+Arguments:
+FS_FILTER_CALLBACK_DATA - Filter based callback data that provides the file object we
+want to acquire.
+CompletionContext - Ignored.
+Return Value:
+On success we return STATUS_FSFILTER_OP_COMPLETED_SUCCESSFULLY.
+If SyncType is SyncTypeCreateSection, we return a status that indicates whether there
+are any writers to this file.  Note that main is acquired, so new handles cannot be opened.
+--*/
+{
+	ASSERT(CallbackData->Operation == FS_FILTER_ACQUIRE_FOR_SECTION_SYNCHRONIZATION);
+	ASSERT(CallbackData->SizeOfFsFilterCallbackData == sizeof(FS_FILTER_CALLBACK_DATA));
+
+	dprintf("%s: \n", __func__);
+
+	struct vnode *vp;
+	vp = CallbackData->FileObject->FsContext;
+
+	if (CallbackData->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) {
+
+		return STATUS_FSFILTER_OP_COMPLETED_SUCCESSFULLY;
+
+	} else if (0/*Fcb->ShareAccess.Writers*/ == 0) {
+
+		return STATUS_FILE_LOCKED_WITH_ONLY_READERS;
+
+	} else {
+
+		return STATUS_FILE_LOCKED_WITH_WRITERS;
+	}
+
+}
+
+
 void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject)
 {
 	WIN_DriverObject->MajorFunction[IRP_MJ_CREATE] = (PDRIVER_DISPATCH)dispatcher;   // zfs_ioctl.c
@@ -2844,16 +2923,19 @@ void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject)
 	WIN_DriverObject->MajorFunction[IRP_MJ_DEVICE_CHANGE] = (PDRIVER_DISPATCH)dispatcher;
 	WIN_DriverObject->MajorFunction[IRP_MJ_PNP] = (PDRIVER_DISPATCH)dispatcher;
 
-#if 0
+	FS_FILTER_CALLBACKS FilterCallbacks;
 	RtlZeroMemory(&FilterCallbacks,
 		sizeof(FS_FILTER_CALLBACKS));
 
 	FilterCallbacks.SizeOfFsFilterCallbacks = sizeof(FS_FILTER_CALLBACKS);
-	FilterCallbacks.PreAcquireForSectionSynchronization = FatFilterCallbackAcquireForCreateSection;
+	FilterCallbacks.PreAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
 
-	Status = FsRtlRegisterFileSystemFilterCallbacks(DriverObject,
+	NTSTATUS Status;
+
+	Status = FsRtlRegisterFileSystemFilterCallbacks(WIN_DriverObject,
 		&FilterCallbacks);
-#endif
+	if (Status != STATUS_SUCCESS)
+		dprintf("%s: FsRtlRegisterFileSystemFilterCallbacks failed - no mmap for you\n", __func__);
 
 }
 
