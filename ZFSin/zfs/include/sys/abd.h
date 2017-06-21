@@ -64,7 +64,7 @@ extern boolean_t zfs_abd_scatter_enabled;
 static inline boolean_t
 abd_is_linear(abd_t *abd)
 {
-	return ((abd->abd_flags & ABD_FLAG_LINEAR) != 0);
+	return ((abd->abd_flags & ABD_FLAG_LINEAR) != 0 ? B_TRUE : B_FALSE);
 }
 
 /*
