@@ -189,6 +189,10 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ✓ Basic drag'n'drop in Explorer
 
+  ✓ zfs send / recv, file and pipe.
+
+
+
 
 ---
 
@@ -219,7 +223,9 @@ it makes zio_taskq_member(taskq_member()) crash. Investigate.
   be researched.
 
 * Find a way to get system RAM in SPL, so we can size up the kmem as
-expected. Currently fixed at 1GB.
+expected. Currently looks up the information in the Registry.
+kmem should also use Windows signals
+"\KernelObjects\LowMemoryCondition" to sense pressure.
 
 * Creating filebased pools would look like:
 ```
