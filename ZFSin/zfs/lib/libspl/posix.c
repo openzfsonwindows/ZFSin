@@ -66,8 +66,11 @@ struct passwd *getgrnam(const char *group)
 
 struct tm *localtime_r(const time_t *clock, struct tm *result)
 {
-	if (_localtime64_s(result, clock) == 0)
+	if (localtime_s(result, clock) == 0)
 		return result;
+	// To avoid the ASSERT and abort(), make tm be something valid
+	memset(result, 0, sizeof(*result));
+	result->tm_mday = 1;
 	return NULL;
 }
 

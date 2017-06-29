@@ -5577,7 +5577,11 @@ typedef struct holds_cbdata {
 	size_t		cb_max_taglen;
 } holds_cbdata_t;
 
+#ifdef WIN32
+#define STRFTIME_FMT_STR "%a %b %d %H:%M %Y"
+#else
 #define	STRFTIME_FMT_STR "%a %b %e %k:%M %Y"
+#endif
 #define	DATETIME_BUF_LEN (32)
 /*
  *
