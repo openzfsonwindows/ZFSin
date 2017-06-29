@@ -56,6 +56,7 @@ uint64_t vm_page_free_min = 0;
 uint64_t vm_page_free_count = 0;
 uint64_t vm_page_speculative_count = 0;
 
+uint64_t spl_GetPhysMem(void);
 
 
 #include <sys/types.h>
@@ -264,6 +265,9 @@ int ddi_copyinstr(const void *uaddr, void *kaddr, uint32_t len, uint32_t *done)
 	return ret;
 }
 
+
+
+
 int spl_start (void)
 {
     //max_ncpus = processor_avail_count;
@@ -278,23 +282,13 @@ int spl_start (void)
 	// Not sure how to get physical RAM size in a Windows Driver
 	// So until then, pull some numbers out of the aether. Next
 	// we could let users pass in a value, somehow...
-	switch (MmQuerySystemSize()) {
-
-	case MmSmallSystem: // 2GB!
-		total_memory = 2ULL * 1024ULL * 1024ULL * 1024ULL;
-		break;
-	case MmMediumSystem: // 8GB!
-		total_memory = 8ULL * 1024ULL * 1024ULL * 1024ULL;
-		break;
-	case MmLargeSystem: // 16GB!
-	default:
-		total_memory = 16ULL * 1024ULL * 1024ULL * 1024ULL;
-		break;
-	}
+	total_memory = spl_GetPhysMem();
 
 	// Set 2GB as code above doesnt work
-	total_memory = 2ULL * 1024ULL * 1024ULL * 1024ULL;
+	if (!total_memory)
+		total_memory = 2ULL * 1024ULL * 1024ULL * 1024ULL;
 
+	dprintf("SPL: memsize %llu (before adjustment)\n", total_memory);
 	/*
 	 * Setting the total memory to physmem * 80% here, since kmem is
 	 * not in charge of all memory and we need to leave some room for
@@ -360,4 +354,99 @@ int spl_stop (void)
 	}
 	return STATUS_SUCCESS;
 }
+
+
+
+
+#define UNICODE
+
+#pragma pack(push, 4)
+typedef struct {
+	UCHAR  Type;
+	UCHAR  ShareDisposition;
+	USHORT Flags;
+	ULONGLONG Start;
+	ULONG Length;
+} MEMORY, *PMEMORY;
+#pragma pack(pop)
+
+/* TimoVJL */
+LONGLONG GetMemResources(char *pData)
+{
+	LONGLONG llMem = 0;
+	char *pPtr;
+	uint32_t *pDW;
+	pDW = (uint32_t *)pData;
+	if (*pDW != 1) return 0;
+	DWORD nCnt = *(uint32_t *)(pData + 0x10);	// Count
+	pPtr = pData + 0x14;
+	DWORD nRLen = 0;
+	if (*(pData + 0x14) == *(pData + 0x24)) nRLen = 16;
+	if (*(pData + 0x14) == *(pData + 0x28)) nRLen = 20;
+	PMEMORY pMem;
+	for (DWORD nIdx = 0; nRLen, nIdx < nCnt; nIdx++) {
+		pMem = (PMEMORY)(pPtr + nRLen * nIdx);
+		if (pMem->Type == 3) llMem += pMem->Length;
+		if (pMem->Type == 7 && pMem->Flags == 0x200) llMem += ((LONGLONG)pMem->Length) << 8;
+		pMem += nRLen;
+	}
+	return llMem;
+}
+
+NTSTATUS
+spl_query_memsize(
+	IN PWSTR ValueName,
+	IN ULONG ValueType,
+	IN PVOID ValueData,
+	IN ULONG ValueLength,
+	IN PVOID Context,
+	IN PVOID EntryContext
+)
+{
+
+	dprintf("%s: '%S' type 0x%x len 0x%x\n", __func__,
+		ValueName, ValueType, ValueLength);
+
+	if ((ValueType == REG_RESOURCE_LIST) &&
+		(_wcsicmp(L".Translated", ValueName) == 0)) {
+		uint64_t *value;
+		value = EntryContext;
+		if (value)
+			*value = GetMemResources(ValueData);
+		dprintf("%s: memsize is %llu\n", __func__, value ? *value : 0);
+	}
+
+	return STATUS_SUCCESS;
+}
+
+
+uint64_t spl_GetPhysMem(void)
+{
+	uint64_t memory;
+	NTSTATUS status;
+	static RTL_QUERY_REGISTRY_TABLE query[2] = 
+	{ 
+		{
+		.Flags = RTL_QUERY_REGISTRY_REQUIRED
+				/*| RTL_QUERY_REGISTRY_DIRECT*/
+				| RTL_QUERY_REGISTRY_NOEXPAND
+				| RTL_QUERY_REGISTRY_TYPECHECK,
+		.QueryRoutine = spl_query_memsize,
+		} 
+	};
+
+	query[0].EntryContext = &memory;
+	status = RtlQueryRegistryValues(
+		RTL_REGISTRY_ABSOLUTE,
+		L"\\REGISTRY\\MACHINE\\HARDWARE\\RESOURCEMAP\\System Resources\\Physical Memory",
+		query, NULL, NULL);
+
+	if (status != STATUS_SUCCESS) {
+		dprintf("%s: size query failed: 0x%x\n", __func__, status);
+		return 0ULL;
+	}
+
+	return memory;
+}
+
 

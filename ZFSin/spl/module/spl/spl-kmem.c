@@ -3247,6 +3247,11 @@ spl_minimal_physmem_p_logic()
 	return (TRUE);
 }
 
+/*
+ * Windows pressure events come from "\KernelObjects\HighMemoryCondition" and
+ * "\KernelObjects\LowMemoryCondition"
+ */
+
 int32_t
 spl_minimal_physmem_p(void)
 {
