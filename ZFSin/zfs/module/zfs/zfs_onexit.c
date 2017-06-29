@@ -131,7 +131,7 @@ zfs_onexit_fd_hold(int fd, minor_t *minorp)
     if (fp == NULL)
         return EBADF;
 
-    *minorp = zfsdev_getminor(fp->f_file);
+	*minorp = zfsdev_getminor(fp->f_file);
     return (zfs_onexit_minor_to_state(*minorp, &zo));
 }
 

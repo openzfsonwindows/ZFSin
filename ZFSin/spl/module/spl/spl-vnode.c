@@ -428,14 +428,7 @@ void *getf(int fd)
     sfp->f_offset = 0;
 //    sfp->f_proc   = current_proc();
     sfp->f_fp     = fp;
-
-	/* Also grab vnode, so we can fish out the minor, for onexit */
-	if (!file_vnode_withvid(fd, &vp, &vid)) {
-		//if (vnode_vtype(vp) != VDIR) {
-		//	sfp->f_file = minor(vnode_specrdev(vp));
-		//}
-		file_drop(fd);
-	}
+	sfp->f_file   = fp;
 
 	mutex_enter(&spl_getf_lock);
 	list_insert_tail(&spl_getf_list, sfp);

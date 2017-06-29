@@ -15,7 +15,7 @@ struct spl_fileproc {
     void        *f_proc;
     void        *f_fp;
     int          f_writes;
-	minor_t      f_file; // Minor of the file
+	uint64_t     f_file; // Minor of the file
 };
 
 //typedef struct spl_fileproc file_t;

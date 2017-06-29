@@ -57,8 +57,8 @@ extern int zfs_windows_unmount(zfs_cmd_t *zc);
 extern NTSTATUS zfsdev_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 extern void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject);
 
-NTSTATUS zfsdev_open(PDEVICE_OBJECT DeviceObject, PIRP Irp);
-NTSTATUS zfsdev_release(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+NTSTATUS zfsdev_open(dev_t dev, PIRP Irp);
+NTSTATUS zfsdev_release(dev_t dev, PIRP Irp);
 
 int zfs_vnop_recycle(znode_t *zp, int force);
 

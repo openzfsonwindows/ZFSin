@@ -5936,7 +5936,7 @@ zfsdev_state_destroy(dev_t dev)
 
 #ifdef _WIN32
 NTSTATUS
-zfsdev_open(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+zfsdev_open(dev_t dev, PIRP Irp)
 #else
 static int
 zfsdev_open(dev_t dev, int flags, int devtype, struct proc *p)
@@ -5944,15 +5944,14 @@ zfsdev_open(dev_t dev, int flags, int devtype, struct proc *p)
 {
 	int error;
 #ifdef _WIN32
-	dev_t dev = DeviceObject;
 	int flags = 0;
 	int devtype = 0;
-	struct proc *p = NULL;
+	struct proc *p = current_proc();
 	PAGED_CODE();
 
 #endif
 
-	dprintf("zfsdev_open, dev %d flag %02X devtype %d, proc is %p: thread %p\n",
+	dprintf("zfsdev_open, dev 0x%x flag %02X devtype %d, proc is %p: thread %p\n",
 			minor(dev), flags, devtype, p, current_thread());
 
 	mutex_enter(&zfsdev_state_lock);
@@ -5970,7 +5969,7 @@ zfsdev_open(dev_t dev, int flags, int devtype, struct proc *p)
 
 #ifdef _WIN32
 NTSTATUS
-zfsdev_release(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+zfsdev_release(dev_t dev, PIRP Irp)
 #else
 static int
 zfsdev_release(dev_t dev, int flags, int devtype, struct proc *p)
@@ -5978,15 +5977,14 @@ zfsdev_release(dev_t dev, int flags, int devtype, struct proc *p)
 {
 	int error;
 #ifdef _WIN32
-	dev_t dev = DeviceObject;
 	int flags = 0;
 	int devtype = 0;
-	struct proc *p = NULL;
+	struct proc *p = current_proc();
 	PAGED_CODE();
 
 #endif
 
-	dprintf("zfsdev_release, dev %d flag %02X devtype %d, dev is %p, thread %p\n",
+	dprintf("zfsdev_release, dev 0x%x flag %02X devtype %d, dev is %p, thread %p\n",
 		   minor(dev), flags, devtype, p, current_thread());
 	mutex_enter(&zfsdev_state_lock);
 	error = zfsdev_state_destroy(dev);

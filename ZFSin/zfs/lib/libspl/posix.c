@@ -586,7 +586,7 @@ struct passwd *getpwuid(uid_t uid)
 	return NULL;
 }
 
-const char *ctime_r(char *buffer, size_t bufsize, time_t cur_time)
+const char *win_ctime_r(char *buffer, uint32_t bufsize, time_t cur_time)
 {
 	errno_t e = ctime_s(buffer, bufsize, cur_time);
 	return buffer;

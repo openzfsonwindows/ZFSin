@@ -2234,10 +2234,10 @@ ioctlDispatcher(
 		dprintf("IRP_MJ_CREATE: FileObject %p related %p name '%wZ' flags 0x%x\n",
 			IrpSp->FileObject, IrpSp->FileObject ? IrpSp->FileObject->RelatedFileObject : NULL,
 			IrpSp->FileObject->FileName, IrpSp->Flags);
-		Status = zfsdev_open(DeviceObject, Irp);
+		Status = zfsdev_open(IrpSp->FileObject, Irp);
 		break;
 	case IRP_MJ_CLOSE:
-		Status = zfsdev_release(DeviceObject, Irp);
+		Status = zfsdev_release(IrpSp->FileObject, Irp);
 		break;
 	case IRP_MJ_DEVICE_CONTROL:
 		{
