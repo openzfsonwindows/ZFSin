@@ -71,4 +71,7 @@ struct timeval {
 
 extern void gethrestime(timestruc_t *);
 
+const char *win_ctime_r(char *buffer, size_t bufsize, time_t cur_time);
+#define ctime_r(CLOCK, STR) win_ctime_r((STR), sizeof((STR)), (CLOCK))
+
 #endif /* _LIBSPL_SYS_TIME_H */
