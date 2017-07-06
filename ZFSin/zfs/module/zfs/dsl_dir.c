@@ -1278,7 +1278,7 @@ dsl_dir_tempreserve_space(dsl_dir_t *dd, uint64_t lsize, uint64_t asize,
 			 * locks are held.
 			 */
 			txg_delay(dd->dd_pool, tx->tx_txg,
-			    MSEC2NSEC(10), MSEC2NSEC(10));
+			    MSEC2NSEC(1), MSEC2NSEC(1));
 			err = SET_ERROR(ERESTART);
 		}
 	}

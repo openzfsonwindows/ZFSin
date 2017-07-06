@@ -278,24 +278,27 @@
 #include <sys/kstat.h>
 #include <zfs_fletcher.h>
 #include <sys/time.h>
+#include <sys/types.h>
+
+#ifndef _KERNEL
+#include <sys/w32_types.h>
+ /* set with ZFS_DEBUG=watch, to enable watchpoints on frozen buffers */
+boolean_t arc_watch = B_FALSE;
+int arc_procfd;
+#endif
 
 #ifdef _WIN32
 #include <sys/kstat_windows.h>
 static void arc_abd_move_thr_init(void);
 static void arc_abd_move_thr_fini(void);
 static kcondvar_t arc_abd_move_thr_cv;
+static _Atomic boolean_t arc_reclaim_in_loop = B_FALSE;
 #ifdef _KERNEL
 extern vmem_t *zio_arena_parent;
 extern vmem_t *heap_arena;
 static _Atomic int64_t reclaim_shrink_target = 0;
 #endif
 static boolean_t arc_abd_try_move(arc_buf_hdr_t *);
-#endif
-
-#ifndef _KERNEL
-/* set with ZFS_DEBUG=watch, to enable watchpoints on frozen buffers */
-boolean_t arc_watch = B_FALSE;
-int arc_procfd;
 #endif
 
 static kmutex_t		arc_reclaim_lock;
@@ -674,6 +677,11 @@ typedef struct arc_stats {
 	kstat_named_t abd_scan_skip_young;
 	kstat_named_t abd_scan_skip_nothing;
 	kstat_named_t abd_move_no_shared;
+	kstat_named_t arc_reclaim_waiters_count_total;
+	kstat_named_t arc_reclaim_waiters_count;
+	kstat_named_t arc_reclaim_waiters_early_wakeup;
+	kstat_named_t arc_reclaim_waiters_early_broadcast;
+	kstat_named_t arc_reclaim_waiters_loop_timeout;
 #endif
 } arc_stats_t;
 
@@ -781,6 +789,11 @@ static arc_stats_t arc_stats = {
 	{ "abd_scan_skip_young",       KSTAT_DATA_UINT64 },
 	{ "abd_scan_skip_nothing",     KSTAT_DATA_UINT64 },
 	{ "abd_move_no_shared",        KSTAT_DATA_UINT64 },
+	{ "arc_reclaim_waiters_cnt",   KSTAT_DATA_UINT64 },
+	{ "arc_reclaim_waiters_cur",   KSTAT_DATA_UINT64 },
+	{ "arc_reclaim_waiters_sig",   KSTAT_DATA_UINT64 },
+	{ "arc_reclaim_waiters_bcst",  KSTAT_DATA_UINT64 },
+	{ "arc_reclaim_waiters_tout",  KSTAT_DATA_UINT64 },
 #endif
 };
 
@@ -3953,9 +3966,12 @@ arc_flush(spa_t *spa, boolean_t retry)
 	(void) arc_flush_state(arc_mfu_ghost, guid, ARC_BUFC_METADATA, retry);
 }
 
-void
+int64_t
 arc_shrink(int64_t to_free)
 {
+	int64_t shrank = 0;
+	int64_t arc_c_before = arc_c;
+	int64_t arc_adjust_evicted = 0;
 
 	if (arc_c > arc_c_min) {
 
@@ -3973,8 +3989,12 @@ arc_shrink(int64_t to_free)
 		ASSERT((int64_t)arc_p >= 0);
 	}
 
+	shrank = arc_c_before - arc_c;
+
 	if (arc_size > arc_c)
-		(void) arc_adjust();
+		arc_adjust_evicted = arc_adjust();
+
+	return (shrank + arc_adjust_evicted);
 }
 
 typedef enum free_memory_reason_t {
@@ -4020,7 +4040,7 @@ arc_available_memory(void)
 	// of pressure terms
 	lowest = spl_free_wrapper();
 	r = FMR_SPL_FREE;
-	if(spl_free_fast_pressure_wrapper() != FALSE) {
+	if(spl_free_fast_pressure_wrapper() != FALSE && arc_reclaim_in_loop == B_FALSE) {
 		// wake up arc_reclaim_thread() if it is sleeping
 		cv_signal(&arc_reclaim_thread_cv);
 	}
@@ -4142,6 +4162,29 @@ arc_kmem_reap_now(void)
 	extern kmem_cache_t	*abd_chunk_cache;
 	extern vmem_t           *abd_chunk_arena;
 
+	static hrtime_t last_reap = 0;
+	const hrtime_t reap_interval = SEC2NSEC(60);
+	const hrtime_t curtime = gethrtime();
+	boolean_t reap_now = B_FALSE;
+
+	if (curtime - last_reap > reap_interval) {
+		reap_now = B_TRUE;
+	} else {
+#ifdef _KERNEL
+		extern uint64_t vmem_xnu_useful_bytes_free(void);
+		const uint64_t reap_now_threshold = 2ULL * SPA_MAXBLOCKSIZE;
+		if (vmem_xnu_useful_bytes_free() < reap_now_threshold)
+			reap_now = B_TRUE;
+#else
+		reap_now = B_FALSE;
+#endif
+	}
+
+	if (reap_now == B_FALSE)
+		return;
+	else
+		last_reap = curtime;
+
 #ifdef _KERNEL
 	if (arc_meta_used >= arc_meta_limit) {
 		/*
@@ -4220,6 +4263,7 @@ arc_reclaim_thread(void)
 
 	mutex_enter(&arc_reclaim_lock);
 	while (!arc_reclaim_thread_exit) {
+		arc_reclaim_in_loop = B_TRUE;
 		uint64_t evicted = 0;
 
 		/*
@@ -4243,10 +4287,11 @@ arc_reclaim_thread(void)
 		if (reclaim_shrink_target > 0) {
 			int64_t t = reclaim_shrink_target;
 			reclaim_shrink_target = 0;
-			arc_shrink(t);
+			evicted = arc_shrink(t);
 			extern kmem_cache_t	*abd_chunk_cache;
 			kmem_cache_reap_now(abd_chunk_cache);
 			IOSleep(1);
+			goto lock_and_sleep;
 		}
 
 		int64_t pre_adjust_free_memory = MIN(spl_free_wrapper(), arc_available_memory());
@@ -4305,10 +4350,61 @@ arc_reclaim_thread(void)
 			if (free_memory <= (arc_c >> arc_no_grow_shift) + SPA_MAXBLOCKSIZE) {
 				arc_no_grow = B_TRUE;
 				/*
-				 * Wait at least zfs_grow_retry (default 60) seconds
-				 * before considering growing.
+				 * Absorb occasional low memory conditions, as they
+				 * may be caused by a single sequentially writing thread
+				 * pushing a lot of dirty data into the ARC.
+				 *
+				 * In particular, we want to quickly
+				 * begin re-growing the ARC if we are
+				 * not in chronic high pressure.
+				 * However, if we're in chronic high
+				 * pressure, we want to reduce reclaim
+				 * thread work by keeping arc_no_grow set.
+				 *
+				 * If growtime is in the past, then set it to last
+				 * half a second (which is the length of the
+				 * cv_timedwait_hires() call below; if this works,
+				 * that value should be a parameter, #defined or constified.
+				 *
+				 * If growtime is in the future, then make sure that it
+				 * is no further than 60 seconds into the future.
+				 * If it's in the nearer future, then grow growtime by
+				 * an exponentially increasing value starting with 500msec.
+				 *
 				 */
-				growtime = gethrtime() + SEC2NSEC(arc_grow_retry);
+				const hrtime_t curtime = gethrtime();
+				const hrtime_t agr = SEC2NSEC(arc_grow_retry);
+				static int grow_pass = 0;
+
+				if (growtime == 0) {
+					growtime = curtime + MSEC2NSEC(500);
+					grow_pass = 0;
+				} else {
+					// check for 500ms not being enough
+					ASSERT3U(growtime,>,curtime);
+					if (growtime <= curtime)
+						growtime = curtime + MSEC2NSEC(500);
+
+					// growtime is in the future!
+					const hrtime_t difference = growtime - curtime;
+
+					if (difference >= agr) {
+						// cap at arc_grow_retry seconds from now
+						growtime = curtime + agr - 1LL;
+						grow_pass = 0;
+					} else {
+						hrtime_t grow_by =
+						    MSEC2NSEC(500) * (1LL << grow_pass);
+
+						if (grow_by > (agr >> 1))
+							grow_by = agr >> 1;
+
+						growtime += grow_by;
+
+						if (grow_pass < 10) // add 512 seconds maximum
+							grow_pass++;
+					}
+				}
 			}
 #else
 	        if (free_memory < 0) {
@@ -4366,7 +4462,7 @@ arc_reclaim_thread(void)
 				int64_t old_arc_size = (int64_t)arc_size;
 #endif // _WIN32
 #endif // _KERNEL
-				arc_shrink(to_free);
+				(void) arc_shrink(to_free);
 #ifdef _KERNEL
 #ifdef	_WIN32
 				int64_t new_arc_size = (int64_t)arc_size;
@@ -4396,6 +4492,8 @@ arc_reclaim_thread(void)
 						vmem_qcache_reap(zio_arena_parent);
 					cv_signal(&arc_abd_move_thr_cv);
 				}
+				if (arc_shrink_freed > 0)
+					evicted += arc_shrink_freed;
 			} else if (old_to_free > 0) {
 			  dprintf("ZFS: %s, (old_)to_free has returned to zero from %lld\n",
 				 __func__, old_to_free);
@@ -4409,15 +4507,25 @@ arc_reclaim_thread(void)
 #ifndef _KERNEL
 			}
 #endif // !_KERNEL
-		} else if (free_memory < (arc_c >> arc_no_grow_shift) && arc_size >= arc_c_min) {
+		} else if (free_memory < (arc_c >> arc_no_grow_shift) &&
+		    arc_size > arc_c_min + SPA_MAXBLOCKSIZE) {
+			// relatively low memory and arc is above arc_c_min
 			arc_no_grow = B_TRUE;
-		} else if (growtime > 0 && gethrtime() >= growtime) {
+			growtime = gethrtime() + SEC2NSEC(1);
+		}
+
+		if (growtime > 0 && gethrtime() >= growtime) {
 			if (arc_no_grow == B_TRUE)
 				dprintf("ZFS: arc growtime expired\n");
 			growtime = 0;
 			arc_no_grow = B_FALSE;
 		}
 
+#ifdef _WIN32
+#ifdef _KERNEL
+	lock_and_sleep:
+#endif
+#endif
                mutex_enter(&arc_reclaim_lock);
 
 		/*
@@ -4429,13 +4537,16 @@ arc_reclaim_thread(void)
 		 * be helpful and could potentially cause us to enter an
 		 * infinite loop.
 		 */
-		if (arc_size <= arc_c || evicted == 0) {
+	       if (!arc_is_overflowing() || evicted == 0) {
 			/*
 			 * We're either no longer overflowing, or we
 			 * can't evict anything more, so we should wake
 			 * up any threads before we go to sleep.
 			 */
 			cv_broadcast(&arc_reclaim_waiters_cv);
+#ifdef _WIN32
+			arc_reclaim_in_loop = B_FALSE;
+#endif
 
 			/*
 			 * Block until signaled, or after one second (we
@@ -4446,7 +4557,19 @@ arc_reclaim_thread(void)
 			(void) cv_timedwait_hires(&arc_reclaim_thread_cv,
 			    &arc_reclaim_lock, MSEC2NSEC(500), MSEC2NSEC(1), 0);
 			CALLB_CPR_SAFE_END(&cpr, &arc_reclaim_lock);
-		}
+#ifdef _WIN32
+	       } else if (evicted >= SPA_MAXBLOCKSIZE * ARCSTAT(arc_reclaim_waiters_count)) {
+		       // we evicted plenty of buffers, so let's wake up
+		       // all the waiters rather than having them stall
+		       ARCSTAT_BUMP(arc_reclaim_waiters_early_broadcast);
+		       cv_broadcast(&arc_reclaim_waiters_cv);
+	       } else if (ARCSTAT(arc_reclaim_waiters_count) > 0) {
+		       // we evicted some buffers but are still overflowing,
+		       // so wake up only one waiter
+		       ARCSTAT_BUMP(arc_reclaim_waiters_early_wakeup);
+		       cv_signal(&arc_reclaim_waiters_cv);
+#endif
+	       }
 	}
 
 	arc_reclaim_thread_exit = B_FALSE;
@@ -4502,7 +4625,7 @@ arc_adapt(int bytes, arc_state_t *state)
 	ASSERT((int64_t)arc_p >= 0);
 
 #if !(defined(_WIN32) && defined(_KERNEL))
-	if (arc_reclaim_needed()) {
+	if (arc_reclaim_needed() && arc_reclaim_in_loop == B_FALSE) {
 		cv_signal(&arc_reclaim_thread_cv);
 		return;
 	}
@@ -4560,7 +4683,7 @@ arc_adapt(int bytes, arc_state_t *state)
 	// if we need a reclaim, we do not grow the ARC here.
 
 	extern boolean_t spl_arc_reclaim_needed(size_t, kmem_cache_t **);
-	if (spl_arc_reclaim_needed((size_t)bytes, z)) {
+	if (spl_arc_reclaim_needed((size_t)bytes, z) && arc_reclaim_in_loop == B_FALSE) {
 		cv_signal(&arc_reclaim_thread_cv);
 		return;
 	}
@@ -4585,7 +4708,6 @@ arc_adapt(int bytes, arc_state_t *state)
 				return;
 			} else {
 				reclaim_shrink_target += bytes;
-				cv_signal(&arc_reclaim_thread_cv);
 			}
 		} else {
 			/*
@@ -4641,7 +4763,18 @@ arc_is_overflowing(void)
 	uint64_t overflow = MAX(SPA_MAXBLOCKSIZE,
 	    arc_c >> zfs_arc_overflow_shift);
 
-	return (arc_size >= arc_c + overflow);
+	//return (arc_size >= arc_c + overflow);
+
+	if (!(arc_size >= arc_c + overflow))
+		return (B_FALSE);
+
+#ifdef _KERNEL
+	extern uint64_t vmem_xnu_useful_bytes_free(void);
+
+	return (vmem_xnu_useful_bytes_free() <= overflow);
+#else
+	return (B_FALSE);
+#endif
 }
 
 static abd_t *
@@ -4718,10 +4851,38 @@ arc_get_data_impl(arc_buf_hdr_t *hdr, uint64_t size, void *tag)
 		 * thread). As long as that is a rare occurrence, it
 		 * shouldn't cause any harm.
 		 */
+#ifndef _WIN32
 		if (arc_is_overflowing()) {
 			cv_signal(&arc_reclaim_thread_cv);
 			cv_wait(&arc_reclaim_waiters_cv, &arc_reclaim_lock);
 		}
+#else
+		if (arc_is_overflowing()) {
+			static _Atomic int32_t waiters = 0;
+			waiters++;
+
+			for (hrtime_t start = gethrtime(); arc_is_overflowing();) {
+
+				if (arc_reclaim_in_loop == B_FALSE)
+					cv_signal(&arc_reclaim_thread_cv);
+
+				if (waiters == 1)
+					break;
+
+				ARCSTAT_BUMP(arc_reclaim_waiters_count_total);
+				ARCSTAT_BUMP(arc_reclaim_waiters_count);
+				(void) cv_timedwait_hires(&arc_reclaim_waiters_cv,
+				    &arc_reclaim_lock, USEC2NSEC(500), 0, 0);
+				ARCSTAT_BUMPDOWN(arc_reclaim_waiters_count);
+
+				if (gethrtime() > start + MSEC2NSEC(30)) {
+					ARCSTAT_BUMP(arc_reclaim_waiters_loop_timeout);
+					break;
+				}
+			}
+			waiters--;
+		}
+#endif
 
 		mutex_exit(&arc_reclaim_lock);
 	}
@@ -6057,14 +6218,16 @@ arc_memory_throttle(uint64_t reserve, uint64_t txg)
 	available_memory =
 	    MIN(available_memory, vmem_size(heap_arena, VMEM_FREE));
 #endif
-
-	if (freemem > physmem * arc_lotsfree_percent / 100)
-		return (0);
-
 	if (txg > last_txg) {
 		last_txg = txg;
 		page_load = 0;
 	}
+
+	if (freemem > physmem * arc_lotsfree_percent / 100) {
+		page_load = 0;
+		return (0);
+	}
+
 	/*
 	 * If we are in pageout, we know that memory is already tight,
 	 * the arc is already going to be evicting, so we just want to
@@ -6094,9 +6257,10 @@ arc_memory_throttle(uint64_t reserve, uint64_t txg)
 	// the return from here is used to block all writes, so we don't want to return 1
 	// except in exceptional cases - smd
 
-	if(spl_free_manual_pressure_wrapper() != 0) {
+	if(spl_free_manual_pressure_wrapper() != 0 && arc_reclaim_in_loop == B_FALSE) {
 	  cv_signal(&arc_reclaim_thread_cv);
 	  kpreempt(KPREEMPT_SYNC);
+	  page_load = 0;
 	}
 
 	if(!spl_minimal_physmem_p() && page_load > 0) {
@@ -6104,7 +6268,10 @@ arc_memory_throttle(uint64_t reserve, uint64_t txg)
 	  dprintf("ZFS: %s: !spl_minimal_physmem_p(), available_memory == %lld, "
 		 "page_load = %llu, txg = %llu, reserve = %llu\n",
 		 __func__, available_memory, page_load, txg, reserve);
-	  cv_signal(&arc_reclaim_thread_cv);
+	  if (arc_reclaim_in_loop == B_FALSE)
+		  cv_signal(&arc_reclaim_thread_cv);
+	  kpreempt(KPREEMPT_SYNC);
+	  page_load = 0;
 	  return (SET_ERROR(EAGAIN));
 	}
 
@@ -6113,7 +6280,10 @@ arc_memory_throttle(uint64_t reserve, uint64_t txg)
 	 dprintf("ZFS: %s: arc_reclaim_needed(), available_memory == %lld, "
 		 "page_load = %llu, txg = %llu, reserve = %lld\n",
 		 __func__, available_memory, page_load, txg, reserve);
-	  cv_signal(&arc_reclaim_thread_cv);
+	  if (arc_reclaim_in_loop == B_FALSE)
+		  cv_signal(&arc_reclaim_thread_cv);
+	  kpreempt(KPREEMPT_SYNC);
+	  page_load = 0;
 	  return (SET_ERROR(EAGAIN));
 	}
 
@@ -6124,7 +6294,6 @@ arc_memory_throttle(uint64_t reserve, uint64_t txg)
 
 	if(!spl_minimal_physmem_p()) {
 	  page_load += reserve/8;
-	  cv_signal(&arc_reclaim_thread_cv);
 	  return (0);
 	}
 

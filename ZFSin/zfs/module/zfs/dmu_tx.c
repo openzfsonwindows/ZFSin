@@ -811,6 +811,7 @@ dmu_tx_delay(dmu_tx_t *tx, uint64_t dirty)
 	dp->dp_last_wakeup = wakeup;
 	mutex_exit(&dp->dp_lock);
 
+	DMU_TX_STAT_BUMP(dmu_tx_dirty_delay);
 	zfs_sleep_until(wakeup);
 }
 
