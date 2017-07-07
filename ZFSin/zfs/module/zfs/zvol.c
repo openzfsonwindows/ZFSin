@@ -151,8 +151,8 @@ extern int zfs_set_prop_nvlist(const char *, zprop_source_t,
 static void zvol_log_truncate(zvol_state_t *zv, dmu_tx_t *tx, uint64_t off,
     uint64_t len, boolean_t sync);
 static int zvol_remove_zv(zvol_state_t *);
-static int zvol_get_data(void *arg, lr_write_t *lr, char *buf, zio_t *zio,
-						 znode_t *zp, rl_t *rl);
+static int zvol_get_data(void *arg, lr_write_t *lr, char *buf,
+	struct lwb *lwb, zio_t *zio, znode_t *zp, rl_t *rl);
 // static int zvol_dumpify(zvol_state_t *zv);
 // static int zvol_dump_fini(zvol_state_t *zv);
 // static int zvol_dump_init(zvol_state_t *zv, boolean_t resize);
@@ -1792,7 +1792,7 @@ zvol_get_done(zgd_t *zgd, int error)
 	zfs_range_unlock(zgd->zgd_rl);
 
 	if (error == 0 && zgd->zgd_bp)
-		zil_add_block(zgd->zgd_zilog, zgd->zgd_bp);
+		zil_lwb_add_block(zgd->zgd_lwb, zgd->zgd_bp);
 
 	kmem_free(zgd, sizeof (zgd_t));
 }
@@ -1801,8 +1801,8 @@ zvol_get_done(zgd_t *zgd, int error)
  * Get data to generate a TX_WRITE intent log record.
  */
 static int
-zvol_get_data(void *arg, lr_write_t *lr, char *buf, zio_t *zio,
-			  znode_t *zp, rl_t *rl)
+zvol_get_data(void *arg, lr_write_t *lr, char *buf, struct lwb *lwb,
+	zio_t *zio, znode_t *zp, rl_t *rl)
 {
 	zvol_state_t *zv = arg;
 	objset_t *os = zv->zv_objset;
@@ -1813,11 +1813,12 @@ zvol_get_data(void *arg, lr_write_t *lr, char *buf, zio_t *zio,
 	zgd_t *zgd;
 	int error;
 
-	ASSERT(zio != NULL);
-	ASSERT(size != 0);
+	ASSERT3P(lwb, !=, NULL);
+	ASSERT3P(zio, !=, NULL);
+	ASSERT3U(size, !=, 0);
 
 	zgd = kmem_zalloc(sizeof (zgd_t), KM_SLEEP);
-	zgd->zgd_zilog = zv->zv_zilog;
+	zgd->zgd_lwb = lwb;
 	zgd->zgd_rl = rl;
 	//zgd->zgd_rl = zfs_range_lock(&zv->zv_znode, offset, size, RL_READER);
 
@@ -1920,8 +1921,6 @@ zvol_log_write(zvol_state_t *zv, dmu_tx_t *tx, offset_t off, ssize_t resid,
 		}
 
 		itx->itx_wr_state = write_state;
-		if (write_state == WR_NEED_COPY)
-			itx->itx_sod += len;
 		lr->lr_foid = ZVOL_OBJ;
 		lr->lr_offset = off;
 		lr->lr_length = len;

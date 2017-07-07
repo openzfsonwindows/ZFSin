@@ -86,6 +86,7 @@ assfail(const char *buf, const char *file, int line)
 } while (0)
 /* END CSTYLED */
 
+#define	VERIFY3B(x, y, z)	VERIFY3_IMPL(x, y, z, boolean_t)
 #define	VERIFY3S(x, y, z)	VERIFY3_IMPL(x, y, z, int64_t)
 #define	VERIFY3U(x, y, z)	VERIFY3_IMPL(x, y, z, uint64_t)
 #define	VERIFY3P(x, y, z)	VERIFY3_IMPL(x, y, z, uintptr_t)
@@ -101,6 +102,7 @@ assfail(const char *buf, const char *file, int line)
 	typedef char __attribute__((unused))				\
 	__compile_time_assertion__ ## y[(x) ? 1 : -1]
 
+#define	ASSERT3B(x, y, z)	((void)0)
 #define	ASSERT3S(x, y, z)	((void)0)
 #define	ASSERT3U(x, y, z)	((void)0)
 #define	ASSERT3P(x, y, z)	((void)0)
@@ -110,6 +112,7 @@ assfail(const char *buf, const char *file, int line)
 #define	EQUIV(A, B)		((void)0)
 #else
 #define	CTASSERT(x)			((void)0)
+#define	ASSERT3B(x, y, z)	VERIFY3S(x, y, z)
 #define	ASSERT3S(x, y, z)	VERIFY3S(x, y, z)
 #define	ASSERT3U(x, y, z)	VERIFY3U(x, y, z)
 #define	ASSERT3P(x, y, z)	VERIFY3P(x, y, z)
