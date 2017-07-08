@@ -147,6 +147,10 @@ extern "C" {
 #define ETXTBSY         139
 #define EWOULDBLOCK     140
 
+#define ENOTACTIVE 142
+#define ECHRNG 143
+#define EREMOTEIO 144
+
 #ifdef	__cplusplus
 }
 #endif

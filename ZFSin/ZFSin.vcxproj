@@ -331,6 +331,7 @@
     <ClCompile Include="zfs\module\zfs\lz4.c" />
     <ClCompile Include="zfs\module\zfs\lzjb.c" />
     <ClCompile Include="zfs\module\zfs\metaslab.c" />
+    <ClCompile Include="zfs\module\zfs\mmp.c" />
     <ClCompile Include="zfs\module\zfs\multilist.c" />
     <ClCompile Include="zfs\module\zfs\range_tree.c" />
     <ClCompile Include="zfs\module\zfs\refcount.c" />

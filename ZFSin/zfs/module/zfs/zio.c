@@ -2078,7 +2078,7 @@ zio_reexecute(zio_t *pio)
 }
 
 void
-zio_suspend(spa_t *spa, zio_t *zio)
+zio_suspend(spa_t *spa, zio_t *zio, zio_suspend_reason_t reason)
 {
 	if (spa_get_failmode(spa) == ZIO_FAILURE_MODE_PANIC)
 		fm_panic("Pool '%s' has encountered an uncorrectable I/O "
@@ -2098,7 +2098,7 @@ zio_suspend(spa_t *spa, zio_t *zio)
 		    ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE |
 		    ZIO_FLAG_GODFATHER);
 
-	spa->spa_suspended = B_TRUE;
+	spa->spa_suspended = reason;
 
 	if (zio != NULL) {
 		ASSERT(!(zio->io_flags & ZIO_FLAG_GODFATHER));
@@ -2121,7 +2121,7 @@ zio_resume(spa_t *spa)
 	 * Reexecute all previously suspended i/o.
 	 */
 	mutex_enter(&spa->spa_suspend_lock);
-	spa->spa_suspended = B_FALSE;
+	spa->spa_suspended = ZIO_SUSPEND_NONE;
 	cv_broadcast(&spa->spa_suspend_cv);
 	pio = spa->spa_suspend_zio_root;
 	spa->spa_suspend_zio_root = NULL;
@@ -3590,7 +3590,7 @@ zio_vdev_io_done(zio_t *zio)
 
 	ops->vdev_op_io_done(zio);
 
-	if (unexpected_error)
+	if (unexpected_error && zio->io_waiter != NULL)
 		VERIFY(vdev_probe(vd, zio) == NULL);
 
 	return (ZIO_PIPELINE_CONTINUE);
@@ -4420,7 +4420,7 @@ zio_done(zio_t *zio)
 			 * We'd fail again if we reexecuted now, so suspend
 			 * until conditions improve (e.g. device comes online).
 			 */
-			zio_suspend(zio->io_spa, zio);
+			zio_suspend(zio->io_spa, zio, ZIO_SUSPEND_IOERR);
 		} else {
 			/*
 			 * Reexecution is potentially a huge amount of work.

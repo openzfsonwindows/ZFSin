@@ -907,6 +907,7 @@ typedef struct spa_stats {
 	spa_stats_history_t	txg_history;
 	spa_stats_history_t	tx_assign_histogram;
 	spa_stats_history_t	io_history;
+	spa_stats_history_t	mmp_history;
 } spa_stats_t;
 
 typedef enum txg_state {
@@ -928,6 +929,12 @@ extern int spa_txg_history_set(spa_t *spa,  uint64_t txg,
 extern int spa_txg_history_set_io(spa_t *spa,  uint64_t txg, uint64_t nread,
     uint64_t nwritten, uint64_t reads, uint64_t writes, uint64_t ndirty);
 extern void spa_tx_assign_add_nsecs(spa_t *spa, uint64_t nsecs);
+extern int spa_mmp_history_set_skip(spa_t *spa, uint64_t mmp_kstat_id);
+extern int spa_mmp_history_set(spa_t *spa, uint64_t mmp_kstat_id, int io_error,
+    hrtime_t duration);
+extern void *spa_mmp_history_add(spa_t *spa, uint64_t txg, uint64_t timestamp,
+    uint64_t mmp_delay, vdev_t *vd, int label, uint64_t mmp_kstat_id,
+    int error);
 
 /* Pool configuration locks */
 extern int spa_config_tryenter(spa_t *spa, int locks, void *tag, krw_t rw);
@@ -1049,6 +1056,8 @@ extern boolean_t spa_trust_config(spa_t *spa);
 extern uint64_t spa_missing_tvds_allowed(spa_t *spa);
 extern void spa_set_missing_tvds(spa_t *spa, uint64_t missing);
 extern boolean_t spa_top_vdevs_spacemap_addressable(spa_t *spa);
+extern boolean_t spa_multihost(spa_t *spa);
+extern unsigned long spa_get_hostid(void);
 
 extern int spa_mode(spa_t *spa);
 extern uint64_t zfs_strtonum(const char *str, char **nptr);

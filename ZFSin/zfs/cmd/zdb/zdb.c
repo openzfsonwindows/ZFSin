@@ -2383,7 +2383,14 @@ dump_uberblock(uberblock_t *ub, const char *header, const char *footer)
 	(void) printf("\tguid_sum = %llu\n", (u_longlong_t)ub->ub_guid_sum);
 	(void) printf("\ttimestamp = %llu UTC = %s",
 	    (u_longlong_t)ub->ub_timestamp, asctime(localtime(&timestamp)));
-	if (dump_opt['u'] >= 3) {
+
+	(void) printf("\tmmp_magic = %016llx\n",
+	    (u_longlong_t)ub->ub_mmp_magic);
+	if (ub->ub_mmp_magic == MMP_MAGIC)
+		(void) printf("\tmmp_delay = %0llu\n",
+		    (u_longlong_t)ub->ub_mmp_delay);
+
+	if (dump_opt['u'] >= 4) {
 		char blkbuf[BP_SPRINTF_LEN];
 		snprintf_blkptr(blkbuf, sizeof (blkbuf), &ub->ub_rootbp);
 		(void) printf("\trootbp = %s\n", blkbuf);
@@ -2463,10 +2470,268 @@ dump_cachefile(const char *cachefile)
 	nvlist_free(config);
 }
 
+/*
+ * ZFS label nvlist stats
+ */
+typedef struct zdb_nvl_stats {
+	int             zns_list_count;
+	int             zns_leaf_count;
+	size_t          zns_leaf_largest;
+	size_t          zns_leaf_total;
+	nvlist_t        *zns_string;
+	nvlist_t        *zns_uint64;
+	nvlist_t        *zns_boolean;
+} zdb_nvl_stats_t;
+
+static void
+collect_nvlist_stats(nvlist_t *nvl, zdb_nvl_stats_t *stats)
+{
+	nvlist_t *list, **array;
+	nvpair_t *nvp = NULL;
+	char *name;
+	uint_t i, items;
+
+	stats->zns_list_count++;
+
+	while ((nvp = nvlist_next_nvpair(nvl, nvp)) != NULL) {
+		name = nvpair_name(nvp);
+
+		switch (nvpair_type(nvp)) {
+			case DATA_TYPE_STRING:
+				fnvlist_add_string(stats->zns_string, name,
+				    fnvpair_value_string(nvp));
+				break;
+			case DATA_TYPE_UINT64:
+				fnvlist_add_uint64(stats->zns_uint64, name,
+				    fnvpair_value_uint64(nvp));
+				break;
+			case DATA_TYPE_BOOLEAN:
+				fnvlist_add_boolean(stats->zns_boolean, name);
+				break;
+			case DATA_TYPE_NVLIST:
+				if (nvpair_value_nvlist(nvp, &list) == 0)
+					collect_nvlist_stats(list, stats);
+				break;
+			case DATA_TYPE_NVLIST_ARRAY:
+				if (nvpair_value_nvlist_array(nvp, &array, &items) != 0)
+					break;
+
+				for (i = 0; i < items; i++) {
+					collect_nvlist_stats(array[i], stats);
+
+					/* collect stats on leaf vdev */
+					if (strcmp(name, "children") == 0) {
+						size_t size;
+
+						(void) nvlist_size(array[i], &size,
+						    NV_ENCODE_XDR);
+						stats->zns_leaf_total += size;
+						if (size > stats->zns_leaf_largest)
+							stats->zns_leaf_largest = size;
+						stats->zns_leaf_count++;
+					}
+				}
+				break;
+			default:
+				(void) printf("skip type %d!\n", (int)nvpair_type(nvp));
+		}
+	}
+}
+
+
+static void
+dump_nvlist_stats(nvlist_t *nvl, size_t cap)
+{
+	zdb_nvl_stats_t stats = { 0 };
+	size_t size, sum = 0, total;
+	size_t noise;
+
+	/* requires nvlist with non-unique names for stat collection */
+	VERIFY0(nvlist_alloc(&stats.zns_string, 0, 0));
+	VERIFY0(nvlist_alloc(&stats.zns_uint64, 0, 0));
+	VERIFY0(nvlist_alloc(&stats.zns_boolean, 0, 0));
+	VERIFY0(nvlist_size(stats.zns_boolean, &noise, NV_ENCODE_XDR));
+
+	(void) printf("\n\nZFS Label NVList Config Stats:\n");
+
+	VERIFY0(nvlist_size(nvl, &total, NV_ENCODE_XDR));
+	(void) printf("  %d bytes used, %d bytes free (using %4.1f%%)\n\n",
+	    (int)total, (int)(cap - total), 100.0 * total / cap);
+
+	collect_nvlist_stats(nvl, &stats);
+
+	VERIFY0(nvlist_size(stats.zns_uint64, &size, NV_ENCODE_XDR));
+	size -= noise;
+	sum += size;
+	(void) printf("%12s %4d %6d bytes (%5.2f%%)\n", "integers:",
+	    (int)fnvlist_num_pairs(stats.zns_uint64),
+	    (int)size, 100.0 * size / total);
+	VERIFY0(nvlist_size(stats.zns_string, &size, NV_ENCODE_XDR));
+	size -= noise;
+	sum += size;
+	(void) printf("%12s %4d %6d bytes (%5.2f%%)\n", "strings:",
+	    (int)fnvlist_num_pairs(stats.zns_string),
+	    (int)size, 100.0 * size / total);
+
+	VERIFY0(nvlist_size(stats.zns_boolean, &size, NV_ENCODE_XDR));
+	size -= noise;
+	sum += size;
+	(void) printf("%12s %4d %6d bytes (%5.2f%%)\n", "booleans:",
+	    (int)fnvlist_num_pairs(stats.zns_boolean),
+	    (int)size, 100.0 * size / total);
+
+	size = total - sum;     /* treat remainder as nvlist overhead */
+	(void) printf("%12s %4d %6d bytes (%5.2f%%)\n\n", "nvlists:",
+	    stats.zns_list_count, (int)size, 100.0 * size / total);
+
+	if (stats.zns_leaf_count > 0) {
+		size_t average = stats.zns_leaf_total / stats.zns_leaf_count;
+
+		(void) printf("%12s %4d %6d bytes average\n", "leaf vdevs:",
+		    stats.zns_leaf_count, (int)average);
+		(void) printf("%24d bytes largest\n",
+		    (int)stats.zns_leaf_largest);
+
+		if (dump_opt['l'] >= 3 && average > 0)
+			(void) printf("  space for %d additional leaf vdevs\n",
+			    (int)((cap - total) / average));
+	}
+	(void) printf("\n");
+
+	nvlist_free(stats.zns_string);
+	nvlist_free(stats.zns_uint64);
+	nvlist_free(stats.zns_boolean);
+}
+
+typedef struct cksum_record {
+	zio_cksum_t cksum;
+	boolean_t labels[VDEV_LABELS];
+	avl_node_t link;
+} cksum_record_t;
+
+static int
+cksum_record_compare(const void *x1, const void *x2)
+{
+	const cksum_record_t *l = (cksum_record_t *)x1;
+	const cksum_record_t *r = (cksum_record_t *)x2;
+	int arraysize = ARRAY_SIZE(l->cksum.zc_word);
+	int difference;
+
+	for (int i = 0; i < arraysize; i++) {
+		difference = AVL_CMP(l->cksum.zc_word[i], r->cksum.zc_word[i]);
+		if (difference)
+			break;
+	}
+
+	return (difference);
+}
+
+static cksum_record_t *
+cksum_record_alloc(zio_cksum_t *cksum, int l)
+{
+	cksum_record_t *rec;
+
+	rec = umem_zalloc(sizeof (*rec), UMEM_NOFAIL);
+	rec->cksum = *cksum;
+	rec->labels[l] = B_TRUE;
+
+	return (rec);
+}
+
+static cksum_record_t *
+cksum_record_lookup(avl_tree_t *tree, zio_cksum_t *cksum)
+{
+	cksum_record_t lookup = { .cksum = *cksum };
+	avl_index_t where;
+
+	return (avl_find(tree, &lookup, &where));
+}
+
+static cksum_record_t *
+cksum_record_insert(avl_tree_t *tree, zio_cksum_t *cksum, int l)
+{
+	cksum_record_t *rec;
+
+	rec = cksum_record_lookup(tree, cksum);
+	if (rec) {
+		rec->labels[l] = B_TRUE;
+	} else {
+		rec = cksum_record_alloc(cksum, l);
+		avl_add(tree, rec);
+	}
+
+	return (rec);
+}
+
+static int
+first_label(cksum_record_t *rec)
+{
+	for (int i = 0; i < VDEV_LABELS; i++)
+		if (rec->labels[i])
+			return (i);
+
+	return (-1);
+}
+
+static void
+print_label_numbers(char *prefix, cksum_record_t *rec)
+{
+        printf("%s", prefix);
+        for (int i = 0; i < VDEV_LABELS; i++)
+                if (rec->labels[i] == B_TRUE)
+                        printf("%d ", i);
+        printf("\n");
+}
+
+#define MAX_UBERBLOCK_COUNT (VDEV_UBERBLOCK_RING >> UBERBLOCK_SHIFT)
+
+typedef struct label {
+	vdev_label_t label;
+	nvlist_t *config_nv;
+	cksum_record_t *config;
+	cksum_record_t *uberblocks[MAX_UBERBLOCK_COUNT];
+	boolean_t header_printed;
+	boolean_t read_failed;
+} label_t;
+
+static void
+print_label_header(label_t *label, int l)
+{
+
+	if (dump_opt['q'])
+		return;
+
+	if (label->header_printed == B_TRUE)
+		return;
+
+	(void) printf("------------------------------------\n");
+	(void) printf("LABEL %d\n", l);
+	(void) printf("------------------------------------\n");
+
+	label->header_printed = B_TRUE;
+}
+
+static void
+dump_config_from_label(label_t *label, size_t buflen, int l)
+{
+	if (dump_opt['q'])
+		return;
+
+	if ((dump_opt['l'] < 3) && (first_label(label->config) != l))
+		return;
+
+	print_label_header(label, l);
+	dump_nvlist(label->config_nv, 4);
+	print_label_numbers("    labels = ", label->config);
+
+	if (dump_opt['l'] >= 2)
+		dump_nvlist_stats(label->config_nv, buflen);
+}
+
 #define	ZDB_MAX_UB_HEADER_SIZE 32
 
 static void
-dump_label_uberblocks(vdev_label_t *lbl, uint64_t ashift)
+dump_label_uberblocks(label_t *label, uint64_t ashift, int label_num)
 {
 	vdev_t vd;
 	vdev_t *vdp = &vd;
@@ -2478,10 +2743,17 @@ dump_label_uberblocks(vdev_label_t *lbl, uint64_t ashift)
 
 	for (i = 0; i < VDEV_UBERBLOCK_COUNT(vdp); i++) {
 		uint64_t uoff = VDEV_UBERBLOCK_OFFSET(vdp, i);
-		uberblock_t *ub = (void *)((char *)lbl + uoff);
+		uberblock_t *ub = (void *)((char *)label + uoff);
 
 		if (uberblock_verify(ub))
 			continue;
+
+		if ((dump_opt['u'] < 4) &&
+		    (ub->ub_mmp_magic == MMP_MAGIC) && ub->ub_mmp_delay &&
+		    (i >= VDEV_UBERBLOCK_COUNT(&vd) - MMP_BLOCKS_PER_LABEL))
+			continue;
+
+		print_label_header(label, label_num);
 		(void) snprintf(header, ZDB_MAX_UB_HEADER_SIZE,
 		    "Uberblock[%d]\n", i);
 		dump_uberblock(ub, header, "");
@@ -2594,14 +2866,14 @@ static int
 dump_label(const char *dev)
 {
 	int fd;
-	vdev_label_t label;
+	label_t labels[VDEV_LABELS];
 	char path[MAXPATHLEN];
-	char *buf = label.vl_vdev_phys.vp_nvlist;
-	size_t buflen = sizeof (label.vl_vdev_phys.vp_nvlist);
 	struct stat statbuf;
 	uint64_t psize, ashift;
 	int l;
 	boolean_t label_found = B_FALSE;
+
+	bzero(labels, sizeof (labels));
 
 	(void) strlcpy(path, dev, sizeof (path));
 	if (dev[0] == '/') {
@@ -2645,6 +2917,9 @@ dump_label(const char *dev)
 
 	for (l = 0; l < VDEV_LABELS; l++) {
 		nvlist_t *config = NULL;
+		label_t *label = &labels[l];
+		char *buf = label->label.vl_vdev_phys.vp_nvlist;
+		size_t buflen = sizeof (label->label.vl_vdev_phys.vp_nvlist);
 
 		if (!dump_opt['q']) {
 			(void) printf("------------------------------------\n");
@@ -2677,7 +2952,7 @@ dump_label(const char *dev)
 			label_found = B_TRUE;
 		}
 		if (dump_opt['u'])
-			dump_label_uberblocks(&label, ashift);
+			dump_label_uberblocks(label, ashift, l);
 	}
 
 	(void) close(fd);
@@ -5307,21 +5582,31 @@ main(int argc, char **argv)
 	target = argv[0];
 
 	if (dump_opt['e']) {
-		char *name = find_zpool(&target, &cfg, nsearch, searchdirs);
+		importargs_t args = { 0 };
+		nvlist_t *cfg = NULL;
 
-		error = ENOENT;
-		if (name) {
-			if (dump_opt['C'] > 1) {
-				(void) printf("\nConfiguration for import:\n");
-				dump_nvlist(cfg, 8);
-			}
+		args.paths = nsearch;
+		args.path = searchdirs;
+		args.can_be_active = B_TRUE;
 
+		error = zpool_tryimport(g_zfs, target, &cfg, &args);
+		if (error == 0) {
 			if (nvlist_add_nvlist(cfg,
 			    ZPOOL_LOAD_POLICY, policy) != 0) {
 				fatal("can't open '%s': %s",
 				    target, strerror(ENOMEM));
 			}
-			error = spa_import(name, cfg, NULL, flags);
+
+			/*
+			 * Disable the activity check to allow examination of
+			 * active pools.
+			 */
+			if (dump_opt['C'] > 1) {
+				(void) printf("\nConfiguration for import:\n");
+				dump_nvlist(cfg, 8);
+			}
+			error = spa_import(target, cfg, NULL,
+			    flags | ZFS_IMPORT_SKIP_MMP);
 		}
 	}
 
@@ -5352,18 +5637,17 @@ main(int argc, char **argv)
 	}
 
 	if (error == 0) {
-		if (dump_opt['k'] && (target_is_spa || dump_opt['R'])) {
-			ASSERT(checkpoint_pool != NULL);
-			ASSERT(checkpoint_target == NULL);
-
-			error = spa_open(checkpoint_pool, &spa, FTAG);
-			if (error != 0) {
-				fatal("Tried to open pool \"%s\" but "
-				    "spa_open() failed with error %d\n",
-				    checkpoint_pool, error);
+		if (target_is_spa || dump_opt['R']) {
+			/*
+			 * Disable the activity check to allow examination of
+			 * active pools.
+			 */
+			mutex_enter(&spa_namespace_lock);
+			if ((spa = spa_lookup(target)) != NULL) {
+				spa->spa_import_flags |= ZFS_IMPORT_SKIP_MMP;
 			}
+			mutex_exit(&spa_namespace_lock);
 
-		} else if (target_is_spa || dump_opt['R']) {
 			error = spa_open_rewind(target, &spa, FTAG, policy,
 			    NULL);
 			if (error) {

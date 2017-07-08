@@ -418,11 +418,9 @@ spa_config_generate(spa_t *spa, vdev_t *vd, uint64_t txg, int getstats)
 		    spa->spa_comment);
 	}
 
-	hostid = zone_get_hostid(NULL);
-
-	if (hostid != 0) {
+	hostid = spa_get_hostid();
+	if (hostid != 0)
 		fnvlist_add_uint64(config, ZPOOL_CONFIG_HOSTID, hostid);
-	}
 
 	fnvlist_add_string(config, ZPOOL_CONFIG_HOSTNAME, utsname.nodename);
 

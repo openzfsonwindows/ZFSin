@@ -506,8 +506,12 @@ tests = ['migration_001_pos', 'migration_002_pos', 'migration_003_pos',
 [tests/functional/mmap]
 tests = ['mmap_read_001_pos']
 
-# DISABLED:
-# umountall_001 - requires umountall command.
+[tests/functional/mmp]
+tests = ['mmp_on_thread', 'mmp_on_uberblocks', 'mmp_on_off', 'mmp_interval',
+    'mmp_active_import', 'mmp_inactive_import', 'mmp_exported_import',
+    'mmp_write_uberblocks', 'mmp_reset_interval', 'multihost_history']
+tags = ['functional', 'mmp']
+
 [tests/functional/mount]
 tests = ['umount_001']
 

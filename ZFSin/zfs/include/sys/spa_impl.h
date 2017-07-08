@@ -329,7 +329,7 @@ struct spa {
 	zio_t		*spa_txg_zio[TXG_SIZE]; /* spa_sync() waits for this */
 	kmutex_t	spa_suspend_lock;	/* protects suspend_zio_root */
 	kcondvar_t	spa_suspend_cv;		/* notification of resume */
-	uint8_t		spa_suspended;		/* pool is suspended */
+	zio_suspend_reason_t	spa_suspended;	/* pool is suspended */
 	uint8_t		spa_claiming;		/* pool is doing zil_claim() */
 	boolean_t	spa_is_root;		/* pool is root */
 	int		spa_minref;		/* num refs when first opened */
@@ -369,7 +369,9 @@ struct spa {
 	spa_stats_t	spa_stats;		/* assorted spa statistics */
 	spa_keystore_t	spa_keystore;		/* loaded crypto keys */
 	hrtime_t	spa_ccw_fail_time;	/* Conf cache write fail time */
-	taskq_t		*spa_zvol_taskq;	/* Taskq for minor managment */
+	taskq_t		*spa_zvol_taskq;	/* Taskq for minor management */
+	uint64_t	spa_multihost;		/* multihost aware (mmp) */
+	mmp_thread_t	spa_mmp;		/* multihost mmp thread */
 
 	/*
 	 * spa_refcount & spa_config_lock must be the last elements

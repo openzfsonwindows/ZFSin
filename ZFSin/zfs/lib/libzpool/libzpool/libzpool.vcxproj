@@ -86,6 +86,7 @@
     <ClCompile Include="..\..\..\module\zfs\lz4.c" />
     <ClCompile Include="..\..\..\module\zfs\lzjb.c" />
     <ClCompile Include="..\..\..\module\zfs\metaslab.c" />
+    <ClCompile Include="..\..\..\module\zfs\mmp.c" />
     <ClCompile Include="..\..\..\module\zfs\multilist.c" />
     <ClCompile Include="..\..\..\module\zfs\range_tree.c" />
     <ClCompile Include="..\..\..\module\zfs\refcount.c" />
