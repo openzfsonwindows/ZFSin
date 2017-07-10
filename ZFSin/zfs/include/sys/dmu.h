@@ -111,7 +111,8 @@ typedef enum dmu_object_byteswap {
 /*
  * Defines a uint8_t object type. Object types specify if the data
  * in the object is metadata (boolean) and how to byteswap the data
- * (dmu_object_byteswap_t).
+ * (dmu_object_byteswap_t). All of the types created by this method
+ * are cached in the dbuf metadata cache.
  */
 #define	DMU_OT(byteswap, metadata, encrypted) \
 	(DMU_OT_NEWTYPE | \
@@ -130,6 +131,9 @@ typedef enum dmu_object_byteswap {
 #define	DMU_OT_IS_ENCRYPTED(ot) (((ot) & DMU_OT_NEWTYPE) ? \
 	((ot) & DMU_OT_ENCRYPTED) : \
 	dmu_ot[(int)(ot)].ot_encrypt)
+
+#define	DMU_OT_IS_METADATA_CACHED(ot) (((ot) & DMU_OT_NEWTYPE) ? \
+	B_TRUE : dmu_ot[(ot)].ot_dbuf_metadata_cache)
 
 /*
  * These object types use bp_fill != 1 for their L0 bp's. Therefore they can't
@@ -882,6 +886,7 @@ typedef struct dmu_object_info {
 typedef struct dmu_object_type_info {
 	dmu_object_byteswap_t	ot_byteswap;
 	boolean_t		ot_metadata;
+	boolean_t		ot_dbuf_metadata_cache;
 	boolean_t		ot_encrypt;
 	char			*ot_name;
 } dmu_object_type_info_t;
