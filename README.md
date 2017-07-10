@@ -191,7 +191,9 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ✓ zfs send / recv, file and pipe.
 
+  ⃝ ZVOL support
 
+  ⃝ Scrooge McDuck style swin in cash
 
 
 ---
