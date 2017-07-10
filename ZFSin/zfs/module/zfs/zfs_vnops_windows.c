@@ -1380,7 +1380,7 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 		znode_t *zp = VTOZ(vp);
 		standard->Directory = S_ISDIR(zp->z_mode) ? TRUE : FALSE;
 		//         sa_object_size(zp->z_sa_hdl, &blksize, &nblks);
-		standard->AllocationSize.QuadPart = P2PHASE(zp->z_size, zp->z_blksz);  // space taken on disk, multiples of block size
+		standard->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zp->z_blksz);  // space taken on disk, multiples of block size
 		standard->EndOfFile.QuadPart = zp->z_size;       // byte size of file
 		standard->NumberOfLinks = zp->z_links;
 		standard->DeletePending = vnode_unlink(vp) ? TRUE : FALSE;
@@ -1422,7 +1422,7 @@ NTSTATUS file_network_open_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 		TIME_UNIX_TO_WINDOWS(ctime, netopen->ChangeTime.QuadPart);
 		TIME_UNIX_TO_WINDOWS(crtime, netopen->CreationTime.QuadPart);
 		TIME_UNIX_TO_WINDOWS(zp->z_atime, netopen->LastAccessTime.QuadPart);
-		netopen->AllocationSize.QuadPart = P2PHASE(zp->z_size, zp->z_blksz);
+		netopen->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zp->z_blksz);
 		netopen->EndOfFile.QuadPart = zp->z_size;
 		netopen->FileAttributes = S_ISDIR(zp->z_mode) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
 		VN_RELE(vp);
@@ -1530,7 +1530,7 @@ NTSTATUS file_stream_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	UNICODE_STRING name;
 	RtlInitUnicodeString(&name, L"::$DATA");
 	stream->NextEntryOffset = 0;
-	stream->StreamAllocationSize.QuadPart = P2PHASE(zp->z_size, zp->z_blksz);
+	stream->StreamAllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zp->z_blksz);
 	stream->StreamSize.QuadPart = zp->z_size;
 
 	int space = IrpSp->Parameters.QueryFile.Length - sizeof(FILE_STREAM_INFORMATION);
@@ -2448,9 +2448,8 @@ diskDispatcher(
 			dprintf("IOCTL_MOUNTDEV_LINK_CREATED v2\n");
 			Status = STATUS_SUCCESS;
 			break;
-
 		default:
-			dprintf("**** unknown Windows IOCTL: 0x%lx\n", cmd);
+			dprintf("**** unknown disk Windows IOCTL: 0x%lx\n", cmd);
 		}
 
 	}
@@ -2665,8 +2664,12 @@ fsDispatcher(
 			dprintf("IOCTL_STORAGE_GET_HOTPLUG_INFO\n");
 			Status = ioctl_storage_get_hotplug_info(DeviceObject, Irp, IrpSp);
 			break;
+		case IOCTL_STORAGE_GET_DEVICE_NUMBER:
+			dprintf("IOCTL_STORAGE_GET_DEVICE_NUMBER\n");
+			Status = ioctl_storage_get_device_number(DeviceObject, Irp, IrpSp);
+			break;
 		default:
-			dprintf("**** unknown Windows IOCTL: 0x%lx\n", cmd);
+			dprintf("**** unknown fsWindows IOCTL: 0x%lx\n", cmd);
 		}
 
 	}

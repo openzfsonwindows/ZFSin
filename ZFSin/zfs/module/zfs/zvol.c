@@ -26,7 +26,7 @@
  * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2013 by Delphix. All rights reserved.
  *
- * Portions Copyright 2013 Jorgen Lundman
+ * Portions Copyright 2017 Jorgen Lundman
  *
  */
 
@@ -95,6 +95,9 @@ dev_info_t zfs_dip_real = { 0 };
 dev_info_t *zfs_dip = &zfs_dip_real;
 extern int zfs_major;
 extern int zfs_bmajor;
+
+int zfs_windows_zvol_create(zfs_cmd_t *zc);
+int zfs_windows_zvol_destroy(zfs_cmd_t *zc);
 
 /*
  * ZFS minor numbers can refer to either a control device instance or
@@ -520,7 +523,7 @@ zvol_create_minor_impl(const char *name)
 	dmu_object_info_t doi;
 	minor_t minor = 0;
 	int error;
-return 0;  // win
+
 	dprintf("zvol_create_minor: '%s'\n", name);
 
 	mutex_enter(&zfsdev_state_lock);
@@ -631,10 +634,10 @@ return 0;  // win
 
 #ifdef _WIN32
 	/* Create the IOKit zvol while owned */
-	//if ((error = zvolCreateNewDevice(zv)) != 0) {
-	//	dprintf("%s zvolCreateNewDevice error %d\n",
-	//	    __func__, error);
-	//}
+	if ((error = zfs_windows_zvol_create(zv)) != 0) {
+		dprintf("%s zvolCreateNewDevice error %d\n",
+		    __func__, error);
+	}
 
 	/* Retake lock to disown dmu objset */
 	mutex_enter(&zfsdev_state_lock);
@@ -742,7 +745,7 @@ zvol_remove_minor_impl(const char *name)
 	if (rc == 0) zvol_remove_symlink(&tmp_zv);
 
 	// Remove device from IOKit
-	//zvolRemoveDevice(tmp_zv.zv_iokitdev);
+	zfs_windows_zvol_destroy(tmp_zv.zv_iokitdev);
 	return (rc);
 }
 

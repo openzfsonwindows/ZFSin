@@ -304,7 +304,7 @@ int AsciiStringToUnicodeString(char *in, PUNICODE_STRING out)
 
 
 NTSTATUS
-DokanSendIoContlToMountManager(
+SendIoctlToMountManager(
 	__in PVOID	InputBuffer,
 	__in ULONG	Length
 )
@@ -317,7 +317,7 @@ DokanSendIoContlToMountManager(
 	KEVENT			driverEvent;
 	IO_STATUS_BLOCK	iosb;
 
-	dprintf("=> DokanSendIoContlToMountManager\n");
+	dprintf("=> SendIocntlToMountManager\n");
 
 	RtlInitUnicodeString(&mountManagerName, MOUNTMGR_DEVICE_NAME);
 
@@ -367,13 +367,13 @@ DokanSendIoContlToMountManager(
 		dprintf("  IoCallDriver failed: 0x%x\n", status);
 	}
 
-	dprintf("<= DokanSendIoContlToMountManager\n");
+	dprintf("<= SendIocontlToMountManager\n");
 
 	return status;
 }
 
 NTSTATUS
-DokanSendVolumeArrivalNotification(
+SendVolumeArrivalNotification(
 	PUNICODE_STRING		DeviceName
 )
 {
@@ -381,7 +381,7 @@ DokanSendVolumeArrivalNotification(
 	PMOUNTMGR_TARGET_NAME targetName;
 	ULONG			length;
 
-	dprintf("=> DokanSendVolumeArrivalNotification\n");
+	dprintf("=> SendVolumeArrivalNotification\n");
 
 	length = sizeof(MOUNTMGR_TARGET_NAME) + DeviceName->Length - 1;
 	targetName = ExAllocatePool(PagedPool, length);
@@ -396,7 +396,7 @@ DokanSendVolumeArrivalNotification(
 	targetName->DeviceNameLength = DeviceName->Length;
 	RtlCopyMemory(targetName->DeviceName, DeviceName->Buffer, DeviceName->Length);
 
-	status = DokanSendIoContlToMountManager(targetName, length);
+	status = SendIoctlToMountManager(targetName, length);
 
 	if (NT_SUCCESS(status)) {
 		dprintf("  IoCallDriver success\n");
@@ -406,14 +406,14 @@ DokanSendVolumeArrivalNotification(
 
 	ExFreePool(targetName);
 
-	dprintf("<= DokanSendVolumeArrivalNotification\n");
+	dprintf("<= SendVolumeArrivalNotification\n");
 
 	return status;
 }
 
 
 NTSTATUS
-DokanRegisterDeviceInterface(
+RegisterDeviceInterface(
 	__in PDRIVER_OBJECT		DriverObject,
 	__in PDEVICE_OBJECT		DeviceObject,
 	__in mount_t			*Dcb
@@ -710,9 +710,9 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 
 
 	// This makes it work in DOS
-	DokanSendVolumeArrivalNotification(&diskDeviceName);
+	SendVolumeArrivalNotification(&diskDeviceName);
 	// This makes it work in explorer
-	DokanRegisterDeviceInterface(WIN_DriverObject, diskDeviceObject, zmo_dcb);
+	RegisterDeviceInterface(WIN_DriverObject, diskDeviceObject, zmo_dcb);
 
 
 	UNICODE_STRING name;
@@ -813,7 +813,7 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 
 		IoDeleteSymbolicLink(&zmo->symlink_name);
 
-		zfs_release_mount(zmo);
+		zfs_release_mount(zmo);  // I think we only release one zmo here? fsDevice and diskDevice both have one
 
 		// fsDeviceObject
 		IoDeleteDevice(zmo->deviceObject);
@@ -831,7 +831,146 @@ out_unlock:
 
 
 
+int zfs_windows_zvol_create(zfs_cmd_t *zc)
+{
+	dprintf("%s: '%s' '%s'\n", __func__, zc->zc_name, zc->zc_value);
+	NTSTATUS status;
+	uuid_t uuid;
+	char uuid_a[UUID_PRINTABLE_STRING_LENGTH];
+	PDEVICE_OBJECT pdo = NULL;
+	PDEVICE_OBJECT diskDeviceObject = NULL;
+	PDEVICE_OBJECT fsDeviceObject = NULL;
 
+	zfs_vfs_uuid_gen(zc->zc_name, uuid);
+	zfs_vfs_uuid_unparse(uuid, uuid_a);
+
+	char buf[PATH_MAX];
+	//snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
+	WCHAR				diskDeviceNameBuf[MAXIMUM_FILENAME_LENGTH];    // L"\\Device\\Volume"
+	WCHAR				symbolicLinkNameBuf[MAXIMUM_FILENAME_LENGTH];  // L"\\DosDevices\\Global\\Volume"
+	UNICODE_STRING		diskDeviceName;
+	UNICODE_STRING		symbolicLinkTarget;
+
+	ANSI_STRING pants;
+	ULONG				deviceCharacteristics;
+	deviceCharacteristics = FILE_REMOVABLE_MEDIA;
+
+	snprintf(buf, sizeof(buf), "\\Device\\Volume{%s}", uuid_a);
+	pants.Buffer = buf;
+	pants.Length = strlen(buf);
+	pants.MaximumLength = PATH_MAX;
+	status = RtlAnsiStringToUnicodeString(&diskDeviceName, &pants, TRUE);
+	dprintf("%s: new devstring '%wZ'\n", __func__, &diskDeviceName);
+
+	status = IoCreateDeviceSecure(WIN_DriverObject,			// DriverObject
+		sizeof(mount_t),			// DeviceExtensionSize
+		&diskDeviceName,
+		FILE_DEVICE_DISK,// DeviceType
+		deviceCharacteristics,							// DeviceCharacteristics
+		FALSE,						// Not Exclusive
+		&SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_RW_RES_R, // Default SDDL String
+		NULL, // Device Class GUID
+		&diskDeviceObject);				// DeviceObject
+
+	if (status != STATUS_SUCCESS) {
+		dprintf("IoCreateDeviceSecure returned %08x\n", status);
+	}
+
+	mount_t *zmo_dcb = diskDeviceObject->DeviceExtension;
+	zmo_dcb->type = MOUNT_TYPE_DCB;
+	vfs_setfsprivate(zmo_dcb, NULL);
+	AsciiStringToUnicodeString(uuid_a, &zmo_dcb->uuid);
+	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
+	AsciiStringToUnicodeString(buf, &zmo_dcb->device_name);
+	zmo_dcb->deviceObject = diskDeviceObject;
+
+	snprintf(buf, sizeof(buf), "\\DosDevices\\Global\\Volume{%s}", uuid_a);
+	pants.Buffer = buf;
+	pants.Length = strlen(buf);
+	pants.MaximumLength = PATH_MAX;
+	status = RtlAnsiStringToUnicodeString(&symbolicLinkTarget, &pants, TRUE);
+	dprintf("%s: new symlink '%wZ'\n", __func__, &symbolicLinkTarget);
+	AsciiStringToUnicodeString(buf, &zmo_dcb->symlink_name);
+
+	diskDeviceObject->Flags |= DO_DIRECT_IO;
+
+	if (status) {
+		zfs_release_mount(zmo_dcb);
+		ObReferenceObject(diskDeviceObject);
+		IoDeleteDevice(diskDeviceObject);
+		return status;
+	}
+
+	ObReferenceObject(diskDeviceObject);
+
+	status = IoCreateSymbolicLink(&symbolicLinkTarget, &diskDeviceName);
+
+	if (!NT_SUCCESS(status)) {
+		IoDeleteDevice(diskDeviceObject);
+		dprintf("  IoCreateSymbolicLink returned 0x%x\n", status);
+		return status;
+	}
+
+	// Mark devices as initialized
+	diskDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+
+	// This makes it work in DOS
+	SendVolumeArrivalNotification(&diskDeviceName);
+	// This makes it work in explorer
+	RegisterDeviceInterface(WIN_DriverObject, diskDeviceObject, zmo_dcb);
+
+	UNICODE_STRING name;
+	PFILE_OBJECT                        fileObject;
+	PDEVICE_OBJECT                      deviceObject;
+
+	RtlInitUnicodeString(&name, MOUNTMGR_DEVICE_NAME);
+	status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &fileObject,
+		&deviceObject);
+	status = mountmgr_add_drive_letter(deviceObject, &diskDeviceName);
+	status = mountmgr_get_drive_letter(deviceObject, &diskDeviceName, zc->zc_value);
+	ObReferenceObject(fileObject);
+
+	status = STATUS_SUCCESS;
+	return status;
+}
+
+
+int zfs_windows_zvol_destroy(zfs_cmd_t *zc)
+{
+	// IRP_MN_QUERY_REMOVE_DEVICE
+	// IRP_MN_REMOVE_DEVICE
+	// FsRtlNotifyVolumeEvent(, FSRTL_VOLUME_DISMOUNT);
+
+	// Use name, lookup zfsvfs
+	// use zfsvfs to get mount_t
+	// mount_t has deviceObject, names etc.
+	mount_t *zmo;
+	zfsvfs_t *zfsvfs;
+	int error = EBUSY;
+	znode_t *zp;
+	//int rdonly;
+
+	if (getzfsvfs(zc->zc_name, &zfsvfs) == 0) {
+
+		zmo = zfsvfs->z_vfs;
+		ASSERT(zmo->type == MOUNT_TYPE_VCB);
+
+		IoDeleteSymbolicLink(&zmo->symlink_name);
+
+		zfs_release_mount(zmo);
+
+		// fsDeviceObject
+		IoDeleteDevice(zmo->deviceObject);
+		// diskDeviceObject
+		IoDeleteDevice(zmo->diskDeviceObject);
+
+		vfs_unbusy(zfsvfs->z_vfs);
+	}
+
+	error = 0;
+
+	return error;
+}
 
 
 int

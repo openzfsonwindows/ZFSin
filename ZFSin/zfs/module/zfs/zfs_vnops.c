@@ -2553,7 +2553,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
     char		*bufptr;
     boolean_t	isdotdir = B_TRUE;
 	void *nameptr = NULL;
-	PULONG namelenptr = NULL;
+	ULONG namelenholder = 0;
 	uint32_t *eofp = &zccb->dir_eof;
 	int skip_this_entry;
 	int structsize = 0;
@@ -2662,7 +2662,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 		uint8_t dtype;
 		size_t namelen;
 		int force_formd_normalized_output;
-        size_t  nfdlen;
+		size_t  nfdlen;
 
 		skip_this_entry = 0;
 
@@ -2671,19 +2671,19 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 		 * Special case `.', `..', and `.zfs'.
 		 */
 		if (offset == 0) {
-			(void) strlcpy(zap.za_name, ".", MAXNAMELEN);
+			(void)strlcpy(zap.za_name, ".", MAXNAMELEN);
 			zap.za_normalization_conflict = 0;
 			objnum = (zp->z_id == zfsvfs->z_root) ? 2 : zp->z_id;
 			type = DT_DIR;
 		} else if (offset == 1) {
-			(void) strlcpy(zap.za_name, "..", MAXNAMELEN);
+			(void)strlcpy(zap.za_name, "..", MAXNAMELEN);
 			zap.za_normalization_conflict = 0;
 			objnum = (parent == zfsvfs->z_root) ? 2 : parent;
 			objnum = (zp->z_id == zfsvfs->z_root) ? 1 : objnum;
 			type = DT_DIR;
 #if 1
 		} else if (offset == 2 && zfs_show_ctldir(zp)) {
-			(void) strlcpy(zap.za_name, ZFS_CTLDIR_NAME, MAXNAMELEN);
+			(void)strlcpy(zap.za_name, ZFS_CTLDIR_NAME, MAXNAMELEN);
 			zap.za_normalization_conflict = 0;
 			objnum = ZFSCTL_INO_ROOT;
 			type = DT_DIR;
@@ -2704,11 +2704,11 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			}
 
 			if (zap.za_integer_length != 8 ||
-			    zap.za_num_integers != 1) {
+				zap.za_num_integers != 1) {
 				cmn_err(CE_WARN, "zap_readdir: bad directory "
-				    "entry, obj = %lld, offset = %lld\n",
-				    (u_longlong_t)zp->z_id,
-				    (u_longlong_t)offset);
+					"entry, obj = %lld, offset = %lld\n",
+					(u_longlong_t)zp->z_id,
+					(u_longlong_t)offset);
 				error = SET_ERROR(ENXIO);
 				goto update;
 			}
@@ -2723,7 +2723,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			if (check_sysattrs && !zap.za_normalization_conflict) {
 #ifdef TODO
 				zap.za_normalization_conflict =
-				    xattr_sysattr_casechk(zap.za_name);
+					xattr_sysattr_casechk(zap.za_name);
 #else
 				panic("%s:%u: TODO", __func__, __LINE__);
 #endif
@@ -2746,7 +2746,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 		/* sysctl to force formD normalization of vnop output */
 		if (zfs_vnop_force_formd_normalized_output &&
-		    !is_ascii_str(zap.za_name))
+			!is_ascii_str(zap.za_name))
 			force_formd_normalized_output = 1;
 		else
 			force_formd_normalized_output = 0;
@@ -2754,161 +2754,170 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 		if (force_formd_normalized_output)
 			namelen = MIN(MAXNAMLEN, namelen * 3);
 
-//		DbgBreakPoint();
-		// Windows combines vnop_readdir and vnop_getattr, so we need to lookup
-		// a bunch of values, we try to do that as lightweight as possible.
-		znode_t dummy = { 0 };  // For "." and ".."
-		int get_zp = ENOENT;
-
-		tzp = &dummy;
-
-
-		// This can be improved as we do not need to zget if we are using search pattern
-
-		// If "." use zp, if ".." use dzp, neither needs releasing. Otherwise, call zget.
-		if (offset == 0) 
-			tzp = zp;
-		else
-			get_zp = zfs_zget_ext(zfsvfs,
-				offset == 1 ? parent : objnum, &tzp,  // objnum is adjusted above
-				ZGET_FLAG_WITHOUT_VNODE);
-		// Is it worth warning about failing stat here?
-
-		// We need to fill in more fields.
-		sa_bulk_attr_t bulk[3];
-		int count = 0;
-		uint64_t mtime[2];
-		uint64_t ctime[2];
-		uint64_t crtime[2];
-		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs),  NULL, &mtime, 16);
-		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs),  NULL, &ctime, 16);
-		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
-		sa_bulk_lookup(tzp->z_sa_hdl, bulk, count);
-		// Is it worth warning about failed lookup here?		
-
-
-		switch (dirlisttype) {
-			
-		case FileFullDirectoryInformation:
-			eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
-			eodp->FileIndex = offset;
-			eodp->AllocationSize.QuadPart = P2PHASE(tzp->z_size, tzp->z_blksz); // File size in block alignment
-			eodp->EndOfFile.QuadPart = tzp->z_size; // File size in bytes
-			TIME_UNIX_TO_WINDOWS(mtime, eodp->LastWriteTime.QuadPart);
-			TIME_UNIX_TO_WINDOWS(ctime, eodp->ChangeTime.QuadPart);
-			TIME_UNIX_TO_WINDOWS(crtime, eodp->CreationTime.QuadPart);
-			TIME_UNIX_TO_WINDOWS(tzp->z_atime, eodp->LastAccessTime.QuadPart);
-			eodp->EaSize = 0;
-			eodp->FileAttributes = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
-			nameptr = eodp->FileName;
-			namelenptr = &eodp->FileNameLength;
-			structsize = sizeof(FILE_FULL_DIR_INFORMATION);
-			break;
-
-		case FileIdBothDirectoryInformation:
-			eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
-			FILE_ID_BOTH_DIR_INFORMATION *fibdi = (FILE_ID_BOTH_DIR_INFORMATION *)bufptr;
-			fibdi->AllocationSize.QuadPart = P2PHASE(tzp->z_size, tzp->z_blksz);
-			fibdi->EndOfFile.QuadPart = tzp->z_size;
-			TIME_UNIX_TO_WINDOWS(mtime, fibdi->LastWriteTime.QuadPart);
-			TIME_UNIX_TO_WINDOWS(ctime, fibdi->ChangeTime.QuadPart);
-			TIME_UNIX_TO_WINDOWS(crtime, fibdi->CreationTime.QuadPart);
-			TIME_UNIX_TO_WINDOWS(tzp->z_atime, fibdi->LastAccessTime.QuadPart);
-			fibdi->EaSize = 0;
-			fibdi->FileAttributes = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
-			fibdi->FileId.QuadPart = objnum;
-			fibdi->FileIndex = offset;
-			fibdi->ShortNameLength = 0;
-			nameptr = fibdi->FileName;
-			namelenptr = &fibdi->FileNameLength;
-			structsize = sizeof(FILE_ID_BOTH_DIR_INFORMATION);
-			break;
-
-		case FileBothDirectoryInformation:
-			eodp = (FILE_BOTH_DIR_INFORMATION *)bufptr;
-			FILE_BOTH_DIR_INFORMATION *fbdi = (FILE_BOTH_DIR_INFORMATION *)bufptr;
-			fbdi->AllocationSize.QuadPart = P2PHASE(tzp->z_size, tzp->z_blksz);
-			fbdi->EndOfFile.QuadPart = tzp->z_size;
-			TIME_UNIX_TO_WINDOWS(mtime, fbdi->LastWriteTime.QuadPart);
-			TIME_UNIX_TO_WINDOWS(ctime, fbdi->ChangeTime.QuadPart);
-			TIME_UNIX_TO_WINDOWS(crtime, fbdi->CreationTime.QuadPart);
-			TIME_UNIX_TO_WINDOWS(tzp->z_atime, fbdi->LastAccessTime.QuadPart);
-			fbdi->EaSize = 0;
-			fbdi->FileAttributes = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
-			fbdi->FileIndex = offset;
-			fbdi->ShortNameLength = 0;
-			nameptr = fbdi->FileName;
-			namelenptr = &fbdi->FileNameLength;
-			structsize = sizeof(FILE_BOTH_DIR_INFORMATION);
-		}
-
-		// Release the zp
-		if (get_zp == 0) {
-			if (ZTOV(tzp) == NULL) {
-				zfs_zinactive(tzp);
-			} else {
-				VN_RELE(ZTOV(tzp));
-			}
-		}
 
 		/*
-		 * Do magic filename conversion for Windows here 
+		 * Do magic filename conversion for Windows here
 		 */
 		namelen = strlen(zap.za_name);
 
-		// Check filename length
-		error = RtlUTF8ToUnicodeN(NULL, 0, namelenptr, zap.za_name, namelen);
-
-		namelen = *namelenptr;
-		// One char fits inside struct, so adjust by removing one wchar
-		reclen = DIRENT_RECLEN(structsize + namelen - sizeof(WCHAR));
-
-		/*
-		* Will this entry fit in the buffer?
-		*/
-		if (outcount + reclen > bufsize) {
-			/*
-			* Did we manage to fit anything in the buffer?
-			*/
-			if (!outcount) {
-				error = (EINVAL);
-				goto update;
-			}
-			break;
-		}
-
-		// There is room, stuff in FileName...
-		error = RtlUTF8ToUnicodeN(nameptr, *namelenptr, namelenptr, zap.za_name, namelen);
-		dprintf("%s: '%.*S' -> '%s'\n", __func__,
-			*namelenptr / sizeof(WCHAR), nameptr, zap.za_name);
+		error = RtlUTF8ToUnicodeN(NULL, 0, &namelenholder, zap.za_name, namelen);
 
 		// Did they provide a search pattern
 		if (zccb->searchname.Buffer && zccb->searchname.Length) {
 			UNICODE_STRING thisname;
-			thisname.Buffer = nameptr;
-			thisname.Length = thisname.MaximumLength = *namelenptr;
+			unsigned char tmpname[PATH_MAX];
+			ULONG tmpnamelen;
+			// We need to convert name to a tmp buffer here, as the output
+			// buffer might not have enough room to hold the whole name, and
+			// we need the whole name to do search match.
+			error = RtlUTF8ToUnicodeN(tmpname, PATH_MAX, &tmpnamelen, zap.za_name, namelen);
+			dprintf("%s: '%.*S' -> '%s'\n", __func__,
+				tmpnamelen / sizeof(WCHAR), tmpname, zap.za_name);
+
+
+			thisname.Buffer = tmpname;
+			thisname.Length = thisname.MaximumLength = tmpnamelen;
 			// wildcard?
 			if (zccb->ContainsWildCards) {
 				if (!FsRtlIsNameInExpression(&zccb->searchname,
 					&thisname,
 					TRUE,  // case sensitivity, fix me
-					NULL)) 
+					NULL))
 					skip_this_entry = 1;
 			} else {
 				if (!FsRtlAreNamesEqual(&thisname,
 					&zccb->searchname,
 					TRUE,  // case
-					NULL)) 
+					NULL))
 					skip_this_entry = 1;
 			}
 			dprintf("comparing names '%.*S' == '%.*S' skip %d\n",
 				thisname.Length / sizeof(WCHAR), thisname.Buffer,
 				zccb->searchname.Length / sizeof(WCHAR), zccb->searchname.Buffer,
 				skip_this_entry);
-		}
+			}
 
 
 		if (!skip_this_entry) {
+			// Windows combines vnop_readdir and vnop_getattr, so we need to lookup
+			// a bunch of values, we try to do that as lightweight as possible.
+			znode_t dummy = { 0 };  // For "." and ".."
+			int get_zp = ENOENT;
+
+			tzp = &dummy;
+
+			// If "." use zp, if ".." use dzp, neither needs releasing. Otherwise, call zget.
+			if (offset == 0)
+				tzp = zp;
+			else
+				get_zp = zfs_zget_ext(zfsvfs,
+					offset == 1 ? parent : objnum, &tzp,  // objnum is adjusted above
+					ZGET_FLAG_WITHOUT_VNODE);
+			// Is it worth warning about failing stat here?
+
+			// We need to fill in more fields.
+			sa_bulk_attr_t bulk[3];
+			int count = 0;
+			uint64_t mtime[2];
+			uint64_t ctime[2];
+			uint64_t crtime[2];
+			SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
+			SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
+			SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
+			sa_bulk_lookup(tzp->z_sa_hdl, bulk, count);
+			// Is it worth warning about failed lookup here?		
+
+
+			switch (dirlisttype) {
+
+			case FileFullDirectoryInformation:
+				eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
+				eodp->FileIndex = offset;
+				eodp->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, tzp->z_blksz); // File size in block alignment
+				eodp->EndOfFile.QuadPart = tzp->z_size; // File size in bytes
+				TIME_UNIX_TO_WINDOWS(mtime, eodp->LastWriteTime.QuadPart);
+				TIME_UNIX_TO_WINDOWS(ctime, eodp->ChangeTime.QuadPart);
+				TIME_UNIX_TO_WINDOWS(crtime, eodp->CreationTime.QuadPart);
+				TIME_UNIX_TO_WINDOWS(tzp->z_atime, eodp->LastAccessTime.QuadPart);
+				eodp->EaSize = 0;
+				eodp->FileAttributes = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+				nameptr = eodp->FileName;
+				eodp->FileNameLength = namelenholder;
+				structsize = sizeof(FILE_FULL_DIR_INFORMATION);
+				break;
+
+			case FileIdBothDirectoryInformation:
+				eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
+				FILE_ID_BOTH_DIR_INFORMATION *fibdi = (FILE_ID_BOTH_DIR_INFORMATION *)bufptr;
+				fibdi->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, tzp->z_blksz);
+				fibdi->EndOfFile.QuadPart = tzp->z_size;
+				TIME_UNIX_TO_WINDOWS(mtime, fibdi->LastWriteTime.QuadPart);
+				TIME_UNIX_TO_WINDOWS(ctime, fibdi->ChangeTime.QuadPart);
+				TIME_UNIX_TO_WINDOWS(crtime, fibdi->CreationTime.QuadPart);
+				TIME_UNIX_TO_WINDOWS(tzp->z_atime, fibdi->LastAccessTime.QuadPart);
+				fibdi->EaSize = 0;
+				fibdi->FileAttributes = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+				fibdi->FileId.QuadPart = objnum;
+				fibdi->FileIndex = offset;
+				fibdi->ShortNameLength = 0;
+				nameptr = fibdi->FileName;
+				fibdi->FileNameLength = namelenholder;
+				structsize = sizeof(FILE_ID_BOTH_DIR_INFORMATION);
+				break;
+
+			case FileBothDirectoryInformation:
+				eodp = (FILE_BOTH_DIR_INFORMATION *)bufptr;
+				FILE_BOTH_DIR_INFORMATION *fbdi = (FILE_BOTH_DIR_INFORMATION *)bufptr;
+				fbdi->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, tzp->z_blksz);
+				fbdi->EndOfFile.QuadPart = tzp->z_size;
+				TIME_UNIX_TO_WINDOWS(mtime, fbdi->LastWriteTime.QuadPart);
+				TIME_UNIX_TO_WINDOWS(ctime, fbdi->ChangeTime.QuadPart);
+				TIME_UNIX_TO_WINDOWS(crtime, fbdi->CreationTime.QuadPart);
+				TIME_UNIX_TO_WINDOWS(tzp->z_atime, fbdi->LastAccessTime.QuadPart);
+				fbdi->EaSize = 0;
+				fbdi->FileAttributes = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+				fbdi->FileIndex = offset;
+				fbdi->ShortNameLength = 0;
+				nameptr = fbdi->FileName;
+				fbdi->FileNameLength = namelenholder;
+				structsize = sizeof(FILE_BOTH_DIR_INFORMATION);
+				break;
+			}
+
+			// One char fits inside struct, so adjust by removing one wchar
+			reclen = DIRENT_RECLEN(structsize + namelenholder - sizeof(WCHAR));
+
+			/*
+			* Will this entry fit in the buffer?
+			*/
+			if (outcount + reclen > bufsize) {
+				/*
+				* Did we manage to fit anything in the buffer?
+				*/
+				if (!outcount) {
+					error = (EINVAL);
+					goto update;
+				}
+				break;
+			}
+
+
+			// Convert the filename over, or as much as we can fit
+			error = RtlUTF8ToUnicodeN(nameptr, namelenholder, &namelenholder, zap.za_name, namelen);
+			dprintf("%s: '%.*S' -> '%s'\n", __func__,
+				namelenholder / sizeof(WCHAR), nameptr, zap.za_name);
+
+			// Release the zp
+			if (get_zp == 0) {
+				if (ZTOV(tzp) == NULL) {
+					zfs_zinactive(tzp);
+				} else {
+					VN_RELE(ZTOV(tzp));
+				}
+			}
+
+
+			// If we aren't to skip, advance all pointers
 			eodp->NextEntryOffset = reclen;
 
 			outcount += reclen;
