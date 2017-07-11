@@ -149,8 +149,8 @@ zio_init(void)
 		size_t size = (c + 1) << SPA_MINBLOCKSHIFT;
 		size_t p2 = size;
 		size_t align = 0;
-		//size_t cflags = (size > zio_buf_debug_limit) ? KMC_NODEBUG : 0;
-		size_t cflags = KMF_BUFTAG | KMF_HASH | KMF_LITE;
+		size_t cflags = (size > zio_buf_debug_limit) ? KMC_NODEBUG : 0;
+		//size_t cflags = KMF_BUFTAG | KMF_HASH | KMF_LITE;
 
 #ifdef _ILP32
 		/*
@@ -1306,8 +1306,8 @@ zio_write_compress(zio_t *zio)
 	zio_prop_t *zp = &zio->io_prop;
 	enum zio_compress compress = zp->zp_compress;
 	blkptr_t *bp = zio->io_bp;
-	uint64_t lsize = zio->io_size;
-	uint64_t psize = lsize;
+	uint64_t lsize = zio->io_lsize;
+	uint64_t psize = zio->io_size;
 	int pass = 1;
 
 	/*
