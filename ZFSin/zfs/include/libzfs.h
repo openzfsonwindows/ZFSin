@@ -27,6 +27,7 @@
  * Copyright (c) 2013 Steven Hartland. All rights reserved.
  * Copyright 2016 Nexenta Systems, Inc.
  * Copyright (c) 2017 Jorgen Lundman. All rights reserved.
+ * Copyright (c) 2017 Datto Inc.
  */
 
 #ifndef	_LIBZFS_H
@@ -154,6 +155,7 @@ typedef enum zfs_error {
 	EZFS_UNSHAREAFPFAILED,	/* failed to unshare over afp */
 	EZFS_SHAREAFPFAILED,	/* failed to share over afp */
 	EZFS_CRYPTOFAILED,	/* failed to setup encryption */
+	EZFS_SCRUB_PAUSED,	/* scrub currently paused */
 	EZFS_UNKNOWN
 } zfs_error_t;
 
@@ -273,7 +275,7 @@ typedef struct splitflags {
 /*
  * Functions to manipulate pool and vdev state
  */
-extern int zpool_scan(zpool_handle_t *, pool_scan_func_t);
+extern int zpool_scan(zpool_handle_t *, pool_scan_func_t, pool_scrub_cmd_t);
 extern int zpool_clear(zpool_handle_t *, const char *, nvlist_t *);
 extern int zpool_reguid(zpool_handle_t *);
 extern int zpool_reopen(zpool_handle_t *);

@@ -26,7 +26,8 @@
 #
 
 #
-# Copyright (c) 2013 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2016 by Delphix. All rights reserved.
+# Copyright (c) 2017 Datto Inc.
 #
 
 . $STF_SUITE/tests/functional/cli_user/misc/misc.cfg
@@ -48,6 +49,7 @@ verify_runnable "global"
 log_assert "zpool scrub returns an error when run as a user"
 
 log_mustnot $ZPOOL scrub $TESTPOOL
+log_mustnot $ZPOOL scrub -p $TESTPOOL
 log_mustnot $ZPOOL scrub -s $TESTPOOL
 
 log_pass "zpool scrub returns an error when run as a user"

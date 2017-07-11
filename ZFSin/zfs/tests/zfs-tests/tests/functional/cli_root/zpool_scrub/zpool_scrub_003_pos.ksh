@@ -25,47 +25,46 @@
 # Use is subject to license terms.
 #
 
+#
+# Copyright (c) 2016 by Delphix. All rights reserved.
+# Copyright (c) 2017 by Datto Inc.
+#
+
 . $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/tests/functional/cli_root/zpool_scrub/zpool_scrub.cfg
 
 #
 # DESCRIPTION:
-#	scrub command terminates the existing scrub process and starts
-#	a new scrub.
+#	scrub command fails when there is an existing scrub in progress
 #
 # STRATEGY:
-#	1. Setup a pool and fill with data
+#	1. Setup a pool and fill it with data
 #	2. Kick off a scrub
-#	3. Check the completed percent and invoke another scrub
-#	4. Check the percent again, verify a new scrub started.
+#	2. Kick off a second scrub and verify it fails
+#
+# NOTES:
+#	A 10ms delay is added to the ZIOs in order to ensure that the
+#	scrub does not complete before it has a chance to be restarted.
+#	This can occur when testing with small pools or very fast hardware.
 #
 
 verify_runnable "global"
 
-function get_scrub_percent
+function cleanup
 {
-	typeset -i percent
-	percent=$($ZPOOL status $TESTPOOL | $GREP "^ scrub" | \
-	    $AWK '{print $7}' | $AWK -F. '{print $1}')
-	if is_pool_scrubbed $TESTPOOL ; then
-		percent=100
-	fi
-	$ECHO $percent
+       log_must zinject -c all
 }
 
-log_assert "scrub command terminates the existing scrub process and starts" \
-	"a new scrub."
+log_onexit cleanup
 
+log_assert "Scrub command fails when there is already a scrub in progress"
+
+log_must zinject -d $DISK1 -D10:1 $TESTPOOL
 log_must $ZPOOL scrub $TESTPOOL
-typeset -i PERCENT=30 percent=0
-while ((percent < PERCENT)) ; do
-	percent=$(get_scrub_percent)
-done
+log_must is_pool_scrubbing $TESTPOOL true
+log_mustnot $ZPOOL scrub $TESTPOOL
+log_must is_pool_scrubbing $TESTPOOL true
+log_must $ZPOOL scrub -s $TESTPOOL
+log_must is_pool_scrub_stopped $TESTPOOL true
 
-log_must $ZPOOL scrub $TESTPOOL
-percent=$(get_scrub_percent)
-if ((percent > PERCENT)); then
-	log_fail "zpool scrub don't stop existing scrubbing process."
-fi
-
-log_pass "scrub command terminates the existing scrub process and starts" \
-	"a new scrub."
+log_pass "Issuing a scrub command failed when scrub was already in progress"

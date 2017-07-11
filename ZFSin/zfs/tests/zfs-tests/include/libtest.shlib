@@ -22,10 +22,9 @@
 #
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
-#
-
-#
-# Copyright (c) 2013 by Delphix. All rights reserved.
+# Copyright (c) 2012, 2016 by Delphix. All rights reserved.
+# Copyright 2016 Nexenta Systems, Inc.
+# Copyright (c) 2017 Datto Inc.
 #
 
 . ${STF_TOOLS}/contrib/include/logapi.shlib
@@ -1739,54 +1738,65 @@ function check_vdev_state # pool disk state{online,offline,unavail}
 #
 # Return 0 is contain, 1 otherwise
 #
-function check_pool_status # pool token keyword
+function check_pool_status # pool token keyword <verbose>
 {
 	typeset pool=$1
 	typeset token=$2
 	typeset keyword=$3
+	typeset verbose=${4:-false}
 
-	$ZPOOL status -v "$pool" 2>/dev/null | $AWK -v token="$token:" '
-		($1==token) {print $0}' \
-	| $GREP -i "$keyword" > /dev/null 2>&1
+	scan=$($ZPOOL status -v "$pool" 2>/dev/null | $AWK -v token="$token:" '
+		($1==token) {print $0}')
+	if [[ $verbose == true ]]; then
+		log_note $scan
+	fi
+	echo $scan | $GREP -i "$keyword" > /dev/null 2>&1
 
 	return $?
 }
 
 #
-# These 5 following functions are instance of check_pool_status()
+# These 6 following functions are instance of check_pool_status()
 #	is_pool_resilvering - to check if the pool is resilver in progress
 #	is_pool_resilvered - to check if the pool is resilver completed
 #	is_pool_scrubbing - to check if the pool is scrub in progress
 #	is_pool_scrubbed - to check if the pool is scrub completed
 #	is_pool_scrub_stopped - to check if the pool is scrub stopped
+#	is_pool_scrub_paused - to check if the pool has scrub paused
 #
-function is_pool_resilvering #pool
+function is_pool_resilvering #pool <verbose>
 {
-	check_pool_status "$1" "scan" "resilver in progress since "
+	check_pool_status "$1" "scan" "resilver in progress since " $2
 	return $?
 }
 
-function is_pool_resilvered #pool
+function is_pool_resilvered #pool <verbose>
 {
-	check_pool_status "$1" "scan" "resilvered "
+	check_pool_status "$1" "scan" "resilvered " $2
 	return $?
 }
 
-function is_pool_scrubbing #pool
+function is_pool_scrubbing #pool <verbose>
 {
-	check_pool_status "$1" "scan" "scrub in progress since "
+	check_pool_status "$1" "scan" "scrub in progress since " $2
 	return $?
 }
 
-function is_pool_scrubbed #pool
+function is_pool_scrubbed #pool <verbose>
 {
-	check_pool_status "$1" "scan" "scrub repaired"
+	check_pool_status "$1" "scan" "scrub repaired" $2
 	return $?
 }
 
-function is_pool_scrub_stopped #pool
+function is_pool_scrub_stopped #pool <verbose>
 {
-	check_pool_status "$1" "scan" "scrub canceled"
+	check_pool_status "$1" "scan" "scrub canceled" $2
+	return $?
+}
+
+function is_pool_scrub_paused #pool <verbose>
+{
+	check_pool_status "$1" "scan" "scrub paused since " $2
 	return $?
 }
 
