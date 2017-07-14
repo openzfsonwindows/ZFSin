@@ -1163,7 +1163,7 @@ zil_lwb_commit(zilog_t *zilog, itx_t *itx, lwb_t *lwb)
 			}
 
 
-#if defined (_WIN32) && defined (KERNEL)
+#if defined (_WIN32) && defined (_KERNEL)
 			/* to avoid deadlock, grab necessary range lock before hold the txg */
 			uint64_t off = lrw->lr_offset;
 			int len = lrw->lr_length; /* this range never exceeds max blk size,
@@ -1179,7 +1179,7 @@ zil_lwb_commit(zilog_t *zilog, itx_t *itx, lwb_t *lwb)
 				 * we only spawn the attach thread once.
 				 */
 				if (!ZTOV(zp)) {
-					printf("ZFS: zil is NULL case\n");
+					dprintf("ZFS: zil is NULL case\n");
 				}
 
 				if (dlen) {                     /* immediate write */
