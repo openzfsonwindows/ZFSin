@@ -193,6 +193,11 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ⃝ ZVOL support
 
+  ✓ git clone ZFS repo on ZFS mounted fs
+
+  ⃝ Compile ZFS on top of ZFS
+  *  VS catches on fire loading project
+
   ⃝ Scrooge McDuck style swin in cash
 
 
