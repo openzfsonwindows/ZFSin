@@ -1202,7 +1202,8 @@ dmu_read_uio_dnode(dnode_t *dn, uio_t *uio, uint64_t size)
 		dmu_buf_t *db = dbp[i];
 
 		ASSERT(size > 0);
-
+		ASSERT(db->db_data != NULL);
+		ASSERT(db->db_size != 0);
 		bufoff = uio_offset(uio) - db->db_offset;
 		tocpy = MIN(db->db_size - bufoff, size);
 

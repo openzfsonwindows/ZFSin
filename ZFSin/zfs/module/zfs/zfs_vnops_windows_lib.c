@@ -23,12 +23,13 @@
  */
 #define INITGUID
 //#include <ntdef.h>
-#include <wdm.h>
+//#include <wdm.h>
+#include <Ntifs.h>
 #include <intsafe.h>
 #include <ntddvol.h>
 //#include <ntddstor.h>
 #include <ntdddisk.h>
-#include <wdmguid.h>
+//#include <wdmguid.h>
 #include <mountmgr.h>
 #include <sys/cred.h>
 #include <sys/vnode.h>
@@ -55,6 +56,9 @@
 #include <sys/zfs_mount.h>
 
 #include <sys/zfs_windows.h>
+
+#undef _NTDDK_
+//#include <ntddk.h>
 
 extern int zfs_vnop_force_formd_normalized_output; /* disabled by default */
 
@@ -203,8 +207,6 @@ fnv_32a_buf(void *buf, size_t len, uint32_t hval)
 }
 
 
-#undef _NTDDK_
-#include <ntddk.h>
 
 /*
 * Jump through the hoops needed to make a mount happen.

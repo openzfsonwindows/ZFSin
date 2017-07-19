@@ -42,7 +42,7 @@
 #include <sys/trace_zil.h>
 
 
-#if defined (_WIN32) && defined (KERNEL)
+#if defined (_WIN32) && defined (_KERNEL)
 #include <sys/zfs_rlock.h>
 #include <sys/zfs_znode.h>
 extern int    zfs_znode_getvnode( znode_t *zp, zfsvfs_t *zfsvfs);
@@ -1104,7 +1104,7 @@ zil_lwb_commit(zilog_t *zilog, itx_t *itx, lwb_t *lwb)
 	uint64_t reclen = lrc->lrc_reclen;
 	uint64_t dlen = 0;
 	int error = 0;
-#if defined (_WIN32) && defined (KERNEL)
+#if defined (_WIN32) && defined (_KERNEL)
 	znode_t *zp = NULL;
 	rl_t *rl = NULL;
 #endif
@@ -1120,7 +1120,7 @@ zil_lwb_commit(zilog_t *zilog, itx_t *itx, lwb_t *lwb)
 		dlen = P2ROUNDUP_TYPED(
 		    lrw->lr_length, sizeof (uint64_t), uint64_t);
 
-#if defined (_WIN32) && defined (KERNEL)
+#if defined (_WIN32) && defined (_KERNEL)
 	/* to avoid deadlock, grab necessary range lock before hold the txg */
 	if (lrc->lrc_txtype == TX_WRITE && itx->itx_wr_state != WR_COPIED) {
 		uint64_t off = lrw->lr_offset;
@@ -1137,7 +1137,7 @@ zil_lwb_commit(zilog_t *zilog, itx_t *itx, lwb_t *lwb)
 			* we only spawn the attach thread once.
 			*/
 			if (!ZTOV(zp)) {
-				printf("ZFS: zil is NULL case\n");
+				dprintf("ZFS: zil is NULL case\n");
 			}
 
 			if (dlen) {                     /* immediate write */
@@ -1225,7 +1225,7 @@ zil_lwb_commit(zilog_t *zilog, itx_t *itx, lwb_t *lwb)
 				/* if error is not 0, the zfs_zget already failed,
 				 * no need to proceed */
 
-#if defined (_WIN32) && defined (KERNEL)
+#if defined (_WIN32) && defined (_KERNEL)
 				error = zilog->zl_get_data(
 					itx->itx_private, lrw, dbuf, lwb->lwb_zio, zp, rl);
 #else

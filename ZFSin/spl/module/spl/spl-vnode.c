@@ -721,6 +721,10 @@ int     vnode_recycle(vnode_t *vp)
 
 	if ((vp->v_usecount == 0) &&
 		(vp->v_iocount == 1)) {
+
+		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
+		// mutex does not need releasing.
+
 		// Free vp memory
 		kmem_free(vp, sizeof(*vp));
 	}
@@ -781,6 +785,10 @@ void vnode_create(void *v_data, int type, struct vnode **vpp)
 	(*vpp)->v_type = type;
 	(*vpp)->v_id = atomic_inc_32_nv(&(vnode_vid_counter));
 	atomic_inc_32(&(*vpp)->v_iocount);
+
+	// Initialise the Windows specific data.
+	ExInitializeFastMutex( &(*vpp)->AdvancedFcbHeaderMutex );
+    FsRtlSetupAdvancedHeader( &(*vpp)->FileHeader, &(*vpp)->AdvancedFcbHeaderMutex );
 }
 
 

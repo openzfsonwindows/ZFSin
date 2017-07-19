@@ -51,7 +51,15 @@
 #define VNODE_DEAD 1<<0
 
 struct vnode {
-	IRP v_irp;
+	// Windows specific header, has to be first. Not sure we are using
+	// it yet, as we do our own caching.
+	FSRTL_ADVANCED_FCB_HEADER FileHeader;
+	// Mutex for locking access to FileHeader.
+	FAST_MUTEX AdvancedFcbHeaderMutex;
+	// mmap file access struct
+	SECTION_OBJECT_POINTERS SectionObjectPointers;
+
+	// Our implementation data fields
 	uint32_t v_flags;
 	void *v_data;
 	uint16_t v_type;
@@ -59,9 +67,6 @@ struct vnode {
 	uint32_t v_iocount;  // Short term holds
 	uint32_t v_usecount; // Long term holds
 	uint32_t v_id;
-
-	// Windows specific fields that doesn't really fit with protected API stuff
-	SECTION_OBJECT_POINTERS SectionObjectPointers;
 };
 typedef struct vnode vnode_t;
 

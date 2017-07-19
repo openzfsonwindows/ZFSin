@@ -328,7 +328,7 @@ uint32_t	kmem_max_cached = KMEM_BIG_MAXBUF;	/* maximum kmem_alloc cache */
 // with or without KMF_AUDIT
 int kmem_flags = KMF_DEADBEEF | KMF_REDZONE | KMF_CONTENTS;
 #else
-int kmem_flags = 0;
+int kmem_flags = KMF_DEADBEEF | KMF_REDZONE | KMF_CONTENTS;
 #endif
 int kmem_ready;
 

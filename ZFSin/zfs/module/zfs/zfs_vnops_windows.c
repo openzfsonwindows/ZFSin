@@ -121,7 +121,7 @@ uint64_t vnop_num_vnodes = 0;
 
 int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, char **lastname, struct vnode **dvpp, struct vnode **vpp)
 {
-	int error;
+	int error = 0;
 	znode_t *zp;
 	struct vnode *dvp = NULL;
 	struct vnode *vp = NULL;
@@ -129,59 +129,68 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 	char *brkt = NULL;
 	struct componentname cn;
 
-	// Handle the case where dvp is given and not NULL?
-	// dvp = *dvpp;
+	// Iterate from dvp if given, otherwise root
+	dvp = *dvpp;
 
-	// Iterate from root
-	error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
-
-	if (error == 0) {
+	if (dvp == NULL) {
+		error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
+		if (error != 0) return error;
 		dvp = ZTOV(zp);
-		for (word = strtok_r(filename, "/\\", &brkt);
-			word;
-			word = strtok_r(NULL, "/\\", &brkt)) {
-
-			cn.cn_nameiop = LOOKUP;
-			cn.cn_flags = ISLASTCN;
-			cn.cn_namelen = strlen(word);
-			cn.cn_nameptr = word;
-			error = zfs_lookup(dvp, word,
-				&vp, &cn, cn.cn_nameiop, NULL, /* flags */ 0);
-
-			if (error != 0) {
-
-				// If we are creating a file, or looking up parent,
-				// allow it not to exist
-				if (finalpartmaynotexist) break;
-
-				VN_RELE(dvp);
-				dvp = NULL;
-				break;
-			}
-			// If last lookup hit a non-directory type, we stop
-			zp = VTOZ(vp);
-			if (S_ISDIR(zp->z_mode)) {
-				VN_RELE(dvp);
-				dvp = vp;
-				vp = NULL;
-			} else {
-				VN_RELE(vp);
-				break;
-			} // is dir or not
-
-		} // for word
-		if (dvp) VN_RELE(dvp);
+	} else {
+		VN_HOLD(dvp);
 	}
 
-	if (!dvp) {
+	for (word = strtok_r(filename, "/\\", &brkt);
+		word;
+		word = strtok_r(NULL, "/\\", &brkt)) {
+
+		cn.cn_nameiop = LOOKUP;
+		cn.cn_flags = ISLASTCN;
+		cn.cn_namelen = strlen(word);
+		cn.cn_nameptr = word;
+		error = zfs_lookup(dvp, word,
+			&vp, &cn, cn.cn_nameiop, NULL, /* flags */ 0);
+
+		if (error != 0) {
+
+			// If we are creating a file, or looking up parent,
+			// allow it not to exist
+			if (finalpartmaynotexist) break;
+
+			VN_RELE(dvp);
+			dvp = NULL;
+			break;
+		}
+		// If last lookup hit a non-directory type, we stop
+		zp = VTOZ(vp);
+		if (S_ISDIR(zp->z_mode)) {
+			VN_RELE(dvp);
+			dvp = vp;
+			vp = NULL;
+		} else {
+			VN_RELE(vp);
+			break;
+		} // is dir or not
+
+	} // for word
+
+	if (dvp) {
+		VN_RELE(dvp);
+	} else {
 		dprintf("%s: failed to find dvp\n", __func__);
 		return ENOENT;
 	}
-	if (!vp && !finalpartmaynotexist)
+	if (error != 0 && !vp && !finalpartmaynotexist)
 		return ENOENT;
 
 	if (lastname) {
-		*lastname = word;
+
+		*lastname = word ? word : filename;
+
+		// Skip any leading "\"
+		while (*lastname != NULL &&
+			(**lastname == '\\' || **lastname == '/')) (*lastname)++;
+
 	}
 
 	if (dvpp != NULL)
@@ -194,7 +203,9 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 
 
 
-
+// This should be changed a bit, to use zfs_find_dvp_vp() and
+// not have so many places to exit, and so many places for same 
+// allocations.
 int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 {
 	int error;
@@ -225,6 +236,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	BOOLEAN CreateFile;
 	ULONG CreateDisposition;
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+
+	if (zfsvfs == NULL) return STATUS_OBJECT_PATH_NOT_FOUND;
 
 	FileObject = IrpSp->FileObject;
 	Options = IrpSp->Parameters.Create.Options;
@@ -333,89 +346,24 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 
 	// We need to have a parent from here on.
-	if (dvp == NULL) {
-
-		// Change code to use function above
-//		error = zfs_find_dvp_vp(zfsvfs, filename, &lastname, &dvp, &vp);
-
-		// Iterate from root
-		error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
-
-		if (error == 0) {
-			dvp = ZTOV(zp);
-			for (word = strtok_r(filename, "/\\", &brkt);
-				word;
-				word = strtok_r(NULL, "/\\", &brkt)) {
-
-				cn.cn_nameiop = LOOKUP;
-				cn.cn_flags = ISLASTCN;
-				cn.cn_namelen = strlen(word);
-				cn.cn_nameptr = word;
-				error = zfs_lookup(dvp, word,
-					&vp, &cn, cn.cn_nameiop, cr, /* flags */ 0);
-
-				if (error != 0) {
-
-					// If we are creating a file, or looking up parent,
-					// allow it not to exist
-					if (CreateFile || OpenTargetDirectory) break;
-
-					VN_RELE(dvp);
-					dvp = NULL;
-					break;
-				}
-				// If last lookup hit a non-directory type, we stop
-				zp = VTOZ(vp);
-				if (S_ISDIR(zp->z_mode)) {
-					VN_RELE(dvp);
-					dvp = vp;
-					vp = NULL;
-				} else {
-					VN_RELE(vp);
-					break;
-				} // is dir or not
-
-			} // for word
-			if (dvp) VN_RELE(dvp);
-		}
+	error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), &finalname, &dvp, &vp);
+	if (error) {
 		if (!dvp) {
 			dprintf("%s: failed to find dvp\n", __func__);
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 			return STATUS_OBJECT_PATH_NOT_FOUND;
 		}
-
-
-	} else { // dvp set, just lookup the entry relatively
-
-		if (!CreateDirectory && !CreateFile) {
-
-			VN_HOLD(dvp);
-			cn.cn_nameiop = LOOKUP;
-			cn.cn_flags = ISLASTCN;
-			cn.cn_namelen = strlen(filename);
-			cn.cn_nameptr = filename;
-			error = zfs_lookup(dvp, filename,
-				&vp, &cn, cn.cn_nameiop, cr, /* flags */ 0);
-			VN_RELE(dvp);
-			if (error) {
-				dprintf("%s: failed to find vp in dvp\n", __func__);
-				Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-				return STATUS_OBJECT_NAME_NOT_FOUND;
-			}
-			VN_RELE(vp);
-		}
+		dprintf("%s: failed to find vp in dvp\n", __func__);
+		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+		return STATUS_OBJECT_NAME_NOT_FOUND;
 	}
-
-	finalname = word ? word : filename;
 
 	if (OpenTargetDirectory) {
 		if (dvp) {
 			dprintf("%s: opening PARENT directory\n", __func__);
-			zfs_dirlist_t *zccb = kmem_alloc(sizeof(zfs_dirlist_t), KM_SLEEP);
+			zfs_dirlist_t *zccb = kmem_zalloc(sizeof(zfs_dirlist_t), KM_SLEEP);
 			ASSERT(IrpSp->FileObject->FsContext2 == NULL);
 			zccb->magic = ZFS_DIRLIST_MAGIC;
-			zccb->uio_offset = 0;
-			zccb->dir_eof = 0;
 			IrpSp->FileObject->FsContext2 = zccb;
 			FileObject->FsContext = dvp;
 			VN_HOLD(dvp);
@@ -435,6 +383,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		vap.va_type = VDIR;
 		vap.va_mode = 0755;
 		//VATTR_SET(&vap, va_mode, 0755);
+		ASSERT(strchr(finalname, '\\') == NULL);
 		error = zfs_mkdir(dvp, finalname, &vap, &vp, NULL,
 			NULL, 0, NULL);
 		if (error == 0) {
@@ -480,7 +429,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			FileObject->FsContext = vp;
 			vnode_ref(vp); // Hold open reference, until CLOSE
 			if (DeleteOnClose) vnode_setunlink(vp);
-			FileObject->SectionObjectPointer = &vp->SectionObjectPointers;
+			FileObject->SectionObjectPointer = &vp->SectionObjectPointers;  // API this?
 			VN_RELE(vp);
 			Irp->IoStatus.Information = FILE_CREATED;
 			return STATUS_SUCCESS;
@@ -489,15 +438,13 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		return STATUS_OBJECT_NAME_NOT_FOUND; // create file error
 	}
 
-	SECTION_OBJECT_POINTERS SectionObjectPointers;
+
 	// Just open it, if the open was to a directory, add ccb
 	ASSERT(IrpSp->FileObject->FsContext == NULL);
 	if (vp == NULL) {
-		zfs_dirlist_t *zccb = kmem_alloc(sizeof(zfs_dirlist_t), KM_SLEEP);
+		zfs_dirlist_t *zccb = kmem_zalloc(sizeof(zfs_dirlist_t), KM_SLEEP);
 		ASSERT(IrpSp->FileObject->FsContext2 == NULL);
 		zccb->magic = ZFS_DIRLIST_MAGIC;
-		zccb->uio_offset = 0;
-		zccb->dir_eof = 0;
 		IrpSp->FileObject->FsContext2 = zccb;
 		FileObject->FsContext = dvp;
 		VN_HOLD(dvp);
@@ -1366,6 +1313,23 @@ NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK
 	return STATUS_OBJECT_NAME_NOT_FOUND;
 }
 
+uint64_t zfs_blksz(znode_t *zp)
+{
+	if (zp->z_blksz)
+		return zp->z_blksz;
+	if (zp->z_sa_hdl) {
+		uint32_t blksize;
+		uint64_t nblks;
+		sa_object_size(zp->z_sa_hdl, &blksize, &nblks);
+		if (blksize)
+			return (uint64_t)blksize;
+	}
+
+	if (zp->z_zfsvfs->z_max_blksz)
+		return zp->z_zfsvfs->z_max_blksz;
+	return 512ULL;
+}
+
 NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_STANDARD_INFORMATION *standard)
 {
 	dprintf("   %s\n", __func__);
@@ -1380,7 +1344,8 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 		znode_t *zp = VTOZ(vp);
 		standard->Directory = S_ISDIR(zp->z_mode) ? TRUE : FALSE;
 		//         sa_object_size(zp->z_sa_hdl, &blksize, &nblks);
-		standard->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zp->z_blksz);  // space taken on disk, multiples of block size
+		uint64_t blk = zfs_blksz(zp);
+		standard->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, blk);  // space taken on disk, multiples of block size
 		standard->EndOfFile.QuadPart = zp->z_size;       // byte size of file
 		standard->NumberOfLinks = zp->z_links;
 		standard->DeletePending = vnode_unlink(vp) ? TRUE : FALSE;
@@ -1422,7 +1387,7 @@ NTSTATUS file_network_open_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 		TIME_UNIX_TO_WINDOWS(ctime, netopen->ChangeTime.QuadPart);
 		TIME_UNIX_TO_WINDOWS(crtime, netopen->CreationTime.QuadPart);
 		TIME_UNIX_TO_WINDOWS(zp->z_atime, netopen->LastAccessTime.QuadPart);
-		netopen->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zp->z_blksz);
+		netopen->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
 		netopen->EndOfFile.QuadPart = zp->z_size;
 		netopen->FileAttributes = S_ISDIR(zp->z_mode) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
 		VN_RELE(vp);
@@ -1530,7 +1495,7 @@ NTSTATUS file_stream_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	UNICODE_STRING name;
 	RtlInitUnicodeString(&name, L"::$DATA");
 	stream->NextEntryOffset = 0;
-	stream->StreamAllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zp->z_blksz);
+	stream->StreamAllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
 	stream->StreamSize.QuadPart = zp->z_size;
 
 	int space = IrpSp->Parameters.QueryFile.Length - sizeof(FILE_STREAM_INFORMATION);
@@ -1939,6 +1904,42 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		break;
 	case FileBasicInformation: // chmod
 		dprintf("* FileBasicInformation\n");
+		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
+			FILE_BASIC_INFORMATION *fbi = Irp->AssociatedIrp.SystemBuffer;
+			struct vnode *vp = IrpSp->FileObject->FsContext;
+			VN_HOLD(vp);
+			znode_t *zp = VTOZ(vp);
+			vattr_t va = { 0 };
+			uint64_t unixtime[2] = { 0 };
+
+			// can request that the file system not update .. LastAccessTime, LastWriteTime, and ChangeTime ..  setting the appropriate members to -1.
+			// * We abuse AT_CTIME here, to function as a place holder for "creation
+			// * time, " since you are not allowed to change "change time" in POSIX,
+			// * and we don't have an AT_CRTIME.
+
+#ifdef NOTINPOSIX
+			if (fbi->ChangeTime.QuadPart != -1) {
+				TIME_WINDOWS_TO_UNIX(fbi->ChangeTime.QuadPart, unixtime);
+				va.va_change_time.tv_sec = unixtime[0]; va.va_change_time.tv_nsec = unixtime[1];
+				va.va_active |= AT_CTIME;
+			}
+#endif
+			if (fbi->LastWriteTime.QuadPart != -1) {
+				TIME_WINDOWS_TO_UNIX(fbi->LastWriteTime.QuadPart, unixtime);
+				va.va_modify_time.tv_sec = unixtime[0]; va.va_modify_time.tv_nsec = unixtime[1];
+				va.va_active |= AT_MTIME;
+			}
+			if (fbi->CreationTime.QuadPart != -1) {
+				TIME_WINDOWS_TO_UNIX(fbi->CreationTime.QuadPart, unixtime);
+				va.va_create_time.tv_sec = unixtime[0]; va.va_create_time.tv_nsec = unixtime[1];
+				va.va_active |= AT_CTIME;  // AT_CRTIME
+			}
+			if (fbi->LastAccessTime.QuadPart != -1) TIME_WINDOWS_TO_UNIX(fbi->LastAccessTime.QuadPart, zp->z_atime);
+			
+			Status = zfs_setattr(vp, &va, 0, NULL, NULL);
+
+			VN_RELE(vp);
+		}
 		break;
 	case FileDispositionInformation: // unlink
 		dprintf("* FileDispositionInformation\n");
@@ -1955,6 +1956,19 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		break;
 	case FileEndOfFileInformation: // extend?
 		dprintf("* FileEndOfFileInformation\n");
+		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
+			FILE_END_OF_FILE_INFORMATION *feofi = Irp->AssociatedIrp.SystemBuffer;
+			struct vnode *vp = IrpSp->FileObject->FsContext;
+			VN_HOLD(vp);
+
+			znode_t *zp = VTOZ(vp);
+			zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+			ZFS_ENTER(zfsvfs); // this returns if true, is that ok?
+			Status = zfs_freesp(zp, feofi->EndOfFile.QuadPart, 0, 0, TRUE); // Len = 0 is truncate
+			ZFS_EXIT(zfsvfs);
+
+			VN_RELE(vp);
+		}
 		break;
 	case FileLinkInformation: // symlink
 		dprintf("* FileLinkInformation\n");
@@ -2021,13 +2035,17 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	}
 
 	uio_t *uio;
+	void *address = NULL;
+
 	uio = uio_create(1, byteOffset.QuadPart, UIO_SYSSPACE, UIO_READ);
 	if (Irp->MdlAddress)
-		uio_addiov(uio, MmGetSystemAddressForMdl(Irp->MdlAddress), bufferLength);
+		address = MmGetSystemAddressForMdlSafe( Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute );
 	else
-		uio_addiov(uio, Irp->AssociatedIrp.SystemBuffer, bufferLength);
+		address = Irp->AssociatedIrp.SystemBuffer;
 
-	char *t = uio_curriovbase(uio);
+	ASSERT(address != NULL);
+	uio_addiov(uio, address, bufferLength);
+
 	error = zfs_read(vp, uio, 0, NULL, NULL);
 	VN_RELE(vp);
 
@@ -2201,7 +2219,23 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	return error;
 }
 
+NTSTATUS flush_buffers(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
 
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	NTSTATUS Status;
+
+	dprintf("%s: \n", __func__);
+
+	if (FileObject == NULL || FileObject->FsContext == NULL)
+		return STATUS_INVALID_PARAMETER;
+
+	struct vnode *vp = FileObject->FsContext;
+	VN_HOLD(vp);
+	Status = zfs_fsync(vp, 0, NULL, NULL);
+	VN_RELE(vp);
+	return Status;
+}
 
 //#define IOCTL_VOLUME_BASE ((DWORD) 'V')
 //#define IOCTL_VOLUME_GET_GPT_ATTRIBUTES      CTL_CODE(IOCTL_VOLUME_BASE,14,METHOD_BUFFERED,FILE_ANY_ACCESS)
@@ -2594,6 +2628,7 @@ fsDispatcher(
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext2) {
 			zfs_dirlist_t *zccb = IrpSp->FileObject->FsContext2;
 			if (zccb->magic == ZFS_DIRLIST_MAGIC) {
+				zccb->magic = 0;
 				if (zccb->searchname.Buffer && zccb->searchname.Length)
 					kmem_free(zccb->searchname.Buffer, zccb->searchname.Length);
 				kmem_free(zccb, sizeof(zfs_dirlist_t));
@@ -2769,6 +2804,9 @@ fsDispatcher(
 		break;
 	case IRP_MJ_WRITE:
 		Status = fs_write(DeviceObject, Irp, IrpSp);
+		break;
+	case IRP_MJ_FLUSH_BUFFERS:
+		Status = flush_buffers(DeviceObject, Irp, IrpSp);
 		break;
 	}
 

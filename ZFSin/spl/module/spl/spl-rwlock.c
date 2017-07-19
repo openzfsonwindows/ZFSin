@@ -70,6 +70,8 @@ void
 rw_destroy(krwlock_t *rwlp)
 {
     //lck_rw_destroy((lck_rw_t *)&rwlp->rw_lock[0], zfs_rwlock_group);
+
+	// This has caused panic due to IRQL panic, from taskq->zap_evict->rw_destroy
 	ExDeleteResourceLite(&rwlp->rw_lock);
 #ifdef DEBUG
 	rwlp->rw_pad = 0x99;

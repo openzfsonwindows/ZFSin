@@ -2831,9 +2831,12 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			switch (dirlisttype) {
 
 			case FileFullDirectoryInformation:
+				structsize = sizeof(FILE_FULL_DIR_INFORMATION);
+				if (outcount + structsize > bufsize) break; 
+
 				eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 				eodp->FileIndex = offset;
-				eodp->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, tzp->z_blksz); // File size in block alignment
+				eodp->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, zfs_blksz(tzp)); // File size in block alignment
 				eodp->EndOfFile.QuadPart = tzp->z_size; // File size in bytes
 				TIME_UNIX_TO_WINDOWS(mtime, eodp->LastWriteTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(ctime, eodp->ChangeTime.QuadPart);
@@ -2843,13 +2846,16 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				eodp->FileAttributes = dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
 				nameptr = eodp->FileName;
 				eodp->FileNameLength = namelenholder;
-				structsize = sizeof(FILE_FULL_DIR_INFORMATION);
+
 				break;
 
 			case FileIdBothDirectoryInformation:
+				structsize = sizeof(FILE_ID_BOTH_DIR_INFORMATION);
+				if (outcount + structsize > bufsize) break;
+
 				eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 				FILE_ID_BOTH_DIR_INFORMATION *fibdi = (FILE_ID_BOTH_DIR_INFORMATION *)bufptr;
-				fibdi->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, tzp->z_blksz);
+				fibdi->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
 				fibdi->EndOfFile.QuadPart = tzp->z_size;
 				TIME_UNIX_TO_WINDOWS(mtime, fibdi->LastWriteTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(ctime, fibdi->ChangeTime.QuadPart);
@@ -2862,13 +2868,16 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				fibdi->ShortNameLength = 0;
 				nameptr = fibdi->FileName;
 				fibdi->FileNameLength = namelenholder;
-				structsize = sizeof(FILE_ID_BOTH_DIR_INFORMATION);
+
 				break;
 
 			case FileBothDirectoryInformation:
+				structsize = sizeof(FILE_BOTH_DIR_INFORMATION);
+				if (outcount + structsize > bufsize) break;
+
 				eodp = (FILE_BOTH_DIR_INFORMATION *)bufptr;
 				FILE_BOTH_DIR_INFORMATION *fbdi = (FILE_BOTH_DIR_INFORMATION *)bufptr;
-				fbdi->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, tzp->z_blksz);
+				fbdi->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
 				fbdi->EndOfFile.QuadPart = tzp->z_size;
 				TIME_UNIX_TO_WINDOWS(mtime, fbdi->LastWriteTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(ctime, fbdi->ChangeTime.QuadPart);
@@ -2880,7 +2889,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				fbdi->ShortNameLength = 0;
 				nameptr = fbdi->FileName;
 				fbdi->FileNameLength = namelenholder;
-				structsize = sizeof(FILE_BOTH_DIR_INFORMATION);
+
 				break;
 			}
 

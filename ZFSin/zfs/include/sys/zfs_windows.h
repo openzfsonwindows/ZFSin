@@ -61,6 +61,8 @@ NTSTATUS zfsdev_open(dev_t dev, PIRP Irp);
 NTSTATUS zfsdev_release(dev_t dev, PIRP Irp);
 
 int zfs_vnop_recycle(znode_t *zp, int force);
+uint64_t zfs_blksz(znode_t *zp);
+
 
 
 #endif
