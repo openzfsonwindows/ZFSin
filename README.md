@@ -143,63 +143,62 @@ Windows Updates run, you can disable those in gpedit.msc
 # Milestones
 
 
-  ✓ Compile SPL sources
+  ✅ Compile SPL sources
   *  Godzillion warnings yet to be addressed
 
-  ✓ Port SPL sources, atomics, mutex, kmem, condvars
+  ✅ Port SPL sources, atomics, mutex, kmem, condvars
   *  C11 _Atomics in kmem not yet handled
 
-  ✓ Compile ZFS sources, stubbing out code as needed
+  ✅ Compile ZFS sources, stubbing out code as needed
 
-  ✓ Include kernel zlib library
+  ✅ Include kernel zlib library
 
-  ✓ Load and Unload SPL and ZFS code
+  ✅ Load and Unload SPL and ZFS code
 
-  ✓ Port kernel `zfs_ioctl.c` to accept ioctls from userland
+  ✅ Port kernel `zfs_ioctl.c` to accept ioctls from userland
 
-  ✓ Compile userland libspl, libzpool, libzfs, ...
+  ✅ Compile userland libspl, libzpool, libzfs, ...
 
-  ✓ Include pthread wrapper library
+  ✅ Include pthread wrapper library
   *  Replaced with thin pthread.h file
 
-  ✓ Include userland zlib library
+  ✅ Include userland zlib library
 
-  ✓ Compile cmd/zpool
+  ✅ Compile cmd/zpool
 
-  ✓ Port functions in libzpool, libzfs. Iterate disks, ioctl
+  ✅ Port functions in libzpool, libzfs. Iterate disks, ioctl
 
-  ✓ Test ioctl from zpool to talk to kernel
+  ✅ Test ioctl from zpool to talk to kernel
 
-  ✓ Port kernel `vdev_disk.c` / `vdev_file.c` to issue IO
+  ✅ Port kernel `vdev_disk.c` / `vdev_file.c` to issue IO
 
-  ✓ Port over cmd/zfs
+  ✅ Port over cmd/zfs
 
-  ✓ Add ioctl calls to MOUNT and create Volume to attach
+  ✅ Add ioctl calls to MOUNT and create Volume to attach
 
-  ✓ Add ioctl calls to UNMOUNT and detach and delete Volume
+  ✅ Add ioctl calls to UNMOUNT and detach and delete Volume
 
-  ✓ Port kernel `zfs_vnops.c` / `zfs_vnops_windows.c`
+  ✅ Port kernel `zfs_vnops.c` / `zfs_vnops_windows.c`
   *  Many special cases missing, flags to create/read/etc
 
-  ✓ Correct file information (dates, size, etc)
+  ✅ Correct file information (dates, size, etc)
 
-  ✓ Basic DOS usage
+  ✅ Basic DOS usage
 
-  ✓ Simple Notepad text edit, executables also work.
+  ✅ Simple Notepad text edit, executables also work.
 
-  ✓ Basic drag'n'drop in Explorer
+  ✅ Basic drag'n'drop in Explorer
 
-  ✓ zfs send / recv, file and pipe.
+  ✅ zfs send / recv, file and pipe.
 
-  ⃝ ZVOL support
+  ❎ ZVOL support
 
-  ✓ git clone ZFS repo on ZFS mounted fs
+  ✅ git clone ZFS repo on ZFS mounted fs
 
-  ⃝ Compile ZFS on top of ZFS
+  ❎ Compile ZFS on top of ZFS
   *  VS catches on fire loading project
 
-  ⃝ Scrooge McDuck style swin in cash
-
+  ❎ Scrooge McDuck style swin in cash
 
 ---
 
