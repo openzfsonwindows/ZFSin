@@ -1264,8 +1264,8 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	fdvp = ZTOV(dzp);
 	VN_HOLD(fvp);
 	VN_HOLD(tdvp);
-
 	// We now hold everything but "tvp".
+
 	error = zfs_rename(fdvp, fromname, 
 		tdvp, remainder ? remainder : filename,
 		NULL, NULL, 0);

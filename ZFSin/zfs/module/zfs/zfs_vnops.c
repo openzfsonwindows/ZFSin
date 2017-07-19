@@ -4159,11 +4159,7 @@ zfs_rename_lock(znode_t *szp, znode_t *tdzp, znode_t *sdzp, zfs_zlock_t **zlpp)
 			}
 		}
 
-		/* 
-		 * Had to add *2 here or "zl" gets corrupted in the call to dmu_tx_assign in 
-		 * zfs_rename() - reason is unknown.
-		 */
-		zl = kmem_alloc(sizeof(zfs_zlock_t) * 2, KM_SLEEP);
+		zl = kmem_alloc(sizeof (*zl), KM_SLEEP);
 		zl->zl_rwlock = rwlp;
 		zl->zl_znode = NULL;
 		zl->zl_next = *zlpp;
@@ -4467,7 +4463,6 @@ top:
 
 	zfs_sa_upgrade_txholds(tx, szp);
 	dmu_tx_hold_zap(tx, zfsvfs->z_unlinkedobj, FALSE, NULL);
-	//// HERE !!!
 	error = dmu_tx_assign(tx, waited ? TXG_WAITED : TXG_NOWAIT);
 	if (error) {
 		if (zl != NULL)
