@@ -483,9 +483,13 @@ vdev_disk_io_intr(void *Context)
 	zio->io_error = (irp->IoStatus.Status != 0 ? EIO : 0);
 
 	if (zio->io_type == ZIO_TYPE_READ) {
-		abd_return_buf_copy(zio->io_abd, vb->b_addr, zio->io_size);
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_copy_off(zio->io_abd, vb->b_addr,
+			0, zio->io_size, zio->io_abd->abd_size);
 	} else {
-		abd_return_buf(zio->io_abd, vb->b_addr, zio->io_size);
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_off(zio->io_abd, vb->b_addr,
+			0, zio->io_size, zio->io_abd->abd_size);
 	}
 
 	if (irp->IoStatus.Information != zio->io_size)
@@ -672,11 +676,12 @@ vdev_disk_io_start(zio_t *zio)
 	vd_callback_t *vb = (vd_callback_t *)kmem_alloc(sizeof(vd_callback_t), KM_SLEEP);
 	vb->zio = zio;
 	if (zio->io_type == ZIO_TYPE_READ) {
+		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
 		vb->b_addr =
-			abd_borrow_buf(zio->io_abd, zio->io_size);
+			abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
 	} else {
 		vb->b_addr =
-			abd_borrow_buf_copy(zio->io_abd, zio->io_size);
+			abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
 	}
 	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
 

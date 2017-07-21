@@ -1166,7 +1166,8 @@ vdev_uberblock_sync(zio_t *zio, uberblock_t *ub, vdev_t *vd, int flags)
 	/* Copy the uberblock_t into the ABD */
 	abd_t *ub_abd = abd_alloc_for_io(VDEV_UBERBLOCK_SIZE(vd), B_TRUE);
 	abd_zero(ub_abd, VDEV_UBERBLOCK_SIZE(vd));
-	abd_copy_from_buf(ub_abd, ub, sizeof (uberblock_t));
+	ASSERT3U(sizeof (uberblock_t), <=, ub_abd->abd_size);
+	abd_copy_from_buf_off(ub_abd, ub, 0, sizeof (uberblock_t));
 
 	for (int l = 0; l < VDEV_LABELS; l++)
 		vdev_label_write(zio, vd, l, ub_abd,
