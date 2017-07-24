@@ -135,7 +135,6 @@ osx_kstat_t osx_kstat = {
 	{"zfs_read_chunk_size",			KSTAT_DATA_INT64  },
 	{"zfs_nocacheflush",			KSTAT_DATA_INT64  },
 	{"zil_replay_disable",			KSTAT_DATA_INT64  },
-	{"metaslab_gang_bang",			KSTAT_DATA_INT64  },
 	{"metaslab_df_alloc_threshold",	KSTAT_DATA_INT64  },
 	{"metaslab_df_free_pct",		KSTAT_DATA_INT64  },
 	{"zio_injection_enabled",		KSTAT_DATA_INT64  },
@@ -308,8 +307,6 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			ks->zfs_nocacheflush.value.i64;
 		zil_replay_disable =
 			ks->zil_replay_disable.value.i64;
-		metaslab_gang_bang =
-			ks->metaslab_gang_bang.value.i64;
 		metaslab_df_alloc_threshold =
 			ks->metaslab_df_alloc_threshold.value.i64;
 		metaslab_df_free_pct =
@@ -483,8 +480,6 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			zfs_nocacheflush;
 		ks->zil_replay_disable.value.i64 =
 			zil_replay_disable;
-		ks->metaslab_gang_bang.value.i64 =
-			metaslab_gang_bang;
 		ks->metaslab_df_alloc_threshold.value.i64 =
 			metaslab_df_alloc_threshold;
 		ks->metaslab_df_free_pct.value.i64 =

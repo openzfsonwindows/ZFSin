@@ -41,15 +41,8 @@
 #define	GANG_ALLOCATION(flags) \
 	((flags) & (METASLAB_GANG_CHILD | METASLAB_GANG_HEADER))
 
-/*
- * Metaslab granularity, in bytes. This is roughly similar to what would be
- * referred to as the "stripe size" in traditional RAID arrays. In normal
- * operation, we will try to write this amount of data to a top-level vdev
- * before moving on to the next one.
- */
-unsigned long metaslab_aliquot = 512 << 10;
-
-uint64_t metaslab_gang_bang = SPA_MAXBLOCKSIZE + 1;	/* force gang blocks */
+uint64_t metaslab_aliquot = 512ULL << 10;
+uint64_t metaslab_force_ganging = SPA_MAXBLOCKSIZE + 1;	/* force gang blocks */
 
 /*
  * Since we can touch multiple metaslabs (and their respective space maps)
@@ -3105,7 +3098,8 @@ metaslab_alloc_dva(spa_t *spa, metaslab_class_t *mc, uint64_t psize,
 	/*
 	 * For testing, make some blocks above a certain size be gang blocks.
 	 */
-	if (psize >= metaslab_gang_bang && (ddi_get_lbolt() & 3) == 0) {
+	if (psize >= metaslab_force_ganging && (ddi_get_lbolt() & 3) == 0) {
+		metaslab_trace_add(zal, NULL, NULL, psize, d, TRACE_FORCE_GANG);
 		return (SET_ERROR(ENOSPC));
 	}
 

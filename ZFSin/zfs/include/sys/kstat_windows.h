@@ -104,7 +104,6 @@ typedef struct osx_kstat {
 	kstat_named_t zfs_read_chunk_size;
 	kstat_named_t zfs_nocacheflush;
 	kstat_named_t zil_replay_disable;
-	kstat_named_t metaslab_gang_bang;
 	kstat_named_t metaslab_df_alloc_threshold;
 	kstat_named_t metaslab_df_free_pct;
 	kstat_named_t zio_injection_enabled;
@@ -199,7 +198,6 @@ extern int zfs_no_scrub_io;
 extern int zfs_no_scrub_prefetch;
 extern ssize_t zfs_immediate_write_sz;
 extern offset_t zfs_read_chunk_size;
-extern uint64_t metaslab_gang_bang;
 extern uint64_t metaslab_df_alloc_threshold;
 extern int metaslab_df_free_pct;
 extern ssize_t zvol_immediate_write_sz;
