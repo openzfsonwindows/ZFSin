@@ -263,7 +263,11 @@ int zfs_deadman_enabled = 1;
  * the worst case is:
  *     (VDEV_RAIDZ_MAXPARITY + 1) * SPA_DVAS_PER_BP * 2 == 24
  */
+#ifdef __APPLE__
+int spa_asize_inflation = 6;
+#else
 int spa_asize_inflation = 24;
+#endif
 
 /*
  * Normally, we don't allow the last 3.2% (1/(2^spa_slop_shift)) of space in
