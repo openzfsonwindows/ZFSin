@@ -56,12 +56,18 @@ do
 	typeset mtpt=$(get_prop mountpoint $dst)
 
 	if [[ $dst == $TESTPOOL/$TESTFS@$TESTSNAP ]]; then
+		log_must $ZFS mount $dst
 		mtpt=$(snapshot_mountpoint $dst)
 	else
 		log_must $ZFS set atime=off $dst
 	fi
 
 	log_mustnot check_atime_updated $mtpt/$TESTFILE
+
+	if [[ $dst == $TESTPOOL/$TESTFS@$TESTSNAP ]]; then
+		log_must $ZFS unmount $dst
+	fi
+
 done
 
 log_pass "Verify the property atime=off passed."

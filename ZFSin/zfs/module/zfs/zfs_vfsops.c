@@ -2956,9 +2956,9 @@ zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
 int
 zfs_vfs_unmount(struct mount *mp, int mntflags, vfs_context_t *context)
 {
-dprintf("%s\n", __func__);
+	dprintf("%s\n", __func__);
+    zfsvfs_t *zfsvfs = vfs_fsprivate(mp);
 
-zfsvfs_t *zfsvfs = vfs_fsprivate(mp);
 	//kthread_t *td = (kthread_t *)curthread;
 	objset_t *os;
 #ifndef _WIN32
