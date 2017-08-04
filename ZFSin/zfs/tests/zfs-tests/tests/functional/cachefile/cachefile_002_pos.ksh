@@ -65,14 +65,17 @@ log_mustnot pool_in_cache $TESTPOOL
 
 log_must $ZPOOL export $TESTPOOL
 log_must $ZPOOL import -d $DEVICEDIR $TESTPOOL
+$SLEEP 2  # let zed catchup
 log_must pool_in_cache $TESTPOOL
 
 log_must $ZPOOL export $TESTPOOL
 log_must $ZPOOL import -o cachefile=none -d $DEVICEDIR $TESTPOOL
+$SLEEP 2  # let zed catchup
 log_mustnot pool_in_cache $TESTPOOL
 
 log_must $ZPOOL export $TESTPOOL
 log_must $ZPOOL import -o cachefile=$CPATH -d $DEVICEDIR $TESTPOOL
+$SLEEP 2  # let zed catchup
 log_must pool_in_cache $TESTPOOL
 
 destroy_pool $TESTPOOL

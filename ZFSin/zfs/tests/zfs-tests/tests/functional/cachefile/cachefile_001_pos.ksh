@@ -73,6 +73,7 @@ typeset -i i=0
 
 while (( i < ${#opts[*]} )); do
 	log_must $ZPOOL create -o cachefile=${opts[i]} $TESTPOOL $DISKS
+	$SLEEP 1  #let zed config.sync
 	case ${opts[((i+1))]} in
 		false) log_mustnot pool_in_cache $TESTPOOL
 			;;

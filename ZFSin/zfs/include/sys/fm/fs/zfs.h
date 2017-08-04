@@ -37,6 +37,7 @@ extern "C" {
 #define	FM_EREPORT_ZFS_DATA			"data"
 #define	FM_EREPORT_ZFS_DELAY			"delay"
 #define	FM_EREPORT_ZFS_CONFIG_SYNC		"config.sync"
+#define	FM_EREPORT_ZFS_CONFIG_RENAME	"config.rename"
 #define	FM_EREPORT_ZFS_CONFIG_REMOVE	"config.remove"
 #define	FM_EREPORT_ZFS_POOL			"zpool"
 #define	FM_EREPORT_ZFS_POOL_DESTROY		"zpool.destroy"
@@ -125,6 +126,8 @@ extern "C" {
 
 #define	FM_EREPORT_ZVOL_CREATE_SYMLINK		"zvol.create"
 #define	FM_EREPORT_ZVOL_REMOVE_SYMLINK		"zvol.remove"
+
+#define	FM_EREPORT_CACHEFILE		"cachefile"
 
 #ifdef	__cplusplus
 }

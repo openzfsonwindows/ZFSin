@@ -920,6 +920,7 @@ extern void spa_configfile_set(spa_t *, nvlist_t *, boolean_t);
 
 /* asynchronous event notification */
 extern void spa_event_notify(spa_t *spa, vdev_t *vdev, const char *name);
+extern void spa_event_cachefile(spa_t *spa, const char *, const char *name);
 
 
 #ifdef ZFS_DEBUG

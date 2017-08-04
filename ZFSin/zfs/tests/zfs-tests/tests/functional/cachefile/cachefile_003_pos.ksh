@@ -80,6 +80,7 @@ set -A opts "none" "none" \
 while (( i < ${#opts[*]} )); do
 	log_must $ZPOOL create -o altroot=$TESTDIR -o cachefile=${opts[i]} \
 		$TESTPOOL $DISKS
+	$SLEEP 2  # let zed catchup
 	if [[ ${opts[i]} != none ]]; then
 		log_must pool_in_cache $TESTPOOL ${opts[i]}
 	else

@@ -7225,3 +7225,14 @@ spa_event_notify(spa_t *spa, vdev_t *vd, const char *name)
 	zfs_ereport_post(name, spa, vd, NULL, 0, 0);
 #endif
 }
+
+void
+spa_event_cachefile(spa_t *spa, const char *cachefile, const char *name)
+{
+#ifdef _KERNEL
+	// We overload "stateoroffset" here with our char *, which is a bit
+	// ugly, but we don't want to change the function parameters to upstream
+	// either.
+	zfs_ereport_post(name, spa, NULL, NULL, (uint64_t)cachefile, 0);
+#endif
+}

@@ -251,6 +251,19 @@ zfs_ereport_start(nvlist_t **ereport_out, nvlist_t **detector_out,
 		    spa_get_failmode(spa) == ZIO_FAILURE_MODE_CONTINUE ?
 		    FM_EREPORT_FAILMODE_CONTINUE : FM_EREPORT_FAILMODE_PANIC,
 		    NULL);
+#ifdef __APPLE__
+		if (strcmp(subclass, FM_EREPORT_ZFS_CONFIG_RENAME) == 0 ||
+			strcmp(subclass, FM_EREPORT_ZFS_CONFIG_REMOVE) == 0) {
+
+			const char *cachefile = (const char *)stateoroffset;
+			stateoroffset = 0;
+
+			fm_payload_set(ereport,
+			    FM_EREPORT_CACHEFILE, DATA_TYPE_STRING,
+				cachefile ? cachefile : "",
+			    NULL);
+		}
+#endif
 	}
 
 	if (vd != NULL) {

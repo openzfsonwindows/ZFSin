@@ -88,13 +88,17 @@ while ((i < 2)); do
 done
 
 log_must $ZPOOL create -o cachefile=$CPATH1 $TESTPOOL1 $vdev0
+$SLEEP 2  # let zed catchup
 log_must pool_in_cache $TESTPOOL1 $CPATH1
 log_must $ZPOOL create -o cachefile=$CPATH1 $TESTPOOL2 $vdev1
+$SLEEP 2  # let zed catchup
 log_must pool_in_cache $TESTPOOL2 $CPATH1
 
 log_must $ZPOOL set cachefile=$CPATH2 $TESTPOOL1
+$SLEEP 2  # let zed catchup
 log_must pool_in_cache $TESTPOOL1 $CPATH2
 log_must $ZPOOL set cachefile=$CPATH2 $TESTPOOL2
+$SLEEP 2  # let zed catchup
 log_must pool_in_cache $TESTPOOL2 $CPATH2
 if [[ -f $CPATH1 ]]; then
 	log_fail "Verify set when cachefile is set on pool."
@@ -102,19 +106,23 @@ fi
 
 log_must $ZPOOL export $TESTPOOL1
 log_must $ZPOOL export $TESTPOOL2
+$SLEEP 2  # let zed catchup
 if [[ -f $CPATH2 ]]; then
 	log_fail "Verify export when cachefile is set on pool."
 fi
 
 log_must $ZPOOL import -d $mntpnt $TESTPOOL1
 log_must $ZPOOL set cachefile=$CPATH2 $TESTPOOL1
+$SLEEP 2  # let zed catchup
 log_must pool_in_cache $TESTPOOL1 $CPATH2
 log_must $ZPOOL import -d $mntpnt $TESTPOOL2
 log_must $ZPOOL set cachefile=$CPATH2 $TESTPOOL2
+$SLEEP 2  # let zed catchup
 log_must pool_in_cache $TESTPOOL2 $CPATH2
 
 destroy_pool $TESTPOOL1
 destroy_pool $TESTPOOL2
+$SLEEP 2  # let zed catchup
 if [[ -f $CPATH2 ]]; then
 	log_fail "Verify destroy when cachefile is set on pool."
 fi
