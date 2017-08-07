@@ -871,8 +871,8 @@ label_offset(uint64_t size, int l)
 
 /*
  * Given a file descriptor, read the label information and return an nvlist
- * describing the configuration, if there is one.  The number of valid
- * labels found will be returned in num_labels when non-NULL.
+ * describing the configuration, if there is one.
+ * Return 0 on success, or -1 on failure
  */
 int
 zpool_read_label(int fd, nvlist_t **config, int *num_labels)
@@ -886,7 +886,8 @@ zpool_read_label(int fd, nvlist_t **config, int *num_labels)
 	*config = NULL;
 
 	if (fstat(fd, &statbuf) == -1)
-		return (0);
+		return (-1);
+
 	size = P2ALIGN_TYPED(statbuf.st_size, sizeof (vdev_label_t), uint64_t);
 
 	if ((label = malloc(sizeof (vdev_label_t))) == NULL)
@@ -2433,7 +2434,7 @@ zpool_in_use(libzfs_handle_t *hdl, int fd, pool_state_t *state, char **namestr,
 
 	*inuse = B_FALSE;
 
-	if (zpool_read_label(fd, &config, NULL) != 0) {
+	if (zpool_read_label(fd, &config, NULL) != 0 && errno == ENOMEM) {
 		(void) no_memory(hdl);
 		return (-1);
 	}
