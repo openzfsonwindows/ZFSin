@@ -427,10 +427,13 @@ vdev_file_io_start(zio_t *zio)
 	vb->zio = zio;
 	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
 
+	ASSERT3S(zio->io_abd->abd_size, == , zio->io_size);
 	if (zio->io_type == ZIO_TYPE_READ) {
+		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
 		vb->b_data =
 			abd_borrow_buf(zio->io_abd, zio->io_size);
 	} else {
+		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
 		vb->b_data =
 			abd_borrow_buf_copy(zio->io_abd, zio->io_size);
 	}

@@ -119,8 +119,8 @@ abd_copy(abd_t *dabd, abd_t *sabd, size_t size)
 	ASSERT3P(sabd,!=,NULL);
 	ASSERT3P(dabd,!=,sabd);
 	if (dabd != sabd) {
-		ASSERT3S(dabd->abd_size,==,size);
-		ASSERT3S(sabd->abd_size,==,size);
+		ASSERT3S((size_t)dabd->abd_size,==,size);
+		ASSERT3S((size_t)sabd->abd_size,==,size);
 		abd_copy_off(dabd, sabd, 0, 0, size);
 	}
 }
@@ -128,28 +128,28 @@ abd_copy(abd_t *dabd, abd_t *sabd, size_t size)
 static inline void
 abd_copy_from_buf(abd_t *abd, void *buf, size_t size)
 {
-	ASSERT3S(abd->abd_size,==,size);
+	ASSERT3S((size_t)abd->abd_size,==,size);
 	abd_copy_from_buf_off(abd, buf, 0, size);
 }
 
 static inline void
 abd_copy_to_buf(void* buf, abd_t *abd, size_t size)
 {
-	ASSERT3S(abd->abd_size,==,size);
+	ASSERT3S((size_t)abd->abd_size,==,size);
 	abd_copy_to_buf_off(buf, abd, 0, size);
 }
 
 static inline int
 abd_cmp_buf(abd_t *abd, void *buf, size_t size)
 {
-	ASSERT3S(abd->abd_size,==,size);
+	ASSERT3S((size_t)abd->abd_size,==,size);
 	return (abd_cmp_buf_off(abd, buf, 0, size));
 }
 
 static inline void
 abd_zero(abd_t *abd, size_t size)
 {
-	ASSERT3S(abd->abd_size,==,size);
+	ASSERT3S((size_t)abd->abd_size,==,size);
 	abd_zero_off(abd, 0, size);
 }
 

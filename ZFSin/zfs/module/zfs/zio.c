@@ -4072,7 +4072,9 @@ zio_done(zio_t *zio)
 
 			if (asize != psize) {
 				adata = abd_alloc(asize, B_TRUE);
-				abd_copy(adata, zio->io_abd, psize);
+				ASSERT3S(adata->abd_size,>=,psize);
+				ASSERT3S(zio->io_abd->abd_size,>=,psize);
+				abd_copy_off(adata, zio->io_abd, 0, 0, psize);
 				abd_zero_off(adata, psize, asize - psize);
 			}
 

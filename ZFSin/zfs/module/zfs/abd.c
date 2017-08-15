@@ -586,7 +586,7 @@ abd_get_offset_impl(abd_t *sabd, size_t off, size_t size)
 	mutex_enter(&sabd->abd_mutex);
 	abd_verify(sabd);
 	sabd->abd_flags |= ABD_FLAG_NOMOVE;
-	ASSERT3U(off, <=, sabd->abd_size);
+	ASSERT3U(off, <=, (size_t)sabd->abd_size);
 
 	if (abd_is_linear(sabd)) {
 		abd = abd_alloc_struct(0);
@@ -744,7 +744,7 @@ abd_borrow_buf(abd_t *abd, size_t n)
 	void *buf;
 	mutex_enter(&abd->abd_mutex);
 	abd_verify(abd);
-	ASSERT3U(abd->abd_size, >=, n);
+	ASSERT3U((size_t)abd->abd_size, >=, n);
 	if (abd_is_linear(abd)) {
 		mutex_exit(&abd->abd_mutex);
 		buf = abd_to_buf(abd);
@@ -781,7 +781,7 @@ abd_return_buf(abd_t *abd, void *buf, size_t n)
 {
 	mutex_enter(&abd->abd_mutex);
 	abd_verify(abd);
-	ASSERT3U(abd->abd_size, >=, n);
+	ASSERT3U((size_t)abd->abd_size, >=, n);
 	if (abd_is_linear(abd)) {
 		mutex_exit(&abd->abd_mutex);
 		ASSERT3P(buf, ==, abd_to_buf(abd));
@@ -979,7 +979,7 @@ abd_iterate_func(abd_t *abd, size_t off, size_t size,
 
 	mutex_enter(&abd->abd_mutex);
 	abd_verify(abd);
-	ASSERT3U(off + size, <=, abd->abd_size);
+	ASSERT3U(off + size, <=, (size_t)abd->abd_size);
 
 	abd_iter_init(&aiter, abd);
 	abd_iter_advance(&aiter, off);
@@ -1028,6 +1028,11 @@ abd_copy_to_buf_off(void *buf, abd_t *abd, size_t off, size_t size)
 {
 	struct buf_arg ba_ptr = { buf };
 
+	ASSERT3S(size, >, 0);
+	ASSERT3S(off, >=, 0);
+	ASSERT3S((size_t)abd->abd_size, >=, off+size);
+	ASSERT3S((size_t)abd->abd_size, >, 0);
+
 	(void) abd_iterate_func(abd, off, size, abd_copy_to_buf_off_cb,
 	    &ba_ptr);
 }
@@ -1052,6 +1057,11 @@ abd_cmp_buf_off(abd_t *abd, const void *buf, size_t off, size_t size)
 {
 	struct buf_arg ba_ptr = { (void *) buf };
 
+	ASSERT3S(size, >, 0);
+	ASSERT3S(off, >=, 0);
+	ASSERT3S((size_t)abd->abd_size, >=, off+size);
+	ASSERT3S((size_t)abd->abd_size, >, 0);
+
 	return (abd_iterate_func(abd, off, size, abd_cmp_buf_off_cb, &ba_ptr));
 }
 
@@ -1074,6 +1084,11 @@ abd_copy_from_buf_off(abd_t *abd, const void *buf, size_t off, size_t size)
 {
 	struct buf_arg ba_ptr = { (void *) buf };
 
+	ASSERT3S(size, >, 0);
+	ASSERT3S(off, >=, 0);
+	ASSERT3S((size_t)abd->abd_size, >=, off+size);
+	ASSERT3S((size_t)abd->abd_size, >, 0);
+
 	(void) abd_iterate_func(abd, off, size, abd_copy_from_buf_off_cb,
 	    &ba_ptr);
 }
@@ -1092,6 +1107,11 @@ abd_zero_off_cb(void *buf, size_t size, void *private)
 void
 abd_zero_off(abd_t *abd, size_t off, size_t size)
 {
+	ASSERT3S(size, >, 0);
+	ASSERT3S(off, >=, 0);
+	ASSERT3S((size_t)abd->abd_size, >=, off+size);
+	ASSERT3S((size_t)abd->abd_size, >, 0);
+
 	(void) abd_iterate_func(abd, off, size, abd_zero_off_cb, NULL);
 }
 
@@ -1114,8 +1134,8 @@ abd_iterate_func2(abd_t *dabd, abd_t *sabd, size_t doff, size_t soff,
 	abd_verify(dabd);
 	abd_verify(sabd);
 
-	ASSERT3U(doff + size, <=, dabd->abd_size);
-	ASSERT3U(soff + size, <=, sabd->abd_size);
+	ASSERT3U(doff + size, <=, (size_t)dabd->abd_size);
+	ASSERT3U(soff + size, <=, (size_t)sabd->abd_size);
 
 	abd_iter_init(&daiter, dabd);
 	abd_iter_init(&saiter, sabd);
@@ -1164,6 +1184,12 @@ abd_copy_off_cb(void *dbuf, void *sbuf, size_t size, void *private)
 void
 abd_copy_off(abd_t *dabd, abd_t *sabd, size_t doff, size_t soff, size_t size)
 {
+	ASSERT3S(size, >, 0);
+	ASSERT3S(soff, >=, 0);
+	ASSERT3S(doff, >=, 0);
+	ASSERT3S((size_t)sabd->abd_size, >=, soff+size);
+	ASSERT3S((size_t)dabd->abd_size, >=, doff+size);
+
 	(void) abd_iterate_func2(dabd, sabd, doff, soff, size,
 	    abd_copy_off_cb, NULL);
 }
@@ -1184,8 +1210,8 @@ abd_cmp(abd_t *dabd, abd_t *sabd, size_t size)
 	ASSERT3P(sabd,!=,NULL);
 	ASSERT3P(dabd,!=,NULL);
 	ASSERT3P(sabd,!=,dabd);
-	ASSERT3S(sabd->abd_size,==,size);
-	ASSERT3S(dabd->abd_size,==,size);
+	ASSERT3S((size_t)sabd->abd_size,==,size);
+	ASSERT3S((size_t)dabd->abd_size,==,size);
 	return (abd_iterate_func2(dabd, sabd, 0, 0, size, abd_cmp_cb, NULL));
 }
 
