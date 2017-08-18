@@ -5,15 +5,15 @@
 All the IO Request Packets (IRP) all come in through the same set of
 function handlers, which can get a bit noisy. So ioctls from userland
 to, say, listing datasets, come in to the same place, as requests to
-list a directory, and volume creation notifications, etc etc. It gets
-a bit noisy.
+list a directory, and volume creation notifications. We split these
+out in the tail end of zfs_vnops_windows.c in the function `dispatcher`.
 
 To trigger a mount, we add two new ZFS ioctls, for mount and unmount.
 In mount we will create a new fake disk, then create a filesystem that
 we attach to the fake disk. Then we attach the filesystem to the mount
 point desired. When IRP requests come in, we will immediately split it
 into three; diskDevice to handle the fake disk related requests.
-ioctlDevice which handles the ioctls from userland, and finally
+ioctlDevice which handles the ZFS ioctls from userland, and finally
 fsDevice which gets the vnop requests from the mounted ZFS filesystem.
 
 
@@ -23,12 +23,22 @@ the line of "create a handle to file/dir" - existing, or creating,
 entries. It has a flag to open "parent" of a file entry as well.
 
 We will use "fscontext" for the vnode *vp pointer, which gets you
-znode_t pointer via VTOZ() macro.
+znode_t pointer via VTOZ() macro. This project has created its own
+vnode struct, to work more closely to Unix. The refcounting is done
+internally to the project, and is separate to any OS related
+refcounting (Unlike that of `FileObject`). Some Windows specific
+variables are also contained in the vnode struct.
+
+It is expected that before using a struct vnode, a reference is taken
+using `VN_HOLD(vp)` and release it with `VN_RELE(vp)`, for any access
+of the vnode struct, and/or, znode. These are short term locks, for
+long term (like that of directory handles, mountpoint) use
+`vnode_ref()` and `vnode_rele()` respectively.
 
 Directory listings come in the form of IRP_MJ_DIRECTORY_CONTROL +
-IRP_MN_QUERY_DIRECTORY. Unfortunately, it also has a "type" of struct
-wanted, one of nine. Although, it appears mostly three are used. Still
-that is somewhat frustrating.
+IRP_MN_QUERY_DIRECTORY. It comes with a structure "type" requested,
+one of nine. Although, it appears mostly three are used, and those are
+implemented. Add more as needed...
 
 Each return struct has an "offset to next node", relative to each
 node, and the final is zero to indicate last entry in buffer. Each
@@ -37,28 +47,27 @@ chars. Due to variable length filename, the next struct start has to
 be aligned to 8 bytes.
 
 As long as there are valid entries in the return buf, it needs to
-return STATUS_SUCCESS, annoyingly, even when EOF has been reached. So
-EOF has to be remembered until next call, at which time it returns
-STATUS_NO_MORE_FILES. The query directory can also pass along pattern
+return STATUS_SUCCESS, even when EOF has been reached. So EOF has to
+be remembered until the next call, at which time it should return
+STATUS_NO_MORE_FILES. The directory query can also pass along pattern
 to match against, which is only passed along in the first call, and
 needs to be remembered. Similarly the index (in OpenZFS terms, the
 directory offset) needs to be saved. These are stored in the
 "fscontext2" void* ptr assigned to the directory in MJ_CREATE. Often
-called "Ccb".
+called "Ccb" in Windows. There is no Unix equivalent, there the offset
+is stored in the `UIO` offset passed to `vnop_readdir()`.
 
-directory-listings also can be passed a filename, either with
-wildcards or not, which you have to match against. This is only given
-in the first call, so that is stored in ccb.
-
-Deleting files and directories are done a little differently. It calls
+Deleting directories are done a little differently. It calls
 IRP_MJ_CREATE to open a handle to the directory, then calls
-IRP_SET_INFORMATION with type FileDispositionInformation, which has a
-single entry "delete". Then it calls IRP_MJ_CLOSE, and eventually
+IRP_SET_INFORMATION with type `FileDispositionInformation`, which has a
+single boolean `delete`. Then it calls IRP_MJ_CLOSE, and eventually
 IRP_MJ_CLEANUP. And if this is the final reference to the directory,
-we call vnop_rmdir. For files, it calls IRP_MJ_CREATE with the flag
-DELETE_ON_CLOSE, and closes the file. The IRP_MJ_CLEANUP handler is
-eventually called. The "delete flag" is stored in the vnode, using the
-new vnode_setunlink() and vnode_unlink() calls.
+we call `vnop_rmdir`.
+
+For files, it calls IRP_MJ_CREATE with the flag DELETE_ON_CLOSE, and
+closes the file. The IRP_MJ_CLEANUP handler is eventually called. The
+"delete flag" is stored in the vnode struct, using the new
+vnode_setunlink() and vnode_unlink() API calls.
 
 Many IRP calls that take structs will check the input size matches
 that of sizeof(struct). A few structs will paste variable length
@@ -76,14 +85,5 @@ But, it is expected to fill in as much of the name that fits. Other
 data, like in the case of FileAllInformation struct, need to be valid,
 even though we return "error" and partial filename.
 
-The STATUS_BUFFER_OVERFLOW case is a bit annoying. It would seem how
-it should be handled differents depending on IRP called. I have come
-across:
-
 * FileNameLength should be set to "required" length, and Information
 size should be the same (no bigger) than input size.
-
-* FileNameLength should be set to how much we could fit, even if it is
-just one character, and Information size is set to size required to
-fit everything. Not sure this is true any longer? It is always the
-former case, and my misunderstanding...
