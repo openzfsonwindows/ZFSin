@@ -305,7 +305,7 @@ static void
 vdev_raidz_cksum_finish(zio_cksum_report_t *zcr, const abd_t *good_data)
 {
 	raidz_map_t *rm = zcr->zcr_cbdata;
-	const size_t c = zcr->zcr_cbinfo;
+	size_t c = zcr->zcr_cbinfo;
 	size_t x, offset;
 
 	const abd_t *good = NULL;
@@ -334,8 +334,8 @@ vdev_raidz_cksum_finish(zio_cksum_report_t *zcr, const abd_t *good_data)
 				bad_parity[x] = rm->rm_col[x].rc_abd;
 				rm->rm_col[x].rc_abd =
 				    rm->rm_col[x].rc_gdata =
-				    abd_alloc_sametype(rm->rm_col[x].rc_abd,
-				    rm->rm_col[x].rc_size);
+					abd_alloc_sametype(rm->rm_col[x].rc_abd,
+					    rm->rm_col[x].rc_size);
 			}
 
 			/* fill in the data columns from good_data */
@@ -361,8 +361,9 @@ vdev_raidz_cksum_finish(zio_cksum_report_t *zcr, const abd_t *good_data)
 			offset = 0;
 			for (x = rm->rm_firstdatacol; x < rm->rm_cols; x++) {
 				abd_put(rm->rm_col[x].rc_abd);
-				rm->rm_col[x].rc_abd = abd_get_offset(
-				    rm->rm_abd_copy, offset);
+				rm->rm_col[x].rc_abd = abd_get_offset_size(
+				    rm->rm_abd_copy, offset,
+				    rm->rm_col[x].rc_size);
 				offset += rm->rm_col[x].rc_size;
 			}
 		}
@@ -2063,7 +2064,6 @@ raidz_parity_verify(zio_t *zio, raidz_map_t *rm)
 		rc = &rm->rm_col[c];
 		if (!rc->rc_tried || rc->rc_error != 0)
 			continue;
-
 		orig[c] = abd_alloc_sametype(rc->rc_abd, rc->rc_size);
 		abd_copy(orig[c], rc->rc_abd, rc->rc_size);
 	}
