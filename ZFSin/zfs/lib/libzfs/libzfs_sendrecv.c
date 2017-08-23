@@ -3653,6 +3653,8 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 		DMU_BACKUP_FEATURE_RESUMING;
 	boolean_t raw = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
 		DMU_BACKUP_FEATURE_RAW;
+	boolean_t embedded = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo) &
+	    DMU_BACKUP_FEATURE_EMBED_DATA;
 	stream_wantsnewfs = (drrb->drr_fromguid == 0 ||
 		 (drrb->drr_flags & DRR_FLAG_CLONE) || originsnap) && !resuming;
 
@@ -4007,20 +4009,20 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 			    "since most recent snapshot"), zc.zc_name);
 			(void) zfs_error(hdl, EZFS_BADRESTORE, errbuf);
 			break;
-			case EACCES:
-				if (raw && stream_wantsnewfs) {
-					zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-					    "failed to create encryption key"));
-				} else if (raw && !stream_wantsnewfs) {
-					zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-					    "encryption key does not match "
-					    "existing key"));
-				} else {
-					zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-					    "inherited key must be loaded"));
-				}
-				(void) zfs_error(hdl, EZFS_CRYPTOFAILED, errbuf);
-				break;
+		case EACCES:
+			if (raw && stream_wantsnewfs) {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "failed to create encryption key"));
+			} else if (raw && !stream_wantsnewfs) {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "encryption key does not match "
+				    "existing key"));
+			} else {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "inherited key must be loaded"));
+			}
+			(void) zfs_error(hdl, EZFS_CRYPTOFAILED, errbuf);
+			break;
 		case EEXIST:
 			cp = strchr(zc.zc_value, '@');
 			if (newfs) {
@@ -4035,6 +4037,14 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 			*cp = '@';
 			break;
 		case EINVAL:
+			if (flags->resumable)
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "kernel modules must be upgraded to "
+				    "receive this stream."));
+			if (embedded && !raw)
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				    "incompatible embedded data stream "
+				    "feature with encrypted receive."));
 			(void) zfs_error(hdl, EZFS_BADSTREAM, errbuf);
 			break;
 		case ECKSUM:
