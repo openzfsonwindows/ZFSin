@@ -427,7 +427,24 @@ vdev_file_io_start(zio_t *zio)
 	vb->zio = zio;
 	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
 
-	ASSERT3S(zio->io_abd->abd_size, == , zio->io_size);
+	/*
+	 * deal with mismatch between abd_size and io_size :
+	 * make a new abd
+	 */
+	if (zio->io_abd->abd_size != zio->io_size) {
+		ASSERT3U(zio->io_abd->abd_size, >= , zio->io_size);
+		// cf. zio_write_phys()
+#ifdef DEBUG
+		// this dprintf can be very noisy
+		dprintf("%s: trimming zio->io_abd from 0x%x to 0x%llx\n",
+			__func__, zio->io_abd->abd_size, zio->io_size);
+#endif
+		abd_t *tabd = abd_alloc_sametype(zio->io_abd, zio->io_size);
+		abd_copy_off(tabd, zio->io_abd, 0, 0, zio->io_size);
+
+		zio_push_transform(zio, tabd, zio->io_size, zio->io_size, NULL);
+	}
+
 	if (zio->io_type == ZIO_TYPE_READ) {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
 		vb->b_data =

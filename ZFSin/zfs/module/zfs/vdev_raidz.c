@@ -435,7 +435,7 @@ vdev_raidz_cksum_report(zio_t *zio, zio_cksum_report_t *zcr, void *arg)
 
 		ASSERT3S(tmp->abd_size,>=,col->rc_size);
 		ASSERT3S(col->rc_abd->abd_size,>=,col->rc_size);
-		abd_copy(tmp, col->rc_abd, col->rc_size);
+		abd_copy_off(tmp, col->rc_abd, 0, 0, col->rc_size);
 		abd_put(col->rc_abd);
 		col->rc_abd = tmp;
 
@@ -678,7 +678,8 @@ vdev_raidz_generate_parity_p(raidz_map_t *rm)
 		p = abd_to_buf(rm->rm_col[VDEV_RAIDZ_P].rc_abd);
 
 		if (c == rm->rm_firstdatacol) {
-			abd_copy_to_buf(p, src, rm->rm_col[c].rc_size);
+			ASSERT3U(src->abd_size,>=,rm->rm_col[c].rc_size);
+			abd_copy_to_buf_off(p, src, 0, rm->rm_col[c].rc_size);
 		} else {
 			struct pqr_struct pqr = { p, NULL, NULL };
 			(void) abd_iterate_func(src, 0, rm->rm_col[c].rc_size,
@@ -707,15 +708,9 @@ vdev_raidz_generate_parity_pq(raidz_map_t *rm)
 
 		if (c == rm->rm_firstdatacol) {
 			ASSERT(ccnt == pcnt || ccnt == 0);
-			ASSERT(rm->rm_col[c].rc_size > 0);
-			/*
-			 * Guard against zero size, which in DEBUG will
-			 * cause an ASSERTion in abd_copy_to_buf
-			 */
-			if (rm->rm_col[c].rc_size > 0) {
-				abd_copy_to_buf(p, src, rm->rm_col[c].rc_size);
-				(void) memcpy(q, p, rm->rm_col[c].rc_size);
-			}
+
+			abd_copy_to_buf_off(p, src, 0, rm->rm_col[c].rc_size);
+			(void) memcpy(q, p, rm->rm_col[c].rc_size);
 
 			for (i = ccnt; i < pcnt; i++) {
 				p[i] = 0;
@@ -764,7 +759,7 @@ vdev_raidz_generate_parity_pqr(raidz_map_t *rm)
 		if (c == rm->rm_firstdatacol) {
 			ASSERT3S(src->abd_size,>=,rm->rm_col[c].rc_size);
 			ASSERT(ccnt == pcnt || ccnt == 0);
-			abd_copy_to_buf(p, src, rm->rm_col[c].rc_size);
+			abd_copy_to_buf_off(p, src, 0, rm->rm_col[c].rc_size);
 			(void) memcpy(q, p, rm->rm_col[c].rc_size);
 			(void) memcpy(r, p, rm->rm_col[c].rc_size);
 

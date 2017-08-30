@@ -102,6 +102,54 @@
 #include <sys/zfs_znode.h>
 #include <sys/debug.h>
 
+#ifdef DEBUG
+#ifdef _KERNEL
+#define VERIFY_ABD_MAGIC(x) do {	      \
+		const uint64_t y = (x)->abd_magic;	\
+		if (y != ABD_DEBUG_MAGIC) {		\
+			panic("VERIFY_ABD_MAGIC(" #x ") failed (0x%llx != 0x%llx )\n", \
+			    y, ABD_DEBUG_MAGIC);			\
+		}							\
+	} while (0)
+#else
+#define VERIFY_ABD_MAGIC(x) do {	     \
+	  const uint64_t y = (x)->abd_magic; \
+	  if (y != ABD_DEBUG_MAGIC) {		     \
+		  char * __buf = alloca(256);				\
+		  (void) snprintf(__buf, 256,				\
+		      "VERIFY_ABD_MAGIC(%s) failed (0x%llx != 0x%llx)", \
+		      #x, y, ABD_DEBUG_MAGIC);				\
+		  __assert_c99(__buf, __FILE__, __LINE__, __func__);	\
+	  }								\
+	} while (0)
+#endif
+#else
+#define VERIFY_ABD_MAGIC(x)
+#endif
+
+#ifdef DEBUG
+#ifdef _KERNEL
+#define VERIFY_BUF_NOMAGIC(x, size) do {				\
+		const uint64_t m = ((abd_t *)(x))->abd_magic;		\
+		if ((size) >= sizeof(abd_t) && m == ABD_DEBUG_MAGIC) {	\
+			panic("VERIFY_BUF_NOMAGIC(" #x ", 0x%lx) failed\n", size); \
+		}							\
+	} while (0)
+#else
+#define VERIFY_BUF_NOMAGIC(x, size) do {				\
+		const uint64_t m = ((abd_t *)(x))->abd_magic;		\
+		if ((size) >= sizeof(abd_t) && m == ABD_DEBUG_MAGIC) {	\
+			char *__buf = alloca(256);			\
+			(void) snprintf(__buf, 256,			\
+			    "VERIFY_BUF_NOMAGIC(%s, 0x%lx)) failed", #x, size); \
+			__assert_c99(__buf, __FILE__, __LINE__, __func__); \
+		}							\
+	} while (0)
+#endif
+#else
+#define VERIFY_BUF_NOMAGIC(x, s)
+#endif
+
 typedef struct abd_stats {
 	kstat_named_t abdstat_struct_size;
 	kstat_named_t abdstat_scatter_cnt;
@@ -323,9 +371,8 @@ abd_scatter_chunkcnt(abd_t *abd)
 static inline void
 abd_verify(abd_t *abd)
 {
-#ifdef DEBUG
-	VERIFY3P(abd->abd_magic, ==, ABD_DEBUG_MAGIC);
-#endif
+	VERIFY_ABD_MAGIC(abd);
+
 	ASSERT3U(abd->abd_size, >, 0);
 	ASSERT3U(abd->abd_size, <=, SPA_MAXBLOCKSIZE);
 	ASSERT3U(abd->abd_flags, ==, abd->abd_flags & (ABD_FLAG_LINEAR |
@@ -364,11 +411,11 @@ abd_alloc_struct(size_t chunkcnt)
 static inline void
 abd_free_struct(abd_t *abd)
 {
+	mutex_enter(&abd->abd_mutex);
 	size_t chunkcnt = abd_is_linear(abd) ? 0 : abd_scatter_chunkcnt(abd);
 	int size = offsetof(abd_t, abd_u.abd_scatter.abd_chunks[chunkcnt]);
-	mutex_destroy(&abd->abd_mutex);
+	VERIFY_ABD_MAGIC(abd);
 #ifdef DEBUG
-	VERIFY3P(abd->abd_magic, ==, ABD_DEBUG_MAGIC);
 	abd->abd_magic = 0;
 #endif
 	// poison the memory to catch UAF;
@@ -378,6 +425,8 @@ abd_free_struct(abd_t *abd)
 	abd->abd_parent = NULL;
 	abd->abd_size = 0;
 	abd->abd_u.abd_linear.abd_buf = NULL;
+	mutex_exit(&abd->abd_mutex);
+	mutex_destroy(&abd->abd_mutex);
 	kmem_free(abd, size);
 	ABDSTAT_INCR(abdstat_struct_size, -size);
 }
@@ -559,6 +608,8 @@ abd_free(abd_t *abd)
 abd_t *
 abd_alloc_sametype(abd_t *sabd, size_t size)
 {
+	VERIFY_ABD_MAGIC(sabd);
+
 	boolean_t is_metadata = (sabd->abd_flags & ABD_FLAG_META) != 0;
 	if (abd_is_linear(sabd)) {
 		return (abd_alloc_linear(size, is_metadata));
@@ -648,6 +699,8 @@ abd_get_offset_impl(abd_t *sabd, size_t off, size_t size)
 abd_t *
 abd_get_offset(abd_t *sabd, size_t off)
 {
+	VERIFY_ABD_MAGIC(sabd);
+
 	size_t size = sabd->abd_size > off ? sabd->abd_size - off : 0;
 
 	VERIFY3U(size, >, 0);
@@ -658,6 +711,8 @@ abd_get_offset(abd_t *sabd, size_t off)
 abd_t *
 abd_get_offset_size(abd_t *sabd, size_t off, size_t size)
 {
+	VERIFY_ABD_MAGIC(sabd);
+
 	ASSERT3U(off + size, <=, sabd->abd_size);
 
 	return (abd_get_offset_impl(sabd, off, size));
@@ -672,9 +727,8 @@ abd_t *
 abd_get_from_buf(void *buf, size_t size)
 {
 	abd_t *abd = abd_alloc_struct(0);
-#ifdef DEBUG
-	VERIFY3P(((abd_t *)buf)->abd_magic, !=, ABD_DEBUG_MAGIC);
-#endif
+
+	VERIFY_BUF_NOMAGIC(buf, size);
 
 	VERIFY3U(size, <=, SPA_MAXBLOCKSIZE);
 
@@ -792,12 +846,9 @@ abd_borrow_buf_copy(abd_t *abd, size_t n)
 void
 abd_return_buf(abd_t *abd, void *buf, size_t n)
 {
-#ifdef DEBUG
-	VERIFY3P(((abd_t *)buf)->abd_magic, !=, ABD_DEBUG_MAGIC);
-#endif
-
 	mutex_enter(&abd->abd_mutex);
 	abd_verify(abd);
+	VERIFY_BUF_NOMAGIC(buf, n);
 	ASSERT3U((size_t)abd->abd_size, >=, n);
 	if (abd_is_linear(abd)) {
 		mutex_exit(&abd->abd_mutex);
@@ -817,9 +868,8 @@ abd_return_buf(abd_t *abd, void *buf, size_t n)
 void
 abd_return_buf_copy(abd_t *abd, void *buf, size_t n)
 {
-#ifdef DEBUG
-	VERIFY3P(((abd_t *)buf)->abd_magic, !=, ABD_DEBUG_MAGIC);
-#endif
+	VERIFY_ABD_MAGIC(abd);
+	VERIFY_BUF_NOMAGIC(buf, n);
 
 	if (!abd_is_linear(abd)) {
 		abd_copy_from_buf(abd, buf, n);
@@ -849,12 +899,6 @@ abd_take_ownership_of_buf(abd_t *abd, boolean_t is_metadata)
 	ABDSTAT_BUMP(abdstat_linear_cnt);
 	ABDSTAT_INCR(abdstat_linear_data_size, abd->abd_size);
 
-	int64_t size = abd->abd_size;
-	if (is_metadata) {
-		ABDSTAT_INCR(abdstat_is_metadata_linear, size);
-	} else {
-		ABDSTAT_INCR(abdstat_is_file_data_linear, size);
-	}
 	mutex_exit(&abd->abd_mutex);
 }
 
@@ -868,20 +912,11 @@ abd_release_ownership_of_buf(abd_t *abd)
 
 	abd->abd_flags &= ~ABD_FLAG_OWNER;
 	/* Disable this flag since we no longer own the data buffer */
-	boolean_t is_metadata = (abd->abd_flags & ABD_FLAG_META) != 0;
 	abd->abd_flags &= ~ABD_FLAG_META;
 
 	ABDSTAT_BUMPDOWN(abdstat_linear_cnt);
 	ABDSTAT_INCR(abdstat_linear_data_size, -(int)abd->abd_size);
 
-	int64_t unsize = -(int64_t)abd->abd_size;
-	if (is_metadata) {
-		ABDSTAT_INCR(abdstat_is_metadata_scattered, unsize);
-		ABDSTAT_BUMPDOWN(abdstat_scattered_metadata_cnt);
-	} else {
-		ABDSTAT_INCR(abdstat_is_file_data_scattered, unsize);
-		ABDSTAT_BUMPDOWN(abdstat_scattered_filedata_cnt);
-	}
 	mutex_exit(&abd->abd_mutex);
 }
 
@@ -1035,10 +1070,6 @@ abd_copy_to_buf_off_cb(void *buf, size_t size, void *private)
 {
 	struct buf_arg *ba_ptr = private;
 
-#ifdef DEBUG
-	VERIFY3P(((abd_t *)buf)->abd_magic, !=, ABD_DEBUG_MAGIC);
-#endif
-
 	(void) memcpy(ba_ptr->arg_buf, buf, size);
 	ba_ptr->arg_buf = (char *)ba_ptr->arg_buf + size;
 
@@ -1053,11 +1084,11 @@ abd_copy_to_buf_off(void *buf, abd_t *abd, size_t off, size_t size)
 {
 	struct buf_arg ba_ptr = { buf };
 
-#ifdef DEBUG
-	VERIFY3P(((abd_t *)buf)->abd_magic, !=, ABD_DEBUG_MAGIC);
-#endif
+	VERIFY3P(buf,!=,NULL);
+	VERIFY_BUF_NOMAGIC(buf, off+size);
+	VERIFY_ABD_MAGIC(abd);
 
-	ASSERT3S(size, >, 0);
+	ASSERT3S(size, >=, 0);
 	ASSERT3S(off, >=, 0);
 	ASSERT3S((size_t)abd->abd_size, >=, off+size);
 	ASSERT3S((size_t)abd->abd_size, >, 0);
@@ -1071,10 +1102,6 @@ abd_cmp_buf_off_cb(void *buf, size_t size, void *private)
 {
 	int ret;
 	struct buf_arg *ba_ptr = private;
-
-#ifdef DEBUG
-	VERIFY3P(((abd_t *)buf)->abd_magic, !=, ABD_DEBUG_MAGIC);
-#endif
 
 	ret = memcmp(buf, ba_ptr->arg_buf, size);
 	ba_ptr->arg_buf = (char *)ba_ptr->arg_buf + size;
@@ -1090,9 +1117,8 @@ abd_cmp_buf_off(abd_t *abd, const void *buf, size_t off, size_t size)
 {
 	struct buf_arg ba_ptr = { (void *) buf };
 
-#ifdef DEBUG
-	VERIFY3P(((abd_t *)buf)->abd_magic, !=, ABD_DEBUG_MAGIC);
-#endif
+	VERIFY_BUF_NOMAGIC(buf, off+size);
+	VERIFY_ABD_MAGIC(abd);
 
 	ASSERT3S(size, >, 0);
 	ASSERT3S(off, >=, 0);
@@ -1106,9 +1132,6 @@ static int
 abd_copy_from_buf_off_cb(void *buf, size_t size, void *private)
 {
 	struct buf_arg *ba_ptr = private;
-#ifdef DEBUG
-	VERIFY3P(((abd_t *)buf)->abd_magic, !=, ABD_DEBUG_MAGIC);
-#endif
 
 	(void) memcpy(buf, ba_ptr->arg_buf, size);
 	ba_ptr->arg_buf = (char *)ba_ptr->arg_buf + size;
@@ -1123,9 +1146,10 @@ void
 abd_copy_from_buf_off(abd_t *abd, const void *buf, size_t off, size_t size)
 {
 	struct buf_arg ba_ptr = { (void *) buf };
-#ifdef DEBUG
-	VERIFY3P(((abd_t *)buf)->abd_magic, !=, ABD_DEBUG_MAGIC);
-#endif
+
+	VERIFY3P(buf,!=,NULL);
+	VERIFY_BUF_NOMAGIC(buf, off+size);
+	VERIFY_ABD_MAGIC(abd);
 
 	ASSERT3S(size, >, 0);
 	ASSERT3S(off, >=, 0);
@@ -1140,10 +1164,6 @@ abd_copy_from_buf_off(abd_t *abd, const void *buf, size_t off, size_t size)
 static int
 abd_zero_off_cb(void *buf, size_t size, void *private)
 {
-#ifdef DEBUG
-	VERIFY3P(((abd_t *)buf)->abd_magic, !=, ABD_DEBUG_MAGIC);
-#endif
-
 	(void) memset(buf, 0, size);
 	return (0);
 }
@@ -1154,6 +1174,8 @@ abd_zero_off_cb(void *buf, size_t size, void *private)
 void
 abd_zero_off(abd_t *abd, size_t off, size_t size)
 {
+	VERIFY_ABD_MAGIC(abd);
+
 	ASSERT3S(size, >, 0);
 	ASSERT3S(off, >=, 0);
 	ASSERT3S((size_t)abd->abd_size, >=, off+size);
@@ -1221,10 +1243,6 @@ abd_iterate_func2(abd_t *dabd, abd_t *sabd, size_t doff, size_t soff,
 static int
 abd_copy_off_cb(void *dbuf, void *sbuf, size_t size, void *private)
 {
-#ifdef DEBUG
-	VERIFY3P(((abd_t *)dbuf)->abd_magic, !=, ABD_DEBUG_MAGIC);
-#endif
-
 	(void) memcpy(dbuf, sbuf, size);
 	return (0);
 }
@@ -1235,6 +1253,9 @@ abd_copy_off_cb(void *dbuf, void *sbuf, size_t size, void *private)
 void
 abd_copy_off(abd_t *dabd, abd_t *sabd, size_t doff, size_t soff, size_t size)
 {
+	VERIFY_ABD_MAGIC(dabd);
+	VERIFY_ABD_MAGIC(sabd);
+
 	ASSERT3S(size, >, 0);
 	ASSERT3S(soff, >=, 0);
 	ASSERT3S(doff, >=, 0);
@@ -1258,6 +1279,9 @@ abd_cmp_cb(void *bufa, void *bufb, size_t size, void *private)
 int
 abd_cmp(abd_t *dabd, abd_t *sabd, size_t size)
 {
+	VERIFY_ABD_MAGIC(dabd);
+	VERIFY_ABD_MAGIC(sabd);
+
 	ASSERT3P(sabd,!=,NULL);
 	ASSERT3P(dabd,!=,NULL);
 	ASSERT3P(sabd,!=,dabd);
@@ -1296,7 +1320,7 @@ abd_try_move_scattered_impl(abd_t *abd)
 	const size_t n = abd_chunkcnt_for_bytes(asize);
 	VERIFY3U(n,==,chunkcnt);
 
-	abd_t *partialabd = kmem_alloc(hsize, KM_PUSHPAGE);
+	abd_t *partialabd = kmem_zalloc(hsize, KM_PUSHPAGE);
 	ASSERT3P(partialabd, !=, NULL);
 
 	partialabd->abd_u.abd_scatter.abd_offset = 0;
@@ -1424,6 +1448,7 @@ abd_try_move_impl(abd_t *abd)
 boolean_t
 abd_try_move(abd_t *abd)
 {
+	abd_verify(abd);
 	return(abd_try_move_impl(abd));
 }
 
