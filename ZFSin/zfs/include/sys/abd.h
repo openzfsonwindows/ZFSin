@@ -38,6 +38,10 @@ typedef enum abd_flags {
 } abd_flags_t;
 
 typedef struct abd {
+#ifdef DEBUG
+#define ABD_DEBUG_MAGIC 0xfeedbaa1a11beef1ULL
+	uint64_t abd_magic;
+#endif
 	abd_flags_t	abd_flags;
 	uint_t		abd_size;	/* excludes scattered abd_offset */
 	kmutex_t        abd_mutex;
