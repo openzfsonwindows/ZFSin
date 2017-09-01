@@ -878,6 +878,47 @@ abd_return_buf_copy(abd_t *abd, void *buf, size_t n)
 }
 
 /*
+ *  functions to allow returns of bufs that are smaller than the abd size :
+ *  this avoids ASSERTs in abd_cmp and abd_copy_from_buf
+ */
+
+void
+abd_return_buf_copy_off(abd_t *abd, void *buf, size_t off, size_t len, size_t n)
+{
+	VERIFY_ABD_MAGIC(abd);
+	VERIFY_BUF_NOMAGIC(buf, n);
+
+	if (!abd_is_linear(abd)) {
+		ASSERT3S(abd->abd_size,>=,off+len);
+		abd_copy_from_buf_off(abd, buf, off, len);
+	}
+	abd_return_buf_off(abd, buf, off, len, n);
+}
+
+
+void
+abd_return_buf_off(abd_t *abd, void *buf, size_t off, size_t len, size_t n)
+{
+	mutex_enter(&abd->abd_mutex);
+	abd_verify(abd);
+	VERIFY_BUF_NOMAGIC(buf, n);
+	ASSERT3U((size_t)abd->abd_size, >=, n);
+	if (abd_is_linear(abd)) {
+		mutex_exit(&abd->abd_mutex);
+		ASSERT3P(buf, ==, abd_to_buf(abd));
+		mutex_enter(&abd->abd_mutex);
+	} else {
+		mutex_exit(&abd->abd_mutex);
+		ASSERT0(abd_cmp_buf_off(abd, buf, off, len));
+		mutex_enter(&abd->abd_mutex);
+		zio_buf_free(buf, n);
+	}
+	(void) refcount_remove_many(&abd->abd_children, n, buf);
+	mutex_exit(&abd->abd_mutex);
+	ABDSTAT_BUMPDOWN(abdstat_borrowed_buf_cnt);
+}
+
+/*
  * Give this ABD ownership of the buffer that it's storing. Can only be used on
  * linear ABDs which were allocated via abd_get_from_buf(), or ones allocated
  * with abd_alloc_linear() which subsequently released ownership of their buf
@@ -894,6 +935,9 @@ abd_take_ownership_of_buf(abd_t *abd, boolean_t is_metadata)
 	abd->abd_flags |= ABD_FLAG_OWNER;
 	if (is_metadata) {
 		abd->abd_flags |= ABD_FLAG_META;
+		ABDSTAT_INCR(abdstat_is_metadata_linear, abd->abd_size);
+	} else {
+		ABDSTAT_INCR(abdstat_is_file_data_linear, abd->abd_size);
 	}
 
 	ABDSTAT_BUMP(abdstat_linear_cnt);

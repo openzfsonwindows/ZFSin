@@ -340,9 +340,16 @@ vdev_file_io_intr(void *Context)
 	//		zio->io_error = SET_ERROR(EIO);
 	zio->io_error = (irp->IoStatus.Status != 0 ? EIO : 0);
 	if (zio->io_type == ZIO_TYPE_READ) {
-		abd_return_buf_copy(zio->io_abd, vb->b_data, zio->io_size);
+		if (zio->io_abd->abd_size == zio->io_size) {
+			abd_return_buf_copy(zio->io_abd, vb->b_data, zio->io_size);
+		} else {
+			VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+			abd_return_buf_copy_off(zio->io_abd, vb->b_data,
+				0, zio->io_size, zio->io_abd->abd_size);
+		}
 	} else {
-		abd_return_buf(zio->io_abd, vb->b_data, zio->io_size);
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_off(zio->io_abd, vb->b_data, 0, zio->io_size, zio->io_abd->abd_size);
 	}
 
 	if (irp->IoStatus.Information != zio->io_size)
@@ -370,6 +377,11 @@ vdev_file_io_intr(void *Context)
 	thread_exit();
 }
 #endif
+
+/*
+ * count the number of mismatches of zio->io_size and zio->io_abd->abd_size below
+ */
+_Atomic uint64_t zfs_vdev_file_size_mismatch_cnt = 0;
 
 static void
 vdev_file_io_start(zio_t *zio)
@@ -427,32 +439,23 @@ vdev_file_io_start(zio_t *zio)
 	vb->zio = zio;
 	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
 
-	/*
-	 * deal with mismatch between abd_size and io_size :
-	 * make a new abd
-	 */
-	if (zio->io_abd->abd_size != zio->io_size) {
-		ASSERT3U(zio->io_abd->abd_size, >= , zio->io_size);
-		// cf. zio_write_phys()
 #ifdef DEBUG
+	if (zio->io_abd->abd_size != zio->io_size) {
+		zfs_vdev_file_size_mismatch_cnt++;
 		// this dprintf can be very noisy
-		dprintf("%s: trimming zio->io_abd from 0x%x to 0x%llx\n",
+		dprintf("ZFS: %s: trimming zio->io_abd from 0x%x to 0x%llx\n", 
 			__func__, zio->io_abd->abd_size, zio->io_size);
-#endif
-		abd_t *tabd = abd_alloc_sametype(zio->io_abd, zio->io_size);
-		abd_copy_off(tabd, zio->io_abd, 0, 0, zio->io_size);
-
-		zio_push_transform(zio, tabd, zio->io_size, zio->io_size, NULL);
 	}
+#endif
 
 	if (zio->io_type == ZIO_TYPE_READ) {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
 		vb->b_data =
-			abd_borrow_buf(zio->io_abd, zio->io_size);
+			abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
 	} else {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
 		vb->b_data =
-			abd_borrow_buf_copy(zio->io_abd, zio->io_size);
+			abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
 	}
 
 	if (zio->io_type == ZIO_TYPE_READ) {

@@ -95,6 +95,8 @@ void *abd_borrow_buf(abd_t *, size_t);
 void *abd_borrow_buf_copy(abd_t *, size_t);
 void abd_return_buf(abd_t *, void *, size_t);
 void abd_return_buf_copy(abd_t *, void *, size_t);
+void abd_return_buf_copy_off(abd_t *, void *, size_t, size_t, size_t);
+void abd_return_buf_off(abd_t *, void *, size_t, size_t, size_t);
 void abd_take_ownership_of_buf(abd_t *, boolean_t);
 void abd_release_ownership_of_buf(abd_t *);
 
