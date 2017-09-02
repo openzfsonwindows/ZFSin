@@ -904,7 +904,7 @@ dsl_scan_visitbp(blkptr_t *bp, const zbookmark_phys_t *zb,
 	/* ASSERT(pbuf == NULL || arc_released(pbuf)); */
 
 	if (dsl_scan_check_suspend(scn, zb))
-		return;
+		goto out;
 
 	if (dsl_scan_check_resume(scn, dnp, zb))
 		goto out;
