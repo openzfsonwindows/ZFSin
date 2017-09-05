@@ -3230,12 +3230,13 @@ zio_alloc_zil(spa_t *spa, objset_t *os, uint64_t txg, blkptr_t *new_bp,
 
 	metaslab_trace_init(&io_alloc_list);
 	error = metaslab_alloc(spa, spa_log_class(spa), size, new_bp, 1,
-	    txg, old_bp, METASLAB_HINTBP_AVOID, &io_alloc_list, NULL);
+	    txg, old_bp, METASLAB_FASTWRITE|METASLAB_HINTBP_AVOID,
+		&io_alloc_list, NULL);
 	if (error == 0) {
 		*slog = TRUE;
 	} else {
 		error = metaslab_alloc(spa, spa_normal_class(spa), size,
-		    new_bp, 1, txg, old_bp, METASLAB_HINTBP_AVOID,
+		    new_bp, 1, txg, old_bp, METASLAB_FASTWRITE|METASLAB_HINTBP_AVOID,
 		    &io_alloc_list, NULL);
 		if (error == 0)
 			*slog = FALSE;
