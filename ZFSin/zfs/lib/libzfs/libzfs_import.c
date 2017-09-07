@@ -267,7 +267,6 @@ add_config(libzfs_handle_t *hdl, pool_list_t *pl, const char *path,
 	    &top_guid) != 0 ||
 	    nvlist_lookup_uint64(config, ZPOOL_CONFIG_POOL_TXG,
 	    &txg) != 0 || txg == 0) {
-		nvlist_free(config);
 		return (0);
 	}
 
@@ -282,7 +281,6 @@ add_config(libzfs_handle_t *hdl, pool_list_t *pl, const char *path,
 
 	if (pe == NULL) {
 		if ((pe = zfs_alloc(hdl, sizeof (pool_entry_t))) == NULL) {
-			nvlist_free(config);
 			return (-1);
 		}
 		pe->pe_guid = pool_guid;
@@ -301,7 +299,6 @@ add_config(libzfs_handle_t *hdl, pool_list_t *pl, const char *path,
 
 	if (ve == NULL) {
 		if ((ve = zfs_alloc(hdl, sizeof (vdev_entry_t))) == NULL) {
-			nvlist_free(config);
 			return (-1);
 		}
 		ve->ve_guid = top_guid;
@@ -321,15 +318,12 @@ add_config(libzfs_handle_t *hdl, pool_list_t *pl, const char *path,
 
 	if (ce == NULL) {
 		if ((ce = zfs_alloc(hdl, sizeof (config_entry_t))) == NULL) {
-			nvlist_free(config);
 			return (-1);
 		}
 		ce->ce_txg = txg;
-		ce->ce_config = config;
+		ce->ce_config = fnvlist_dup(config);
 		ce->ce_next = ve->ve_configs;
 		ve->ve_configs = ce;
-	} else {
-		nvlist_free(config);
 	}
 
 	/*
@@ -1783,9 +1777,7 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 					    &this_guid) == 0 &&
 					    iarg->guid == this_guid;
 				}
-				if (!matched) {
-					nvlist_free(config);
-				} else {
+				if (matched) {
 					/*
 					 * use the non-raw path for the config
 					 */
@@ -1795,6 +1787,7 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 					    slice->rn_num_labels, config) != 0)
 						config_failed = B_TRUE;
 				}
+				nvlist_free(config);
 			}
 			free(slice->rn_name);
 			free(slice);
