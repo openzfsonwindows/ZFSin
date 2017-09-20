@@ -7,5 +7,6 @@
 //#include <sys/kernel_types.h>
 typedef struct proc { void *something; } proc_t;
 extern proc_t p0;              /* process 0 */
+#define current_proc PsGetCurrentProcess
 
 #endif /* SPL_PROC_H */

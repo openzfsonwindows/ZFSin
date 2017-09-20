@@ -2242,6 +2242,23 @@ NTSTATUS flush_buffers(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION
 
 #define IOCTL_VOLUME_POST_ONLINE    CTL_CODE(IOCTL_VOLUME_BASE, 25, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
 
+NTSTATUS ioctl_storage_get_device_number(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	PSTORAGE_DEVICE_NUMBER sdn = Irp->AssociatedIrp.SystemBuffer;
+
+	if (IrpSp->Parameters.QueryFile.Length < sizeof(STORAGE_DEVICE_NUMBER)) {
+		Irp->IoStatus.Information = sizeof(STORAGE_DEVICE_NUMBER);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	Irp->IoStatus.Information = sizeof(STORAGE_DEVICE_NUMBER);
+	sdn->DeviceNumber = 0;
+	sdn->DeviceType = FILE_DEVICE_VIRTUAL_DISK;
+	sdn->PartitionNumber = -1; // -1 means can't be partitioned
+
+	return STATUS_SUCCESS;
+}
+
 
 
 _Function_class_(DRIVER_DISPATCH)

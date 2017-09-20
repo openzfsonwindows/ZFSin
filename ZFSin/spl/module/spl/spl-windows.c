@@ -325,6 +325,8 @@ int spl_start (void)
     spl_vnode_init();
 	spl_kmem_thread_init();
 	spl_kmem_mp_init();
+	IOLog("SPL: starting KMEM\n");
+
     IOLog("SPL: Loaded module v%s-%s%s, "
           "(ncpu %d, memsize %llu, pages %llu)\n",
           SPL_META_VERSION, SPL_META_RELEASE, SPL_DEBUG_STR,
