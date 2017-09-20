@@ -2242,6 +2242,64 @@ NTSTATUS flush_buffers(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION
 
 #define IOCTL_VOLUME_POST_ONLINE    CTL_CODE(IOCTL_VOLUME_BASE, 25, METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
 
+
+NTSTATUS zfsdev_async(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+{
+	int error;
+	PMDL mdl = NULL;
+	PIO_STACK_LOCATION IrpSp;
+	zfs_cmd_t *zc;
+	void *fp = NULL;
+
+	IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+	IoMarkIrpPending(Irp);
+
+	/* 
+	 * A separate thread to the one that called us may not access the buffer from userland,
+	 * So we have to map the in/out buffer, and put that address in its place.
+	 */
+	error = ddi_copysetup(IrpSp->Parameters.DeviceIoControl.Type3InputBuffer, sizeof(zfs_cmd_t),
+		&IrpSp->Parameters.DeviceIoControl.Type3InputBuffer, &mdl);
+	if (error) return error;
+
+	/* Save the MDL so we can free it once done */
+	Irp->Tail.Overlay.DriverContext[0] = mdl;
+
+	/* We would also need to handle zc->zc_nvlist_src and zc->zc_nvlist_dst 
+	 * which is tricker, since they are unpacked into nvlists deep in zfsdev_ioctl 
+	 */
+
+	/* The same problem happens for the filedescriptor from userland, also needs to be kernelMode */
+	zc = IrpSp->Parameters.DeviceIoControl.Type3InputBuffer;
+
+	if (zc->zc_cookie) {
+		error = ObReferenceObjectByHandle(zc->zc_cookie, 0, 0, KernelMode, &fp, 0);
+		if (error != STATUS_SUCCESS) goto out;
+		Irp->Tail.Overlay.DriverContext[1] = fp;
+
+		HANDLE h = NULL;
+		error = ObOpenObjectByPointer(fp, OBJ_FORCE_ACCESS_CHECK | OBJ_KERNEL_HANDLE, NULL, GENERIC_READ|GENERIC_WRITE, *IoFileObjectType, KernelMode, &h);
+		if (error != STATUS_SUCCESS) goto out;
+		dprintf("mapped filed is 0x%x\n", h);
+		zc->zc_cookie = (uint64_t)h;
+		Irp->Tail.Overlay.DriverContext[2] = h;
+	}
+
+	taskq_dispatch(system_taskq, zfsdev_async_thread, (void*)Irp, TQ_SLEEP);
+
+	return STATUS_PENDING;
+out:	
+	if (mdl) {
+		MmUnlockPages(mdl);
+		IoFreeMdl(mdl);
+	}
+	if (fp) {
+		ObDereferenceObject(fp);
+	}
+	return error;
+}
+
 NTSTATUS ioctl_storage_get_device_number(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	PSTORAGE_DEVICE_NUMBER sdn = Irp->AssociatedIrp.SystemBuffer;
