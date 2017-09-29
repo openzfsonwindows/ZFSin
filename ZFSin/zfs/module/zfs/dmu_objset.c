@@ -876,7 +876,7 @@ dmu_objset_create_impl_dnstats(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 
 	if (blksz == 0)
 		blksz = 1 << DNODE_BLOCK_SHIFT;
-	if (blksz == 0)
+	if (ibs == 0)
 		ibs = DN_MAX_INDBLKSHIFT;
 
 	if (ds != NULL)
@@ -1034,7 +1034,7 @@ dmu_objset_create_sync(void *arg, dmu_tx_t *tx)
 	}
 
 	/*
-	 * The doca_userfunc() will write out some data that needs to be
+	 * The doca_userfunc() may write out some data that needs to be
 	 * encrypted if the dataset is encrypted (specifically the root
 	 * directory).  This data must be written out before the encryption
 	 * key mapping is removed by dsl_dataset_rele_flags().  Force the
@@ -1045,10 +1045,14 @@ dmu_objset_create_sync(void *arg, dmu_tx_t *tx)
 		dsl_dataset_t *tmpds = NULL;
 		boolean_t need_sync_done = B_FALSE;
 
+		mutex_enter(&ds->ds_lock);
+		ds->ds_owner = FTAG;
+		mutex_exit(&ds->ds_lock);
+
 		rzio = zio_root(dp->dp_spa, NULL, NULL, ZIO_FLAG_MUSTSUCCEED);
-		tmpds = txg_list_remove(&dp->dp_dirty_datasets, tx->tx_txg);
+		tmpds = txg_list_remove_this(&dp->dp_dirty_datasets, ds,
+		    tx->tx_txg);
 		if (tmpds != NULL) {
-			ASSERT3P(ds, ==, tmpds);
 			dsl_dataset_sync(ds, rzio, tx);
 			need_sync_done = B_TRUE;
 		}
@@ -1058,9 +1062,9 @@ dmu_objset_create_sync(void *arg, dmu_tx_t *tx)
 		taskq_wait(dp->dp_sync_taskq);
 
 		rzio = zio_root(dp->dp_spa, NULL, NULL, ZIO_FLAG_MUSTSUCCEED);
-		tmpds = txg_list_remove(&dp->dp_dirty_datasets, tx->tx_txg);
+		tmpds = txg_list_remove_this(&dp->dp_dirty_datasets, ds,
+		    tx->tx_txg);
 		if (tmpds != NULL) {
-			ASSERT3P(ds, ==, tmpds);
 			dmu_buf_rele(ds->ds_dbuf, ds);
 			dsl_dataset_sync(ds, rzio, tx);
 		}
@@ -1068,6 +1072,10 @@ dmu_objset_create_sync(void *arg, dmu_tx_t *tx)
 
 		if (need_sync_done)
 			dsl_dataset_sync_done(ds, tx);
+
+		mutex_enter(&ds->ds_lock);
+		ds->ds_owner = NULL;
+		mutex_exit(&ds->ds_lock);
 	}
 
 	spa_history_log_internal_ds(ds, "create", tx, "");

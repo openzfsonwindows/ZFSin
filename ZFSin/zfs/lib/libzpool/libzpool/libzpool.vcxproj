@@ -80,6 +80,7 @@
     <ClCompile Include="..\..\..\module\zfs\edonr_zfs.c" />
     <ClCompile Include="..\..\..\module\zfs\fm.c" />
     <ClCompile Include="..\..\..\module\zfs\gzip.c" />
+    <ClCompile Include="..\..\..\module\zfs\hkdf.c" />
     <ClCompile Include="..\..\..\module\zfs\lz4.c" />
     <ClCompile Include="..\..\..\module\zfs\lzjb.c" />
     <ClCompile Include="..\..\..\module\zfs\metaslab.c" />

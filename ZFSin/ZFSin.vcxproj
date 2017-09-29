@@ -298,6 +298,7 @@
     <ClCompile Include="zfs\module\zfs\edonr_zfs.c" />
     <ClCompile Include="zfs\module\zfs\fm.c" />
     <ClCompile Include="zfs\module\zfs\gzip.c" />
+    <ClCompile Include="zfs\module\zfs\hkdf.c" />
     <ClCompile Include="zfs\module\zfs\lz4.c" />
     <ClCompile Include="zfs\module\zfs\lzjb.c" />
     <ClCompile Include="zfs\module\zfs\metaslab.c" />

@@ -25,6 +25,7 @@
 #include <sys/zio.h>
 #include <sys/zil.h>
 #include <sys/sha2.h>
+#include <sys/hkdf.h>
 
 /*
  * This file is responsible for handling all of the details of generating
@@ -198,176 +199,6 @@ zio_crypt_info_t zio_crypt_table[ZIO_CRYPT_FUNCTIONS] = {
 	{SUN_CKM_AES_GCM,	ZC_TYPE_GCM,	32,	"aes-256-gcm"}
 };
 
-static int
-hkdf_sha512_extract(uint8_t *salt, uint_t salt_len, uint8_t *key_material,
-    uint_t km_len, uint8_t *out_buf)
-{
-	int ret;
-	crypto_mechanism_t mech;
-	crypto_key_t key;
-	crypto_data_t input_cd, output_cd;
-
-	/* initialize HMAC mechanism */
-	mech.cm_type = crypto_mech2id(SUN_CKM_SHA512_HMAC);
-	mech.cm_param = NULL;
-	mech.cm_param_len = 0;
-
-	/* initialize the salt as a crypto key */
-	key.ck_format = CRYPTO_KEY_RAW;
-	key.ck_length = BYTES_TO_BITS(salt_len);
-	key.ck_data = salt;
-
-	/* initialize crypto data for the input and output data */
-	input_cd.cd_format = CRYPTO_DATA_RAW;
-	input_cd.cd_offset = 0;
-	input_cd.cd_length = km_len;
-	input_cd.cd_raw.iov_base = (char *)key_material;
-	input_cd.cd_raw.iov_len = input_cd.cd_length;
-
-	output_cd.cd_format = CRYPTO_DATA_RAW;
-	output_cd.cd_offset = 0;
-	output_cd.cd_length = SHA512_DIGEST_LEN;
-	output_cd.cd_raw.iov_base = (char *)out_buf;
-	output_cd.cd_raw.iov_len = output_cd.cd_length;
-
-	ret = crypto_mac(&mech, &input_cd, &key, NULL, &output_cd, NULL);
-	if (ret != CRYPTO_SUCCESS) {
-		ret = SET_ERROR(EIO);
-		goto error;
-	}
-
-	return (0);
-
-error:
-	return (ret);
-}
-
-static int
-hkdf_sha512_expand(uint8_t *extract_key, uint8_t *info, uint_t info_len,
-    uint8_t *out_buf, uint_t out_len)
-{
-	int ret;
-	crypto_mechanism_t mech;
-	crypto_context_t ctx;
-	crypto_key_t key;
-	crypto_data_t T_cd, info_cd, c_cd;
-	uint_t i, T_len = 0, pos = 0;
-	uint8_t c;
-	uint_t N = (out_len + SHA512_DIGEST_LEN) / SHA512_DIGEST_LEN;
-	uint8_t T[SHA512_DIGEST_LEN];
-
-	if (N > 255)
-		return (SET_ERROR(EINVAL));
-
-	/* initialize HMAC mechanism */
-	mech.cm_type = crypto_mech2id(SUN_CKM_SHA512_HMAC);
-	mech.cm_param = NULL;
-	mech.cm_param_len = 0;
-
-	/* initialize the salt as a crypto key */
-	key.ck_format = CRYPTO_KEY_RAW;
-	key.ck_length = BYTES_TO_BITS(SHA512_DIGEST_LEN);
-	key.ck_data = extract_key;
-
-	/* initialize crypto data for the input and output data */
-	T_cd.cd_format = CRYPTO_DATA_RAW;
-	T_cd.cd_offset = 0;
-	T_cd.cd_raw.iov_base = (char *)T;
-
-	c_cd.cd_format = CRYPTO_DATA_RAW;
-	c_cd.cd_offset = 0;
-	c_cd.cd_length = 1;
-	c_cd.cd_raw.iov_base = (char *)&c;
-	c_cd.cd_raw.iov_len = c_cd.cd_length;
-
-	info_cd.cd_format = CRYPTO_DATA_RAW;
-	info_cd.cd_offset = 0;
-	info_cd.cd_length = info_len;
-	info_cd.cd_raw.iov_base = (char *)info;
-	info_cd.cd_raw.iov_len = info_cd.cd_length;
-
-	for (i = 1; i <= N; i++) {
-		c = i;
-
-		T_cd.cd_length = T_len;
-		T_cd.cd_raw.iov_len = T_cd.cd_length;
-
-		ret = crypto_mac_init(&mech, &key, NULL, &ctx, NULL);
-		if (ret != CRYPTO_SUCCESS) {
-			ret = SET_ERROR(EIO);
-			goto error;
-		}
-
-		ret = crypto_mac_update(ctx, &T_cd, NULL);
-		if (ret != CRYPTO_SUCCESS) {
-			ret = SET_ERROR(EIO);
-			goto error;
-		}
-
-		ret = crypto_mac_update(ctx, &info_cd, NULL);
-		if (ret != CRYPTO_SUCCESS) {
-			ret = SET_ERROR(EIO);
-			goto error;
-		}
-
-		ret = crypto_mac_update(ctx, &c_cd, NULL);
-		if (ret != CRYPTO_SUCCESS) {
-			ret = SET_ERROR(EIO);
-			goto error;
-		}
-
-		T_len = SHA512_DIGEST_LEN;
-		T_cd.cd_length = T_len;
-		T_cd.cd_raw.iov_len = T_cd.cd_length;
-
-		ret = crypto_mac_final(ctx, &T_cd, NULL);
-		if (ret != CRYPTO_SUCCESS) {
-			ret = SET_ERROR(EIO);
-			goto error;
-		}
-
-		bcopy(T, out_buf + pos,
-		    (i != N) ? SHA512_DIGEST_LEN : (out_len - pos));
-		pos += SHA512_DIGEST_LEN;
-	}
-
-	return (0);
-
-error:
-	return (ret);
-}
-
-/*
- * HKDF is designed to be a relatively fast function for deriving keys from a
- * master key + a salt. We use this function to generate new encryption keys
- * so as to avoid hitting the cryptographic limits of the underlying
- * encryption modes. Note that, for the sake of deriving encryption keys, the
- * info parameter is called the "salt" everywhere else in the code.
- */
-static int
-hkdf_sha512(uint8_t *key_material, uint_t km_len, uint8_t *salt,
-    uint_t salt_len, uint8_t *info, uint_t info_len, uint8_t *output_key,
-    uint_t out_len)
-{
-	int ret;
-	uint8_t extract_key[SHA512_DIGEST_LEN];
-
-	ret = hkdf_sha512_extract(salt, salt_len, key_material, km_len,
-	    extract_key);
-	if (ret != 0)
-		goto error;
-
-	ret = hkdf_sha512_expand(extract_key, info, info_len, output_key,
-	    out_len);
-	if (ret != 0)
-		goto error;
-
-	return (0);
-
-error:
-	return (ret);
-}
-
 void
 zio_crypt_key_destroy(zio_crypt_key_t *key)
 {
@@ -420,11 +251,11 @@ zio_crypt_key_init(uint64_t crypt, zio_crypt_key_t *key)
 	/* initialize keys for the ICP */
 	key->zk_current_key.ck_format = CRYPTO_KEY_RAW;
 	key->zk_current_key.ck_data = key->zk_current_keydata;
-	key->zk_current_key.ck_length = BYTES_TO_BITS(keydata_len);
+	key->zk_current_key.ck_length = CRYPTO_BYTES2BITS(keydata_len);
 
 	key->zk_hmac_key.ck_format = CRYPTO_KEY_RAW;
 	key->zk_hmac_key.ck_data = &key->zk_hmac_key;
-	key->zk_hmac_key.ck_length = BYTES_TO_BITS(SHA512_HMAC_KEYLEN);
+	key->zk_hmac_key.ck_length = CRYPTO_BYTES2BITS(SHA512_HMAC_KEYLEN);
 
 	/*
 	 * Initialize the crypto templates. It's ok if this fails because
@@ -589,10 +420,10 @@ zio_do_crypt_uio(boolean_t encrypt, uint64_t crypt, crypto_key_t *key,
 		mech.cm_param_len = sizeof (CK_AES_CCM_PARAMS);
 	} else {
 		gcmp.ulIvLen = ZIO_DATA_IV_LEN;
-		gcmp.ulIvBits = BYTES_TO_BITS(ZIO_DATA_IV_LEN);
+		gcmp.ulIvBits = CRYPTO_BYTES2BITS(ZIO_DATA_IV_LEN);
 		gcmp.ulAADLen = auth_len;
 		gcmp.pAAD = authbuf;
-		gcmp.ulTagBits = BYTES_TO_BITS(maclen);
+		gcmp.ulTagBits = CRYPTO_BYTES2BITS(maclen);
 		gcmp.pIv = ivbuf;
 
 		mech.cm_param = (char *)(&gcmp);
@@ -657,13 +488,13 @@ zio_crypt_key_wrap(crypto_key_t *cwkey, zio_crypt_key_t *key, uint8_t *iv,
 		goto error;
 
 	puio = uio_create(2, 0, UIO_SYSSPACE, UIO_READ);
-	if (!puio) {
+	if (puio == NULL) {
 		ret = SET_ERROR(ENOMEM);
 		goto error;
 	}
 
 	cuio = uio_create(3, 0, UIO_SYSSPACE, UIO_WRITE);
-	if (!cuio) {
+	if (cuio == NULL) {
 		ret = SET_ERROR(ENOMEM);
 		goto error;
 	}
@@ -716,13 +547,13 @@ zio_crypt_key_unwrap(crypto_key_t *cwkey, uint64_t crypt, uint64_t guid,
 	keydata_len = zio_crypt_table[crypt].ci_keylen;
 
 	puio = uio_create(2, 0, UIO_SYSSPACE, UIO_WRITE);
-	if (!puio) {
+	if (puio == NULL) {
 		ret = SET_ERROR(ENOMEM);
 		goto error;
 	}
 
 	cuio = uio_create(3, 0, UIO_SYSSPACE, UIO_READ);
-	if (!cuio) {
+	if (cuio == NULL) {
 		ret = SET_ERROR(ENOMEM);
 		goto error;
 	}
@@ -761,11 +592,11 @@ zio_crypt_key_unwrap(crypto_key_t *cwkey, uint64_t crypt, uint64_t guid,
 	/* initialize keys for ICP */
 	key->zk_current_key.ck_format = CRYPTO_KEY_RAW;
 	key->zk_current_key.ck_data = key->zk_current_keydata;
-	key->zk_current_key.ck_length = BYTES_TO_BITS(keydata_len);
+	key->zk_current_key.ck_length = CRYPTO_BYTES2BITS(keydata_len);
 
 	key->zk_hmac_key.ck_format = CRYPTO_KEY_RAW;
 	key->zk_hmac_key.ck_data = key->zk_hmac_keydata;
-	key->zk_hmac_key.ck_length = BYTES_TO_BITS(SHA512_HMAC_KEYLEN);
+	key->zk_hmac_key.ck_length = CRYPTO_BYTES2BITS(SHA512_HMAC_KEYLEN);
 
 	/*
 	 * Initialize the crypto templates. It's ok if this fails because
@@ -819,12 +650,14 @@ error:
 
 int
 zio_crypt_do_hmac(zio_crypt_key_t *key, uint8_t *data, uint_t datalen,
-    uint8_t *digestbuf)
+    uint8_t *digestbuf, uint_t digestlen)
 {
 	int ret;
 	crypto_mechanism_t mech;
 	crypto_data_t in_data, digest_data;
-	uint8_t raw_digestbuf[SHA512_DIGEST_LEN];
+	uint8_t raw_digestbuf[SHA512_DIGEST_LENGTH];
+
+	ASSERT3U(digestlen, <=, SHA512_DIGEST_LENGTH);
 
 	/* initialize sha512-hmac mechanism and crypto data */
 	mech.cm_type = crypto_mech2id(SUN_CKM_SHA512_HMAC);
@@ -840,7 +673,7 @@ zio_crypt_do_hmac(zio_crypt_key_t *key, uint8_t *data, uint_t datalen,
 
 	digest_data.cd_format = CRYPTO_DATA_RAW;
 	digest_data.cd_offset = 0;
-	digest_data.cd_length = SHA512_DIGEST_LEN;
+	digest_data.cd_length = SHA512_DIGEST_LENGTH;
 	digest_data.cd_raw.iov_base = (char *)raw_digestbuf;
 	digest_data.cd_raw.iov_len = digest_data.cd_length;
 
@@ -852,12 +685,12 @@ zio_crypt_do_hmac(zio_crypt_key_t *key, uint8_t *data, uint_t datalen,
 		goto error;
 	}
 
-	bcopy(raw_digestbuf, digestbuf, ZIO_DATA_MAC_LEN);
+	bcopy(raw_digestbuf, digestbuf, digestlen);
 
 	return (0);
 
 error:
-	bzero(digestbuf, ZIO_DATA_MAC_LEN);
+	bzero(digestbuf, digestlen);
 	return (ret);
 }
 
@@ -866,9 +699,10 @@ zio_crypt_generate_iv_salt_dedup(zio_crypt_key_t *key, uint8_t *data,
     uint_t datalen, uint8_t *ivbuf, uint8_t *salt)
 {
 	int ret;
-	uint8_t digestbuf[SHA512_DIGEST_LEN];
+	uint8_t digestbuf[SHA512_DIGEST_LENGTH];
 
-	ret = zio_crypt_do_hmac(key, data, datalen, digestbuf);
+	ret = zio_crypt_do_hmac(key, data, datalen,
+	    digestbuf, SHA512_DIGEST_LENGTH);
 	if (ret != 0)
 		return (ret);
 
@@ -1231,8 +1065,8 @@ zio_crypt_do_objset_hmacs(zio_crypt_key_t *key, void *data, uint_t datalen,
 	objset_phys_t *osp = data;
 	uint64_t intval;
 	boolean_t le_bswap = (should_bswap == ZFS_HOST_BYTEORDER);
-	uint8_t raw_portable_mac[SHA512_DIGEST_LEN];
-	uint8_t raw_local_mac[SHA512_DIGEST_LEN];
+	uint8_t raw_portable_mac[SHA512_DIGEST_LENGTH];
+	uint8_t raw_local_mac[SHA512_DIGEST_LENGTH];
 
 	/* initialize HMAC mechanism */
 	mech.cm_type = crypto_mech2id(SUN_CKM_SHA512_HMAC);
@@ -1286,7 +1120,7 @@ zio_crypt_do_objset_hmacs(zio_crypt_key_t *key, void *data, uint_t datalen,
 		goto error;
 
 	/* store the final digest in a temporary buffer and copy what we need */
-	cd.cd_length = SHA512_DIGEST_LEN;
+	cd.cd_length = SHA512_DIGEST_LENGTH;
 	cd.cd_raw.iov_base = (char *)raw_portable_mac;
 	cd.cd_raw.iov_len = cd.cd_length;
 
@@ -1303,7 +1137,7 @@ zio_crypt_do_objset_hmacs(zio_crypt_key_t *key, void *data, uint_t datalen,
 	 * objects are not present, the local MAC is zeroed out.
 	 */
 	if (osp->os_userused_dnode.dn_type == DMU_OT_NONE &&
-	    osp->os_userused_dnode.dn_type == DMU_OT_NONE) {
+	    osp->os_groupused_dnode.dn_type == DMU_OT_NONE) {
 		bzero(local_mac, ZIO_OBJSET_MAC_LEN);
 		return (0);
 	}
@@ -1345,7 +1179,7 @@ zio_crypt_do_objset_hmacs(zio_crypt_key_t *key, void *data, uint_t datalen,
 		goto error;
 
 	/* store the final digest in a temporary buffer and copy what we need */
-	cd.cd_length = SHA512_DIGEST_LEN;
+	cd.cd_length = SHA512_DIGEST_LENGTH;
 	cd.cd_raw.iov_base = (char *)raw_local_mac;
 	cd.cd_raw.iov_len = cd.cd_length;
 
@@ -1387,7 +1221,7 @@ zio_crypt_do_indirect_mac_checksum(boolean_t generate, void *buf,
 	blkptr_t *bp;
 	int i, epb = datalen >> SPA_BLKPTRSHIFT;
 	SHA2_CTX ctx;
-	uint8_t digestbuf[SHA512_DIGEST_LEN];
+	uint8_t digestbuf[SHA512_DIGEST_LENGTH];
 
 	/* checksum all of the MACs from the layer below */
 	SHA2Init(SHA512, &ctx);
@@ -1488,7 +1322,7 @@ zio_crypt_init_uios_zil(boolean_t encrypt, uint8_t *plainbuf,
 	/* allocate the uio to hold iovecs */
 	if (nr_src != 0) {
 		srcuio = uio_create(nr_src, 0, UIO_SYSSPACE, UIO_READ);
-		if (!srcuio) {
+		if (srcuio == NULL) {
 			ret = SET_ERROR(ENOMEM);
 			goto error;
 		}
@@ -1496,7 +1330,7 @@ zio_crypt_init_uios_zil(boolean_t encrypt, uint8_t *plainbuf,
 
 	if (nr_dst != 0) {
 		dstuio = uio_create(nr_dst, 0, UIO_SYSSPACE, UIO_WRITE);
-		if (!dstuio) {
+		if (dstuio == NULL) {
 			ret = SET_ERROR(ENOMEM);
 			goto error;
 		}
@@ -1669,7 +1503,7 @@ zio_crypt_init_uios_dnode(boolean_t encrypt, uint8_t *plainbuf,
 
 	if (nr_src != 0) {
 		src_uio = uio_create(nr_src, 0, UIO_SYSSPACE, UIO_READ);
-		if (!src_uio) {
+		if (src_uio == NULL) {
 			ret = SET_ERROR(ENOMEM);
 			goto error;
 		}
@@ -1677,7 +1511,7 @@ zio_crypt_init_uios_dnode(boolean_t encrypt, uint8_t *plainbuf,
 
 	if (nr_dst != 0) {
 		dst_uio = uio_create(nr_dst, 0, UIO_SYSSPACE, UIO_WRITE);
-		if (!dst_uio) {
+		if (dst_uio == NULL) {
 			ret = SET_ERROR(ENOMEM);
 			goto error;
 		}
@@ -1744,6 +1578,8 @@ zio_crypt_init_uios_dnode(boolean_t encrypt, uint8_t *plainbuf,
 		if (dnp->dn_type != DMU_OT_NONE &&
 		    DMU_OT_IS_ENCRYPTED(dnp->dn_bonustype) &&
 		    dnp->dn_bonuslen != 0) {
+			ASSERT3U(nr_iovecs, <, nr_src);
+			ASSERT3U(nr_iovecs, <, nr_dst);
 			VERIFY0(uio_addiov(src_uio, (user_addr_t)DN_BONUS(dnp),
 			    crypt_len));
 			VERIFY0(uio_addiov(dst_uio, (user_addr_t)DN_BONUS(&ddnp[i]),
@@ -1795,7 +1631,7 @@ zio_crypt_init_uios_normal(boolean_t encrypt, uint8_t *plainbuf,
 
 	*puio = uio_create(1, 0, UIO_SYSSPACE, UIO_READ);
 	*cuio = uio_create(2, 0, UIO_SYSSPACE, UIO_WRITE);
-	if (!*puio || !*cuio) {
+	if (*puio == NULL || *cuio == NULL) {
 		ret = SET_ERROR(ENOMEM);
 		goto error;
 	}
@@ -1934,7 +1770,7 @@ zio_do_crypt_data(boolean_t encrypt, zio_crypt_key_t *key, uint8_t *salt,
 
 		tmp_ckey.ck_format = CRYPTO_KEY_RAW;
 		tmp_ckey.ck_data = enc_keydata;
-		tmp_ckey.ck_length = BYTES_TO_BITS(keydata_len);
+		tmp_ckey.ck_length = CRYPTO_BYTES2BITS(keydata_len);
 
 		ckey = &tmp_ckey;
 		tmpl = NULL;
@@ -1943,9 +1779,6 @@ zio_do_crypt_data(boolean_t encrypt, zio_crypt_key_t *key, uint8_t *salt,
 	/* perform the encryption / decryption */
 	ret = zio_do_crypt_uio(encrypt, key->zk_crypt, ckey, tmpl, iv, enc_len,
 	    puio, cuio, authbuf, auth_len);
-
-	if (ret != 0) dprintf("%s: do_crypt_uio failed: %d\n", __func__,
-		ret);
 
 	if (ret != 0)
 		goto error;

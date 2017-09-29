@@ -480,7 +480,7 @@ pbkdf2(uint8_t *passphrase, size_t passphraselen, uint8_t *salt,
 
 	/* initialize passphrase as a crypto key */
 	key.ck_format = CRYPTO_KEY_RAW;
-	key.ck_length = BYTES_TO_BITS(passphraselen);
+	key.ck_length = CRYPTO_BYTES2BITS(passphraselen);
 	key.ck_data = passphrase;
 
 	/*
@@ -1211,9 +1211,13 @@ try_again:
 	ret = lzc_load_key(zhp->zfs_name, noop, key_data, WRAPPING_KEY_LEN);
 	if (ret != 0) {
 		switch (ret) {
+		case EPERM:
+			zfs_error_aux(zhp->zfs_hdl, dgettext(TEXT_DOMAIN,
+			    "Permission denied."));
+			break;
 		case EINVAL:
 			zfs_error_aux(zhp->zfs_hdl, dgettext(TEXT_DOMAIN,
-			    "Invalid parameters provided for %s."),
+			    "Invalid parameters provided for dataset %s."),
 			    zfs_get_name(zhp));
 			break;
 		case EEXIST:
@@ -1322,6 +1326,10 @@ zfs_crypto_unload_key(zfs_handle_t *zhp)
 
 	if (ret != 0) {
 		switch (ret) {
+		case EPERM:
+			zfs_error_aux(zhp->zfs_hdl, dgettext(TEXT_DOMAIN,
+			    "Permission denied."));
+			break;
 		case ENOENT:
 			zfs_error_aux(zhp->zfs_hdl, dgettext(TEXT_DOMAIN,
 			    "Key already unloaded for '%s'."),
@@ -1379,8 +1387,11 @@ zfs_crypto_verify_rewrap_nvlist(zfs_handle_t *zhp, nvlist_t *props,
 	new_props = zfs_valid_proplist(zhp->zfs_hdl, zhp->zfs_type, props,
 	    zfs_prop_get_int(zhp, ZFS_PROP_ZONED), NULL, zhp->zpool_hdl,
 	    B_TRUE, errbuf);
-	if (new_props == NULL)
+
+	if (new_props == NULL) {
+		ret = EINVAL;
 		goto error;
+	}
 
 	*props_out = new_props;
 	return (0);
@@ -1479,6 +1490,13 @@ zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
 				ret = nvlist_add_uint64(props,
 				    zfs_prop_to_name(ZFS_PROP_KEYFORMAT),
 				    keyformat);
+				if (ret != 0) {
+					zfs_error_aux(zhp->zfs_hdl,
+					    dgettext(TEXT_DOMAIN, "Failed to "
+					    "get existing keyformat "
+					    "property."));
+					goto error;
+				}
 			}
 
 			if (keylocation == NULL) {
@@ -1582,6 +1600,10 @@ zfs_crypto_rewrap(zfs_handle_t *zhp, nvlist_t *raw_props, boolean_t inheritkey)
 	ret = lzc_change_key(zhp->zfs_name, cmd, props, wkeydata, wkeylen);
 	if (ret != 0) {
 		switch (ret) {
+		case EPERM:
+			zfs_error_aux(zhp->zfs_hdl, dgettext(TEXT_DOMAIN,
+			    "Permission denied."));
+			break;
 		case EINVAL:
 			zfs_error_aux(zhp->zfs_hdl, dgettext(TEXT_DOMAIN,
 			    "Invalid properties for key change."));

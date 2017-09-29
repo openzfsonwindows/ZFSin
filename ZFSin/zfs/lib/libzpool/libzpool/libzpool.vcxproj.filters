@@ -309,5 +309,8 @@
     <ClCompile Include="..\..\..\module\zfs\zio_crypt.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\module\zfs\hkdf.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

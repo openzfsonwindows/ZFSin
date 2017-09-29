@@ -130,7 +130,6 @@ crypto_mac(crypto_mechanism_t *mech, crypto_data_t *data,
 {
 	int error;
 	kcf_mech_entry_t *me;
-	kcf_req_params_t params;
 	kcf_provider_desc_t *pd;
 	kcf_ctx_template_t *ctx_tmpl;
 	crypto_spi_ctx_template_t spi_ctx_tmpl = NULL;
@@ -187,11 +186,14 @@ retry:
 			 */
 			error = CRYPTO_BUFFER_TOO_BIG;
 		} else {
-			KCF_WRAP_MAC_OPS_PARAMS(&params, KCF_OP_ATOMIC,
+			kcf_req_params_t *params;
+			params = kmem_alloc(sizeof(kcf_req_params_t), KM_SLEEP);
+			KCF_WRAP_MAC_OPS_PARAMS(params, KCF_OP_ATOMIC,
 			    pd->pd_sid, mech, key, data, mac, spi_ctx_tmpl);
 
-			error = kcf_submit_request(pd, NULL, crq, &params,
+			error = kcf_submit_request(pd, NULL, crq, params,
 			    KCF_ISDUALREQ(crq));
+			kmem_free(params, sizeof(kcf_req_params_t));
 		}
 	}
 
@@ -373,7 +375,6 @@ crypto_mac_init_prov(crypto_provider_t provider, crypto_session_id_t sid,
 {
 	int rv;
 	crypto_ctx_t *ctx;
-	kcf_req_params_t params;
 	kcf_provider_desc_t *pd = provider;
 	kcf_provider_desc_t *real_provider = pd;
 
@@ -405,10 +406,13 @@ crypto_mac_init_prov(crypto_provider_t provider, crypto_session_id_t sid,
 		    KCF_SWFP_RHNDL(crq));
 		KCF_PROV_INCRSTATS(pd, rv);
 	} else {
-		KCF_WRAP_MAC_OPS_PARAMS(&params, KCF_OP_INIT, sid, mech, key,
+		kcf_req_params_t *params;
+		params = kmem_alloc(sizeof(kcf_req_params_t), KM_SLEEP);
+		KCF_WRAP_MAC_OPS_PARAMS(params, KCF_OP_INIT, sid, mech, key,
 		    NULL, NULL, tmpl);
-		rv = kcf_submit_request(real_provider, ctx, crq, &params,
+		rv = kcf_submit_request(real_provider, ctx, crq, params,
 		    B_FALSE);
+		kmem_free(params, sizeof(kcf_req_params_t));
 	}
 
 	if (pd->pd_prov_type == CRYPTO_LOGICAL_PROVIDER)

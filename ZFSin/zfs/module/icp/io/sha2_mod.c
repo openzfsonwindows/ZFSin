@@ -919,9 +919,12 @@ sha2_digest_atomic(crypto_provider_handle_t provider,
 static void
 sha2_mac_init_ctx(sha2_hmac_ctx_t *ctx, void *keyval, uint_t length_in_bytes)
 {
-	uint64_t ipad[SHA512_HMAC_BLOCK_SIZE / sizeof (uint64_t)];
-	uint64_t opad[SHA512_HMAC_BLOCK_SIZE / sizeof (uint64_t)];
 	int i, block_size=0, blocks_per_int64=0;
+	uint64_t *ipad;
+	uint64_t *opad;
+
+	ipad = kmem_alloc(SHA512_HMAC_BLOCK_SIZE, KM_SLEEP);
+	opad = kmem_alloc(SHA512_HMAC_BLOCK_SIZE, KM_SLEEP);
 
 	/* Determine the block size */
 	if (ctx->hc_mech_type <= SHA256_HMAC_GEN_MECH_INFO_TYPE) {
@@ -934,8 +937,11 @@ sha2_mac_init_ctx(sha2_hmac_ctx_t *ctx, void *keyval, uint_t length_in_bytes)
 
 	(void) bzero(ipad, block_size);
 	(void) bzero(opad, block_size);
-	(void) bcopy(keyval, ipad, length_in_bytes);
-	(void) bcopy(keyval, opad, length_in_bytes);
+
+	if (length_in_bytes > 0) {
+		(void) bcopy(keyval, ipad, length_in_bytes);
+		(void) bcopy(keyval, opad, length_in_bytes);
+	}
 
 	/* XOR key with ipad (0x36) and opad (0x5c) */
 	for (i = 0; i < blocks_per_int64; i ++) {
@@ -951,6 +957,8 @@ sha2_mac_init_ctx(sha2_hmac_ctx_t *ctx, void *keyval, uint_t length_in_bytes)
 	SHA2Init(ctx->hc_mech_type, &ctx->hc_ocontext);
 	SHA2Update(&ctx->hc_ocontext, (uint8_t *)opad, block_size);
 
+	kmem_free(ipad, SHA512_HMAC_BLOCK_SIZE);
+	kmem_free(opad, SHA512_HMAC_BLOCK_SIZE);
 }
 
 /*
