@@ -3206,16 +3206,20 @@ zfs_vget_internal(zfsvfs_t *zfsvfs, ino64_t ino, vnode_t **vpp)
 	 */
 	hardlinks_t *findnode = NULL;
 	if ((1ULL<<31) & ino) {
-		hardlinks_t searchnode;
+		hardlinks_t *searchnode;
 		avl_index_t loc;
+
+		searchnode = kmem_alloc(sizeof(hardlinks_t), KM_SLEEP);
 
 		dprintf("ZFS: vget looking for (%llx,%llu)\n", ino, ino);
 
-		searchnode.hl_linkid = ino;
+		searchnode->hl_linkid = ino;
 
 		rw_enter(&zfsvfs->z_hardlinks_lock, RW_READER);
-		findnode = avl_find(&zfsvfs->z_hardlinks_linkid, &searchnode, &loc);
+		findnode = avl_find(&zfsvfs->z_hardlinks_linkid, searchnode, &loc);
 		rw_exit(&zfsvfs->z_hardlinks_lock);
+
+		kmem_free(searchnode, sizeof(hardlinks_t));
 
 		if (findnode) {
 			dprintf("ZFS: vget found (%llu, %llu, %u): '%s'\n",
@@ -3260,7 +3264,7 @@ zfs_vget_internal(zfsvfs_t *zfsvfs, ino64_t ino, vnode_t **vpp)
 	 * from vfs_vget, so that vfs_getrealpath() can succeed in returning
 	 * a path to mds.
 	 */
-	char name[MAXPATHLEN + 2];
+	char *name = kmem_alloc(MAXPATHLEN + 2, KM_SLEEP);
 
 	/* Root can't lookup in ZAP */
 	if (zp->z_id == zfsvfs->z_root) {
@@ -3319,6 +3323,9 @@ zfs_vget_internal(zfsvfs_t *zfsvfs, ino64_t ino, vnode_t **vpp)
 			} // !zap_search
 		}
 	} // rootid
+
+	kmem_free(name, MAXPATHLEN + 2);
+
 
 
  out:

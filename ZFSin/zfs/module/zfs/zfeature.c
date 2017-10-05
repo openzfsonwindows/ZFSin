@@ -199,7 +199,7 @@ spa_features_check(spa_t *spa, boolean_t for_write,
 
 			if (NULL != unsup_feat) {
 				char *desc = "";
-				char buf[MAXPATHLEN];
+				char *buf = kmem_zalloc(MAXPATHLEN, KM_SLEEP);
 
 				if (zap_lookup(os, spa->spa_feat_desc_obj,
 				    za.za_name, 1, sizeof (buf), buf) == 0)
@@ -207,6 +207,8 @@ spa_features_check(spa_t *spa, boolean_t for_write,
 
 				VERIFY(nvlist_add_string(unsup_feat, za.za_name,
 				    desc) == 0);
+
+				kmem_free(buf, MAXPATHLEN);
 			}
 		}
 	}

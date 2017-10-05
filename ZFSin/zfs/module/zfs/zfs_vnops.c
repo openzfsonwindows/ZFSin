@@ -3336,7 +3336,7 @@ zfs_setattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 	zilog_t		*zilog;
 	dmu_tx_t	*tx;
 	vattr_t		oldva;
-	xvattr_t	tmpxvattr;
+	xvattr_t	*tmpxvattr;
 	uint_t		mask = vap->va_mask;
 	uint_t		saved_mask = 0;
 	uint64_t	saved_mode;
@@ -3353,8 +3353,14 @@ zfs_setattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 	zfs_acl_t	*aclp;
 	boolean_t skipaclchk = /*(flags & ATTR_NOACLCHECK) ? B_TRUE :*/ B_FALSE;
 	boolean_t	fuid_dirtied = B_FALSE;
-	sa_bulk_attr_t	bulk[10], xattr_bulk[10];
+#define _NUM_BULK 10
+	sa_bulk_attr_t	*bulk, *xattr_bulk;
 	int		count = 0, xattr_count = 0;
+	vsecattr_t      vsecattr;
+	int seen_type = 0;
+	int		aclbsize;	/* size of acl list in bytes */
+	ace_t	*aaclp;
+	struct kauth_acl *kauth;
 
 	if (mask == 0)
 		return (0);
@@ -3398,7 +3404,11 @@ zfs_setattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 	 */
 	xoap = xva_getxoptattr(xvap);
 
-	xva_init(&tmpxvattr);
+	tmpxvattr = kmem_alloc(sizeof (xvattr_t), KM_SLEEP);
+	xva_init(tmpxvattr);
+
+	bulk = kmem_alloc(sizeof (sa_bulk_attr_t) * _NUM_BULK, KM_SLEEP);
+	xattr_bulk = kmem_alloc(sizeof (sa_bulk_attr_t) * _NUM_BULK, KM_SLEEP);
 
 	/*
 	 * Immutable files can only alter immutable bit and atime
@@ -3407,16 +3417,16 @@ zfs_setattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 	if ((zp->z_pflags & ZFS_IMMUTABLE) &&
 	    ((mask & (AT_SIZE|AT_UID|AT_GID|AT_MTIME|AT_MODE)) ||
 	    ((mask & AT_XVATTR) && XVA_ISSET_REQ(xvap, XAT_CREATETIME)))) {
-		ZFS_EXIT(zfsvfs);
-		return ((EPERM));
+		err = SET_ERROR(EPERM);
+		goto out3;
 	}
 #else
 	//chflags uchg sends AT_MODE on OS X, so allow AT_MODE to be in the mask.
 	if ((zp->z_pflags & ZFS_IMMUTABLE) &&
 	    ((mask & (AT_SIZE|AT_UID|AT_GID|AT_MTIME)) ||
 	    ((mask & AT_XVATTR) && XVA_ISSET_REQ(xvap, XAT_CREATETIME)))) {
-		ZFS_EXIT(zfsvfs);
-		return ((EPERM));
+		err = SET_ERROR(EPERM);
+		goto out3;
 	}
 #endif
 
@@ -3439,8 +3449,8 @@ zfs_setattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 	if (mask & (AT_ATIME | AT_MTIME)) {
 		if (((mask & AT_ATIME) && TIMESPEC_OVERFLOW(&vap->va_atime)) ||
 		    ((mask & AT_MTIME) && TIMESPEC_OVERFLOW(&vap->va_mtime))) {
-			ZFS_EXIT(zfsvfs);
-			return ((EOVERFLOW));
+			err = SET_ERROR(EOVERFLOW);
+			goto out3;
 		}
 	}
 #endif
@@ -3451,8 +3461,8 @@ top:
 
 	/* Can this be moved to before the top label? */
 	if (vfs_isrdonly(zfsvfs->z_vfs)) {
-		ZFS_EXIT(zfsvfs);
-		return ((EROFS));
+		err = SET_ERROR(EROFS);
+		goto out3;
 	}
 
 	/*
@@ -3461,10 +3471,8 @@ top:
 
 	if (mask & AT_SIZE) {
 		err = zfs_zaccess(zp, ACE_WRITE_DATA, 0, skipaclchk, cr);
-		if (err) {
-			ZFS_EXIT(zfsvfs);
-			return ((EROFS));
-		}
+		if (err)
+			goto out3;
 
 		/*
 		 * XXX - Note, we are not providing any open
@@ -3474,10 +3482,8 @@ top:
 		 */
 		/* XXX - would it be OK to generate a log record here? */
 		err = zfs_freesp(zp, vap->va_size, 0, 0, FALSE);
-		if (err) {
-			ZFS_EXIT(zfsvfs);
-			return (err);
-		}
+		if (err)
+			goto out3;
 	}
 
 	if (mask & (AT_ATIME|AT_MTIME) ||
@@ -3557,7 +3563,7 @@ top:
 				need_policy = TRUE;
 			} else {
 				XVA_CLR_REQ(xvap, XAT_APPENDONLY);
-				XVA_SET_REQ(&tmpxvattr, XAT_APPENDONLY);
+				XVA_SET_REQ(tmpxvattr, XAT_APPENDONLY);
 			}
 		}
 
@@ -3567,7 +3573,7 @@ top:
 				need_policy = TRUE;
 			} else {
 				XVA_CLR_REQ(xvap, XAT_NOUNLINK);
-				XVA_SET_REQ(&tmpxvattr, XAT_NOUNLINK);
+				XVA_SET_REQ(tmpxvattr, XAT_NOUNLINK);
 			}
 		}
 
@@ -3577,7 +3583,7 @@ top:
 				need_policy = TRUE;
 			} else {
 				XVA_CLR_REQ(xvap, XAT_IMMUTABLE);
-				XVA_SET_REQ(&tmpxvattr, XAT_IMMUTABLE);
+				XVA_SET_REQ(tmpxvattr, XAT_IMMUTABLE);
 			}
 		}
 
@@ -3587,7 +3593,7 @@ top:
 				need_policy = TRUE;
 			} else {
 				XVA_CLR_REQ(xvap, XAT_NODUMP);
-				XVA_SET_REQ(&tmpxvattr, XAT_NODUMP);
+				XVA_SET_REQ(tmpxvattr, XAT_NODUMP);
 			}
 		}
 
@@ -3597,7 +3603,7 @@ top:
 				need_policy = TRUE;
 			} else {
 				XVA_CLR_REQ(xvap, XAT_AV_MODIFIED);
-				XVA_SET_REQ(&tmpxvattr, XAT_AV_MODIFIED);
+				XVA_SET_REQ(tmpxvattr, XAT_AV_MODIFIED);
 			}
 		}
 
@@ -3609,14 +3615,14 @@ top:
 				need_policy = TRUE;
 			} else {
 				XVA_CLR_REQ(xvap, XAT_AV_QUARANTINED);
-				XVA_SET_REQ(&tmpxvattr, XAT_AV_QUARANTINED);
+				XVA_SET_REQ(tmpxvattr, XAT_AV_QUARANTINED);
 			}
 		}
 
 		if (XVA_ISSET_REQ(xvap, XAT_REPARSE)) {
 			mutex_exit(&zp->z_lock);
-			ZFS_EXIT(zfsvfs);
-			return ((EPERM));
+			err = SET_ERROR(EPERM);
+			goto out3;
 		}
 
 		if (need_policy == FALSE &&
@@ -3664,10 +3670,8 @@ top:
 		}
 		err = secpolicy_vnode_setattr(cr, vp, vap, &oldva, flags,
 		    (int (*)(void *, int, cred_t *))zfs_zaccess_unix, zp);
-		if (err) {
-			ZFS_EXIT(zfsvfs);
-			return (err);
-		}
+		if (err)
+			goto out3;
 
 		if (trim_mask) {
 			vap->va_mask |= saved_mask;
@@ -3734,13 +3738,7 @@ top:
  //           (vap->va_acl->acl_entrycount > 0) &&
    //         (vap->va_acl->acl_entrycount != KAUTH_FILESEC_NOACL)) {
 
-   //         vsecattr_t      vsecattr;
-  //          int		aclbsize;	/* size of acl list in bytes */
-  //          ace_t	*aaclp;
-  //          struct kauth_acl *kauth;
-
-  //          vsecattr.vsa_mask = VSA_ACE;
-
+            vsecattr.vsa_mask = VSA_ACE;
   //          kauth = vap->va_acl;
 
 #if HIDE_TRIVIAL_ACL
@@ -3760,7 +3758,7 @@ top:
 #if HIDE_TRIVIAL_ACL
 			// Add in the trivials, keep "seen_type" as a bit pattern of
 			// which trivials we have seen
-			int seen_type = 0;
+			seen_type = 0;
 
             dprintf("aces_from_acl %d entries\n", kauth->acl_entrycount);
             aces_from_acl(vsecattr.vsa_aclentp,
@@ -3779,22 +3777,18 @@ top:
 
         } else {
 
-			vsecattr_t blank_acl;
-			int seen_type = 0;
-            int		aclbsize;	/* size of acl list in bytes */
-			ace_t	*aaclp;
-
-            blank_acl.vsa_mask = VSA_ACE;
-			blank_acl.vsa_aclcnt = 0;
+			seen_type = 0;
+            vsecattr.vsa_mask = VSA_ACE;
+			vsecattr.vsa_aclcnt = 0;
             aclbsize = ( 3 ) * sizeof(ace_t);
-			blank_acl.vsa_aclentp = kmem_zalloc(aclbsize, KM_SLEEP);
-			aaclp = blank_acl.vsa_aclentp;
-            blank_acl.vsa_aclentsz = aclbsize;
+			vsecattr.vsa_aclentp = kmem_zalloc(aclbsize, KM_SLEEP);
+			aaclp = vsecattr.vsa_aclentp;
+            vsecattr.vsa_aclentsz = aclbsize;
 			// Clearing, we need to pass in the trivials only
-			zfs_addacl_trivial(zp, blank_acl.vsa_aclentp, &blank_acl.vsa_aclcnt,
+			zfs_addacl_trivial(zp, vsecattr.vsa_aclentp, &vsecattr.vsa_aclcnt,
 				seen_type);
 
-            if ((err = zfs_setacl(zp, &blank_acl, B_TRUE, cr)))
+            if ((err = zfs_setacl(zp, &vsecattr, B_TRUE, cr)))
                 dprintf("setattr: setacl failed: %d\n", err);
 
             kmem_free(aaclp, aclbsize);
@@ -4016,22 +4010,22 @@ top:
 		 * so that return masks can be set for caller.
 		 */
 
-		if (XVA_ISSET_REQ(&tmpxvattr, XAT_APPENDONLY)) {
+		if (XVA_ISSET_REQ(tmpxvattr, XAT_APPENDONLY)) {
 			XVA_SET_REQ(xvap, XAT_APPENDONLY);
 		}
-		if (XVA_ISSET_REQ(&tmpxvattr, XAT_NOUNLINK)) {
+		if (XVA_ISSET_REQ(tmpxvattr, XAT_NOUNLINK)) {
 			XVA_SET_REQ(xvap, XAT_NOUNLINK);
 		}
-		if (XVA_ISSET_REQ(&tmpxvattr, XAT_IMMUTABLE)) {
+		if (XVA_ISSET_REQ(tmpxvattr, XAT_IMMUTABLE)) {
 			XVA_SET_REQ(xvap, XAT_IMMUTABLE);
 		}
-		if (XVA_ISSET_REQ(&tmpxvattr, XAT_NODUMP)) {
+		if (XVA_ISSET_REQ(tmpxvattr, XAT_NODUMP)) {
 			XVA_SET_REQ(xvap, XAT_NODUMP);
 		}
-		if (XVA_ISSET_REQ(&tmpxvattr, XAT_AV_MODIFIED)) {
+		if (XVA_ISSET_REQ(tmpxvattr, XAT_AV_MODIFIED)) {
 			XVA_SET_REQ(xvap, XAT_AV_MODIFIED);
 		}
-		if (XVA_ISSET_REQ(&tmpxvattr, XAT_AV_QUARANTINED)) {
+		if (XVA_ISSET_REQ(tmpxvattr, XAT_AV_QUARANTINED)) {
 			XVA_SET_REQ(xvap, XAT_AV_QUARANTINED);
 		}
 
@@ -4089,7 +4083,13 @@ out2:
 	if (zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
 		zil_commit(zilog, 0);
 
+out3:
     dprintf("-setattr: zp %p size %llu\n", zp, zp->z_size);
+
+	kmem_free(xattr_bulk, sizeof (sa_bulk_attr_t) * _NUM_BULK);
+	kmem_free(bulk, sizeof (sa_bulk_attr_t) * _NUM_BULK);
+	kmem_free(tmpxvattr, sizeof (xvattr_t));
+#undef _NUM_BULK
 
 	ZFS_EXIT(zfsvfs);
 #endif

@@ -1345,6 +1345,9 @@ spa_generate_guid(spa_t *spa)
 	return (guid);
 }
 
+#if !defined (__OPTIMIZE__)
+#pragma GCC diagnostic ignored "-Wframe-larger-than="
+#endif
 void
 snprintf_blkptr(char *buf, size_t buflen, const blkptr_t *bp)
 {

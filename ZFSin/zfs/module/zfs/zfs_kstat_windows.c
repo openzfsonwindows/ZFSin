@@ -184,6 +184,9 @@ osx_kstat_t osx_kstat = {
 
 static kstat_t		*osx_kstat_ksp;
 
+#if !defined (__OPTIMIZE__)
+#pragma GCC diagnostic ignored "-Wframe-larger-than="
+#endif
 
 static int osx_kstat_update(kstat_t *ksp, int rw)
 {

@@ -348,7 +348,7 @@ Q256(size_t bitlen, const uint32_t *data, uint32_t *restrict p)
  * which only goes over it by a hair (1248 bytes on ARM32).
  */
 #include <sys/isa_defs.h>	/* for _ILP32 */
-#ifdef _ILP32   /* We're 32-bit, assume small stack frames */
+#if defined (_ILP32) || ( defined (__APPLE__) && !defined (__OPTIMIZE__))   /* assume small stack frames */
 #pragma GCC diagnostic ignored "-Wframe-larger-than="
 #endif
 

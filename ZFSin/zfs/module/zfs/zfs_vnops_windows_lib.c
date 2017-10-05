@@ -1198,17 +1198,19 @@ if (zp->z_gen != 0) dprintf("%s: va_gen %lld -> 0\n", __func__, zp->z_gen);
 		 * the link target, so we need to add it to the AVL z_hardlinks.
 		 */
 		if (ishardlink) {
-			hardlinks_t searchnode, *findnode;
+			hardlinks_t *searchnode, *findnode;
 			avl_index_t loc;
 
 			// If we don't have a linkid, make one.
-			searchnode.hl_parent = vap->va_parentid;
-			searchnode.hl_fileid = zp->z_id;
-			strlcpy(searchnode.hl_name, zp->z_name_cache, PATH_MAX);
+			searchnode = kmem_alloc(sizeof(hardlinks_t), KM_SLEEP);
+			searchnode->hl_parent = vap->va_parentid;
+			searchnode->hl_fileid = zp->z_id;
+			strlcpy(searchnode->hl_name, zp->z_name_cache, PATH_MAX);
 
 			rw_enter(&zfsvfs->z_hardlinks_lock, RW_READER);
-			findnode = avl_find(&zfsvfs->z_hardlinks, &searchnode, &loc);
+			findnode = avl_find(&zfsvfs->z_hardlinks, searchnode, &loc);
 			rw_exit(&zfsvfs->z_hardlinks_lock);
+			kmem_free(searchnode, sizeof(hardlinks_t));
 
 			if (!findnode) {
 				static uint32_t zfs_hardlink_sequence = 1ULL<<31;
@@ -2092,21 +2094,20 @@ zpl_xattr_get_sa(struct vnode *vp, const char *name, void *value, uint32_t size)
 	return (nv_size);
 }
 
-
-
-
 int zfs_hardlink_addmap(znode_t *zp, uint64_t parentid, uint32_t linkid)
 {
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
-	hardlinks_t searchnode, *findnode;
+	hardlinks_t *searchnode, *findnode;
 	avl_index_t loc;
 
-	searchnode.hl_parent = parentid;
-	searchnode.hl_fileid = zp->z_id;
-	strlcpy(searchnode.hl_name, zp->z_name_cache, PATH_MAX);
+	searchnode = kmem_alloc(sizeof(hardlinks_t), KM_SLEEP);
+	searchnode->hl_parent = parentid;
+	searchnode->hl_fileid = zp->z_id;
+	strlcpy(searchnode->hl_name, zp->z_name_cache, PATH_MAX);
 
 	rw_enter(&zfsvfs->z_hardlinks_lock, RW_WRITER);
-	findnode = avl_find(&zfsvfs->z_hardlinks, &searchnode, &loc);
+	findnode = avl_find(&zfsvfs->z_hardlinks, searchnode, &loc);
+	kmem_free(searchnode, sizeof(hardlinks_t));
 	if (!findnode) {
 		// Add hash entry
 		zp->z_finder_hardlink = TRUE;

@@ -890,6 +890,9 @@ fm_nvlist_destroy(nvlist_t *nvl, int flag)
 	}
 }
 
+#if !defined (__OPTIMIZE__)
+#pragma GCC diagnostic ignored "-Wframe-larger-than="
+#endif
 int
 i_fm_payload_set(nvlist_t *payload, const char *name, va_list ap)
 {

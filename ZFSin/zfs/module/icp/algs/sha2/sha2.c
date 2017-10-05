@@ -79,7 +79,7 @@ static uint8_t PADDING[128] = { 0x80, /* all zeros */ };
  * barriers to reduce stack frame size. This can reduce the SHA512Transform()
  * stack frame usage from 3k to <1k on ARM32, for example.
  */
-#if defined(_ILP32) || defined(__powerpc)	/* small stack */
+#if (defined (__APPLE__) && !defined (__OPTIMIZE__)) || defined(_ILP32) || defined(__powerpc)	/* small stack */
 #define	SMALL_STACK_MEMORY_BARRIER	asm volatile("": : :"memory");
 #else
 #define	SMALL_STACK_MEMORY_BARRIER
