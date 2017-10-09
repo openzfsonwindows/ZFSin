@@ -44,6 +44,7 @@
 #include <string.h>
 #endif
 
+#include <sys/dsl_dir.h>
 #include <sys/param.h>
 #include <sys/nvpair.h>
 #include "zfs_namecheck.h"
@@ -314,22 +315,14 @@ pool_namecheck(const char *pool, namecheck_err_t *why, char *what)
 
 	/*
 	 * Make sure the name is not too long.
-	 *
-	 * When HAVE_KOBJ_NAME_LEN is defined the maximum safe kobject name
-	 * length is 20 bytes.  This 20 bytes is broken down as follows to
-	 * provide a maximum safe <pool>/<dataset>[@snapshot] length of only
-	 * 18 bytes.  To ensure bytes are left for <dataset>[@snapshot] the
-	 * <pool> portition is futher limited to 8 bytes.  For 2.6.27 and
-	 * newer kernels this limit is set to MAXNAMELEN.
-	 *
-	 *   <pool>/<dataset> + <partition> + <newline>
-	 *   (18)             + (1)         + (1)
+	 * If we're creating a pool with version >= SPA_VERSION_DSL_SCRUB (v11)
+	 * we need to account for additional space needed by the origin ds which
+	 * will also be snapshotted: "poolname"+"/"+"$ORIGIN"+"@"+"$ORIGIN".
+	 * Play it safe and enforce this limit even if the pool version is < 11
+	 * so it can be upgraded without issues.
 	 */
-#ifdef HAVE_KOBJ_NAME_LEN
-	if (strlen(pool) > 8) {
-#else
-	if (strlen(pool) >= ZFS_MAX_DATASET_NAME_LEN) {
-#endif /* HAVE_KOBJ_NAME_LEN */
+	if (strlen(pool) >= (ZFS_MAX_DATASET_NAME_LEN - 2 -
+	    strlen(ORIGIN_DIR_NAME) * 2)) {
 		if (why)
 			*why = NAME_ERR_TOOLONG;
 		return (-1);
