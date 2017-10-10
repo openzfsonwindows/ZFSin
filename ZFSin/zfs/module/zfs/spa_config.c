@@ -193,8 +193,8 @@ spa_config_write(spa_config_dirent_t *dp, nvlist_t *nvl)
 		    0, RLIM64_INFINITY, kcred, NULL) == 0 &&
 		    VOP_FSYNC(vp, FSYNC, kcred, NULL) == 0) {
 
-#ifdef __APPLE__
-		    /* renamed in caller due to spa */
+#if defined (__APPLE__) && defined (_KERNEL)
+		    /* kernel renamed in caller due to 'spa' - userland for ztest*/
 #else
 			(void) vn_rename(temp, dp->scd_path, UIO_SYSSPACE);
 #endif
@@ -203,7 +203,7 @@ spa_config_write(spa_config_dirent_t *dp, nvlist_t *nvl)
 	}
 
 
-#ifdef __APPLE__
+#if defined (__APPLE__) && defined (_KERNEL)
 	/* Not needed if rename is successful */
 #else
 	(void) vn_remove(temp, UIO_SYSSPACE, RMFILE);

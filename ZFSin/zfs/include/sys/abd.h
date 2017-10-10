@@ -125,8 +125,10 @@ abd_copy(abd_t *dabd, abd_t *sabd, size_t size)
 	ASSERT3P(sabd,!=,NULL);
 	ASSERT3P(dabd,!=,sabd);
 	if (dabd != sabd) {
+#ifdef _KERNEL
 		ASSERT3S((size_t)dabd->abd_size,==,size);
 		ASSERT3S((size_t)sabd->abd_size,==,size);
+#endif
 		abd_copy_off(dabd, sabd, 0, 0, size);
 	}
 }
@@ -134,21 +136,27 @@ abd_copy(abd_t *dabd, abd_t *sabd, size_t size)
 static inline void
 abd_copy_from_buf(abd_t *abd, const void *buf, size_t size)
 {
+#ifdef _KERNEL
 	ASSERT3S((size_t)abd->abd_size,==,size);
+#endif
 	abd_copy_from_buf_off(abd, buf, 0, size);
 }
 
 static inline void
 abd_copy_to_buf(void* buf, abd_t *abd, size_t size)
 {
+#ifdef _KERNEL
 	ASSERT3S((size_t)abd->abd_size,==,size);
+#endif
 	abd_copy_to_buf_off(buf, abd, 0, size);
 }
 
 static inline int
 abd_cmp_buf(abd_t *abd, const void *buf, size_t size)
 {
+#ifdef _KERNEL
 	ASSERT3S((size_t)abd->abd_size,==,size);
+#endif
 	return (abd_cmp_buf_off(abd, buf, 0, size));
 }
 

@@ -715,26 +715,6 @@ void ksiddomain_rele(ksiddomain_t *);
 		(void) nanosleep(&ts, NULL);				\
 	} while (0)
 
-// OSX uio API
-struct uio *uio_create(
-                       int a_iovcount,             /* max number of iovecs */
-                       off_t a_offset,             /* current offset */
-                       int a_spacetype,            /* type of address space */
-                       int a_iodirection );        /* read or write flag */
-user_addr_t uio_curriovbase( struct uio *a_uio );
-int uio_iovcnt( struct uio *a_uio );
-void uio_free( struct uio *a_uio );
-int uio_addiov(struct uio *o,user_addr_t a_baseaddr,user_size_t a_length );
-int uio_getiov( struct uio *a_uio,
-                 int a_index,
-                 user_addr_t * a_baseaddr_p,
-                 user_size_t * a_length_p );
-user_size_t uio_curriovlen( struct uio *a_uio );
-int uio_isuserspace( struct uio *a_uio );
-user_ssize_t uio_resid( struct uio *a_uio );
-void uio_setrw( struct uio *a_uio, int a_value );
-int uiomove(const char * cp, int n, int r, struct uio *uio);
-void uio_update( struct uio *a_uio, user_size_t a_count );
 
 #define SEC_TO_TICK(sec)        ((sec) * hz)
 #define MSEC_TO_TICK(msec)      ((msec) / (MILLISEC / hz))

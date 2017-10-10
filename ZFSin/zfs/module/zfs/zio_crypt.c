@@ -1319,6 +1319,13 @@ zio_crypt_init_uios_zil(boolean_t encrypt, uint8_t *plainbuf,
 	nr_src += nr_iovecs;
 	nr_dst += nr_iovecs;
 
+#ifndef _KERNEL
+	if (nr_src == 0)
+		nr_src = 1;
+	if (nr_dst == 0)
+		nr_dst = 1;
+#endif
+
 	/* allocate the uio to hold iovecs */
 	if (nr_src != 0) {
 		srcuio = uio_create(nr_src, 0, UIO_SYSSPACE, UIO_READ);
@@ -1501,6 +1508,13 @@ zio_crypt_init_uios_dnode(boolean_t encrypt, uint8_t *plainbuf,
 	nr_src += nr_iovecs;
 	nr_dst += nr_iovecs;
 
+#ifndef _KERNEL
+	if (nr_src == 0)
+		nr_src = 1;
+	if (nr_dst == 0)
+		nr_dst = 1;
+#endif
+
 	if (nr_src != 0) {
 		src_uio = uio_create(nr_src, 0, UIO_SYSSPACE, UIO_READ);
 		if (src_uio == NULL) {
@@ -1508,6 +1522,7 @@ zio_crypt_init_uios_dnode(boolean_t encrypt, uint8_t *plainbuf,
 			goto error;
 		}
 	}
+	ASSERT(src_uio != NULL);
 
 	if (nr_dst != 0) {
 		dst_uio = uio_create(nr_dst, 0, UIO_SYSSPACE, UIO_WRITE);
@@ -1516,6 +1531,7 @@ zio_crypt_init_uios_dnode(boolean_t encrypt, uint8_t *plainbuf,
 			goto error;
 		}
 	}
+	ASSERT(dst_uio != NULL);
 
 	nr_iovecs = 0;
 
@@ -1694,6 +1710,9 @@ zio_crypt_init_uios(boolean_t encrypt, dmu_object_type_t ot, uint8_t *plainbuf,
 	if (ret != 0)
 		goto error;
 
+	ASSERT(puio != NULL);
+	ASSERT(cuio != NULL);
+
 	/* populate the uios */
 #ifdef _WIN32
 
@@ -1775,6 +1794,9 @@ zio_do_crypt_data(boolean_t encrypt, zio_crypt_key_t *key, uint8_t *salt,
 		ckey = &tmp_ckey;
 		tmpl = NULL;
 	}
+
+	ASSERT(puio != NULL);
+	ASSERT(cuio != NULL);
 
 	/* perform the encryption / decryption */
 	ret = zio_do_crypt_uio(encrypt, key->zk_crypt, ckey, tmpl, iv, enc_len,

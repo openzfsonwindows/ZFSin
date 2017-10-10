@@ -404,7 +404,9 @@ zio_subblock(zio_t *zio, abd_t *data, uint64_t size)
 
 	if (zio->io_type == ZIO_TYPE_READ) {
 		ASSERT3P(data,!=,zio->io_abd);
+#ifdef _KERNEL
 		ASSERT3S(data->abd_size,==,size);
+#endif
 		ASSERT3S(zio->io_abd->abd_size,>=,size);
 		// copy first size bytes of zio->io_abd into data
 		abd_copy_off(data, zio->io_abd, 0, 0, size);
