@@ -64,7 +64,7 @@ log_must eval "echo $passphrase | zfs create -o encryption=on" \
 log_must eval "zfs set readonly=off $TESTPOOL/$TESTFS1"
 
 log_must mkfile 1M /$TESTPOOL/$TESTFS1/$TESTFILE0
-typeset checksum=$(md5sum /$TESTPOOL/$TESTFS1/$TESTFILE0 | \
+typeset checksum=$(md5 /$TESTPOOL/$TESTFS1/$TESTFILE0 | \
 	awk '{ print $1 }')
 
 log_must zfs snapshot $snap
