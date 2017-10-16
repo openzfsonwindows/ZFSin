@@ -57,7 +57,11 @@ typeset passphrase="password"
 typeset snap="$TESTPOOL/$TESTFS1@snap"
 
 log_must eval "echo $passphrase | zfs create -o encryption=on" \
-	"-o keyformat=passphrase $TESTPOOL/$TESTFS1"
+	"-o keyformat=passphrase -o readonly=on $TESTPOOL/$TESTFS1"
+
+# On OSX we will create the dataset readonly, then change it
+# to read/write. This stops Spotlight from puking all over it.
+log_must eval "zfs set readonly=off $TESTPOOL/$TESTFS1"
 
 log_must mkfile 1M /$TESTPOOL/$TESTFS1/$TESTFILE0
 typeset checksum=$(md5sum /$TESTPOOL/$TESTFS1/$TESTFILE0 | \
@@ -74,7 +78,7 @@ keystatus=$(get_prop keystatus $TESTPOOL/$TESTFS2)
 
 log_must eval "echo $passphrase | zfs mount -l $TESTPOOL/$TESTFS2"
 
-typeset cksum1=$(md5sum /$TESTPOOL/$TESTFS2/$TESTFILE0 | awk '{ print $1 }')
+typeset cksum1=$(md5 /$TESTPOOL/$TESTFS2/$TESTFILE0 | awk '{ print $1 }')
 [[ "$cksum1" == "$checksum" ]] || \
 	log_fail "Checksums differ ($cksum1 != $checksum)"
 
@@ -84,8 +88,10 @@ keystatus=$(get_prop keystatus $TESTPOOL/$TESTFS1/c1)
 [[ "$keystatus" == "unavailable" ]] || \
 	log_fail "Expected keystatus unavailable, got $keystatus"
 
+$SLEEP 2
+
 log_must eval "echo $passphrase | zfs mount -l $TESTPOOL/$TESTFS1/c1"
-typeset cksum2=$(md5sum /$TESTPOOL/$TESTFS1/c1/$TESTFILE0 | \
+typeset cksum2=$(md5 /$TESTPOOL/$TESTFS1/c1/$TESTFILE0 | \
 	awk '{ print $1 }')
 [[ "$cksum2" == "$checksum" ]] || \
 	log_fail "Checksums differ ($cksum2 != $checksum)"

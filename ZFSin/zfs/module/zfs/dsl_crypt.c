@@ -1057,7 +1057,6 @@ error_unlock:
 
 	if (dck_out != NULL)
 		*dck_out = NULL;
-	VERIFY(ret == 0);
 	return (ret);
 }
 
