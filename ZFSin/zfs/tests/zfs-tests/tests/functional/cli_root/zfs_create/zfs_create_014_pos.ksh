@@ -24,98 +24,36 @@
 # Copyright 2007 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 #
-
-#
-# Copyright (c) 2016, Datto, Inc. All rights reserved.
-#
-
 . $STF_SUITE/include/libtest.shlib
-. $STF_SUITE/tests/functional/cli_root/zfs_create/zfs_create_common.kshlib
-. $STF_SUITE/tests/functional/cli_root/zfs_create/properties.kshlib
 
 #
 # DESCRIPTION:
-# 'zfs create' should be able to create an encrypted dataset with
-# a valid encryption algorithm, keysource, and key.
+# check 'zfs create <filesystem>' works at the name length boundary
 #
 # STRATEGY:
-# 1. Create a filesystem for each encryption type
-# 2. Create a filesystem for each keysource type
-# 3. Verify that each filesystem has the correct properties set
-#
+# 1. Verify creating filesystem with name length 255 would succeed
+# 2. Verify creating filesystem with name length 256 would fail
+# 3. Verify the pool can be re-imported
 
 verify_runnable "both"
 
+# namelen 255 and 256
+TESTFS1=$(for i in $(seq $((254 - ${#TESTPOOL}))); do echo z ; done | tr -d '\n')
+TESTFS2=$(for i in $(seq $((255 - ${#TESTPOOL}))); do echo z ; done | tr -d '\n')
+
 function cleanup
 {
-	datasetexists $TESTPOOL/$TESTFS1 && \
-		log_must $ZFS destroy -f $TESTPOOL/$TESTFS1
+	datasetexists $TESTPOOL/$TESTFS1 &&
+		log_must zfs destroy $TESTPOOL/$TESTFS1
 }
 
 log_onexit cleanup
 
-set -A ENCRYPTION_ALGS "encryption=on" \
-	"encryption=aes-128-ccm" \
-	"encryption=aes-192-ccm" \
-	"encryption=aes-256-ccm" \
-	"encryption=aes-128-gcm" \
-	"encryption=aes-192-gcm" \
-	"encryption=aes-256-gcm"
+log_assert "'zfs create <filesystem>' can create a ZFS filesystem with name length 255."
 
-set -A ENCRYPTION_PROPS "encryption=aes-256-ccm" \
-	"encryption=aes-128-ccm" \
-	"encryption=aes-192-ccm" \
-	"encryption=aes-256-ccm" \
-	"encryption=aes-128-gcm" \
-	"encryption=aes-192-gcm" \
-	"encryption=aes-256-gcm"
+log_must zfs create $TESTPOOL/$TESTFS1
+log_mustnot zfs create $TESTPOOL/$TESTFS2
+log_must zpool export $TESTPOOL
+log_must zpool import $TESTPOOL
 
-set -A KEYSOURCE_TYPES "keysource=raw,prompt" \
-	"keysource=hex,prompt" \
-	"keysource=passphrase,prompt"
-
-set -A KEYSOURCES "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" \
-	"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
-	"abcdefgh"
-
-log_assert "'zfs create' should properly create encrypted datasets"
-
-typeset -i i=0
-while (( $i < ${#ENCRYPTION_ALGS[*]} )); do
-	log_must eval 'echo ${KEYSOURCES[0]} | \
-		$ZFS create -o ${ENCRYPTION_ALGS[$i]} -o ${KEYSOURCE_TYPES[0]} \
-		$TESTPOOL/$TESTFS1'
-
-	datasetexists $TESTPOOL/$TESTFS1 || \
-		log_fail "zfs create -o ${ENCRYPTION_ALGS[$i]} \
-		-o ${KEYSOURCE_TYPES[0]} $TESTPOOL/$TESTFS1 fail."
-
-	propertycheck $TESTPOOL/$TESTFS1 ${ENCRYPTION_PROPS[i]} || \
-		log_fail "${ENCRYPTION_ALGS[i]} is failed to set."
-	propertycheck $TESTPOOL/$TESTFS1 ${KEYSOURCE_TYPES[0]} || \
-		log_fail "${KEYSOURCE_TYPES[0]} is failed to set."
-
-	log_must $ZFS destroy -f $TESTPOOL/$TESTFS1
-	(( i = i + 1 ))
-done
-
-typeset -i j=0
-while (( $j < ${#KEYSOURCE_TYPES[*]} )); do
-	log_must eval 'echo ${KEYSOURCES[$j]} | \
-		$ZFS create -o ${ENCRYPTION_ALGS[0]} -o ${KEYSOURCE_TYPES[$j]} \
-		$TESTPOOL/$TESTFS1'
-
-	datasetexists $TESTPOOL/$TESTFS1 || \
-		log_fail "zfs create -o ${ENCRYPTION_ALGS[0]} \
-		-o ${KEYSOURCE_TYPES[$j]} $TESTPOOL/$TESTFS1 fail."
-
-	propertycheck $TESTPOOL/$TESTFS1 ${ENCRYPTION_PROPS[0]} || \
-		log_fail "${ENCRYPTION_ALGS[0]} is failed to set."
-	propertycheck $TESTPOOL/$TESTFS1 ${KEYSOURCE_TYPES[j]} || \
-		log_fail "${KEYSOURCE_TYPES[j]} is failed to set."
-
-	log_must $ZFS destroy -f $TESTPOOL/$TESTFS1
-	(( j = j + 1 ))
-done
-
-log_pass "'zfs create properly creates encrypted datasets"
+log_pass "'zfs create <filesystem>' works as expected."
