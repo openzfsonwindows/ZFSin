@@ -74,7 +74,7 @@ struct proc;
 static inline int
 issig(int why)
 {
-	return 1;
+	return 0;
 }
 
 #endif /* SPL_SIGNAL_H */

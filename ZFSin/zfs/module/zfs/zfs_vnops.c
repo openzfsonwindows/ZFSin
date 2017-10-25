@@ -952,20 +952,20 @@ zfs_write(vnode_t *vp, uio_t *uio, int ioflag, cred_t *cr, caller_context_t *ct)
 			 * holding up the transaction if the data copy hangs
 			 * up on a pagefault (e.g., from an NFS server mapping).
 			 */
-			size_t cbytes;
+			uint64_t cbytes;
 
 			abuf = dmu_request_arcbuf(sa_get_db(zp->z_sa_hdl),
 			    max_blksz);
 			ASSERT(abuf != NULL);
 			ASSERT(arc_buf_size(abuf) == max_blksz);
-            dprintf("  uiocopy  before %llu\n", uio_offset(uio));
+            //dprintf("  uiocopy  before %llu\n", uio_offset(uio));
 			if ((error = uiocopy(abuf->b_data, max_blksz,
                                  UIO_WRITE, uio, &cbytes))) {
 				dmu_return_arcbuf(abuf);
 				break;
 			}
-            dprintf("  uiocopy  after %llu cbytes %llu\n",
-                   uio_offset(uio), cbytes);
+            //dprintf("  uiocopy  after %llu cbytes %llu\n",
+            //       uio_offset(uio), cbytes);
 			ASSERT(cbytes == max_blksz);
 		}
 

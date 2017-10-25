@@ -218,7 +218,7 @@ EXPORT_SYMBOL(uio_prefaultpages);
  * return in cbytes how many bytes were copied.
  */
 int
-uiocopy(void *p, size_t n, enum uio_rw rw, struct uio *uio, size_t *cbytes)
+uiocopy(void *p, size_t n, enum uio_rw rw, struct uio *uio, uint64_t *cbytes)
 {
 	struct uio uio_copy;
 	int ret;

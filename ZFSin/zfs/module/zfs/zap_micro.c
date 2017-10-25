@@ -888,6 +888,7 @@ zap_lookup_impl(zap_t *zap, const char *name,
 			} else {
 				*(uint64_t *)buf =
 				    MZE_PHYS(zap, mze)->mze_value;
+				if (realname)
 				(void) strlcpy(realname,
 				    MZE_PHYS(zap, mze)->mze_name, rn_len);
 				if (ncp) {

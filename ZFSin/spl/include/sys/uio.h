@@ -113,7 +113,7 @@ void uio_setrw(uio_t *a_uio, int a_value);
 
 int	uiomove(void *, uint32_t, enum uio_rw, struct uio *);
 int	spl_uiomove(const uint8_t *, uint32_t, struct uio *);
-int	uiocopy(void *, uint32_t, enum uio_rw, struct uio *, uint32_t *);
+int	uiocopy(void *, uint32_t, enum uio_rw, struct uio *, uint64_t *);
 void uioskip(struct uio *, uint32_t);
 int	uiodup(struct uio *, struct uio *, iovec_t *, int);
 
@@ -162,7 +162,7 @@ typedef struct xuio {
 * same as uiomove() but doesn't modify uio structure.
 * return in cbytes how many bytes were copied.
 */
-static inline int uiocopy(const char *p, uint32_t n, enum uio_rw rw, struct uio *uio, uint32_t *cbytes) \
+static inline int uiocopy(const char *p, uint32_t n, enum uio_rw rw, struct uio *uio, uint64_t *cbytes) \
 {                                                                       \
 int result;                                                         \
 struct uio *nuio = uio_duplicate(uio);                              \
@@ -171,7 +171,7 @@ struct uio *nuio = uio_duplicate(uio);                              \
 		uio_setrw(nuio, rw);
 \
 result = spl_uiomove(p, n, nuio);                                         \
-*cbytes = (uint32_t)(x - uio_resid(nuio));                                        \
+*cbytes = (x - uio_resid(nuio));                                        \
 uio_free(nuio);                                                     \
 return result;                                                      \
 }

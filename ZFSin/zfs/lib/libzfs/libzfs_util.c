@@ -894,13 +894,14 @@ libzfs_init(void)
 		return (NULL);
 	}
 
-//	if ((hdl->libzfs_fd = open(ZFS_DEV, O_RDWR)) < 0) {
-	HANDLE h;
-	h = CreateFile("\\\\.\\ZFS", GENERIC_READ | GENERIC_WRITE,
+#ifdef WIN32
+	hdl->libzfs_fd = CreateFile(ZFS_DEV, GENERIC_READ | GENERIC_WRITE,
 		0, NULL, OPEN_EXISTING, 0, NULL);
-	hdl->libzfs_fd = h;//_open_osfhandle(h, O_RDWR);
-
 	if ((hdl->libzfs_fd) == INVALID_HANDLE_VALUE) {
+#else
+	hdl->libzfs_fd = open(ZFS_DEV, O_RDWR));
+	if (hdl->libzfs_fd < 0) {
+#endif
 
 		(void) fprintf(stderr, gettext("Unable to open %s: %s.\n"),
 		    ZFS_DEV, strerror(errno));
@@ -936,7 +937,11 @@ libzfs_init(void)
 #endif
 
 	if (libzfs_core_init() != 0) {
+#ifdef WIN32
 		(void) CloseHandle(hdl->libzfs_fd);
+#else
+		(void) close(hdl->libzfs_fd);
+#endif
 #ifdef LINUX
 		(void) fclose(hdl->libzfs_mnttab);
 #endif
@@ -961,7 +966,11 @@ libzfs_init(void)
 void
 libzfs_fini(libzfs_handle_t *hdl)
 {
-	(void)CloseHandle(hdl->libzfs_fd);
+#ifdef WIN32
+	(void) CloseHandle(hdl->libzfs_fd);
+#else
+	(void) close(hdl->libzfs_fd);
+#endif
 #ifdef LINUX
 	if (hdl->libzfs_mnttab)
 #ifdef HAVE_SETMNTENT

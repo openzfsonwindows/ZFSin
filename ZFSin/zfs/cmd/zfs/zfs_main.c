@@ -3868,7 +3868,7 @@ zfs_do_send(int argc, char **argv)
 		}
 	}
 
-	if (!flags.dryrun && isatty(STDOUT_FILENO)) {
+	if (!flags.dryrun && win_isatty(STDOUT_FILENO)) {
 		(void) fprintf(stderr,
 		    gettext("Error: Stream can not be written to a terminal.\n"
 		    "You must redirect standard output.\n"));
@@ -4111,7 +4111,7 @@ zfs_do_receive(int argc, char **argv)
 		}
 	}
 
-	if (isatty(STDIN_FILENO)) {
+	if (win_isatty(STDIN_FILENO)) {
 		(void) fprintf(stderr,
 		    gettext("Error: Backup stream can not be read "
 		    "from a terminal.\n"

@@ -198,7 +198,7 @@ changelist_postfix(prop_changelist_t *clp)
 
 		boolean_t sharenfs;
 		boolean_t sharesmb;
-		boolean_t shareafp;
+		boolean_t shareafp = B_FALSE;
 		boolean_t mounted;
 
 		/*

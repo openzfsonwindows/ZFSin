@@ -4334,6 +4334,7 @@ zfs_ioc_send(zfs_cmd_t *zc)
 			return EBADF;
 
 		off = fp->f_offset;
+
 		error = dmu_send_obj(zc->zc_name, zc->zc_sendobj,
 		    zc->zc_fromobj, embedok, large_block_ok, compressok,
 		    zc->zc_cookie, fp->f_vnode, &off);

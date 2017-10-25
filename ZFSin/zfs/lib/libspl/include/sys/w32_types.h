@@ -150,9 +150,9 @@ typedef union {
 #define	FLT_MAX		3.4028234663852885981170E+38F
 #define	FLT_MIN		1.1754943508222875079688E-38F
 
-#define STDIN_FILENO 0
-#define STDOUT_FILENO 1
-#define STDERR_FILENO 2
+#define STDIN_FILENO  GetStdHandle(STD_INPUT_HANDLE)
+#define STDOUT_FILENO GetStdHandle(STD_OUTPUT_HANDLE)
+#define STDERR_FILENO GetStdHandle(STD_ERROR_HANDLE)
 #define O_EXLOCK 0
 
 #define bzero(b,len) (memset((b), '\0', (len)))
@@ -165,7 +165,7 @@ int posix_memalign(void **memptr, uint32_t alignment, uint32_t size);
 
 #define MIN(a, b)  (((a) < (b)) ? (a) : (b)) 
 
-#define sleep(x) Sleep(x * 1000000)
+#define sleep(x) Sleep(x * 1000)
 
 int fsync(int);
 

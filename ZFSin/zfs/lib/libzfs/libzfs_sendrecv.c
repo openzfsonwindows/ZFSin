@@ -1164,7 +1164,9 @@ send_progress_thread(void *arg)
 
 	if (!pa->pa_parsable)
 		(void) fprintf(stderr, "TIME        SENT   SNAPSHOT\n");
-
+#ifdef WIN32
+	fflush(stderr);
+#endif
 	/*
 	 * Print the progress from ZFS_IOC_SEND_PROGRESS every second.
 	 */
@@ -1189,6 +1191,9 @@ send_progress_thread(void *arg)
 			    tm->tm_hour, tm->tm_min, tm->tm_sec,
 			    buf, zhp->zfs_name);
 		}
+#ifdef WIN32
+		fflush(stderr);
+#endif
 	}
 }
 
@@ -1953,11 +1958,20 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 		++holdseq;
 		(void) snprintf(sdd.holdtag, sizeof (sdd.holdtag),
 		    ".send-%d-%llu", getpid(), (u_longlong_t)holdseq);
+#ifdef WIN32
+		sdd.cleanup_fd = CreateFile(ZFS_DEV, GENERIC_READ | GENERIC_WRITE,
+		0, NULL, OPEN_EXISTING, 0, NULL);
+		if (sdd.cleanup_fd == INVALID_HANDLE_VALUE) {
+			err = errno;
+			goto stderr_out;
+		}
+#else
 		sdd.cleanup_fd = open(ZFS_DEV, O_RDWR);
 		if (sdd.cleanup_fd < 0) {
 			err = errno;
 			goto stderr_out;
 		}
+#endif
 		sdd.snapholds = fnvlist_alloc();
 	} else {
 		sdd.cleanup_fd = -1;
@@ -2054,8 +2068,13 @@ err_out:
 	nvlist_free(fss);
 	fnvlist_free(sdd.snapholds);
 
+#ifdef WIN32
+	if (sdd.cleanup_fd != INVALID_HANDLE_VALUE)
+		VERIFY(CloseHandle(sdd.cleanup_fd));
+#else
 	if (sdd.cleanup_fd != -1)
 		VERIFY(0 == close(sdd.cleanup_fd));
+#endif
 	if (tid_set != 0) {
 		(void) pthread_cancel(tid);
         (void) close(pipefd[0]);
@@ -2132,7 +2151,11 @@ recv_read(libzfs_handle_t *hdl, int fd, void *buf, int ilen,
 	int len = ilen;
 
 	do {
+#ifdef WIN32
+		ReadFile(fd, cp, len, &rv, NULL);
+#else
 		rv = read(fd, cp, len);
+#endif
 		cp += rv;
 		len -= rv;
 	} while (rv > 0);
@@ -3824,6 +3847,7 @@ zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
 			return (err);
 	}
 
+#ifndef WIN32
 	/*
 	 * The only way fstat can fail is if we do not have a valid file
 	 * descriptor.
@@ -3832,6 +3856,7 @@ zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
 		perror("fstat");
 		return (-2);
 	}
+#endif
 
 #ifdef __linux__
 #ifndef F_SETPIPE_SZ
@@ -3865,13 +3890,24 @@ zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
 	}
 #endif /* __linux__ */
 
-	cleanup_fd = open(ZFS_DEV, O_RDWR);
-	VERIFY(cleanup_fd >= 0);
+#ifdef WIN32
+	cleanup_fd = CreateFile(ZFS_DEV, GENERIC_READ | GENERIC_WRITE,
+		0, NULL, OPEN_EXISTING, 0, NULL);
+	VERIFY(cleanup_fd != INVALID_HANDLE_VALUE);
 
 	err = zfs_receive_impl(hdl, tosnap, originsnap, flags, infd, NULL, NULL,
 	    stream_avl, &top_zfs, cleanup_fd, &action_handle, NULL);
 
+	VERIFY(CloseHandle(cleanup_fd));
+#else
+	cleanup_fd = open(ZFS_DEV, O_RDWR);
+	VERIFY(cleanup_fd >= 0);
+
+	err = zfs_receive_impl(hdl, tosnap, originsnap, flags, infd, NULL, NULL,
+		stream_avl, &top_zfs, cleanup_fd, &action_handle, NULL);
+
 	VERIFY(0 == close(cleanup_fd));
+#endif
 
 	if (err == 0 && !flags->nomount && top_zfs) {
 		zfs_handle_t *zhp;

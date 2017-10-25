@@ -787,3 +787,10 @@ strlcat(register char* s, register const char* t, register uint32_t n)
 		while (*t++);
 	return (t - o) + m - 1;
 }
+
+
+int win_isatty(HANDLE h) 
+{ 
+	DWORD mode; 
+	return GetConsoleMode(h, &mode) != 0; 
+}
