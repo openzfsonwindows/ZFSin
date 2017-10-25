@@ -337,21 +337,21 @@ void dnlc_update(struct vnode *vp, char *name, struct vnode *tp)
 {
 
 #if 0
-    // If tp is NULL, it is a negative-cache entry
-    struct componentname cn;
+	// If tp is NULL, it is a negative-cache entry
+	struct componentname cn;
 
-    // OSX panics if you give empty(non-NULL) name
-    if (!name || !*name || !strlen(name)) return;
+	// OSX panics if you give empty(non-NULL) name
+	if (!name || !*name || !strlen(name)) return;
 
-	bzero(&cn, sizeof (cn));
+	bzero(&cn, sizeof(cn));
 	cn.cn_nameiop = CREATE;
 	cn.cn_flags = ISLASTCN;
 	cn.cn_nameptr = (char *)name;
 	cn.cn_namelen = strlen(name);
 
-    cache_enter(vp, tp==DNLC_NO_VNODE?NULL:tp, &cn);
+	cache_enter(vp, tp == DNLC_NO_VNODE ? NULL : tp, &cn);
 #endif
-    return;
+	return;
 }
 
 
@@ -362,16 +362,16 @@ static list_t   spl_getf_list;
 
 int spl_vnode_init(void)
 {
-    mutex_init(&spl_getf_lock, NULL, MUTEX_DEFAULT, NULL);
-    list_create(&spl_getf_list, sizeof (struct spl_fileproc),
+	mutex_init(&spl_getf_lock, NULL, MUTEX_DEFAULT, NULL);
+	list_create(&spl_getf_list, sizeof(struct spl_fileproc),
 		offsetof(struct spl_fileproc, f_next));
-    return 0;
+	return 0;
 }
 
 void spl_vnode_fini(void)
 {
-    mutex_destroy(&spl_getf_lock);
-    list_destroy(&spl_getf_list);
+	mutex_destroy(&spl_getf_lock);
+	list_destroy(&spl_getf_list);
 }
 
 #include <sys/file.h>
@@ -379,12 +379,12 @@ struct fileproc;
 
 extern int fp_drop(struct proc *p, int fd, struct fileproc *fp, int locked);
 extern int fp_drop_written(struct proc *p, int fd, struct fileproc *fp,
-                           int locked);
+	int locked);
 extern int fp_lookup(struct proc *p, int fd, struct fileproc **resultfp, int locked);
 extern int fo_read(struct fileproc *fp, struct uio *uio, int flags,
-                   vfs_context_t ctx);
+	vfs_context_t ctx);
 extern int fo_write(struct fileproc *fp, struct uio *uio, int flags,
-                    vfs_context_t ctx);
+	vfs_context_t ctx);
 extern int file_vnode_withvid(int, struct vnode **, uint32_t *);
 extern int file_drop(int);
 
@@ -398,34 +398,37 @@ extern int file_drop(int);
  * releasef(). On OSX we will also look up the vnode of the fd for calls
  * to spl_vn_rdwr().
  */
-void *getf(int fd)
+void *getf(uint64_t fd)
 {
-    struct spl_fileproc *sfp = NULL;
+	struct spl_fileproc *sfp = NULL;
 	HANDLE h;
 
 #if 1
-    struct fileproc     *fp  = NULL;
+	struct fileproc     *fp  = NULL;
 	struct vnode *vp;
 	uint32_t vid;
 
-    /*
-     * We keep the "fp" pointer as well, both for unlocking in releasef() and
-     * used in vn_rdwr().
-     */
+	/*
+	 * We keep the "fp" pointer as well, both for unlocking in releasef() and
+	 * used in vn_rdwr().
+	 */
 
-    sfp = kmem_alloc(sizeof(*sfp), KM_SLEEP);
-    if (!sfp) return NULL;
+	sfp = kmem_alloc(sizeof(*sfp), KM_SLEEP);
+	if (!sfp) return NULL;
 
-//    if (fp_lookup(current_proc(), fd, &fp, 0/*!locked*/)) {
- //       kmem_free(sfp, sizeof(*sfp));
- //       return (NULL);
- //   }
+	//    if (fp_lookup(current_proc(), fd, &fp, 0/*!locked*/)) {
+	//       kmem_free(sfp, sizeof(*sfp));
+	//       return (NULL);
+	//   }
 
-    /*
+	/*
      * The f_vnode ptr is used to point back to the "sfp" node itself, as it is
      * the only information passed to vn_rdwr.
      */
-	ObReferenceObjectByHandle(fd, 0, 0, KernelMode, &fp, 0);
+	if (ObReferenceObjectByHandle(fd, 0, 0, KernelMode, &fp, 0) != STATUS_SUCCESS) {
+		dprintf("%s: failed to get fd %d fp 0x\n", __func__, fd);
+	}
+
 	sfp->f_vnode  = sfp;
 
     sfp->f_fd     = fd;
@@ -458,7 +461,7 @@ struct vnode *getf_vnode(void *fp)
 	return vp;
 }
 
-void releasef(int fd)
+void releasef(uint64_t fd)
 {
 
 #if 1
@@ -483,7 +486,8 @@ void releasef(int fd)
 //        fp_drop_written(p, fd, fp->f_fp, 0/*!locked*/);
 //    else
 //        fp_drop(p, fd, fp->f_fp, 0/*!locked*/);
-	ObDereferenceObject(fp->f_fp);
+	if (fp->f_fp)
+		ObDereferenceObject(fp->f_fp);
 
     // Remove node from the list
 	mutex_enter(&spl_getf_lock);

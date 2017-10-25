@@ -2259,8 +2259,101 @@ NTSTATUS ioctl_storage_get_device_number(PDEVICE_OBJECT DeviceObject, PIRP Irp, 
 	return STATUS_SUCCESS;
 }
 
+/*
+ * We received a long-lived ioctl, so lets setup a taskq to handle it, and return pending
+ */
+void zfsdev_async_thread(void *arg)
+{
+	NTSTATUS Status;
+	PIRP Irp;
+	Irp = (PIRP)arg;
+	
+	dprintf("%s: starting ioctl\n", __func__);
+
+	/* Use FKIOCTL to make sure it calls bcopy instead */
+	Status = zfsdev_ioctl(NULL, Irp, FKIOCTL); 
+
+	dprintf("%s: finished ioctl %d\n", __func__, Status);
+
+	PMDL mdl = Irp->Tail.Overlay.DriverContext[0];
+	if (mdl) {
+		MmUnlockPages(mdl);
+		IoFreeMdl(mdl);
+		Irp->Tail.Overlay.DriverContext[0] = NULL;
+	}
+	void *fp = Irp->Tail.Overlay.DriverContext[1];
+	if (fp) {
+		ObDereferenceObject(fp);
+		ZwClose(Irp->Tail.Overlay.DriverContext[2]);
+	}
+
+	IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+}
+
+NTSTATUS zfsdev_async(PDEVICE_OBJECT DeviceObject, PIRP Irp)
+{
+	int error;
+	PMDL mdl = NULL;
+	PIO_STACK_LOCATION IrpSp;
+	zfs_cmd_t *zc;
+	void *fp = NULL;
+
+	IrpSp = IoGetCurrentIrpStackLocation(Irp);
+
+	IoMarkIrpPending(Irp);
+
+	/* 
+	 * A separate thread to the one that called us may not access the buffer from userland,
+	 * So we have to map the in/out buffer, and put that address in its place.
+	 */
+	error = ddi_copysetup(IrpSp->Parameters.DeviceIoControl.Type3InputBuffer, sizeof(zfs_cmd_t),
+		&IrpSp->Parameters.DeviceIoControl.Type3InputBuffer, &mdl);
+	if (error) return error;
+
+	/* Save the MDL so we can free it once done */
+	Irp->Tail.Overlay.DriverContext[0] = mdl;
+
+	/* We would also need to handle zc->zc_nvlist_src and zc->zc_nvlist_dst 
+	 * which is tricker, since they are unpacked into nvlists deep in zfsdev_ioctl 
+	 */
+
+	/* The same problem happens for the filedescriptor from userland, also needs to be kernelMode */
+	zc = IrpSp->Parameters.DeviceIoControl.Type3InputBuffer;
+
+	if (zc->zc_cookie) {
+		error = ObReferenceObjectByHandle(zc->zc_cookie, 0, 0, KernelMode, &fp, 0);
+		if (error != STATUS_SUCCESS) goto out;
+		Irp->Tail.Overlay.DriverContext[1] = fp;
+
+		HANDLE h = NULL;
+		error = ObOpenObjectByPointer(fp, OBJ_FORCE_ACCESS_CHECK | OBJ_KERNEL_HANDLE, NULL, GENERIC_READ|GENERIC_WRITE, *IoFileObjectType, KernelMode, &h);
+		if (error != STATUS_SUCCESS) goto out;
+		dprintf("mapped filed is 0x%x\n", h);
+		zc->zc_cookie = (uint64_t)h;
+		Irp->Tail.Overlay.DriverContext[2] = h;
+	}
+
+	taskq_dispatch(system_taskq, zfsdev_async_thread, (void*)Irp, TQ_SLEEP);
+
+	return STATUS_PENDING;
+out:	
+	if (mdl) {
+		MmUnlockPages(mdl);
+		IoFreeMdl(mdl);
+	}
+	if (fp) {
+		ObDereferenceObject(fp);
+	}
+	return error;
+}
 
 
+
+/*
+ * This is the ioctl handler for ioctl done directly on /dev/zfs node. This means
+ * all the internal ZFS ioctls, like ZFS_IOC_SEND etc. But, we will also get
+ * general Windows ioctls, not specific to volumes, or filesystems.
+ */
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS
 ioctlDispatcher(
@@ -2296,7 +2389,29 @@ ioctlDispatcher(
 			u_long cmd = IrpSp->Parameters.DeviceIoControl.IoControlCode;
 			if (cmd >= ZFS_IOC_FIRST &&
 				cmd < ZFS_IOC_LAST) {
-				Status = zfsdev_ioctl(DeviceObject, Irp);
+
+				/* Some IOCTL are very long-living, so we will put them in the
+				 * background and return PENDING. Possibly we should always do
+				 * this logic, but some ioctls are really short lived.
+				 */
+				switch (cmd) {
+					/*
+					 * So to do ioctl in async mode is a hassle, we have to do the copyin/copyout
+					 * MDL work in *this* thread, as the thread we spawn does not have access.
+					 * This would also include zc->zc_nvlist_src / zc->zc_nvlist_dst, so 
+					 * zfsdev_ioctl() would need to be changed quite a bit. The file-descriptor
+					 * passed in (zfs send/recv) also needs to be opened for kernel mode. This
+					 * code is left here as an example on how it can be done (without zc->zc_nvlist_*)
+					 * but we currently do not use it. Everything is handled synchronously.
+					 *
+				case ZFS_IOC_SEND:
+					Status = zfsdev_async(DeviceObject, Irp);
+					break;
+					 *
+					 */
+				default:
+					Status = zfsdev_ioctl(DeviceObject, Irp, 0);
+				} // switch cmd for async
 				break;
 			}
 			/* Not ZFS ioctl, handle Windows ones */
@@ -2396,7 +2511,12 @@ ioctlDispatcher(
 	return Status;
 }
 
-
+/*
+ * This is the IOCTL handler for the "virtual" disk volumes we create
+ * to mount ZFS, and ZVOLs, things like get partitions, and volume size.
+ * But also open/read/write/close requests of volume access (like dd'ing the
+ * /dev/diskX node directly).
+ */
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS
 diskDispatcher(
@@ -2556,7 +2676,10 @@ diskDispatcher(
 	return Status;
 }
 
-
+/*
+ * This is the main FileSystem IOCTL handler. This is where the filesystem
+ * vnops happen and we handle everything with files and directories in ZFS.
+ */
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS
 fsDispatcher(
@@ -2847,6 +2970,12 @@ char *common_status_str(NTSTATUS Status)
 	}
 }
 
+
+/*
+ * ALL ioctl requests come in here, and we do the Windows specific work to handle IRPs
+ * then we sort out the type of request (ioctl, volume, filesystem) and call each
+ * respective handler.
+ */
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS
 dispatcher(
@@ -2908,7 +3037,10 @@ dispatcher(
 	dprintf("%s: exit: 0x%x %s Information 0x%x\n", __func__, Status, 
 		common_status_str(Status),
 		Irp->IoStatus.Information);
-	IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+
+	// Complete the request if it isn't pending (ie, we called zfsdev_async())
+	if (Status != STATUS_PENDING)
+		IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
 	return Status;
 }
 

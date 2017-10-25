@@ -90,6 +90,8 @@ int ddi_copyin(const void *from, void *to, uint32_t len, int flags);
 int ddi_copyout(const void *from, void *to, uint32_t len, int flags);
 int ddi_copyinstr(const void *uaddr, void *kaddr, uint32_t len, uint32_t *done);
 
+int ddi_copysetup(void *to, uint32_t len, void **out_buffer, PMDL *out_mdl);
+
 
 extern int ddi_strtol(const char *str, char **nptr, int base, long *result);
 

@@ -192,6 +192,7 @@ end:
 	return error;
 }
 
+
 int
 ddi_copyout(const void *from, void *to, uint32_t len, int flags)
 {
@@ -216,7 +217,7 @@ ddi_copyout(const void *from, void *to, uint32_t len, int flags)
 	if (!mdl) {
 		error = STATUS_INSUFFICIENT_RESOURCES;
 		dprintf("SPL: copyout failed to allocate mdl\n");
-		goto end;
+		goto out;
 	}
 
 	try {
@@ -229,8 +230,7 @@ ddi_copyout(const void *from, void *to, uint32_t len, int flags)
 			error);
 	}
 	if (error != 0) {
-		IoFreeMdl(mdl);
-		goto end;
+		goto out;
 	}
 
 	buffer = MmGetSystemAddressForMdlSafe(mdl, NormalPagePriority | MdlMappingNoExecute);
@@ -250,9 +250,86 @@ out:
 		mdl = NULL;
 	}
 
-end:
 	return error;
 }
+
+int
+ddi_copysetup(void *to, uint32_t len, void **out_buffer, PMDL *out_mdl)
+{
+	int error = 0;
+	PMDL  mdl = NULL;
+	PCHAR buffer = NULL;
+
+	if (to == NULL ||
+		out_buffer == NULL ||
+		out_mdl == NULL ||
+		len == 0)
+		return 0;
+
+	dprintf("SPL: trying windows copyout_ex: %p:%d\n", to, len);
+
+	// Do we have to call both? Or is calling ProbeForWrite enough?
+	try {
+		ProbeForRead(to, len, sizeof(UCHAR));
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		error = GetExceptionCode();
+		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
+	}
+	if (error) goto out;
+
+	try {
+		ProbeForWrite(to, len, sizeof(UCHAR));
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		error = GetExceptionCode();
+		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
+	}
+	if (error) goto out;
+
+	mdl = IoAllocateMdl(to, len, FALSE, TRUE, NULL);
+	if (!mdl) {
+		error = STATUS_INSUFFICIENT_RESOURCES;
+		dprintf("SPL: copyout failed to allocate mdl\n");
+		goto out;
+	}
+
+	try {
+		MmProbeAndLockPages(mdl, UserMode, IoWriteAccess);
+	}
+	except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		error = GetExceptionCode();
+		dprintf("SPL: Exception while locking outBuf 0X%08X\n",
+			error);
+	}
+	if (error != 0) {
+		goto out;
+	}
+
+	buffer = MmGetSystemAddressForMdlSafe(mdl, NormalPagePriority | MdlMappingNoExecute);
+
+	if (!buffer) {
+		error = STATUS_INSUFFICIENT_RESOURCES;
+		goto out;
+	}
+
+	*out_buffer = buffer;
+	*out_mdl = mdl;
+	return 0;
+
+out:
+	if (mdl) {
+		MmUnlockPages(mdl);
+		IoFreeMdl(mdl);
+		mdl = NULL;
+	}
+
+	return error;
+}
+
 
 /* Technically, this call does not exist in IllumOS, but we use it for
  * consistency.

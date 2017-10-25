@@ -1159,8 +1159,22 @@ send_progress_thread(void *arg)
 	char buf[16];
 	time_t t;
 	struct tm *tm;
-
+	
 	(void) strlcpy(zc.zc_name, zhp->zfs_name, sizeof (zc.zc_name));
+
+#ifdef WIN32
+	/*
+	 * Only one IOCTL at a time on an opened file, so we have to open
+	 * /dev/zfs again here, so we can call ioctl for progress.
+	 */
+	HANDLE h = CreateFile(ZFS_DEV, GENERIC_READ | GENERIC_WRITE,
+		0, NULL, OPEN_EXISTING, 0, NULL);
+	libzfs_handle_t tmp;
+	if (h != INVALID_HANDLE_VALUE) {
+		tmp.libzfs_fd = h;
+		hdl = &tmp;
+	}
+#endif
 
 	if (!pa->pa_parsable)
 		(void) fprintf(stderr, "TIME        SENT   SNAPSHOT\n");
@@ -1184,17 +1198,20 @@ send_progress_thread(void *arg)
 		if (pa->pa_parsable) {
 			(void) fprintf(stderr, "%02d:%02d:%02d\t%llu\t%s\n",
 			    tm->tm_hour, tm->tm_min, tm->tm_sec,
-			    bytes, zhp->zfs_name);
+			    bytes, zc.zc_name);
 		} else {
 			zfs_nicenum(bytes, buf, sizeof (buf));
 			(void) fprintf(stderr, "%02d:%02d:%02d   %5s   %s\n",
 			    tm->tm_hour, tm->tm_min, tm->tm_sec,
-			    buf, zhp->zfs_name);
+			    buf, zc.zc_name);
 		}
 #ifdef WIN32
 		fflush(stderr);
 #endif
 	}
+#ifdef WIN32
+	if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+#endif
 }
 
 

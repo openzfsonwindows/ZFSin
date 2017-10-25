@@ -54,7 +54,7 @@ extern NTSTATUS dev_ioctl(PDEVICE_OBJECT DeviceObject, ULONG ControlCode, PVOID 
 
 extern int zfs_windows_mount(zfs_cmd_t *zc);
 extern int zfs_windows_unmount(zfs_cmd_t *zc);
-extern NTSTATUS zfsdev_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp);
+extern NTSTATUS zfsdev_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp, int flag);
 extern void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject);
 
 NTSTATUS zfsdev_open(dev_t dev, PIRP Irp);
