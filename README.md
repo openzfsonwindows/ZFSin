@@ -198,7 +198,7 @@ Windows Updates run, you can disable those in gpedit.msc
   ❎ Compile ZFS on top of ZFS
   *  VS catches on fire loading project
 
-  ❎ Scrooge McDuck style swin in cash
+  ❎ Scrooge McDuck style swim in cash
 
 ---
 
