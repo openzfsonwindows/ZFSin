@@ -24,6 +24,8 @@
 .\" Copyright 2017 Nexenta Systems, Inc.
 .\" Copyright (c) 2017 Datto Inc.
 .\" Copyright (c) 2017 George Melikov. All Rights Reserved.
+.\" Copyright 2017 Nexenta Systems, Inc.
+.\" Copyright (c) 2017 Open-E, Inc. All Rights Reserved.
 .\"
 .Dd April 27, 2018
 .Dt ZPOOL 1M
@@ -139,6 +141,7 @@
 .Ar pool
 .Nm
 .Cm reopen
+.Op Fl n
 .Ar pool
 .Nm
 .Cm remove
@@ -1595,9 +1598,14 @@ performing this action.
 .It Xo
 .Nm
 .Cm reopen
+.Op Fl n
 .Ar pool
 .Xc
 Reopen all the vdevs associated with the pool.
+.Bl -tag -width Ds
+.It Fl n
+Do not restart an in-progress scrub operation. This is not recommended and can
+result in partially resilvered devices unless a second scrub is performed.
 .It Xo
 .Nm
 .Cm remove

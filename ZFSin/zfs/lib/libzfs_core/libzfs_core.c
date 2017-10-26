@@ -25,6 +25,7 @@
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2017 RackTop Systems.
  * Copyright (c) 2017 Datto Inc.
+ * Copyright (c) 2017 Open-E, Inc. All Rights Reserved.
  */
 
 /*
@@ -1239,5 +1240,18 @@ lzc_initialize(const char *poolname, pool_initialize_func_t cmd_type,
 
 	fnvlist_free(args);
 
+	return (error);
+}
+
+int
+lzc_reopen(const char *pool_name, boolean_t scrub_restart)
+{
+	nvlist_t *args = fnvlist_alloc();
+	int error;
+
+	fnvlist_add_boolean_value(args, "scrub_restart", scrub_restart);
+
+	error = lzc_ioctl(ZFS_IOC_POOL_REOPEN, pool_name, args, NULL);
+	nvlist_free(args);
 	return (error);
 }

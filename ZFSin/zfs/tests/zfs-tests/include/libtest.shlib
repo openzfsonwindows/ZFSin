@@ -26,9 +26,16 @@
 # Copyright 2016 Nexenta Systems, Inc.
 # Copyright (c) 2017 Lawrence Livermore National Security, LLC.
 # Copyright (c) 2017 Datto Inc.
+# Copyright (c) 2017 Open-E, Inc. All Rights Reserved.
 #
 
+<<<<<<< HEAD
 . ${STF_TOOLS}/contrib/include/logapi.shlib
+=======
+. ${STF_TOOLS}/include/logapi.shlib
+. ${STF_SUITE}/include/math.shlib
+. ${STF_SUITE}/include/blkdev.shlib
+>>>>>>> d3f2cd7e3b... Added no_scrub_restart flag to zpool reopen
 
 ZFS=${ZFS:-/usr/sbin/zfs}
 ZPOOL=${ZPOOL:-/usr/sbin/zpool}
@@ -2956,6 +2963,7 @@ function get_rootpool
 }
 
 #
+<<<<<<< HEAD
 # Get the sub string from specified source string
 #
 # $1 source string
@@ -3016,6 +3024,8 @@ function get_device_dir #device
 }
 
 #
+=======
+>>>>>>> d3f2cd7e3b... Added no_scrub_restart flag to zpool reopen
 # Get the package name
 #
 function get_package_name

@@ -38,6 +38,8 @@
  * Copyright 2017 RackTop Systems.
  * Copyright (c) 2016 Actifio, Inc. All rights reserved.
  * Copyright (c) 2017, loli10K <ezomori.nozomu@gmail.com>. All rights reserved.
+ * Copyright (c) 2017 Datto Inc. All rights reserved.
+ * Copyright (c) 2017 Open-E, Inc. All Rights Reserved.
  */
 
 /*
@@ -5513,6 +5515,7 @@ zfs_ioc_pool_reopen(const char *pool, nvlist_t *innvl, nvlist_t *outnvl)
 	boolean_t scrub_restart = B_TRUE;
 
 	if (innvl) {
+
 		scrub_restart = fnvlist_lookup_boolean_value(innvl,
 		    "scrub_restart");
 	}

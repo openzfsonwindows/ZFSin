@@ -24,6 +24,7 @@
  * Copyright (c) 2012, 2017 by Delphix. All rights reserved.
  * Copyright (c) 2017 Datto Inc.
  * Copyright 2017 RackTop Systems.
+ * Copyright (c) 2017 Open-E, Inc. All Rights Reserved.
  */
 
 #ifndef	_LIBZFS_CORE_H
@@ -115,6 +116,7 @@ int lzc_sync(const char *, nvlist_t *, nvlist_t **);
 int lzc_reopen(const char *, boolean_t);
 
 int lzc_sync(const char *, nvlist_t *, nvlist_t **);
+int lzc_reopen(const char *, boolean_t);
 
 #ifdef	__cplusplus
 }
