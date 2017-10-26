@@ -199,9 +199,6 @@ dump_free(dmu_sendarg_t *dsp, uint64_t object, uint64_t offset,
 	    (object == dsp->dsa_last_data_object &&
 	    offset > dsp->dsa_last_data_offset));
 
-	if (length != -1ULL && offset + length < offset)
-		length = -1ULL;
-
 	/*
 	 * If there is a pending op, but it's not PENDING_FREE, push it out,
 	 * since free block aggregation can only be done for blocks of the
@@ -218,19 +215,22 @@ dump_free(dmu_sendarg_t *dsp, uint64_t object, uint64_t offset,
 
 	if (dsp->dsa_pending_op == PENDING_FREE) {
 		/*
-		 * There should never be a PENDING_FREE if length is -1
-		 * (because dump_dnode is the only place where this
-		 * function is called with a -1, and only after flushing
-		 * any pending record).
+		 * There should never be a PENDING_FREE if length is
+		 * DMU_OBJECT_END (because dump_dnode is the only place where
+		 * this function is called with a DMU_OBJECT_END, and only after
+		 * flushing any pending record).
 		 */
-		ASSERT(length != -1ULL);
+		ASSERT(length != DMU_OBJECT_END);
 		/*
 		 * Check to see whether this free block can be aggregated
 		 * with pending one.
 		 */
 		if (drrf->drr_object == object && drrf->drr_offset +
 		    drrf->drr_length == offset) {
-			drrf->drr_length += length;
+			if (offset + length < offset)
+				drrf->drr_length = DMU_OBJECT_END;
+			else
+				drrf->drr_length += length;
 			return (0);
 		} else {
 			/* not a continuation.  Push out pending record */
@@ -244,9 +244,12 @@ dump_free(dmu_sendarg_t *dsp, uint64_t object, uint64_t offset,
 	dsp->dsa_drr->drr_type = DRR_FREE;
 	drrf->drr_object = object;
 	drrf->drr_offset = offset;
-	drrf->drr_length = length;
+	if (offset + length < offset)
+		drrf->drr_length = DMU_OBJECT_END;
+	else
+		drrf->drr_length = length;
 	drrf->drr_toguid = dsp->dsa_toguid;
-	if (length == -1ULL) {
+	if (length == DMU_OBJECT_END) {
 		if (dump_record(dsp, NULL, 0) != 0)
 			return (SET_ERROR(EINTR));
 	} else {
@@ -549,7 +552,7 @@ dump_dnode(dmu_sendarg_t *dsp, const blkptr_t *bp, uint64_t object,
 
 	/* Free anything past the end of the file. */
 	if (dump_free(dsp, object, (dnp->dn_maxblkid + 1) *
-	    (dnp->dn_datablkszsec << SPA_MINBLOCKSHIFT), -1ULL) != 0)
+	    (dnp->dn_datablkszsec << SPA_MINBLOCKSHIFT), DMU_OBJECT_END) != 0)
 		return (SET_ERROR(EINTR));
 	if (dsp->dsa_err != 0)
 		return (SET_ERROR(EINTR));
@@ -731,7 +734,9 @@ do_dump(dmu_sendarg_t *dsa, struct send_block_record *data)
 	} else if (BP_IS_HOLE(bp)) {
 		uint64_t span = BP_SPAN(dblkszsec, indblkshift, zb->zb_level);
 		uint64_t offset = zb->zb_blkid * span;
-		err = dump_free(dsa, zb->zb_object, offset, span);
+		/* Don't dump free records for offsets > DMU_OBJECT_END */
+		if (zb->zb_blkid == 0 || span <= DMU_OBJECT_END / zb->zb_blkid)
+			err = dump_free(dsa, zb->zb_object, offset, span);
 	} else if (zb->zb_level > 0 || type == DMU_OT_OBJSET) {
 		return (0);
 	} else if (type == DMU_OT_DNODE) {
@@ -2890,7 +2895,7 @@ receive_free(struct receive_writer_arg *rwa, struct drr_free *drrf)
 {
 	int err;
 
-	if (drrf->drr_length != -1ULL &&
+	if (drrf->drr_length != DMU_OBJECT_END &&
 	    drrf->drr_offset + drrf->drr_length < drrf->drr_offset)
 		return (SET_ERROR(EINVAL));
 
