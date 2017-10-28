@@ -117,7 +117,7 @@ Run the compiled Target
 * Compile solution
 * Menu > Debug > Start Debugging (F5)
 
-wait a while, for VS2017 to diplay the .sys file on Target and start it.
+wait a while, for VS2017 to deploy the .sys file on Target and start it.
 
 
 
