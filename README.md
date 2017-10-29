@@ -8,17 +8,10 @@ https://developer.microsoft.com/en-us/windows/downloads/virtual-machines
 
 and create two VMs.
 
-The newer VM images comes with Visual Studio 2017, but this is
-currently not compatible with Kernel Development. At the moment, the
-correct version to use is Visual Studio 2015 update 3. You can
-download and install it for free. But it can be a challenge to find as
-Microsoft hides it well. They also put VCredist 2008, 2012, 2013 and
-2017 on there but skipped 2015 for some reason. They dropped the ball
-that day. You will have to use Add/Remove Programs to uninstall 2017
-version before you can install 2015.
-
 * Host (running Visual Studio and Kernel Debugger)
 * Target (runs the compiled kernel module)
+
+The VM images comes with Visual Studio 2017, which we use to compile the driver. 
 
 It is recommended that the VMs are placed on static IP, as they can
 change IP with all the crashes, and you have to configure the remote
@@ -28,7 +21,10 @@ Go download the Windows Driver Kit 10
 
 https://developer.microsoft.com/en-us/windows/hardware/windows-driver-kit
 
-and install on both VMs. You will need both the SDK and WDK.
+and install on both VMs. You will need both the SDK and WDK:
+Download the SDK with the Visual Studio 2017 community edition first and install it.
+It will update the already installed Visual Studio.
+Then install the WDK. At the end of the installer, allow it to install the Visual Studio extension.
 
 
 On Target VM, complete the guide specified here, under
@@ -43,9 +39,9 @@ C:\Program Files (x86)\Windows Kits\10\Remote\x64\WDK Test Target Setup x64-x64_
 * reboot Target VM
 
 
-On the Host VM, continue the guide to configure Visual Studio 2015.
+On the Host VM, continue the guide to configure Visual Studio 2017.
 
-* Load Visual Studio 2015, there is no need to load the project yet.
+* Load Visual Studio 2017, there is no need to load the project yet.
 * Menu > Driver > Test > Configure Devices
 * Click "Add New Device"
 * In "Display name:" enter "Target"
@@ -121,7 +117,7 @@ Run the compiled Target
 * Compile solution
 * Menu > Debug > Start Debugging (F5)
 
-wait a while, for VS15 to deplay the .sys file on Target and start it.
+wait a while, for VS2017 to deploy the .sys file on Target and start it.
 
 
 
