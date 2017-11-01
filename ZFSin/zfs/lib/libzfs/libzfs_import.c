@@ -1960,11 +1960,14 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 
 			//CloseHandle(disk);
 
-			// Lets skip physical disks for now
+#if 0
+			// This debug code was here to skip the boot disk,
+			// but it assumes the first disk is boot, which is wrong.
 			if (diskNumber.DeviceNumber == 0) {
 				CloseHandle(disk);
 				continue;
 			}
+#endif
 			DWORD ior;
 			PDRIVE_LAYOUT_INFORMATION_EX partitions;
 			DWORD partitionsSize = sizeof(DRIVE_LAYOUT_INFORMATION_EX) + 127 * sizeof(PARTITION_INFORMATION_EX);
