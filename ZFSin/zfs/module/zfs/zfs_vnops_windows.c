@@ -2135,6 +2135,19 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 	uio_free(uio);
 
+
+	if(!Status) {
+	    IO_STATUS_BLOCK IoStatus = { 0 };
+		// For memory mapped files: flush out page cache of written section
+		CcCoherencyFlushAndPurgeCache(
+			fileObject->SectionObjectPointer,
+			&byteOffset,
+			bufferLength,
+			&IoStatus,
+			0);
+		Status = IoStatus.Status;		
+	}
+
 	dprintf("  FileName: %wZ offset 0x%llx len 0x%lx mdl %p System %p\n", &fileObject->FileName,
 		byteOffset.QuadPart, bufferLength, Irp->MdlAddress, Irp->AssociatedIrp.SystemBuffer);
 
