@@ -327,8 +327,6 @@ void vn_rele_async(struct vnode *vp, void *taskq);
 #define vn_exists(vp)
 #define vn_is_readonly(vp)  vnode_vfsisrdonly(vp)
 
-#define vnode_pager_setsize(vp, sz)  ubc_setsize((vp),(sz))
-
 #define VATTR_NULL(v) do { } while(0)
 
 extern int
@@ -364,7 +362,28 @@ chklock(struct vnode *vp, int iomode, unsigned long long offset, ssize_t len, in
     return (0);
 }
 
-#define vn_has_cached_data(VP)  (VTOZ(VP)->z_is_mapped || vnode_isswap(VP))
+#define vn_has_cached_data(VP)  (VTOZ(VP)->z_is_mapped || vnode_isswap(VP) || win_has_cached_data(VP))
+
+static inline int win_has_cached_data(struct vnode *vp)
+{
+	int ret = 0;
+	PFILE_OBJECT pfo = CcGetFileObjectFromSectionPtrsRef(&vp->SectionObjectPointers);
+	if (pfo) {
+		// Although peeking in this macro, it only looks at SectionPointers, so maybe
+		// we should do that directly, and skip the FileObject extra?
+		ret = CcIsFileCached(pfo); 
+		ObDereferenceObject(pfo); 
+	}
+	return ret;
+}
+
+#define vnode_pager_setsize(vp, sz)  do { \
+		PFILE_OBJECT pfo = CcGetFileObjectFromSectionPtrsRef(&vp->SectionObjectPointers); \
+        if (pfo != NULL) { \
+			CcSetFileSizes(pfo, (sz)); \
+			ObDereferenceObject(pfo); \
+		} \
+	} while(0)
 
 #define vn_ismntpt(vp)   (vnode_mountedhere(vp) != NULL)
 
