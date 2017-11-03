@@ -177,7 +177,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 	if (dvp) {
 		VN_RELE(dvp);
 	} else {
-		dprintf("%s: failed to find dvp\n", __func__);
+		dprintf("%s: failed to find dvp for '%s' \n", __func__, filename);
 		return ENOENT;
 	}
 	if (error != 0 && !vp && !finalpartmaynotexist)
@@ -349,7 +349,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), &finalname, &dvp, &vp);
 	if (error) {
 		if (!dvp) {
-			dprintf("%s: failed to find dvp\n", __func__);
+			dprintf("%s: failed to find dvp for '%s' \n", __func__, filename);
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 			return STATUS_OBJECT_PATH_NOT_FOUND;
 		}
@@ -2135,6 +2135,19 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 	uio_free(uio);
 
+
+	if(!Status) {
+	    IO_STATUS_BLOCK IoStatus = { 0 };
+		// For memory mapped files: flush out page cache of written section
+		CcCoherencyFlushAndPurgeCache(
+			fileObject->SectionObjectPointer,
+			&byteOffset,
+			bufferLength,
+			&IoStatus,
+			0);
+		Status = IoStatus.Status;		
+	}
+
 	dprintf("  FileName: %wZ offset 0x%llx len 0x%lx mdl %p System %p\n", &fileObject->FileName,
 		byteOffset.QuadPart, bufferLength, Irp->MdlAddress, Irp->AssociatedIrp.SystemBuffer);
 
@@ -2965,6 +2978,12 @@ char *common_status_str(NTSTATUS Status)
 		return "EOF";
 	case STATUS_NO_MORE_FILES:
 		return "NoMoreFiles";
+	case STATUS_OBJECT_PATH_NOT_FOUND:
+		return "ObjectPathNotFound";
+	case STATUS_NO_SUCH_FILE:
+		return "NoSuchFile";
+	case STATUS_NOT_IMPLEMENTED:
+		return "NotImplemented";
 	default:
 		return "<*****>";
 	}
