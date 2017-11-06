@@ -218,10 +218,10 @@ extern "C" {
 #define	ESC_ACPIEV_LOW			"ESC_acpiev_low"
 #define	ESC_ACPIEV_STATE_CHANGE		"ESC_acpiev_state_change"
 
-	/*
-	* ZFS subclass definitions.  supporting attributes (name/value paris) are found
-	* in sys/fs/zfs.h
-	*/
+/*
+ * ZFS subclass definitions.  supporting attributes (name/value paris) are found
+ * in sys/fs/zfs.h
+ */
 #define	ESC_ZFS_RESILVER_START		"ESC_ZFS_resilver_start"
 #define	ESC_ZFS_RESILVER_FINISH		"ESC_ZFS_resilver_finish"
 #define	ESC_ZFS_VDEV_REMOVE		"ESC_ZFS_vdev_remove"
@@ -247,15 +247,15 @@ extern "C" {
 #define	ESC_ZFS_POOL_REGUID		"ESC_ZFS_pool_reguid"
 #define	ESC_ZFS_HISTORY_EVENT		"ESC_ZFS_history_event"
 
-	/*
-	* datalink subclass definitions.
-	*/
+/*
+ * datalink subclass definitions.
+ */
 #define	ESC_DATALINK_PHYS_ADD	"ESC_datalink_phys_add"	/* new physical link */
 
-	/*
-	* VRRP subclass definitions. Supporting attributes (name/value paris) are
-	* found in sys/sysevent/vrrp.h
-	*/
+/*
+ * VRRP subclass definitions. Supporting attributes (name/value paris) are
+ * found in sys/sysevent/vrrp.h
+ */
 #define	ESC_VRRP_STATE_CHANGE	"ESC_vrrp_state_change"
 
 #ifdef	__cplusplus
