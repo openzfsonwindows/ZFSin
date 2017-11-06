@@ -1319,12 +1319,10 @@ zio_crypt_init_uios_zil(boolean_t encrypt, uint8_t *plainbuf,
 	nr_src += nr_iovecs;
 	nr_dst += nr_iovecs;
 
-#ifndef _KERNEL
 	if (nr_src == 0)
 		nr_src = 1;
 	if (nr_dst == 0)
 		nr_dst = 1;
-#endif
 
 	/* allocate the uio to hold iovecs */
 	if (nr_src != 0) {
@@ -1508,12 +1506,10 @@ zio_crypt_init_uios_dnode(boolean_t encrypt, uint8_t *plainbuf,
 	nr_src += nr_iovecs;
 	nr_dst += nr_iovecs;
 
-#ifndef _KERNEL
 	if (nr_src == 0)
 		nr_src = 1;
 	if (nr_dst == 0)
 		nr_dst = 1;
-#endif
 
 	if (nr_src != 0) {
 		src_uio = uio_create(nr_src, 0, UIO_SYSSPACE, UIO_READ);
@@ -1795,8 +1791,8 @@ zio_do_crypt_data(boolean_t encrypt, zio_crypt_key_t *key, uint8_t *salt,
 		tmpl = NULL;
 	}
 
-	ASSERT(puio != NULL);
-	ASSERT(cuio != NULL);
+	VERIFY(puio != NULL);
+	VERIFY(cuio != NULL);
 
 	/* perform the encryption / decryption */
 	ret = zio_do_crypt_uio(encrypt, key->zk_crypt, ckey, tmpl, iv, enc_len,
