@@ -545,6 +545,24 @@ zvol_create_minor_impl(const char *name)
 	}
 #endif
 
+	// Take a quick peek to see if it is a volume first, because we
+	// are racing with zfs_vfs_mount/zfsvfs_create calling
+	// dmu_objset_own(), as we are below.
+	if ((error = dmu_objset_hold(name, FTAG, &os)) != 0) {
+		printf("%s: Unable to put hold on %s (error=%d).\n",
+		    __func__, name, error);
+		mutex_exit(&zfsdev_state_lock);
+		return (error);
+	}
+	if (dmu_objset_type(os) != DMU_OST_ZVOL) {
+		printf("%s: dataset '%s' not ZVOL -- ignoring\n",
+			__func__, name);
+		dmu_objset_rele(os, FTAG);
+		mutex_exit(&zfsdev_state_lock);
+		return 0;
+	}
+	dmu_objset_rele(os, FTAG);
+
 	/* lie and say we're read-only */
 	error = dmu_objset_own(name, DMU_OST_ZVOL, B_TRUE, B_TRUE, FTAG, &os);
 
