@@ -81,7 +81,6 @@
 
 PDEVICE_OBJECT ioctlDeviceObject = NULL;
 
-
 #ifdef _KERNEL
 
 DRIVER_INITIALIZE DriverEntry;
@@ -2648,6 +2647,17 @@ diskDispatcher(
 		case IRP_MN_MOUNT_VOLUME:
 			Status = zfs_vnop_mount(Irp, IrpSp);
 			break;
+		}
+		break;
+
+	case IRP_MJ_INTERNAL_DEVICE_CONTROL:
+		{
+		PSCSI_REQUEST_BLOCK Request;
+		Request = (PSCSI_REQUEST_BLOCK)IrpSp->Parameters.Others.Argument1;
+		dprintf("INTERNAL_DEVICE_CONTROL code %d / 0x%x Function %d/x%x\n", IrpSp->Parameters.DeviceIoControl.IoControlCode, IrpSp->Parameters.DeviceIoControl.IoControlCode,
+			Request->Function, Request->Function);
+		Request->DataBuffer = DeviceObject;
+		Status = STATUS_SUCCESS;
 		}
 		break;
 

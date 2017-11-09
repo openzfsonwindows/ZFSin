@@ -86,6 +86,9 @@
     <Filter Include="zlib">
       <UniqueIdentifier>{f68fe6c9-c72b-442b-b9e4-698115df2977}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\efidisk">
+      <UniqueIdentifier>{117d4ad7-2a1b-4d7a-bfca-7c67f9663446}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="ZFSin.inf">
@@ -657,6 +660,21 @@
     <ClCompile Include="zfs\module\zfs\hkdf.c">
       <Filter>Source Files\ZFS\module\zfs</Filter>
     </ClCompile>
+    <ClCompile Include="zfs\module\efidisk\data.c">
+      <Filter>Source Files\efidisk</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\efidisk\disk.c">
+      <Filter>Source Files\efidisk</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\efidisk\diskwmi.c">
+      <Filter>Source Files\efidisk</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\efidisk\geometry.c">
+      <Filter>Source Files\efidisk</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\efidisk\pnp.c">
+      <Filter>Source Files\efidisk</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h">
@@ -667,6 +685,9 @@
     </ClInclude>
     <ClInclude Include="zfs\module\icp\algs\skein\skein_port.h">
       <Filter>Source Files\ZFS\module\icp\algs\skein</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\efidisk\disk.h">
+      <Filter>Source Files\efidisk</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

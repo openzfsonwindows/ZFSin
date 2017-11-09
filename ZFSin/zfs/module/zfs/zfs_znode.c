@@ -1284,7 +1284,7 @@ zfs_zget_ext(zfsvfs_t *zfsvfs, uint64_t obj_num, znode_t **zpp,
 	int err;
 	uint32_t        vid;
 
-	dprintf("+zget %lld\n", obj_num);
+//	dprintf("+zget %lld\n", obj_num);
 
 	getnewvnode_reserve(1);
 

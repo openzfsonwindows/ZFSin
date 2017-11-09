@@ -154,7 +154,7 @@
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>wdmsec.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>wdmsec.lib;%(AdditionalDependencies);$(DDK_LIB_PATH)\classpnp.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -166,7 +166,7 @@
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>wdmsec.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>wdmsec.lib;%(AdditionalDependencies);$(DDK_LIB_PATH)\classpnp.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -216,6 +216,11 @@
     <ClCompile Include="zfs\lib\zlib-1.2.3\inftrees.c" />
     <ClCompile Include="zfs\lib\zlib-1.2.3\trees.c" />
     <ClCompile Include="zfs\lib\zlib-1.2.3\zutil.c" />
+    <ClCompile Include="zfs\module\efidisk\data.c" />
+    <ClCompile Include="zfs\module\efidisk\disk.c" />
+    <ClCompile Include="zfs\module\efidisk\diskwmi.c" />
+    <ClCompile Include="zfs\module\efidisk\geometry.c" />
+    <ClCompile Include="zfs\module\efidisk\pnp.c" />
     <ClCompile Include="zfs\module\icp\algs\aes\aes_impl.c" />
     <ClCompile Include="zfs\module\icp\algs\aes\aes_modes.c" />
     <ClCompile Include="zfs\module\icp\algs\edonr\edonr.c" />
@@ -366,6 +371,7 @@
     <ClCompile Include="zfs\module\zfs\zvol.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="zfs\module\efidisk\disk.h" />
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h" />
     <ClInclude Include="zfs\module\icp\algs\skein\skein_impl.h" />
     <ClInclude Include="zfs\module\icp\algs\skein\skein_port.h" />
