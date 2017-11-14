@@ -2124,7 +2124,8 @@ top:
 		 */
 
 		zp->z_fastpath = B_TRUE;
-		if (vnode_recycle(vp) == 1) {
+		if (vnode_recycle(vp) == 0) {
+
 			/* recycle/reclaim is done, so we can just release now */
 			zfs_znode_delete(zp, tx);
 		} else {

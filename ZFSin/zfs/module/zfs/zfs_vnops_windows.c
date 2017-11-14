@@ -2774,8 +2774,13 @@ fsDispatcher(
 			VN_HOLD(vp);
 			vnode_rele(vp);
 			VN_RELE(vp);
-			dprintf("IRP_MJ_CLOSE: iocount %u usecount %u\n",
-				vp->v_iocount, vp->v_usecount);
+			dprintf("IRP_MJ_CLOSE: iocount %u usecount %u delete %u\n",
+				vp->v_iocount, vp->v_usecount, vp->v_unlink);
+
+			// Asked to delete?
+			if (vnode_unlink(vp)) {
+				delete_entry(DeviceObject, Irp, IrpSp);
+			}
 		}
 
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext2) {
@@ -2866,18 +2871,9 @@ fsDispatcher(
 	case IRP_MJ_CLEANUP:
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 			struct vnode *vp = IrpSp->FileObject->FsContext;
-			znode_t *zp = VTOZ(vp);
-			zfsvfs_t *zfsvfs = zp->z_zfsvfs;
-
 			dprintf("IRP_MJ_CLEANUP: iocount %u usecount %u\n",
 				vp->v_iocount, vp->v_usecount);
-
-			// Asked to delete?
-			if (vnode_unlink(vp)) {
-				delete_entry(DeviceObject, Irp, IrpSp);
-			}
-
-
+			
 			zfs_vnop_recycle(VTOZ(vp), 0);
 
 		}
