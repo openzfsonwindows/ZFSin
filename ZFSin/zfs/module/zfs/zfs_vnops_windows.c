@@ -474,7 +474,7 @@ int zfs_vnop_recycle(znode_t *zp, int force)
 	if ((force != 0)  ||  
 		(vp->v_iocount == 1 && vp->v_usecount == 0)) { // fix vnode_isbusy()
 
-		dprintf("IRP_MJ_CLEANUP: releasing zp %p and vp %p\n", zp, vp);
+		dprintf("  zfs_vnop_recycle: releasing zp %p and vp %p\n", zp, vp);
 
 		if (vp->SectionObjectPointers.DataSectionObject != NULL) {
 			CcFlushCache( &vp->SectionObjectPointers, NULL, 0, NULL );
@@ -2779,7 +2779,11 @@ fsDispatcher(
 
 			// Asked to delete?
 			if (vnode_unlink(vp)) {
+				// Delete entry recycles vnode
+				// TODO: Does not recycle vnode when file is added to unlink_queue?
 				delete_entry(DeviceObject, Irp, IrpSp);
+			} else {
+				zfs_vnop_recycle(VTOZ(vp), 0);
 			}
 		}
 
@@ -2874,7 +2878,10 @@ fsDispatcher(
 			dprintf("IRP_MJ_CLEANUP: iocount %u usecount %u\n",
 				vp->v_iocount, vp->v_usecount);
 			
-			zfs_vnop_recycle(VTOZ(vp), 0);
+			// No operation intentially at the moment. Cleanups done on CLOSE.
+			// Called when all file handles are closed
+			// Kernel might still use hold reference for other operations
+			// https://msdn.microsoft.com/en-us/library/windows/hardware/ff548608(v=vs.85).aspx
 
 		}
 		Status = STATUS_SUCCESS;
