@@ -531,6 +531,7 @@ zvol_create_minor_impl(const char *name)
 		mutex_exit(&zfsdev_state_lock);
 		return (EEXIST);
 	}
+	mutex_exit(&zfsdev_state_lock);
 
 	/* On OS X we always check snapdev, for now */
 #ifdef linux
@@ -538,7 +539,6 @@ zvol_create_minor_impl(const char *name)
 #endif
 		error = zvol_snapdev_hidden(name);
 		if (error) {
-			mutex_exit(&zfsdev_state_lock);
 			return (error);
 		}
 #ifdef linux
@@ -551,14 +551,12 @@ zvol_create_minor_impl(const char *name)
 	if ((error = dmu_objset_hold(name, FTAG, &os)) != 0) {
 		printf("%s: Unable to put hold on %s (error=%d).\n",
 		    __func__, name, error);
-		mutex_exit(&zfsdev_state_lock);
 		return (error);
 	}
 	if (dmu_objset_type(os) != DMU_OST_ZVOL) {
 		printf("%s: dataset '%s' not ZVOL -- ignoring\n",
 			__func__, name);
 		dmu_objset_rele(os, FTAG);
-		mutex_exit(&zfsdev_state_lock);
 		return 0;
 	}
 	dmu_objset_rele(os, FTAG);
@@ -567,10 +565,10 @@ zvol_create_minor_impl(const char *name)
 	error = dmu_objset_own(name, DMU_OST_ZVOL, B_TRUE, B_TRUE, FTAG, &os);
 
 	if (error) {
-		mutex_exit(&zfsdev_state_lock);
 		return (error);
 	}
 
+	mutex_enter(&zfsdev_state_lock);
 	if ((minor = zfsdev_minor_alloc()) == 0) {
 		dmu_objset_disown(os, B_TRUE, FTAG);
 		mutex_exit(&zfsdev_state_lock);

@@ -392,7 +392,7 @@ zio_checksum_error_impl(spa_t *spa, const blkptr_t *bp,
 {
 	zio_checksum_info_t *ci = &zio_checksum_table[checksum];
 	zio_cksum_t actual_cksum, expected_cksum;
-	zio_eck_t eck;
+	zio_eck_t eck = { 0 };
 	int byteswap;
 
 	if (checksum >= ZIO_CHECKSUM_FUNCTIONS || ci->ci_func[0] == NULL)
