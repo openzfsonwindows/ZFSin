@@ -42,6 +42,7 @@
 #include <sys/ddt.h>
 #include <sys/blkptr.h>
 #include <sys/zfeature.h>
+#include <sys/dsl_scan.h>
 #include <sys/metaslab_impl.h>
 #include <sys/callb.h>
 #include <sys/time.h>
@@ -1139,6 +1140,7 @@ zio_free_sync(zio_t *pio, spa_t *spa, uint64_t txg, const blkptr_t *bp,
 
 	metaslab_check_free(spa, bp);
 	arc_freed(spa, bp);
+	dsl_scan_freed(spa, bp);
 
 	/*
 	 * GANG and DEDUP blocks can induce a read (for the gang block header,
@@ -3445,26 +3447,6 @@ zio_vdev_io_start(zio_t *zio)
 			    (ZIO_FLAG_PHYSICAL | ZIO_FLAG_SELF_HEAL |
 			    ZIO_FLAG_RESILVER | ZIO_FLAG_INDUCE_DAMAGE));
 		}
-	}
-
-	/*
-	 * We keep track of time-sensitive I/Os so that the scan thread
-	 * can quickly react to certain workloads.  In particular, we care
-	 * about non-scrubbing, top-level reads and writes with the following
-	 * characteristics:
-	 *	- synchronous writes of user data to non-slog devices
-	 *	- any reads of user data
-	 * When these conditions are met, adjust the timestamp of spa_last_io
-	 * which allows the scan thread to adjust its workload accordingly.
-	 */
-	if (!(zio->io_flags & ZIO_FLAG_SCAN_THREAD) && zio->io_bp != NULL &&
-	    vd == vd->vdev_top && !vd->vdev_islog &&
-	    zio->io_bookmark.zb_objset != DMU_META_OBJSET &&
-	    zio->io_txg != spa_syncing_txg(spa)) {
-		uint64_t old = spa->spa_last_io;
-		uint64_t new = ddi_get_lbolt64();
-		if (old != new)
-			(void) atomic_cas_64(&spa->spa_last_io, old, new);
 	}
 
 	align = 1ULL << vd->vdev_top->vdev_ashift;

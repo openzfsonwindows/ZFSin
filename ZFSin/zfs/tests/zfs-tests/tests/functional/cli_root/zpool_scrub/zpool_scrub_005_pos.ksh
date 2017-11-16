@@ -58,4 +58,8 @@ log_must $ZPOOL scrub $TESTPOOL
 log_must $ZPOOL detach $TESTPOOL $DISK1
 log_must $ZPOOL attach $TESTPOOL $DISK2 $DISK1
 
+while ! is_pool_resilvered $TESTPOOL; do
+	sleep 1
+done
+
 log_pass "When scrubbing, detach device should not break system."

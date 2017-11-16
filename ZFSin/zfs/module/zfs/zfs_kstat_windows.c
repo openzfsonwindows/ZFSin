@@ -144,11 +144,6 @@ osx_kstat_t osx_kstat = {
 	{ "l2arc_feed_again",			KSTAT_DATA_INT64  },
 	{ "l2arc_norw",					KSTAT_DATA_INT64  },
 
-	{"zfs_top_maxinflight",			KSTAT_DATA_INT64  },
-	{"zfs_resilver_delay",			KSTAT_DATA_INT64  },
-	{"zfs_scrub_delay",				KSTAT_DATA_INT64  },
-	{"zfs_scan_idle",				KSTAT_DATA_INT64  },
-
 	{"zfs_recover",					KSTAT_DATA_INT64  },
 
 	{"zfs_free_bpobj_enabled",			KSTAT_DATA_INT64  },
@@ -316,14 +311,6 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		zvol_immediate_write_sz =
 			ks->zvol_immediate_write_sz.value.i64;
 
-		zfs_top_maxinflight =
-			ks->zfs_top_maxinflight.value.i64;
-		zfs_resilver_delay =
-			ks->zfs_resilver_delay.value.i64;
-		zfs_scrub_delay =
-			ks->zfs_scrub_delay.value.i64;
-		zfs_scan_idle =
-			ks->zfs_scan_idle.value.i64;
 		zfs_recover =
 			ks->zfs_recover.value.i64;
 
@@ -488,15 +475,6 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			zio_injection_enabled;
 		ks->zvol_immediate_write_sz.value.i64 =
 			zvol_immediate_write_sz;
-
-		ks->zfs_top_maxinflight.value.i64 =
-			zfs_top_maxinflight;
-		ks->zfs_resilver_delay.value.i64 =
-			zfs_resilver_delay;
-		ks->zfs_scrub_delay.value.i64 =
-			zfs_scrub_delay;
-		ks->zfs_scan_idle.value.i64 =
-			zfs_scan_idle;
 
 		ks->zfs_recover.value.i64 =
 			zfs_recover;

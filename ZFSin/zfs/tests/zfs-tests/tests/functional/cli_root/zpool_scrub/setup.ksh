@@ -38,6 +38,7 @@ verify_disk_count "$DISKS" 2
 #log_must rngd -r /dev/urandom -o /dev/random
 default_mirror_setup_noexit $DISK1 $DISK2
 
+<<<<<<< HEAD
 mntpnt=$(get_prop mountpoint $TESTPOOL)
 typeset -i i=0
 while ((i < 10)); do
@@ -45,4 +46,10 @@ while ((i < 10)); do
 	((i += 1))
 done
 
+=======
+mntpnt=$(get_prop mountpoint $TESTPOOL/$TESTFS)
+
+# Create 256M of data
+log_must file_write -b 1048576 -c 256 -o create -d 0 -f $mntpnt/bigfile
+>>>>>>> d4a72f2... Sequential scrub and resilvers
 log_pass

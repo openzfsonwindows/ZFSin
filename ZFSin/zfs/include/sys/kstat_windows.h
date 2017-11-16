@@ -113,11 +113,6 @@ typedef struct osx_kstat {
 	kstat_named_t l2arc_feed_again;
 	kstat_named_t l2arc_norw;
 
-	kstat_named_t zfs_top_maxinflight;
-	kstat_named_t zfs_resilver_delay;
-	kstat_named_t zfs_scrub_delay;
-	kstat_named_t zfs_scan_idle;
-
 	kstat_named_t zfs_recover;
 
 	kstat_named_t zfs_free_bpobj_enabled;

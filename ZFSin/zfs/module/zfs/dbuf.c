@@ -1068,7 +1068,8 @@ dbuf_whichblock(dnode_t *dn, int64_t level, uint64_t offset)
 }
 
 static void
-dbuf_read_done(zio_t *zio, int err, arc_buf_t *buf, void *vdb)
+dbuf_read_done(zio_t *zio, const zbookmark_phys_t *zb, const blkptr_t *bp,
+    arc_buf_t *buf, void *vdb)
 {
 	dmu_buf_impl_t *db = vdb;
 
@@ -2701,7 +2702,8 @@ dbuf_issue_final_prefetch(dbuf_prefetch_arg_t *dpa, blkptr_t *bp)
  * prefetch if the next block down is our target.
  */
 static void
-dbuf_prefetch_indirect_done(zio_t *zio, int err, arc_buf_t *abuf, void *private)
+dbuf_prefetch_indirect_done(zio_t *zio, const zbookmark_phys_t *zb,
+    const blkptr_t *iobp, arc_buf_t *abuf, void *private)
 {
 	dbuf_prefetch_arg_t *dpa = private;
 
@@ -2747,12 +2749,17 @@ dbuf_prefetch_indirect_done(zio_t *zio, int err, arc_buf_t *abuf, void *private)
 		dbuf_rele(db, FTAG);
 	}
 
-	dpa->dpa_curlevel--;
+	if (abuf == NULL) {
+		kmem_free(dpa, sizeof (*dpa));
+		return;
+	}
 
+	dpa->dpa_curlevel--;
 	uint64_t nextblkid = dpa->dpa_zb.zb_blkid >>
 		(dpa->dpa_epbs * (dpa->dpa_curlevel - dpa->dpa_zb.zb_level));
 	blkptr_t *bp = ((blkptr_t *)abuf->b_data) +
 	    P2PHASE(nextblkid, 1ULL << dpa->dpa_epbs);
+
 	if (BP_IS_HOLE(bp)) {
 		kmem_free(dpa, sizeof (*dpa));
 	} else if (dpa->dpa_curlevel == dpa->dpa_zb.zb_level) {

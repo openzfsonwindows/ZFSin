@@ -1051,7 +1051,7 @@ extern void spa_set_missing_tvds(spa_t *spa, uint64_t missing);
 extern boolean_t spa_top_vdevs_spacemap_addressable(spa_t *spa);
 
 extern int spa_mode(spa_t *spa);
-extern uint64_t strtonum(const char *str, char **nptr);
+extern uint64_t zfs_strtonum(const char *str, char **nptr);
 
 extern char *spa_his_ievent_table[];
 
