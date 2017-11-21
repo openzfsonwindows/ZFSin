@@ -2082,8 +2082,8 @@ top:
 #endif
 	}
 
-	dprintf("vnop_remove: may_delete_now is %d, delete_now %d\n",
-		   may_delete_now, delete_now);
+	dprintf("vnop_remove: may_delete_now is %d, delete_now %d. iocount %u\n",
+		   may_delete_now, delete_now, vp->v_iocount);
 
 	if (delete_now) {
 		if (xattr_obj_unlinked) {
@@ -2115,7 +2115,6 @@ top:
 #endif
 		mutex_exit(&zp->z_lock);
 		vnode_pager_setsize(vp, 0);
-		VN_RELE(vp);
 		/*
 		 * Call recycle which will call vnop_reclaim directly if it can
 		 * so tell reclaim to not do anything with this node, so we can
@@ -2124,13 +2123,16 @@ top:
 		 */
 
 		zp->z_fastpath = B_TRUE;
-		if (vnode_recycle(vp) == 1) {
+		if (vnode_recycle(vp) == 0) {
+
 			/* recycle/reclaim is done, so we can just release now */
 			zfs_znode_delete(zp, tx);
 		} else {
 			/* failed to recycle, so just place it on the unlinked list */
 			zp->z_fastpath = B_FALSE;
 			zfs_unlinked_add(zp, tx);
+
+			VN_RELE(vp);
 		}
 		vp = NULL;
 		zp = NULL;
