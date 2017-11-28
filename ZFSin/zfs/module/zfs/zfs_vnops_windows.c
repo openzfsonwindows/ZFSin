@@ -1899,8 +1899,17 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 
 	switch (IrpSp->Parameters.SetFile.FileInformationClass) {
-	case FileAllocationInformation: // set allocation size, refreserve?
-		dprintf("* FileAllocationInformation\n");
+	case FileAllocationInformation: 
+		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
+			FILE_ALLOCATION_INFORMATION *feofi = Irp->AssociatedIrp.SystemBuffer;
+			dprintf("* FileAllocationInformation %u\n", feofi->AllocationSize.QuadPart);
+			// This is a noop at the moment. It makes Windows Explorer and apps not crash
+			// From the documentation, setting the allocation size smaller than EOF should shrink it: 
+			// https://msdn.microsoft.com/en-us/library/windows/desktop/aa364214(v=vs.85).aspx
+			// However, NTFS doesn't do that! It keeps the size the same.
+			// Setting a FileAllocationInformation larger than current EOF size does not have a observable affect from user space.
+			Status = STATUS_SUCCESS;
+		}
 		break;
 	case FileBasicInformation: // chmod
 		dprintf("* FileBasicInformation\n");
