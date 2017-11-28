@@ -515,7 +515,103 @@ void zfs_release_mount(mount_t *zmo)
 	}
 }
 
+
 int zfs_windows_mount(zfs_cmd_t *zc)
+{
+	dprintf("%s: '%s' '%s'\n", __func__, zc->zc_name, zc->zc_value);
+	NTSTATUS status;
+	uuid_t uuid;
+	char uuid_a[UUID_PRINTABLE_STRING_LENGTH];
+	PDEVICE_OBJECT pdo = NULL;
+	PDEVICE_OBJECT diskDeviceObject = NULL;
+	PDEVICE_OBJECT fsDeviceObject = NULL;
+
+	zfs_vfs_uuid_gen(zc->zc_name, uuid);
+	zfs_vfs_uuid_unparse(uuid, uuid_a);
+
+	char buf[PATH_MAX];
+	//snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
+	WCHAR				diskDeviceNameBuf[MAXIMUM_FILENAME_LENGTH];    // L"\\Device\\Volume"
+	WCHAR				fsDeviceNameBuf[MAXIMUM_FILENAME_LENGTH];      // L"\\Device\\ZFS"
+	WCHAR				symbolicLinkNameBuf[MAXIMUM_FILENAME_LENGTH];  // L"\\DosDevices\\Global\\Volume"
+	UNICODE_STRING		diskDeviceName;
+	UNICODE_STRING		fsDeviceName;
+	UNICODE_STRING		symbolicLinkTarget;
+
+		ANSI_STRING pants;
+	ULONG				deviceCharacteristics;
+	deviceCharacteristics = FILE_DEVICE_IS_MOUNTED;
+	deviceCharacteristics |= FILE_REMOVABLE_MEDIA;
+
+	snprintf(buf, sizeof(buf), "\\Device\\Volume{%s}", uuid_a);
+	pants.Buffer = buf;
+	pants.Length = strlen(buf);
+	pants.MaximumLength = PATH_MAX;
+	status = RtlAnsiStringToUnicodeString(&diskDeviceName, &pants, TRUE);
+	dprintf("%s: new devstring '%wZ'\n", __func__, &diskDeviceName);
+
+	status = IoCreateDeviceSecure(WIN_DriverObject,			// DriverObject
+		sizeof(mount_t),			// DeviceExtensionSize
+		&diskDeviceName,
+		FILE_DEVICE_DISK,// DeviceType
+		deviceCharacteristics,							// DeviceCharacteristics
+		FALSE,						// Not Exclusive
+		&SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_RW_RES_R, // Default SDDL String
+		NULL, // Device Class GUID
+		&diskDeviceObject);				// DeviceObject
+
+	if (status != STATUS_SUCCESS) {
+		dprintf("IoCreateDeviceSecure returned %08x\n", status);
+	}
+
+	mount_t *zmo_dcb = diskDeviceObject->DeviceExtension;
+	zmo_dcb->type = MOUNT_TYPE_DCB;
+	vfs_setfsprivate(zmo_dcb, NULL);
+	AsciiStringToUnicodeString(uuid_a, &zmo_dcb->uuid);
+	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
+	AsciiStringToUnicodeString(buf, &zmo_dcb->device_name);
+	zmo_dcb->deviceObject = diskDeviceObject;
+
+	snprintf(buf, sizeof(buf), "\\DosDevices\\Global\\Volume{%s}", uuid_a);
+	pants.Buffer = buf;
+	pants.Length = strlen(buf);
+	pants.MaximumLength = PATH_MAX;
+	status = RtlAnsiStringToUnicodeString(&symbolicLinkTarget, &pants, TRUE);
+	dprintf("%s: new symlink '%wZ'\n", __func__, &symbolicLinkTarget);
+	AsciiStringToUnicodeString(buf, &zmo_dcb->symlink_name);
+
+	snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
+	pants.Buffer = buf;
+	pants.Length = strlen(buf);
+	pants.MaximumLength = PATH_MAX;
+	status = RtlAnsiStringToUnicodeString(&fsDeviceName, &pants, TRUE);
+	dprintf("%s: new fsname '%wZ'\n", __func__, &fsDeviceName);
+	AsciiStringToUnicodeString(buf, &zmo_dcb->fs_name);
+
+
+
+	diskDeviceObject->Flags |= DO_DIRECT_IO;
+
+
+	status = IoCreateSymbolicLink(&symbolicLinkTarget, &diskDeviceName);
+
+	if (!NT_SUCCESS(status)) {
+		IoDeleteDevice(diskDeviceObject);
+		dprintf("  IoCreateSymbolicLink returned 0x%x\n", status);
+		return status;
+	}
+
+
+	// Mark devices as initialized
+	diskDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+	ObReferenceObject(diskDeviceObject);
+	//InsertMountEntry(WIN_DriverObject, NULL, FALSE);
+
+	status = STATUS_SUCCESS;
+	return status;
+}
+
+int zfs_windows_mountX(zfs_cmd_t *zc)
 {
 	dprintf("%s: '%s' '%s'\n", __func__, zc->zc_name, zc->zc_value);
 	NTSTATUS status;
@@ -626,8 +722,8 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	struct zfs_mount_args mnt_args;
 	mnt_args.struct_size = sizeof(struct zfs_mount_args);
 	mnt_args.optlen = 0;
-	mnt_args.mflag  = 0; // Set flags
-	mnt_args.fspec  = zc->zc_name;
+	mnt_args.mflag = 0; // Set flags
+	mnt_args.fspec = zc->zc_name;
 
 	status = zfs_vfs_mount(zmo_vcb, NULL, &mnt_args, NULL);
 	dprintf("%s: zfs_vfs_mount() returns %d\n", __func__, status);
@@ -773,7 +869,6 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	status = STATUS_SUCCESS;
 	return status;
 }
-
 
 extern int getzfsvfs(const char *dsname, zfsvfs_t **zfvp);
 

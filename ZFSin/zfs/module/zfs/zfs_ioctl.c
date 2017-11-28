@@ -6623,74 +6623,90 @@ zfs_devfs_clone(dev_t dev, int action)
 }
 
 
+
+
+DRIVER_FS_NOTIFICATION DriverNotificationRoutine;
+
+VOID  DriverNotificationRoutine(
+	_In_ struct _DEVICE_OBJECT *DeviceObject,
+	_In_ BOOLEAN               FsActive
+)
+{
+	CHAR nibuf[512];        //buffer that receives name information and name
+	POBJECT_NAME_INFORMATION name_info = (POBJECT_NAME_INFORMATION)nibuf;
+	ULONG ret_len;
+	NTSTATUS status;
+
+	status = ObQueryNameString(DeviceObject, name_info, sizeof(nibuf), &ret_len);
+	if (NT_SUCCESS(status)) {
+		dprintf("Filesystem %p: '%wZ'\n", DeviceObject, name_info);
+	}
+	else {
+		dprintf("Filesystem %p: '%wZ'\n", DeviceObject, DeviceObject->DriverObject->DriverName);
+	}
+}
+
+
+#include <Wdmsec.h>
 static int
 zfs_attach(void)
 {
-#ifdef linux
-	int error;
-#elif defined(_WIN32)
-	dev_t dev;
-#endif
-
 	mutex_init(&zfsdev_state_lock, NULL, MUTEX_DEFAULT, NULL);
 	zfsdev_state_list = kmem_zalloc(sizeof (zfsdev_state_t), KM_SLEEP);
 	zfsdev_state_list->zs_minor = -1;
 
-#ifdef linux
-	error = misc_register(&zfs_misc);
-
-	if (error != 0) {
-		printf(KERN_INFO "ZFS: misc_register() failed %d\n", error);
-		return (error);
-	}
-
-#elif defined(__APPLE__)
-
-	zfs_bmajor = bdevsw_add(-1, &zfs_bdevsw);
-	zfs_major = cdevsw_add_with_bdev(-1, &zfs_cdevsw, zfs_bmajor);
-
-	if (zfs_major < 0) {
-		printf("ZFS: zfs_attach() failed to allocate a major number\n");
-		return (-1);
-	}
-
-	dev = makedev(zfs_major, 0);/* Get the device number */
-	zfs_devnode = devfs_make_node_clone(dev, DEVFS_CHAR, UID_ROOT, GID_WHEEL,
-										0666, zfs_devfs_clone, "zfs", 0);
-	if (!zfs_devnode) {
-		printf("ZFS: devfs_make_node() failed\n");
-		return (-1);
-	}
-
-#elif defined (_WIN32)
-
+	extern void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject);
 	NTSTATUS ntStatus;
 	UNICODE_STRING  ntUnicodeString;    // NT Device Name
 	UNICODE_STRING ntWin32NameString; // Win32 Name 
-//#define ZFS_DEV_KERNEL	L"\\Device\\ZFSCTL"
-//#define ZFS_DEV_DOS		L"\\DosDevices\\ZFS"
-//#define ZFS_DEV			"\\\\.\\ZFS"
-	extern void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject);
+//#define ZFS_DEV_KERNEL					L"\\Device\\ZFSCTL"
+//#define ZFS_GLOBAL_FS_DISK_DEVICE_NAME	L"\\FileSystem\\ZFS" 
+//#define ZFS_DEV_DOS						L"\\DosDevices\\Global\\ZFS"
+//#define ZFS_DEV							"\\\\.\\ZFS"
+									  
+	static UNICODE_STRING sddl = RTL_CONSTANT_STRING(
+		L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GRGWGX;;;WD)(A;;GRGX;;;RC)");
+	// Or use &SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_RW_RES_R
 
 	RtlInitUnicodeString(&ntUnicodeString, ZFS_DEV_KERNEL);
-	ntStatus = IoCreateDevice(
+	ntStatus = IoCreateDeviceSecure(
 		WIN_DriverObject,                   // Our Driver Object
-		0,                              // We don't use a device extension
+		0,                           
 		&ntUnicodeString,               // Device name "\Device\SIOCTL"
-		FILE_DEVICE_DISK_FILE_SYSTEM,            // Device type
+		FILE_DEVICE_UNKNOWN,  // Device type
 		/*FILE_DEVICE_SECURE_OPEN*/ 0,     // Device characteristics
 		FALSE,                          // Not an exclusive device
+		&sddl,
+		NULL,
 		&ioctlDeviceObject);                // Returned ptr to Device Object
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf(("ZFS: Couldn't create the device object /dev/zfs (%s)\n", ZFS_DEV_KERNEL));
+		dprintf(("ZFS: Couldn't create the device object /dev/zfs (%wZ)\n", ZFS_DEV_KERNEL));
 		return ntStatus;
 	}
-	dprintf("ZFS: created kernel device node: %p\n", ioctlDeviceObject);
-	//
-	// Initialize the driver object with this driver's entry points.
-	//
-	zfs_windows_vnops_callback(ioctlDeviceObject);
+	dprintf("ZFS: created kernel device node: %p: name %wZ\n", ioctlDeviceObject, ZFS_DEV_KERNEL);
+
+	PDEVICE_OBJECT fsDiskDeviceObject;
+	UNICODE_STRING fsDiskDeviceName;
+	RtlInitUnicodeString(&fsDiskDeviceName, ZFS_GLOBAL_FS_DISK_DEVICE_NAME);
+
+	ntStatus = IoCreateDeviceSecure(WIN_DriverObject,      // DriverObject
+		0,                 // DeviceExtensionSize
+		&fsDiskDeviceName, // DeviceName
+		FILE_DEVICE_DISK_FILE_SYSTEM, // DeviceType
+		0,                    // DeviceCharacteristics
+		FALSE,                // Not Exclusive
+		&sddl,                // Default SDDL String
+		NULL,                 // Device Class GUID
+		&fsDiskDeviceObject); // DeviceObject
+
+
+	ObReferenceObject(ioctlDeviceObject);
+
+	//	extern 	VOID IoRegisterFileSystem(_In_ PDEVICE_OBJECT DeviceObject);
+	if (ntStatus == STATUS_SUCCESS) {
+		dprintf("DiskFileSystemDevice: 0x%0x  %wZ created\n", ntStatus, &fsDiskDeviceName);
+	}
 
 	// Initialize a Unicode String containing the Win32 name
 	// for our device.
@@ -6701,18 +6717,72 @@ zfs_attach(void)
 		&ntWin32NameString, &ntUnicodeString);
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf(("ZFS: Couldn't create userland symbolic link to /dev/zfs (%s)\n", ZFS_DEV));
+		dprintf(("ZFS: Couldn't create userland symbolic link to /dev/zfs (%wZ)\n", ZFS_DEV));
 		IoDeleteDevice(ioctlDeviceObject);
 		return -1;
 	}
 	dprintf("ZFS: created userland device symlink\n");
 
-extern 	VOID IoRegisterFileSystem(		_In_ PDEVICE_OBJECT DeviceObject	);
+	fsDiskDeviceObject->Flags |= DO_DIRECT_IO;
+	fsDiskDeviceObject->Flags |= DO_LOW_PRIORITY_FILESYSTEM;
+	fsDiskDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+	IoRegisterFileSystem(fsDiskDeviceObject);
+	ObReferenceObject(fsDiskDeviceObject);
 
-	//IoRegisterFileSystem(ioctlDeviceObject);
-	ObReferenceObject(ioctlDeviceObject);
-#endif
+	// Set all the callbacks to "dispatch"
+	extern _Function_class_(DRIVER_DISPATCH)
+		NTSTATUS
+		dispatcher(
+			_In_ PDEVICE_OBJECT DeviceObject,
+			_Inout_ PIRP Irp
+		);
 
+	WIN_DriverObject->MajorFunction[IRP_MJ_CREATE] = (PDRIVER_DISPATCH)dispatcher;   // zfs_ioctl.c
+	WIN_DriverObject->MajorFunction[IRP_MJ_CLOSE] = (PDRIVER_DISPATCH)dispatcher;     // zfs_ioctl.c
+	WIN_DriverObject->MajorFunction[IRP_MJ_READ] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_WRITE] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_EA] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_SET_EA] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = (PDRIVER_DISPATCH)dispatcher; // zfs_ioctl.c
+	WIN_DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = (PDRIVER_DISPATCH)dispatcher; // zfs_ioctl.c
+	WIN_DriverObject->MajorFunction[IRP_MJ_SHUTDOWN] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_CLEANUP] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_DEVICE_CHANGE] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_PNP] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY] = (PDRIVER_DISPATCH)dispatcher;
+	WIN_DriverObject->MajorFunction[IRP_MJ_SET_SECURITY] = (PDRIVER_DISPATCH)dispatcher;
+
+
+	// Register some locking callback thingy
+	extern NTSTATUS ZFSCallbackAcquireForCreateSection(
+		IN PFS_FILTER_CALLBACK_DATA CallbackData,
+		OUT PVOID *CompletionContext
+	);
+	FS_FILTER_CALLBACKS FilterCallbacks;
+	RtlZeroMemory(&FilterCallbacks,
+		sizeof(FS_FILTER_CALLBACKS));
+
+	FilterCallbacks.SizeOfFsFilterCallbacks = sizeof(FS_FILTER_CALLBACKS);
+	FilterCallbacks.PreAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
+
+	NTSTATUS Status;
+
+	Status = FsRtlRegisterFileSystemFilterCallbacks(WIN_DriverObject,
+		&FilterCallbacks);
+	if (Status != STATUS_SUCCESS)
+		dprintf("%s: FsRtlRegisterFileSystemFilterCallbacks failed - no mmap for you\n", __func__);
+
+	// Dump all registered filesystems
+	ntStatus = IoRegisterFsRegistrationChange(WIN_DriverObject, DriverNotificationRoutine);
 
 	return (0);
 }

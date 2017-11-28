@@ -599,8 +599,8 @@ int zfs_vnop_mount(PIRP Irp, PIO_STACK_LOCATION IrpSp)
 	PDEVICE_OBJECT DeviceToMount;
 	DeviceToMount = IrpSp->Parameters.MountVolume.DeviceObject;
 
-	dprintf("*** mount request for %p\n", DeviceToMount);
-
+	dprintf("*** mount request for %p : minor\n", DeviceToMount);
+	DbgBreakPoint();
 	NTSTATUS Status;
 	MOUNTDEV_NAME mdn, *mdn2;
 	ULONG mdnsize;
@@ -612,13 +612,13 @@ int zfs_vnop_mount(PIRP Irp, PIO_STACK_LOCATION IrpSp)
 	mdnsize = offsetof(MOUNTDEV_NAME, Name[0]) + mdn.NameLength;
 	mdn2 = kmem_alloc(mdnsize, KM_SLEEP);
 
-	dprintf("mount strlen %d\n", mdn.NameLength);
+	//dprintf("mount strlen %d\n", mdn.NameLength);
 
 	Status = dev_ioctl(DeviceToMount, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, mdn2, mdnsize, TRUE, NULL);
 	if (Status != STATUS_SUCCESS)
 		goto out;
 
-	dprintf("mount about '%.*S'\n", mdn2->NameLength/sizeof(WCHAR), mdn2->Name);
+	dprintf("IRP_MN_MOUNT_VOLUME mount about '%.*S'\n", mdn2->NameLength/sizeof(WCHAR), mdn2->Name);
 #if 0
 	ANSI_STRING ansi;
 	UNICODE_STRING uni;
@@ -2481,7 +2481,11 @@ ioctlDispatcher(
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_MOUNT_VOLUME:
+			dprintf("IRP_MN_MOUNT_VOLUME ioctl\n");
 			Status = zfs_vnop_mount(Irp, IrpSp);
+			break;
+		default:
+			dprintf("IRP_MJ_FILE_SYSTEM_CONTROL default case!\n");
 			break;
 		}
 		break;
@@ -2646,6 +2650,7 @@ diskDispatcher(
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_MOUNT_VOLUME:
+			dprintf("IRP_MN_MOUNT_VOLUME disk\n");
 			Status = zfs_vnop_mount(Irp, IrpSp);
 			break;
 		}
@@ -2890,6 +2895,7 @@ fsDispatcher(
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_MOUNT_VOLUME:
+			dprintf("IRP_MN_MOUNT_VOLUME fs\n");
 			Status = zfs_vnop_mount(Irp, IrpSp);
 			break;
 		case IRP_MN_USER_FS_REQUEST:
@@ -2999,7 +3005,7 @@ char *common_status_str(NTSTATUS Status)
  * respective handler.
  */
 _Function_class_(DRIVER_DISPATCH)
-static NTSTATUS
+NTSTATUS
 dispatcher(
 	_In_ PDEVICE_OBJECT DeviceObject,
 	_Inout_ PIRP Irp
@@ -3113,41 +3119,6 @@ are any writers to this file.  Note that main is acquired, so new handles cannot
 
 void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject)
 {
-	WIN_DriverObject->MajorFunction[IRP_MJ_CREATE] = (PDRIVER_DISPATCH)dispatcher;   // zfs_ioctl.c
-	WIN_DriverObject->MajorFunction[IRP_MJ_CLOSE] = (PDRIVER_DISPATCH)dispatcher;     // zfs_ioctl.c
-	WIN_DriverObject->MajorFunction[IRP_MJ_READ] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_WRITE] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_SET_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_EA] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_SET_EA] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_FLUSH_BUFFERS] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_VOLUME_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_SET_VOLUME_INFORMATION] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_DIRECTORY_CONTROL] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_FILE_SYSTEM_CONTROL] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = (PDRIVER_DISPATCH)dispatcher; // zfs_ioctl.c
-	WIN_DriverObject->MajorFunction[IRP_MJ_INTERNAL_DEVICE_CONTROL] = (PDRIVER_DISPATCH)dispatcher; // zfs_ioctl.c
-	WIN_DriverObject->MajorFunction[IRP_MJ_SHUTDOWN] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_LOCK_CONTROL] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_CLEANUP] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_DEVICE_CHANGE] = (PDRIVER_DISPATCH)dispatcher;
-	WIN_DriverObject->MajorFunction[IRP_MJ_PNP] = (PDRIVER_DISPATCH)dispatcher;
-
-	FS_FILTER_CALLBACKS FilterCallbacks;
-	RtlZeroMemory(&FilterCallbacks,
-		sizeof(FS_FILTER_CALLBACKS));
-
-	FilterCallbacks.SizeOfFsFilterCallbacks = sizeof(FS_FILTER_CALLBACKS);
-	FilterCallbacks.PreAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
-
-	NTSTATUS Status;
-
-	Status = FsRtlRegisterFileSystemFilterCallbacks(WIN_DriverObject,
-		&FilterCallbacks);
-	if (Status != STATUS_SUCCESS)
-		dprintf("%s: FsRtlRegisterFileSystemFilterCallbacks failed - no mmap for you\n", __func__);
 
 }
 
