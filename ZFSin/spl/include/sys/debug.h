@@ -114,8 +114,7 @@ do {									\
 
 #define PANIC(fmt, ...)						\
 do {									\
-	dprintf(NULL, 0, 0,					\
-		   __FILE__, __FUNCTION__, __LINE__,	fmt, __VA_ARGS__); \
+	dprintf(fmt, __VA_ARGS__); \
 } while (0)
 
 

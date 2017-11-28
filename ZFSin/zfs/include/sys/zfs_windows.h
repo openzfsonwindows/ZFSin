@@ -63,6 +63,7 @@ NTSTATUS zfsdev_release(dev_t dev, PIRP Irp);
 int zfs_vnop_recycle(znode_t *zp, int force);
 uint64_t zfs_blksz(znode_t *zp);
 
+int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp);
 
 
 #endif

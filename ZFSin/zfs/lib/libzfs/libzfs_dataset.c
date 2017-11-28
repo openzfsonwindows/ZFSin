@@ -1464,6 +1464,18 @@ badlabel:
 		case ZFS_PROP_NORMALIZE:
 			chosen_normal = (int)intval;
 			break;
+		case ZFS_PROP_DRIVELETTER:
+			if ((strcmp(strval, "off") == 0) ||
+				(strcmp(strval, "on") == 0) ||
+				(strval[1] == 0 && (toupper(strval[0]) >= 'A') && (toupper(strval[0]) <= 'Z'))) {
+				strval[0] = toupper(strval[0]);
+				break;
+			}
+			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				"DriveLetter can be [on|off|A-Z] not '%s'"),
+				strval);
+			(void)zfs_error(hdl, EZFS_BADPROP, errbuf);
+			goto error;
 		default:
 			break;
 		}
@@ -2609,7 +2621,7 @@ zfs_prop_get(zfs_handle_t *zhp, zfs_prop_t prop, char *propbuf, size_t proplen,
 			    relpath[0] != '\0'))
 				str++;
 
-#ifdef __APPLE__
+#ifdef WIN33
 			/*
 			 * On OSX by default we mount pools under /Volumes unless
 			 * the dataset property mountpoint specifies otherwise.
@@ -2619,7 +2631,7 @@ zfs_prop_get(zfs_handle_t *zhp, zfs_prop_t prop, char *propbuf, size_t proplen,
 			 */
 			char *default_mountpoint;
 			default_mountpoint = getenv("__ZFS_MAIN_MOUNTPOINT_DIR");
-			if (!default_mountpoint) default_mountpoint = "/Volumes/";
+			if (!default_mountpoint) default_mountpoint = WIN_DRIVELETTER "?:/";
 
 			//Temporarily allowing snapshot mounting
 			if (zhp->zfs_type == ZFS_TYPE_SNAPSHOT) {
@@ -2663,7 +2675,7 @@ zfs_prop_get(zfs_handle_t *zhp, zfs_prop_t prop, char *propbuf, size_t proplen,
 				    root, str);
 			else
 				(void) snprintf(propbuf, proplen, "%s%s%s%s",
-#ifdef __APPLE__
+#ifdef WIN33
 				    root, str, source == NULL ||
 				    source[0] == '\0' ? default_mountpoint : "/",
 #else
@@ -2672,7 +2684,7 @@ zfs_prop_get(zfs_handle_t *zhp, zfs_prop_t prop, char *propbuf, size_t proplen,
 				    relpath);
 
 
-#ifdef __APPLE__
+#ifdef WIN33
 			}
 #endif
 		} else {

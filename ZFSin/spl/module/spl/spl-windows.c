@@ -211,7 +211,7 @@ ddi_copyout(const void *from, void *to, uint32_t len, int flags)
 		return 0;
 	}
 
-	dprintf("SPL: trying windows copyout: %p:%d\n", to, len);
+	//dprintf("SPL: trying windows copyout: %p:%d\n", to, len);
 
 	mdl = IoAllocateMdl(to, len, FALSE, TRUE, NULL);
 	if (!mdl) {
@@ -242,7 +242,7 @@ ddi_copyout(const void *from, void *to, uint32_t len, int flags)
 		// Success, copy over the data.
 		bcopy(from, buffer, len);
 	}
-	dprintf("SPL: copyout return %d (%d bytes)\n", error, len);
+	//dprintf("SPL: copyout return %d (%d bytes)\n", error, len);
 out:
 	if (mdl) {
 		MmUnlockPages(mdl);
@@ -266,7 +266,7 @@ ddi_copysetup(void *to, uint32_t len, void **out_buffer, PMDL *out_mdl)
 		len == 0)
 		return 0;
 
-	dprintf("SPL: trying windows copyout_ex: %p:%d\n", to, len);
+	//dprintf("SPL: trying windows copyout_ex: %p:%d\n", to, len);
 
 	// Do we have to call both? Or is calling ProbeForWrite enough?
 	try {

@@ -37,13 +37,6 @@ int zfs_start(void)
 	zfs_ioctl_osx_init();
 	zfs_vfsops_init();
 	system_taskq_init();
-
-
-	zfs_cmd_t zc;
-	strlcpy(zc.zc_name, "BOOM", 10);
-	strlcpy(zc.zc_value, "/BOOM", 10);
-	//zfs_windows_mount(&zc);
-
 	return 0;
 }
 

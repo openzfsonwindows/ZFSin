@@ -9,6 +9,7 @@ ClassGuid={78A1C341-4539-11d3-B88D-00C04FAD5171} ; TODO: edit ClassGuid
 Provider=%ManufacturerName%
 CatalogFile=ZFSin.cat
 DriverVer= ; TODO: set DriverVer in stampinf property pages
+DriverPackageType = FileSystem
 
 ; ================= Class section =====================
 
@@ -46,10 +47,11 @@ AddService = ZFSin,%SPSVCINST_ASSOCSERVICE%, ZFSin_Service_Inst
 ; -------------- ZFSin driver install sections
 [ZFSin_Service_Inst]
 DisplayName    = %ZFSin.SVCDESC%
-ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+ServiceType    = 2               ; SERVICE_KERNEL_DRIVER
 StartType      = 3               ; SERVICE_DEMAND_START
 ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
 ServiceBinary  = %12%\ZFSin.sys
+LoadOrderGroup = "File System"
 
 ;
 ;--- ZFSin_Device Coinstaller installation ------

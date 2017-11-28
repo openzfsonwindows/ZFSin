@@ -780,7 +780,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 #endif /* __LINUX__ */
 
 	/* Create the directory if it doesn't already exist */
-#ifdef __APPLE__
+#ifdef _WIN32
 	/*
 	 * If the filesystem is encrypted the key must be loaded  in order to
 	 * mount. If the key isn't loaded, the MS_CRYPT flag decides whether
@@ -819,6 +819,12 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 #else
 	if (lstat(mountpoint, &buf) != 0) {
 #endif
+
+/*
+ * In windows, we do not create the directory, as it is made
+ * when we create the reparse point.
+ */
+#ifndef _WIN32
 		if (mkdirp(mountpoint, 0755) != 0) {
 			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
 			    "failed to create mountpoint"));
@@ -826,7 +832,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 			    dgettext(TEXT_DOMAIN, "cannot mount '%s'"),
 			    mountpoint));
 		}
-
+#endif
 	}
 
 	/*
@@ -842,6 +848,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 		}
 	}
 
+#ifndef _WIN32
 	/*
 	 * Determine if the mountpoint is empty.  If so, refuse to perform the
 	 * mount.  We don't perform this check if 'remount' is
@@ -854,7 +861,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 		return (zfs_error_fmt(hdl, EZFS_MOUNTFAILED,
 		    dgettext(TEXT_DOMAIN, "cannot mount '%s'"), mountpoint));
 	}
-
+#endif
 	/* perform the mount */
 #ifdef __LINUX__
 	rc = do_mount(zfs_get_name(zhp), mountpoint, mntopts);
@@ -888,7 +895,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 			    (u_longlong_t)zfs_prop_get_int(zhp,
 			    ZFS_PROP_VERSION), spa_version);
 			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, buf));
-#ifdef __APPLE__
+#ifdef _WIN32
 		} else if (((errno == ESRCH) || (errno == EINVAL) ||
 		    (errno == ENOENT && lstat(mountpoint, &buf) != 0)) &&
 		    zfs_get_type(zhp) == ZFS_TYPE_SNAPSHOT) {
@@ -1257,10 +1264,12 @@ zfs_share_proto(zfs_handle_t *zhp, zfs_share_proto_t *proto)
 			    NULL, NULL, mountpoint,
 			    proto_table[*curr_proto].p_name, sourcetype,
 			    shareopts, sourcestr, zhp->zfs_name) != SA_OK) {
+#if 0 // bring this back when we do sharing, for now just silencing mounts
 				(void) zfs_error_fmt(hdl,
 				    proto_table[*curr_proto].p_share_err,
 				    dgettext(TEXT_DOMAIN, "cannot share '%s'"),
 				    zfs_get_name(zhp));
+#endif
 				return (-1);
 			}
 			hdl->libzfs_shareflags |= ZFSSHARE_MISS;

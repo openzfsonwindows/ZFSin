@@ -267,7 +267,7 @@ statfs2mnttab(struct statfs *sfs, struct mnttab *mp)
 	mp->mnt_fssubtype = sfs->f_fssubtype;
 }
 
-void DisplayVolumePaths(char *VolumeName)
+void DisplayVolumePaths(char *VolumeName, char *out, int len)
 {
 	DWORD  CharCount = MAX_PATH + 1;
 	char *Names = NULL;
@@ -305,9 +305,10 @@ void DisplayVolumePaths(char *VolumeName)
 		for (NameIdx = Names;
 			NameIdx[0] != '\0';
 			NameIdx += strlen(NameIdx) + 1) {
-			printf("  %s", NameIdx);
+			//printf("  %s", NameIdx);
+			snprintf(out, len, "%s%s ", out, NameIdx);
 		}
-		printf("\n");
+		//printf("\n");
 	}
 
 	if (Names != NULL) {
@@ -360,7 +361,7 @@ int getfsstat(struct statfs *buf, int bufsize, int flags)
 			name[trail] = 0;
 
 		// Query DOS
-		char DeviceName[256];
+		char DeviceName[256], driveletter[256] = "";
 		int CharCount;
 		CharCount = QueryDosDevice(s, DeviceName, sizeof(DeviceName));
 
@@ -368,8 +369,8 @@ int getfsstat(struct statfs *buf, int bufsize, int flags)
 		if (name[trail] == 0)
 			name[trail] = '\\';
 
-//		printf("%s: volume '%s' device '%s'\n", __func__, name, DeviceName);
-//		DisplayVolumePaths(name);
+		//printf("%s: volume '%s' device '%s'\n", __func__, name, DeviceName);
+		DisplayVolumePaths(name, driveletter, sizeof(driveletter));
 
 		// Open DeviceName, and query it for dataset name
 		HANDLE h;
@@ -390,10 +391,10 @@ int getfsstat(struct statfs *buf, int bufsize, int flags)
 			BOOL gotname = FALSE;
 
 			gotname = DeviceIoControl(h, IOCTL_MOUNTDEV_QUERY_UNIQUE_ID, NULL, 0, UID, sizeof(cheat) - 1, &Size, NULL);
-//			printf("deviocon %d: namelen %d\n", status, UID->UniqueIdLength);
+			//printf("deviocon %d: namelen %d\n", status, UID->UniqueIdLength);
 			if (gotname) {
 				UID->UniqueId[UID->UniqueIdLength] = 0; // Kernel doesn't null terminate
-				printf("'%s' ==> '%s'\n", name, UID->UniqueId);
+				//printf("'%s' ==> '%s'\n", name, UID->UniqueId);
 			} else
 				UID = NULL;
 			CloseHandle(h);
@@ -406,13 +407,23 @@ int getfsstat(struct statfs *buf, int bufsize, int flags)
 				// Look up mountpoint
 				strlcpy(buf->f_mntfromname, UID->UniqueId, sizeof(buf->f_mntfromname));
 				strlcpy(buf->f_fstypename, MNTTYPE_ZFS, sizeof(buf->f_fstypename));
-				strlcpy(buf->f_mntonname, UID->UniqueId, sizeof(buf->f_mntonname)); // FIXME, should be mountpoint!
+				if (strlen(driveletter) > 2)
+					strlcpy(buf->f_mntonname, driveletter, sizeof(buf->f_mntonname)); // FIXME, should be mountpoint!
+				else
+					strlcpy(buf->f_mntonname, UID->UniqueId, sizeof(buf->f_mntonname)); // FIXME, should be mountpoint!
 			} else {
 				strlcpy(buf->f_mntfromname, DeviceName, sizeof(buf->f_mntfromname));
 				strlcpy(buf->f_fstypename, "UKN", sizeof(buf->f_fstypename));
 				strlcpy(buf->f_mntonname, name, sizeof(buf->f_mntonname));
 			}
 			UID = NULL;
+
+			/*
+			printf("  entry '%s' '%s' '%s'\n",
+				buf->f_mntfromname,
+				buf->f_mntonname,
+				name);
+			*/
 			buf++; // Go to next struct.
 			bufsize -= sizeof(*buf);
 		}

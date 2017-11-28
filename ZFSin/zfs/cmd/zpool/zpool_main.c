@@ -450,7 +450,6 @@ usage(boolean_t requested)
 		(void) printf("dumping core by request\n");
 		abort();
 	}
-
 	exit(requested ? 0 : 2);
 }
 

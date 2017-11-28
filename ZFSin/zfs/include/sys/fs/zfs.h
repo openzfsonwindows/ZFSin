@@ -186,6 +186,9 @@ typedef enum {
 	ZFS_PROP_ENCRYPTION_ROOT,
 	ZFS_PROP_KEY_GUID,
 	ZFS_PROP_KEYSTATUS,
+#ifdef _WIN32
+	ZFS_PROP_DRIVELETTER,
+#endif
 	ZFS_NUM_PROPS
 } zfs_prop_t;
 
@@ -968,7 +971,8 @@ typedef struct ddt_histogram {
 //#define	ZFS_DEV		"/dev/zfs"
 // Windows dev names sure are funky
 #define ZFS_DEV_KERNEL	L"\\Device\\ZFSCTL"
-#define ZFS_DEV_DOS		L"\\DosDevices\\ZFS"
+#define ZFS_GLOBAL_FS_DISK_DEVICE_NAME L"\\ZFS" 
+#define ZFS_DEV_DOS		L"\\DosDevices\\Global\\ZFS"
 #define ZFS_DEV			"\\\\.\\ZFS"
 
 
