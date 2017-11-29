@@ -67,16 +67,27 @@ struct vfsstatfs {
 
 //#pragma pack()
 
-enum mount_type {
-	MOUNT_TYPE_DCB = 231, // diskObject (most entries not used, should be own struct?)
-	MOUNT_TYPE_VCB        // fsObject 
-};
+//enum mount_type {
+//	MOUNT_TYPE_DCB = 231, // diskObject (most entries not used, should be own struct?)
+//	MOUNT_TYPE_VCB        // fsObject 
+//};
+
+typedef enum _FSD_IDENTIFIER_TYPE {
+	MOUNT_TYPE_DGL = ':DGL', // Dokan Global
+	MOUNT_TYPE_DCB = ':DCB', // Disk Control Block
+	MOUNT_TYPE_VCB = ':VCB', // Volume Control Block
+	MOUNT_TYPE_FCB = ':FCB', // File Control Block
+	MOUNT_TYPE_CCB = ':CCB', // Context Control Block
+} FSD_IDENTIFIER_TYPE;
+
 
 typedef enum mount_type mount_type_t;
 
 struct mount
 {
-	mount_type_t type;
+	FSD_IDENTIFIER_TYPE type;
+	ULONG size;
+//	mount_type_t type;
 	void *fsprivate;
 	PDEVICE_OBJECT deviceObject;
 	PDEVICE_OBJECT diskDeviceObject;

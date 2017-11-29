@@ -6652,7 +6652,7 @@ static int
 zfs_attach(void)
 {
 	mutex_init(&zfsdev_state_lock, NULL, MUTEX_DEFAULT, NULL);
-	zfsdev_state_list = kmem_zalloc(sizeof (zfsdev_state_t), KM_SLEEP);
+	zfsdev_state_list = kmem_zalloc(sizeof(zfsdev_state_t), KM_SLEEP);
 	zfsdev_state_list->zs_minor = -1;
 
 	extern void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject);
@@ -6663,7 +6663,7 @@ zfs_attach(void)
 //#define ZFS_GLOBAL_FS_DISK_DEVICE_NAME	L"\\FileSystem\\ZFS" 
 //#define ZFS_DEV_DOS						L"\\DosDevices\\Global\\ZFS"
 //#define ZFS_DEV							"\\\\.\\ZFS"
-									  
+
 	static UNICODE_STRING sddl = RTL_CONSTANT_STRING(
 		L"D:P(A;;GA;;;SY)(A;;GRGWGX;;;BA)(A;;GRGWGX;;;WD)(A;;GRGX;;;RC)");
 	// Or use &SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_RW_RES_R
@@ -6671,7 +6671,7 @@ zfs_attach(void)
 	RtlInitUnicodeString(&ntUnicodeString, ZFS_DEV_KERNEL);
 	ntStatus = IoCreateDeviceSecure(
 		WIN_DriverObject,                   // Our Driver Object
-		0,                           
+		sizeof(mount_t),
 		&ntUnicodeString,               // Device name "\Device\SIOCTL"
 		FILE_DEVICE_UNKNOWN,  // Device type
 		/*FILE_DEVICE_SECURE_OPEN*/ 0,     // Device characteristics
@@ -6691,7 +6691,7 @@ zfs_attach(void)
 	RtlInitUnicodeString(&fsDiskDeviceName, ZFS_GLOBAL_FS_DISK_DEVICE_NAME);
 
 	ntStatus = IoCreateDeviceSecure(WIN_DriverObject,      // DriverObject
-		0,                 // DeviceExtensionSize
+		sizeof(mount_t),      // DeviceExtensionSize
 		&fsDiskDeviceName, // DeviceName
 		FILE_DEVICE_DISK_FILE_SYSTEM, // DeviceType
 		0,                    // DeviceCharacteristics
@@ -6702,6 +6702,16 @@ zfs_attach(void)
 
 
 	ObReferenceObject(ioctlDeviceObject);
+
+	mount_t *dgl;
+	dgl = ioctlDeviceObject->DeviceExtension;
+	dgl->type = MOUNT_TYPE_DGL;
+	dgl->size = sizeof(mount_t);
+
+	mount_t *vcb;
+	vcb = fsDiskDeviceObject->DeviceExtension;
+	vcb->type = MOUNT_TYPE_VCB;
+	vcb->size = sizeof(mount_t);
 
 	//	extern 	VOID IoRegisterFileSystem(_In_ PDEVICE_OBJECT DeviceObject);
 	if (ntStatus == STATUS_SUCCESS) {
@@ -6724,10 +6734,32 @@ zfs_attach(void)
 	dprintf("ZFS: created userland device symlink\n");
 
 	fsDiskDeviceObject->Flags |= DO_DIRECT_IO;
-	fsDiskDeviceObject->Flags |= DO_LOW_PRIORITY_FILESYSTEM;
+	//fsDiskDeviceObject->Flags |= DO_LOW_PRIORITY_FILESYSTEM;
 	fsDiskDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 	IoRegisterFileSystem(fsDiskDeviceObject);
 	ObReferenceObject(fsDiskDeviceObject);
+
+
+	// CDrom, I mean, really? ZFS?
+	PDEVICE_OBJECT cdDiskDeviceObject;
+	UNICODE_STRING cdDiskDeviceName;
+	RtlInitUnicodeString(&cdDiskDeviceName, L"\\ZFScd");
+
+	ntStatus = IoCreateDeviceSecure(WIN_DriverObject,      // DriverObject
+		0,                 // DeviceExtensionSize
+		&cdDiskDeviceName, // DeviceName
+		FILE_DEVICE_CD_ROM_FILE_SYSTEM, // DeviceType
+		0,                    // DeviceCharacteristics
+		FALSE,                // Not Exclusive
+		&sddl,                // Default SDDL String
+		NULL,                 // Device Class GUID
+		&cdDiskDeviceObject); // DeviceObject
+	cdDiskDeviceObject->Flags |= DO_DIRECT_IO;
+	cdDiskDeviceObject->Flags |= DO_LOW_PRIORITY_FILESYSTEM;
+	cdDiskDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+	IoRegisterFileSystem(cdDiskDeviceObject);
+	ObReferenceObject(cdDiskDeviceObject);
+	
 
 	// Set all the callbacks to "dispatch"
 	extern _Function_class_(DRIVER_DISPATCH)

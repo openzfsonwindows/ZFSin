@@ -306,29 +306,22 @@ int AsciiStringToUnicodeString(char *in, PUNICODE_STRING out)
 
 
 NTSTATUS
-SendIoctlToMountManager(
-	__in PVOID	InputBuffer,
-	__in ULONG	Length
-)
+	SendIoctlToMountManager(__in ULONG IoControlCode, __in PVOID InputBuffer,
+	__in ULONG Length, __out PVOID OutputBuffer,
+	__in ULONG OutputLength) 
 {
-	NTSTATUS		status;
-	UNICODE_STRING	mountManagerName;
-	PFILE_OBJECT    mountFileObject;
-	PDEVICE_OBJECT  mountDeviceObject;
-	PIRP			irp;
-	KEVENT			driverEvent;
-	IO_STATUS_BLOCK	iosb;
-
-	dprintf("=> SendIocntlToMountManager\n");
+	NTSTATUS status;
+	UNICODE_STRING mountManagerName;
+	PFILE_OBJECT mountFileObject;
+	PDEVICE_OBJECT mountDeviceObject;
+	PIRP irp;
+	KEVENT driverEvent;
+	IO_STATUS_BLOCK iosb;
 
 	RtlInitUnicodeString(&mountManagerName, MOUNTMGR_DEVICE_NAME);
 
-
-	status = IoGetDeviceObjectPointer(
-		&mountManagerName,
-		FILE_READ_ATTRIBUTES,
-		&mountFileObject,
-		&mountDeviceObject);
+	status = IoGetDeviceObjectPointer(&mountManagerName, FILE_READ_ATTRIBUTES,
+		&mountFileObject, &mountDeviceObject);
 
 	if (!NT_SUCCESS(status)) {
 		dprintf("  IoGetDeviceObjectPointer failed: 0x%x\n", status);
@@ -337,16 +330,9 @@ SendIoctlToMountManager(
 
 	KeInitializeEvent(&driverEvent, NotificationEvent, FALSE);
 
-	irp = IoBuildDeviceIoControlRequest(
-		IOCTL_MOUNTMGR_VOLUME_ARRIVAL_NOTIFICATION,
-		mountDeviceObject,
-		InputBuffer,
-		Length,
-		NULL,
-		0,
-		FALSE,
-		&driverEvent,
-		&iosb);
+	irp = IoBuildDeviceIoControlRequest(IoControlCode, mountDeviceObject,
+		InputBuffer, Length, OutputBuffer,
+		OutputLength, FALSE, &driverEvent, &iosb);
 
 	if (irp == NULL) {
 		dprintf("  IoBuildDeviceIoControlRequest failed\n");
@@ -356,23 +342,23 @@ SendIoctlToMountManager(
 	status = IoCallDriver(mountDeviceObject, irp);
 
 	if (status == STATUS_PENDING) {
-		KeWaitForSingleObject(
-			&driverEvent, Executive, KernelMode, FALSE, NULL);
+		KeWaitForSingleObject(&driverEvent, Executive, KernelMode, FALSE, NULL);
 	}
 	status = iosb.Status;
 
 	ObDereferenceObject(mountFileObject);
+	// Don't dereference mountDeviceObject, mountFileObject is enough
 
 	if (NT_SUCCESS(status)) {
 		dprintf("  IoCallDriver success\n");
-	} else {
+	}
+	else {
 		dprintf("  IoCallDriver failed: 0x%x\n", status);
 	}
 
-	dprintf("<= SendIocontlToMountManager\n");
-
 	return status;
 }
+
 
 NTSTATUS
 SendVolumeArrivalNotification(
@@ -398,7 +384,8 @@ SendVolumeArrivalNotification(
 	targetName->DeviceNameLength = DeviceName->Length;
 	RtlCopyMemory(targetName->DeviceName, DeviceName->Buffer, DeviceName->Length);
 
-	status = SendIoctlToMountManager(targetName, length);
+	status = SendIoctlToMountManager(
+		IOCTL_MOUNTMGR_VOLUME_ARRIVAL_NOTIFICATION, targetName, length, NULL, 0);
 
 	if (NT_SUCCESS(status)) {
 		dprintf("  IoCallDriver success\n");
@@ -494,6 +481,56 @@ RegisterDeviceInterface(
 	return status;
 }
 
+NTSTATUS
+SendVolumeCreatePoint(__in PUNICODE_STRING DeviceName,
+	__in PUNICODE_STRING MountPoint) {
+	NTSTATUS status;
+	PMOUNTMGR_CREATE_POINT_INPUT point;
+	ULONG length;
+
+	dprintf("=> SendVolumeCreatePoint\n");
+
+	length = sizeof(MOUNTMGR_CREATE_POINT_INPUT) + MountPoint->Length +
+		DeviceName->Length;
+	point = ExAllocatePool(PagedPool, length);
+
+	if (point == NULL) {
+		dprintf("  can't allocate MOUNTMGR_CREATE_POINT_INPUT\n");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	RtlZeroMemory(point, length);
+
+	dprintf("  DeviceName: %wZ\n", DeviceName);
+	point->DeviceNameOffset = sizeof(MOUNTMGR_CREATE_POINT_INPUT);
+	point->DeviceNameLength = DeviceName->Length;
+	RtlCopyMemory((PCHAR)point + point->DeviceNameOffset, DeviceName->Buffer,
+		DeviceName->Length);
+
+	dprintf("  MountPoint: %wZ\n", MountPoint);
+	point->SymbolicLinkNameOffset =
+		point->DeviceNameOffset + point->DeviceNameLength;
+	point->SymbolicLinkNameLength = MountPoint->Length;
+	RtlCopyMemory((PCHAR)point + point->SymbolicLinkNameOffset,
+		MountPoint->Buffer, MountPoint->Length);
+	
+	status = SendIoctlToMountManager(IOCTL_MOUNTMGR_CREATE_POINT, point,
+		length, NULL, 0);
+
+	if (NT_SUCCESS(status)) {
+		dprintf("  IoCallDriver success\n");
+	}
+	else {
+		dprintf("  IoCallDriver failed: 0x%x\n", status);
+	}
+
+	ExFreePool(point);
+
+	dprintf("<= DokanSendVolumeCreatePoint\n");
+
+	return status;
+}
+
 
 void FreeUnicodeString(PUNICODE_STRING s)
 {
@@ -514,7 +551,6 @@ void zfs_release_mount(mount_t *zmo)
 		zmo->diskDeviceObject->Vpb->Flags = 0;
 	}
 }
-
 
 int zfs_windows_mount(zfs_cmd_t *zc)
 {
@@ -566,11 +602,13 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 
 	mount_t *zmo_dcb = diskDeviceObject->DeviceExtension;
 	zmo_dcb->type = MOUNT_TYPE_DCB;
+	zmo_dcb->size = sizeof(mount_t);
 	vfs_setfsprivate(zmo_dcb, NULL);
 	AsciiStringToUnicodeString(uuid_a, &zmo_dcb->uuid);
 	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
 	AsciiStringToUnicodeString(buf, &zmo_dcb->device_name);
 	zmo_dcb->deviceObject = diskDeviceObject;
+	dprintf("New device %p has extension %p\n", diskDeviceObject, zmo_dcb);
 
 	snprintf(buf, sizeof(buf), "\\DosDevices\\Global\\Volume{%s}", uuid_a);
 	pants.Buffer = buf;
@@ -607,9 +645,169 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	ObReferenceObject(diskDeviceObject);
 	//InsertMountEntry(WIN_DriverObject, NULL, FALSE);
 
+
+	// Call ZFS and have it setup a mount "zfsvfs"
+	// we don7t have the vcb yet, but we want to find out mount
+	// problems early.
+	struct zfs_mount_args mnt_args;
+	mnt_args.struct_size = sizeof(struct zfs_mount_args);
+	mnt_args.optlen = 0;
+	mnt_args.mflag = 0; // Set flags
+	mnt_args.fspec = zc->zc_name;
+
+	// Mount will temporarily be pointing to "dcb" until the 
+	// zfs_vnop_mount() below corrects it to "vcb".
+	status = zfs_vfs_mount(zmo_dcb, NULL, &mnt_args, NULL);
+	dprintf("%s: zfs_vfs_mount() returns %d\n", __func__, status);
+
+	if (status) {
+		zfs_release_mount(zmo_dcb);
+		IoDeleteDevice(diskDeviceObject);
+		return status;
+	}
+
+
+	dprintf("Verify Volume\n");
+	IoVerifyVolume(diskDeviceObject, FALSE);
+
 	status = STATUS_SUCCESS;
 	return status;
 }
+
+VOID InitVpb(__in PVPB Vpb, __in PDEVICE_OBJECT VolumeDevice) {
+	if (Vpb != NULL) {
+		Vpb->DeviceObject = VolumeDevice;
+		Vpb->VolumeLabelLength = (USHORT)wcslen(VOLUME_LABEL) * sizeof(WCHAR);
+		RtlStringCchCopyW(Vpb->VolumeLabel,
+			sizeof(Vpb->VolumeLabel) / sizeof(WCHAR), VOLUME_LABEL);
+		Vpb->SerialNumber = 0x19831116;
+	}
+}
+
+
+
+int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	PDRIVER_OBJECT DriverObject = DiskDevice->DriverObject;
+	PDEVICE_OBJECT volDeviceObject;
+	NTSTATUS status;
+	PDEVICE_OBJECT DeviceToMount;
+	DeviceToMount = IrpSp->Parameters.MountVolume.DeviceObject;
+
+	dprintf("*** mount request for %p : minor\n", DeviceToMount);
+
+	mount_t *dcb = DeviceToMount->DeviceExtension;
+	if ((dcb == NULL) ||
+		(dcb->type != MOUNT_TYPE_DCB) ||
+		(dcb->size != sizeof(mount_t))) {
+		dprintf("%s: Not a ZFS dataset -- ignoring\n", __func__);
+		return STATUS_UNRECOGNIZED_VOLUME;
+	}
+
+	// ZFS Dataset being mounted:
+	dprintf("%s: mounting '%wZ'\n", __func__, dcb->name);
+
+	// We created a DISK before, now we create a VOLUME
+	ULONG				deviceCharacteristics;
+	deviceCharacteristics = FILE_DEVICE_IS_MOUNTED;
+	deviceCharacteristics |= FILE_REMOVABLE_MEDIA;
+
+
+	status = IoCreateDevice(DriverObject,               // DriverObject
+		sizeof(mount_t),           // DeviceExtensionSize
+		NULL,                       // DeviceName
+		FILE_DEVICE_DISK,      // DeviceType
+		deviceCharacteristics, // DeviceCharacteristics
+		FALSE,                      // Not Exclusive
+		&volDeviceObject);          // DeviceObject
+
+	if (!NT_SUCCESS(status)) {
+		dprintf("%s: IoCreateDevice failed: 0x%x\n", __func__, status);
+		return status;
+	}
+
+	mount_t *vcb = volDeviceObject->DeviceExtension;
+	vcb->type = MOUNT_TYPE_VCB;
+	vcb->size = sizeof(mount_t);
+
+	// Move the fsprivate ptr from dcb to vcb
+	vfs_setfsprivate(vcb, vfs_fsprivate(dcb));
+	vfs_setfsprivate(dcb, NULL);
+	zfsvfs_t *zfsvfs = vfs_fsprivate(vcb);
+	zfsvfs->z_vfs = vcb;
+	RtlDuplicateUnicodeString(0, &dcb->device_name, &vcb->device_name);
+	RtlDuplicateUnicodeString(0, &dcb->fs_name, &vcb->fs_name);
+	RtlDuplicateUnicodeString(0, &dcb->name, &vcb->name);
+	RtlDuplicateUnicodeString(0, &dcb->symlink_name, &vcb->symlink_name);
+
+
+#if 0
+#if _WIN32_WINNT >= 0x0501
+	FsRtlSetupAdvancedHeader(&vcb->VolumeFileHeader,
+		&vcb->AdvancedFCBHeaderMutex);
+#else
+	if (FsRtlTeardownPerStreamContexts) {
+		FsRtlSetupAdvancedHeader(&vcb->VolumeFileHeader,
+			&vcb->AdvancedFCBHeaderMutex);
+	}
+#endif
+#endif
+	PVPB vpb = NULL;
+	vpb = IrpSp->Parameters.MountVolume.Vpb;
+	InitVpb(vpb, volDeviceObject);
+
+	volDeviceObject->Flags |= DO_DIRECT_IO;
+	volDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+	//SetLongFlag(vcb->Flags, VCB_MOUNTED);
+
+	ObReferenceObject(volDeviceObject);
+
+
+	status = SendVolumeArrivalNotification(&dcb->device_name);
+	if (!NT_SUCCESS(status)) {
+		dprintf("  SendVolumeArrivalNotification failed: 0x%x\n", status);
+	}
+
+	UNICODE_STRING  mountp;    // NT Device Name
+	RtlInitUnicodeString(&mountp, L"F:\\");
+
+	SendVolumeCreatePoint(&dcb->device_name, &mountp);
+	//IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS	0x560000
+	// IOCTL_DISK_GET_PARTITION_INFO_EX	0x70048
+	return STATUS_SUCCESS;
+}
+#if 0
+NTSTATUS Status;
+MOUNTDEV_NAME mdn, *mdn2;
+ULONG mdnsize;
+
+Status = dev_ioctl(DeviceToMount, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, &mdn, sizeof(MOUNTDEV_NAME), TRUE, NULL);
+if (Status != STATUS_SUCCESS && Status != STATUS_BUFFER_OVERFLOW)
+return STATUS_UNRECOGNIZED_VOLUME;
+
+mdnsize = offsetof(MOUNTDEV_NAME, Name[0]) + mdn.NameLength;
+mdn2 = kmem_alloc(mdnsize, KM_SLEEP);
+
+//dprintf("mount strlen %d\n", mdn.NameLength);
+
+Status = dev_ioctl(DeviceToMount, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, mdn2, mdnsize, TRUE, NULL);
+if (Status != STATUS_SUCCESS)
+goto out;
+
+dprintf("IRP_MN_MOUNT_VOLUME mount about '%.*S'\n", mdn2->NameLength / sizeof(WCHAR), mdn2->Name);
+#endif
+
+#if 0
+ANSI_STRING ansi;
+UNICODE_STRING uni;
+RtlUnicodeStringInit(&uni, mdn2->Name);
+RtlUnicodeStringToAnsiString(&ansi, &uni, TRUE);
+dprintf("mount about '%s'\n", ansi.Buffer);
+RtlFreeAnsiString(&ansi);
+#endif
+//out:
+//	kmem_free(mdn2, mdnsize);
+
 
 int zfs_windows_mountX(zfs_cmd_t *zc)
 {
@@ -975,6 +1173,7 @@ int zfs_windows_zvol_create(zfs_cmd_t *zc)
 
 	mount_t *zmo_dcb = diskDeviceObject->DeviceExtension;
 	zmo_dcb->type = MOUNT_TYPE_DCB;
+	zmo_dcb->size = sizeof(mount_t);
 	vfs_setfsprivate(zmo_dcb, NULL);
 	AsciiStringToUnicodeString(uuid_a, &zmo_dcb->uuid);
 	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
