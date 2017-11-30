@@ -1257,10 +1257,12 @@ zfs_share_proto(zfs_handle_t *zhp, zfs_share_proto_t *proto)
 			    NULL, NULL, mountpoint,
 			    proto_table[*curr_proto].p_name, sourcetype,
 			    shareopts, sourcestr, zhp->zfs_name) != SA_OK) {
+#if 0 // bring this back when we do sharing, for now just silencing mounts
 				(void) zfs_error_fmt(hdl,
 				    proto_table[*curr_proto].p_share_err,
 				    dgettext(TEXT_DOMAIN, "cannot share '%s'"),
 				    zfs_get_name(zhp));
+#endif
 				return (-1);
 			}
 			hdl->libzfs_shareflags |= ZFSSHARE_MISS;

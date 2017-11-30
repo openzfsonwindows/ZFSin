@@ -55,16 +55,15 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 
 	fprintf(stderr, "'%s' mounted on %s\r\n", zc.zc_name, zc.zc_value);
 
-#if 1
 	char out[MAXPATHLEN];
 	DWORD outlen;
 
-	if (QueryDosDevice(
-		"D:",
-		out, MAXPATHLEN) > 0)
-		fprintf(stderr, "'%s' mounted on %s\r\n", zc.zc_name, zc.zc_value);
-	else
-		fprintf(stderr, "QueryDos getlast 0x%x\n", GetLastError());
+	//if (QueryDosDevice(
+	//	"G:",
+	//	out, MAXPATHLEN) > 0)
+	//	fprintf(stderr, "'%s' mounted on %s\r\n", zc.zc_name, zc.zc_value);
+	//else
+	//	fprintf(stderr, "QueryDos getlast 0x%x\n", GetLastError());
 
 	outlen = 0;
 	// these give error 0x57 (invalid parameter)
@@ -75,11 +74,21 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 	// this gives error 0x1 ERROR_INVALID_FUNCTION
 	//char *name = "\\\\?\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}\\";
 
-	char *name = "\\\\?\\Volume{5d7612f2-339b-11e7-baa7-ab3bc3128e46}\\";
+	//char *name = "\\\\?\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}\\";
+	char *name = zc.zc_value;
+
+	// Kernel returns "\\Device\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}\\""
+	if (strncmp(name, "\\Device\\Volume{", 15) == 0) {
+		strlcpy(&name[0], "\\\\?\\", sizeof(zc.zc_value));
+		strlcpy(&name[4], &name[8], sizeof(zc.zc_value));
+		strlcat(name, "\\", sizeof(zc.zc_value));
+	}
+
 	fprintf(stderr, "Looking up '%s'\r\n", name);
 	ret = GetVolumePathNamesForVolumeName(name, out, MAXPATHLEN, &outlen);
 
-	fprintf(stderr, "GetVolumePathNamesForVolumeName ret %d outlen %d GetLastError 0x%x\n", ret, outlen, GetLastError());
+	if (ret != 1)
+		fprintf(stderr, "GetVolumePathNamesForVolumeName ret %d outlen %d GetLastError 0x%x\n", ret, outlen, GetLastError());
 	if (outlen > 0 && ret > 0) {
 		char *NameIdx;
 		fprintf(stderr, "%s: ", zc.zc_name);
@@ -91,6 +100,8 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 		}
 		fprintf(stderr, "\r\n");
 	}
+	ret = 0;
+#if 0
 	fprintf(stderr, "Trying mountmgr\r\n");
 #define MOUNTMGR_DOS_DEVICE_NAME L"\\\\.\\MountPointManager"
 	typedef struct _MOUNTMGR_MOUNT_POINT {

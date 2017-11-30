@@ -607,6 +607,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	AsciiStringToUnicodeString(uuid_a, &zmo_dcb->uuid);
 	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
 	AsciiStringToUnicodeString(buf, &zmo_dcb->device_name);
+	strlcpy(zc->zc_value, buf, sizeof(zc->zc_value)); // Copy to userland
 	zmo_dcb->deviceObject = diskDeviceObject;
 	dprintf("New device %p has extension %p\n", diskDeviceObject, zmo_dcb);
 
@@ -769,11 +770,26 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	}
 
 	UNICODE_STRING  mountp;    // NT Device Name
-	RtlInitUnicodeString(&mountp, L"F:\\");
+	//RtlInitUnicodeString(&mountp, L"\\DosDevices\\F:");
+	RtlInitUnicodeString(&mountp, L"\\DosDevices\\C:\\BOOM");
 
 	SendVolumeCreatePoint(&dcb->device_name, &mountp);
 	//IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS	0x560000
 	// IOCTL_DISK_GET_PARTITION_INFO_EX	0x70048
+
+	UNICODE_STRING name;
+	PFILE_OBJECT                        fileObject;
+	PDEVICE_OBJECT                      deviceObject;
+
+	RtlInitUnicodeString(&name, MOUNTMGR_DEVICE_NAME);
+	status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &fileObject,
+		&deviceObject);
+	//status = mountmgr_add_drive_letter(deviceObject, &fsDeviceName);
+	char namex[200];
+	status = mountmgr_get_drive_letter(deviceObject, &dcb->device_name, namex);
+	ObDereferenceObject(fileObject);
+
+
 	return STATUS_SUCCESS;
 }
 #if 0
@@ -863,6 +879,7 @@ int zfs_windows_mountX(zfs_cmd_t *zc)
 	AsciiStringToUnicodeString(uuid_a, &zmo_dcb->uuid);
 	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
 	AsciiStringToUnicodeString(buf, &zmo_dcb->device_name);
+	strlcpy(zc->zc_value, buf, sizeof(zc->zc_value)); // Copy name to userland.
 	zmo_dcb->deviceObject = diskDeviceObject;
 
 	snprintf(buf, sizeof(buf), "\\DosDevices\\Global\\Volume{%s}", uuid_a);
@@ -1011,6 +1028,7 @@ int zfs_windows_mountX(zfs_cmd_t *zc)
 	RegisterDeviceInterface(WIN_DriverObject, diskDeviceObject, zmo_dcb);
 
 
+#if 0
 	UNICODE_STRING name;
 	PFILE_OBJECT                        fileObject;
 	PDEVICE_OBJECT                      deviceObject;
@@ -1020,8 +1038,10 @@ int zfs_windows_mountX(zfs_cmd_t *zc)
 		&deviceObject);
 	status = mountmgr_add_drive_letter(deviceObject, &fsDeviceName);
 	status = mountmgr_get_drive_letter(deviceObject, &diskDeviceName, zc->zc_value);
+	ObDereferenceObject(fileObject);
 
-#if 0
+	// XXXX
+
 	PMOUNTMGR_CREATE_POINT_INPUT input;
 	UNICODE_STRING                  unicodeTargetVolumeName;
 	DWORD                           inputSize;
@@ -1063,7 +1083,6 @@ int zfs_windows_mountX(zfs_cmd_t *zc)
 #endif
 
 
-	ObDereferenceObject(fileObject);
 	status = STATUS_SUCCESS;
 	return status;
 }

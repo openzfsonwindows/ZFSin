@@ -6739,7 +6739,7 @@ zfs_attach(void)
 	IoRegisterFileSystem(fsDiskDeviceObject);
 	ObReferenceObject(fsDiskDeviceObject);
 
-
+#if 0
 	// CDrom, I mean, really? ZFS?
 	PDEVICE_OBJECT cdDiskDeviceObject;
 	UNICODE_STRING cdDiskDeviceName;
@@ -6759,7 +6759,7 @@ zfs_attach(void)
 	cdDiskDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 	IoRegisterFileSystem(cdDiskDeviceObject);
 	ObReferenceObject(cdDiskDeviceObject);
-	
+#endif	
 
 	// Set all the callbacks to "dispatch"
 	extern _Function_class_(DRIVER_DISPATCH)

@@ -238,10 +238,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	ULONG CreateDisposition;
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
 
-	if (zfsvfs == NULL) {
-		DbgBreakPoint();
-		return STATUS_OBJECT_PATH_NOT_FOUND;
-	}
+	if (zfsvfs == NULL) return STATUS_OBJECT_PATH_NOT_FOUND;
 
 	FileObject = IrpSp->FileObject;
 	Options = IrpSp->Parameters.Create.Options;
@@ -1116,6 +1113,46 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	}
 }
 
+NTSTATUS ioctl_mountdev_query_suggested_link_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	MOUNTDEV_SUGGESTED_LINK_NAME *linkName;
+	ULONG				bufferLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
+	UNICODE_STRING MountPoint;
+
+	dprintf("%s: \n", __func__);
+
+	if (bufferLength < sizeof(MOUNTDEV_SUGGESTED_LINK_NAME)) {
+		Irp->IoStatus.Information = sizeof(MOUNTDEV_SUGGESTED_LINK_NAME);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	// This code works, for driveletters.
+	return STATUS_NOT_FOUND;
+
+//	RtlInitUnicodeString(&MountPoint, L"\\DosDevices\\G:");
+
+	linkName = (PMOUNTDEV_SUGGESTED_LINK_NAME)Irp->AssociatedIrp.SystemBuffer;
+
+	linkName->UseOnlyIfThereAreNoOtherLinks = FALSE;
+	linkName->NameLength = MountPoint.Length;
+
+	if (sizeof(USHORT) + linkName->NameLength <= bufferLength) {
+		RtlCopyMemory((PCHAR)linkName->Name, MountPoint.Buffer,
+			linkName->NameLength);
+		Irp->IoStatus.Information =
+			FIELD_OFFSET(MOUNTDEV_SUGGESTED_LINK_NAME, Name[0]) +
+			linkName->NameLength;
+		dprintf("  LinkName %wZ (%d)\n", MountPoint, MountPoint.Length);
+		return 	STATUS_SUCCESS;
+	}
+
+	Irp->IoStatus.Information = sizeof(MOUNTDEV_SUGGESTED_LINK_NAME);
+	return STATUS_BUFFER_OVERFLOW;
+
+	//return STATUS_NOT_FOUND;
+
+}
+
 NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	NTSTATUS Status;
@@ -1554,7 +1591,8 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	// which is used with sizeof(struct) to work out how much bigger the return is.
 	if (usedspace) *usedspace = space; // Space will always be 2 or more, since struct has room for 1 wchar
 
-	dprintf("* %s: partial name of %.*S\n", __func__, space + sizeof(name->FileName) / sizeof(WCHAR), name->FileName);
+	dprintf("* %s: partial name of %.*S struct size 0x%x and FileNameLength 0x%x Usedspace 0x%x\n", __func__, name->FileNameLength / sizeof(WCHAR), name->FileName,
+		sizeof(FILE_NAME_INFORMATION), name->FileNameLength, space);
 
 	return Status;
 }
@@ -2709,6 +2747,7 @@ diskDispatcher(
 			break;
 		case IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME:
 			dprintf("IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME\n");
+			Status = ioctl_mountdev_query_suggested_link_name(DeviceObject, Irp, IrpSp);
 			break;
 		case IOCTL_VOLUME_ONLINE:
 			dprintf("IOCTL_VOLUME_ONLINE\n");
