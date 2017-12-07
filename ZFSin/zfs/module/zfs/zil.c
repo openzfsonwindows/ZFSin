@@ -566,7 +566,7 @@ zil_alloc_lwb(zilog_t *zilog, blkptr_t *bp, boolean_t slog,
 
 	ASSERT(!MUTEX_HELD(&lwb->lwb_vdev_lock));
 	ASSERT(avl_is_empty(&lwb->lwb_vdev_tree));
-	ASSERT(list_is_empty(&lwb->lwb_waiters));
+	VERIFY(list_is_empty(&lwb->lwb_waiters));
 
 	return (lwb);
 }
@@ -576,7 +576,7 @@ zil_free_lwb(zilog_t *zilog, lwb_t *lwb)
 {
 	ASSERT(MUTEX_HELD(&zilog->zl_lock));
 	ASSERT(!MUTEX_HELD(&lwb->lwb_vdev_lock));
-	ASSERT(list_is_empty(&lwb->lwb_waiters));
+	VERIFY(list_is_empty(&lwb->lwb_waiters));
 	ASSERT(avl_is_empty(&lwb->lwb_vdev_tree));
 	ASSERT3P(lwb->lwb_write_zio, ==, NULL);
 	ASSERT3P(lwb->lwb_root_zio, ==, NULL);
@@ -920,6 +920,12 @@ zil_commit_waiter_skip(zil_commit_waiter_t *zcw)
 static void
 zil_commit_waiter_link_lwb(zil_commit_waiter_t *zcw, lwb_t *lwb)
 {
+	/*
+	 * The lwb_waiters field of the lwb is protected by the zilog's
+	 * zl_lock, thus it must be held when calling this function.
+	 */
+	ASSERT(MUTEX_HELD(&lwb->lwb_zilog->zl_lock));
+
 	mutex_enter(&zcw->zcw_lock);
 	ASSERT(!list_link_active(&zcw->zcw_node));
 	ASSERT3P(zcw->zcw_lwb, ==, NULL);
@@ -2276,10 +2282,24 @@ zil_commit_waiter_timeout(zilog_t *zilog, zil_commit_waiter_t *zcw)
 	ASSERT3P(lwb, ==, zcw->zcw_lwb);
 
 	/*
-	 * We've already checked this above, but since we hadn't
-	 * acquired the zilog's zl_issuer_lock, we have to perform this
-	 * check a second time while holding the lock. We can't call
+	 * We've already checked this above, but since we hadn't acquired
+	 * the zilog's zl_issuer_lock, we have to perform this check a
+	 * second time while holding the lock.
+	 *
+	 * We don't need to hold the zl_lock since the lwb cannot transition
+	 * from OPENED to ISSUED while we hold the zl_issuer_lock. The lwb
+	 * _can_ transition from ISSUED to DONE, but it's OK to race with
+	 * that transition since we treat the lwb the same, whether it's in
+	 * the ISSUED or DONE states.
+	 *
+	 * The important thing, is we treat the lwb differently depending on
+	 * if it's ISSUED or OPENED, and block any other threads that might
+	 * attempt to issue this lwb. For that reason we hold the
+	 * zl_issuer_lock when checking the lwb_state; we must not call
 	 * zil_lwb_write_issue() if the lwb had already been issued.
+	 *
+	 * See the comment above the lwb_state_t structure definition for
+	 * more details on the lwb states, and locking requirements.
 	 */
 	if (lwb->lwb_state == LWB_STATE_ISSUED ||
 	    lwb->lwb_state == LWB_STATE_DONE)
