@@ -1553,7 +1553,7 @@ dsl_scan_prefetch_thread(void *arg)
 		/* issue the prefetch asynchronously */
 		(void) arc_read(scn->scn_zio_root, scn->scn_dp->dp_spa,
 		    &spic->spic_bp, dsl_scan_prefetch_cb, spic->spic_spc,
-		    ZIO_PRIORITY_ASYNC_READ, zio_flags, &flags, &spic->spic_zb);
+		    ZIO_PRIORITY_SCRUB, zio_flags, &flags, &spic->spic_zb);
 
 		kmem_free(spic, sizeof (scan_prefetch_issue_ctx_t));
 	}
@@ -1637,7 +1637,7 @@ dsl_scan_recurse(dsl_scan_t *scn, dsl_dataset_t *ds, dmu_objset_type_t ostype,
 		arc_buf_t *buf;
 
 		err = arc_read(NULL, dp->dp_spa, bp, arc_getbuf_func, &buf,
-		    ZIO_PRIORITY_ASYNC_READ, zio_flags, &flags, zb);
+		    ZIO_PRIORITY_SCRUB, zio_flags, &flags, zb);
 		if (err) {
 			scn->scn_phys.scn_errors++;
 			return (err);
@@ -1665,7 +1665,7 @@ dsl_scan_recurse(dsl_scan_t *scn, dsl_dataset_t *ds, dmu_objset_type_t ostype,
 		}
 
 		err = arc_read(NULL, dp->dp_spa, bp, arc_getbuf_func, &buf,
-		    ZIO_PRIORITY_ASYNC_READ, zio_flags, &flags, zb);
+		    ZIO_PRIORITY_SCRUB, zio_flags, &flags, zb);
 		if (err) {
 			scn->scn_phys.scn_errors++;
 			return (err);
@@ -1684,7 +1684,7 @@ dsl_scan_recurse(dsl_scan_t *scn, dsl_dataset_t *ds, dmu_objset_type_t ostype,
 		arc_buf_t *buf;
 
 		err = arc_read(NULL, dp->dp_spa, bp, arc_getbuf_func, &buf,
-		    ZIO_PRIORITY_ASYNC_READ, zio_flags, &flags, zb);
+		    ZIO_PRIORITY_SCRUB, zio_flags, &flags, zb);
 		if (err) {
 			scn->scn_phys.scn_errors++;
 			return (err);
