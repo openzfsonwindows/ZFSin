@@ -41,8 +41,10 @@ sendfs=$POOL/sendfs
 recvfs=$POOL2/recvfs
 streamfs=$POOL/stream
 
-test_fs_setup $POOL $POOL2
-resume_test "$ZFS send -D -v $sendfs@a" $streamfs $recvfs
+log_onexit resume_cleanup $sendfs $streamfs
+
+test_fs_setup $sendfs $recvfs $streamfs
+resume_test "zfs send -D -v $sendfs@a" $streamfs $recvfs
 file_check $sendfs $recvfs
 
 log_pass "Verify resumability of full ZFS send/receive with the -D " \

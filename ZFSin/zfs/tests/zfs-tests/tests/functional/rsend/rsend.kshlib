@@ -526,6 +526,9 @@ function test_fs_setup
 	if datasetexists $sendfs; then
 		log_must $ZFS destroy -r $sendfs
 	fi
+	if datasetexists $streamfs; then
+		log_must $ZFS destroy -r $streamfs
+	fi
 	if $($ZFS create -o compress=lz4 $sendfs); then
 		mk_files 1000 256 0 $sendfs &
 		mk_files 1000 131072 0 $sendfs &
@@ -553,10 +556,6 @@ function test_fs_setup
 		">/$sendpool/incremental.zsend"
 	fi
 
-	if datasetexists $streamfs; then
-		log_must $ZFS destroy -r $streamfs
-	fi
-
-	log_must $ZFS create -o compress=lz4 $sendpool/stream
+	log_must zfs create -o compress=lz4 $streamfs
 }
 
