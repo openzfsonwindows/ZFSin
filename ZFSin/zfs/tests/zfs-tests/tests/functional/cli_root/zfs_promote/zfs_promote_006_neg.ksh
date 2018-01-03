@@ -35,6 +35,7 @@
 #		pool, fs, snapshot,volume
 #	(4) too many arguments.
 #	(5) invalid options
+#	(6) temporary %recv datasets
 #
 # STRATEGY:
 #	1. Create an array of invalid arguments
@@ -45,25 +46,36 @@
 verify_runnable "both"
 
 snap=$TESTPOOL/$TESTFS@$TESTSNAP
+clone=$TESTPOOL/$TESTCLONE
+recvfs=$TESTPOOL/recvfs
 set -A args "" \
 	"$TESTPOOL/blah" \
 	"$TESTPOOL" "$TESTPOOL/$TESTFS" "$snap" \
-	"$TESTPOOL/$TESTVOL" "$TESTPOL $TESTPOOL/$TESTFS" \
-	"$clone $TESTPOOL/$TESTFS" "- $clone" "-? $clone"
+	"$TESTPOOL/$TESTVOL" "$TESTPOOL $TESTPOOL/$TESTFS" \
+	"$clone $TESTPOOL/$TESTFS" "- $clone" "-? $clone" \
+	"$recvfs/%recv"
 
 function cleanup
 {
-	destroy_dataset $clone
-	destroy_dataset $snap
+	if datasetexists $clone; then
+		log_must zfs destroy $clone
+	fi
+
+	if datasetexists $recvfs; then
+		log_must zfs destroy -r $recvfs
+	fi
+
+	if snapexists $snap; then
+		destroy_snapshot  $snap
+	fi
 }
 
 log_assert "'zfs promote' will fail with invalid arguments. "
 log_onexit cleanup
 
-snap=$TESTPOOL/$TESTFS@$TESTSNAP
-clone=$TESTPOOL/$TESTCLONE
-log_must $ZFS snapshot $snap
-log_must $ZFS clone $snap $clone
+log_must zfs snapshot $snap
+log_must zfs clone $snap $clone
+create_recv_clone $recvfs
 
 typeset -i i=0
 while (( i < ${#args[*]} )); do

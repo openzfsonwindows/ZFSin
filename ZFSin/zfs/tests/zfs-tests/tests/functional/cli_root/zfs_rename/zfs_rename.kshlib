@@ -71,6 +71,8 @@ function additional_setup
 		log_must $CP $DATA $(get_prop mountpoint $TESTPOOL/$TESTVOL)/$TESTFILE0
 	fi
 
+	# Create temporary %recv clone
+	create_recv_clone $TESTPOOL/$RECVFS
 }
 
 function rename_dataset # src dest
@@ -114,7 +116,13 @@ function cleanup
                 ((i = i + 1))
 	done
 
-	destroy_dataset -fR $TESTPOOL/$TESTFS@snapshot
+	if snapexists $TESTPOOL/$TESTFS@snapshot; then
+		log_must zfs destroy -fR $TESTPOOL/$TESTFS@snapshot
+	fi
+
+	if datasetexists $TESTPOOL/$RECVFS; then
+		log_must zfs destroy -r $TESTPOOL/$RECVFS
+	fi
 }
 
 function cmp_data #<$1 src data, $2 tgt data>
