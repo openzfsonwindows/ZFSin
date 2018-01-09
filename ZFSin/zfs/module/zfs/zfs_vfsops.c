@@ -1256,6 +1256,15 @@ static int
 zfsvfs_setup(zfsvfs_t *zfsvfs, boolean_t mounting)
 {
 	int error;
+	boolean_t readonly = vfs_isrdonly(zfsvfs->z_vfs);
+
+	/*
+	 * Check for a bad on-disk format version now since we
+	 * lied about owning the dataset readonly before.
+	 */
+	if (!readonly &&
+	    dmu_objset_incompatible_encryption_version(zfsvfs->z_os))
+		return (SET_ERROR(EROFS));
 
 	error = zfs_register_callbacks(zfsvfs->z_vfs);
 	if (error)
@@ -1280,11 +1289,12 @@ zfsvfs_setup(zfsvfs_t *zfsvfs, boolean_t mounting)
 		 * During replay we remove the read only flag to
 		 * allow replays to succeed.
 		 */
-#if 1
-		if (!zfs_vnop_skip_unlinked_drain)
-			if (!vfs_isrdonly(zfsvfs->z_vfs))
+
+		if (readonly != 0)
+			readonly_changed_cb(zfsvfs, B_FALSE);
+		else
+			if (!zfs_vnop_skip_unlinked_drain)
 				zfs_unlinked_drain(zfsvfs);
-#endif
 
 		/*
 		 * Parse and replay the intent log.
@@ -1323,6 +1333,10 @@ zfsvfs_setup(zfsvfs_t *zfsvfs, boolean_t mounting)
 				zfsvfs->z_replay = B_FALSE;
 			}
 		}
+
+		/* restore readonly bit */
+		if (readonly != 0)
+			readonly_changed_cb(zfsvfs, B_TRUE);
 	}
 
 	/*

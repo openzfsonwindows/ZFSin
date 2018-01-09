@@ -1987,6 +1987,15 @@ show_import(nvlist_t *config)
 				    "updating.\n"));
 				break;
 
+			case ZPOOL_ERRATA_ZOL_6845_ENCRYPTION:
+				(void) printf(gettext(" action: Existing "
+				    "encrypted datasets contain an on-disk "
+				    "incompatibility, which\n\tneeds to be "
+				    "corrected. Backup these datasets to new "
+				    "encrypted datasets\n\tand destroy the "
+				    "old ones.\n"));
+				break;
+
 			default:
 				/*
 				 * All errata must contain an action message.
@@ -6046,6 +6055,12 @@ status_callback(zpool_handle_t *zhp, void *data)
 		case ZPOOL_ERRATA_ZOL_2094_SCRUB:
 			(void) printf(gettext("action: To correct the issue "
 			    "run 'zpool scrub'.\n"));
+			break;
+
+		case ZPOOL_ERRATA_ZOL_6845_ENCRYPTION:
+			(void) printf(gettext("action: To correct the issue "
+			    "backup existing encrypted datasets to new\n\t"
+			    "encrypted datasets and destroy the old ones.\n"));
 			break;
 
 		default:

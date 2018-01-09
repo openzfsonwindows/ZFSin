@@ -521,6 +521,7 @@ dump_dnode(dmu_sendarg_t *dsp, const blkptr_t *bp, uint64_t object,
 			drro->drr_flags |= DRR_RAW_BYTESWAP;
 
 		/* needed for reconstructing dnp on recv side */
+		drro->drr_maxblkid = dnp->dn_maxblkid;
 		drro->drr_indblkshift = dnp->dn_indblkshift;
 		drro->drr_nlevels = dnp->dn_nlevels;
 		drro->drr_nblkptr = dnp->dn_nblkptr;
@@ -2086,7 +2087,8 @@ struct receive_writer_arg {
 	avl_tree_t *guid_to_ds_map;
 	boolean_t resumable;
 	boolean_t raw;
-	uint64_t last_object, last_offset;
+	uint64_t last_object;
+	uint64_t last_offset;
 	uint64_t bytes_read; /* bytes read when current record created */
 };
 
@@ -2232,6 +2234,7 @@ byteswap_record(dmu_replay_record_t *drr)
 		DO32(drr_object.drr_bonuslen);
 		DO32(drr_object.drr_raw_bonuslen);
 		DO64(drr_object.drr_toguid);
+		DO64(drr_object.drr_maxblkid);
 		break;
 	case DRR_FREEOBJECTS:
 		DO64(drr_freeobjects.drr_firstobj);
@@ -2390,7 +2393,6 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 
 	if (err != 0 && err != ENOENT)
 		return (SET_ERROR(EINVAL));
-	object = err == 0 ? drro->drr_object : DMU_NEW_OBJECT;
 
 	/*
 	 * If we are losing blkptrs or changing the block size this must
@@ -2405,20 +2407,56 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 		int nblkptr = deduce_nblkptr(drro->drr_bonustype,
 		    drro->drr_bonuslen);
 
+		object = drro->drr_object;
+
 		/* nblkptr will be bounded by the bonus size and type */
 		if (rwa->raw && nblkptr != drro->drr_nblkptr)
 			return (SET_ERROR(EINVAL));
 
-		if (drro->drr_blksz != doi.doi_data_block_size ||
-		    nblkptr < doi.doi_nblkptr ||
-		    (rwa->raw &&
-		    (indblksz != doi.doi_metadata_block_size ||
-		    drro->drr_nlevels < doi.doi_indirection))) {
+		if (rwa->raw &&
+		    (drro->drr_blksz != doi.doi_data_block_size ||
+			nblkptr < doi.doi_nblkptr ||
+			indblksz != doi.doi_metadata_block_size ||
+			drro->drr_nlevels < doi.doi_indirection)) {
+			err = dmu_free_long_range_raw(rwa->os,
+				drro->drr_object, 0, DMU_OBJECT_END);
+			if (err != 0)
+				return (SET_ERROR(EINVAL));
+		} else if (drro->drr_blksz != doi.doi_data_block_size ||
+		    nblkptr < doi.doi_nblkptr) {
 			err = dmu_free_long_range(rwa->os, drro->drr_object,
 			    0, DMU_OBJECT_END);
 			if (err != 0)
 				return (SET_ERROR(EINVAL));
 		}
+
+		/*
+		 * The dmu does not currently support decreasing nlevels
+		 * on an object. For non-raw sends, this does not matter
+		 * and the new object can just use the previous one's nlevels.
+		 * For raw sends, however, the structure of the received dnode
+		 * (including nlevels) must match that of the send side.
+		 * Therefore, instead of using dmu_object_reclaim(), we must
+		 * free the object completely and call dmu_object_claim_dnsize()
+		 * instead.
+		 */
+		if ((rwa->raw && drro->drr_nlevels < doi.doi_indirection)) {
+			if (rwa->raw) {
+				err = dmu_free_long_object_raw(rwa->os,
+				    drro->drr_object);
+			} else {
+				err = dmu_free_long_object(rwa->os,
+				    drro->drr_object);
+			}
+			if (err != 0)
+				return (SET_ERROR(EINVAL));
+
+			txg_wait_synced(dmu_objset_pool(rwa->os), 0);
+			object = DMU_NEW_OBJECT;
+		}
+	} else {
+		/* object is free and we are about to allocate a new one */
+		object = DMU_NEW_OBJECT;
 	}
 
 	tx = dmu_tx_create(rwa->os);
@@ -2468,6 +2506,8 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 		    drro->drr_blksz, drro->drr_indblkshift, tx));
 		VERIFY0(dmu_object_set_nlevels(rwa->os, drro->drr_object,
 		    drro->drr_nlevels, tx));
+		VERIFY0(dmu_object_set_maxblkid(rwa->os, drro->drr_object,
+		    drro->drr_maxblkid, tx));
 	}
 
 	if (data != NULL) {

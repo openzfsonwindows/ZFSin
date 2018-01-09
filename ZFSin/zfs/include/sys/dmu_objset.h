@@ -124,7 +124,7 @@ struct objset {
 	boolean_t os_rescan_dnodes;
 
 	/* os_phys_buf should be written raw next txg */
-	boolean_t os_next_write_raw;
+	boolean_t os_next_write_raw[TXG_SIZE];
 
 	/* Protected by os_obj_lock */
 	kmutex_t os_obj_lock;
@@ -202,6 +202,7 @@ void dmu_objset_userquota_get_ids(dnode_t *dn, boolean_t before, dmu_tx_t *tx);
 boolean_t dmu_objset_userused_enabled(objset_t *os);
 int dmu_objset_userspace_upgrade(objset_t *os);
 boolean_t dmu_objset_userspace_present(objset_t *os);
+boolean_t dmu_objset_incompatible_encryption_version(objset_t *os);
 int dmu_fsname(const char *snapname, char *buf);
 
 void dmu_objset_evict_done(objset_t *os);

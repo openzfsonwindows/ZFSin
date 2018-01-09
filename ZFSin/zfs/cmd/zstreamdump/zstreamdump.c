@@ -444,7 +444,7 @@ main(int argc, char *argv[])
 			if (verbose) {
 				(void) printf("OBJECT object = %llu type = %u "
 				    "bonustype = %u blksz = %u bonuslen = %u "
-				    "raw_bonuslen = %u flags = %u "
+				    "raw_bonuslen = %u flags = %u maxblkid = %llu "
 				    "indblkshift = %u nlevels = %u "
 				    "nblkptr = %u\n",
 				    (u_longlong_t)drro->drr_object,
@@ -454,6 +454,7 @@ main(int argc, char *argv[])
 				    drro->drr_bonuslen,
 				    drro->drr_raw_bonuslen,
 				    drro->drr_flags,
+				    (u_longlong_t)drro->drr_maxblkid,
 				    drro->drr_indblkshift,
 				    drro->drr_nlevels,
 				    drro->drr_nblkptr);
