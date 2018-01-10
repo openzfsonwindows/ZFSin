@@ -82,7 +82,6 @@
 
 PDEVICE_OBJECT ioctlDeviceObject = NULL;
 
-
 #ifdef _KERNEL
 
 DRIVER_INITIALIZE DriverEntry;
@@ -122,7 +121,7 @@ uint64_t vnop_num_vnodes = 0;
 
 int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, char **lastname, struct vnode **dvpp, struct vnode **vpp)
 {
-	int error = 0;
+	int error = ENOENT;
 	znode_t *zp;
 	struct vnode *dvp = NULL;
 	struct vnode *vp = NULL;
@@ -135,7 +134,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 
 	if (dvp == NULL) {
 		error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
-		if (error != 0) return error;
+		if (error != 0) return ESRCH;  // No such dir
 		dvp = ZTOV(zp);
 	} else {
 		VN_HOLD(dvp);
@@ -157,7 +156,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 			// If we are creating a file, or looking up parent,
 			// allow it not to exist
 			if (finalpartmaynotexist) break;
-
+			dprintf("failing out here\n");
 			VN_RELE(dvp);
 			dvp = NULL;
 			break;
@@ -178,8 +177,10 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 	if (dvp) {
 		VN_RELE(dvp);
 	} else {
-		dprintf("%s: failed to find dvp for '%s' \n", __func__, filename);
-		return ENOENT;
+		dprintf("%s: failed to find dvp for '%s' word '%s' err %d\n", __func__, filename,
+			word?word:"(null)", error);
+		//DbgBreakPoint();
+		return error;
 	}
 	if (error != 0 && !vp && !finalpartmaynotexist)
 		return ENOENT;
@@ -247,6 +248,13 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	if (FileObject->RelatedFileObject != NULL) {
 		FileObject->Vpb = FileObject->RelatedFileObject->Vpb;
+		//  A relative open must be via a relative path.
+		if (FileObject->FileName.Length != 0 &&
+			FileObject->FileName.Buffer[0] == L'\\') {
+			return STATUS_INVALID_PARAMETER;
+		}
+	} else {
+		FileObject->Vpb = zmo->vpb;
 	}
 	
 	DirectoryFile = BooleanFlagOn(Options, FILE_DIRECTORY_FILE);
@@ -311,6 +319,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	// Output string is only null terminated if input is, so do so now.
 	filename[outlen] = 0;
+	dprintf("%s: converted name is '%s' input len bytes %d (err %d) %s\n", __func__, filename, FileObject->FileName.Length, error,
+		DeleteOnClose?"DeleteOnClose":"");
 
 	// Check if we are called as VFS_ROOT();
 	OpenRoot = (strncmp("\\", filename, MAXNAMELEN) == 0 || strncmp("\\*", filename, MAXNAMELEN) == 0);
@@ -349,7 +359,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// We need to have a parent from here on.
 	error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), &finalname, &dvp, &vp);
 	if (error) {
-		if (!dvp) {
+		if (!dvp && error == ESRCH) {
 			dprintf("%s: failed to find dvp for '%s' \n", __func__, filename);
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 			return STATUS_OBJECT_PATH_NOT_FOUND;
@@ -369,6 +379,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			FileObject->FsContext = dvp;
 			VN_HOLD(dvp);
 			vnode_ref(dvp); // Hold open reference, until CLOSE
+			if (DeleteOnClose) vnode_setunlink(dvp);
 			VN_RELE(dvp);
 			return STATUS_SUCCESS;
 		}
@@ -380,6 +391,10 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// "vp" if the final part was a file.
 	if (CreateDirectory) {
 		vattr_t vap = { 0 };
+
+		if (TemporaryFile) 
+			return STATUS_INVALID_PARAMETER;
+
 		vap.va_mask = AT_MODE | AT_TYPE;
 		vap.va_type = VDIR;
 		vap.va_mode = 0755;
@@ -395,8 +410,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			zccb->magic = ZFS_DIRLIST_MAGIC;
 			IrpSp->FileObject->FsContext2 = zccb;
 			FileObject->FsContext = vp;
-
 			vnode_ref(vp); // Hold open reference, until CLOSE
+			if (DeleteOnClose) vnode_setunlink(vp);
 			VN_RELE(vp);
 			Irp->IoStatus.Information = FILE_CREATED;
 			return STATUS_SUCCESS;
@@ -450,6 +465,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		FileObject->FsContext = dvp;
 		VN_HOLD(dvp);
 		vnode_ref(dvp); // Hold open reference, until CLOSE
+		if (DeleteOnClose) vnode_setunlink(dvp);
 		VN_RELE(dvp);
 	} else {
 		FileObject->FsContext = vp;
@@ -529,8 +545,8 @@ zfs_znode_getvnode(znode_t *zp, zfsvfs_t *zfsvfs)
 {
 	struct vnode *vp = NULL;
 
-	dprintf("getvnode zp %p with vp %p zfsvfs %p vfs %p\n", zp, vp,
-	    zfsvfs, zfsvfs->z_vfs);
+	//dprintf("getvnode zp %p with vp %p zfsvfs %p vfs %p\n", zp, vp,
+	//    zfsvfs, zfsvfs->z_vfs);
 
 	if (zp->z_vnode)
 		panic("zp %p vnode already set\n", zp->z_vnode);
@@ -544,7 +560,7 @@ zfs_znode_getvnode(znode_t *zp, zfsvfs_t *zfsvfs)
 
 	atomic_inc_64(&vnop_num_vnodes);
 
-	dprintf("Assigned zp %p with vp %p\n", zp, vp);
+	//dprintf("Assigned zp %p with vp %p\n", zp, vp);
 
 	zp->z_vid = vnode_vid(vp);
 	zp->z_vnode = vp;
@@ -829,6 +845,10 @@ NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 * user_fs_request : unknown class 0x903bc unknown?
 IOCTL_VOLUME_IS_OFFLINE	0x560010
 IOCTL_STORAGE_GET_DEVICE_NUMBER	0x2d1080
+IOCTL_DISK_GET_LENGTH_INFO	0x7405c
+90064
+9023c
+
 #endif
   
 // This is how Windows Samples handle it
@@ -968,6 +988,40 @@ NTSTATUS ioctl_disk_get_partition_info_ex(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 	return STATUS_SUCCESS;
 }
 
+NTSTATUS ioctl_disk_get_length_info(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	dprintf("%s: \n", __func__);
+
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(GET_LENGTH_INFORMATION)) {
+		Irp->IoStatus.Information = sizeof(GET_LENGTH_INFORMATION);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	mount_t *zmo = DeviceObject->DeviceExtension;
+	if (!zmo ||
+		(zmo->type != MOUNT_TYPE_VCB &&
+			zmo->type != MOUNT_TYPE_DCB)) {
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+
+	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
+
+	uint64_t refdbytes, availbytes, usedobjs, availobjs;
+	dmu_objset_space(zfsvfs->z_os,
+		&refdbytes, &availbytes, &usedobjs, &availobjs);
+
+	GET_LENGTH_INFORMATION *gli = Irp->AssociatedIrp.SystemBuffer;
+	gli->Length.QuadPart = availbytes + refdbytes;
+
+	ZFS_EXIT(zfsvfs);
+
+	Irp->IoStatus.Information = sizeof(GET_LENGTH_INFORMATION);
+
+	return STATUS_SUCCESS;
+}
+
 NTSTATUS ioctl_volume_is_io_capable(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	dprintf("%s: \n", __func__);
@@ -1030,13 +1084,14 @@ NTSTATUS ioctl_storage_query_property(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO
 			dprintf("    PropertyExistsQuery Not implemented 0x%x\n", spq->PropertyId);
 			status = STATUS_NOT_IMPLEMENTED;
 			break;
+		//case StorageDeviceAttributesProperty:
+			//break;
 		default:
 			dprintf("    PropertyExistsQuery unknown 0x%x\n", spq->PropertyId);
-			status = STATUS_ACCESS_DENIED;
+			status = STATUS_NOT_IMPLEMENTED;
 			break;
 		} // switch PropertyId
 		break;
-
 	case PropertyStandardQuery:
 
 		switch (spq->PropertyId) {
@@ -1057,7 +1112,7 @@ NTSTATUS ioctl_storage_query_property(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO
 			break;
 		default:
 			dprintf("    PropertyExistsQuery unknown 0x%x\n", spq->PropertyId);
-			status = STATUS_ACCESS_DENIED;
+			status = STATUS_NOT_IMPLEMENTED;
 			break;
 		} // switch propertyId
 		break;
@@ -1071,7 +1126,6 @@ NTSTATUS ioctl_storage_query_property(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO
 	Irp->IoStatus.Information = sizeof(STORAGE_PROPERTY_QUERY);
 	return status;
 }
-
 
 // Query Unique id uses 1 byte chars.
 // If overflow, set Information to sizeof(MOUNTDEV_UNIQUE_ID), and NameLength to required size.
@@ -1188,31 +1242,38 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 
 		FILE_FS_ATTRIBUTE_INFORMATION *ffai = Irp->AssociatedIrp.SystemBuffer;
 		ffai->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_CASE_SENSITIVE_SEARCH | FILE_NAMED_STREAMS |
-			FILE_PERSISTENT_ACLS | /*FILE_SUPPORTS_OBJECT_IDS |*/ FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS;
+			FILE_PERSISTENT_ACLS | /*FILE_SUPPORTS_OBJECT_IDS |*/ FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS |
+			FILE_SUPPORTS_REPARSE_POINTS;
 		ffai->MaximumComponentNameLength = PATH_MAX;
 
 		// There is room for one char in the struct
-		// Assuming VolumeLabel to be "ZFS".
-		space = IrpSp->Parameters.QueryVolume.Length - sizeof(FILE_FS_ATTRIBUTE_INFORMATION);
-		space = MIN(space, zmo->name.Length);
-		ffai->FileSystemNameLength = space + sizeof(ffai->FileSystemName);
-		RtlCopyMemory(ffai->FileSystemName, zmo->name.Buffer, space + sizeof(ffai->FileSystemName));
-		Irp->IoStatus.Information = sizeof(FILE_FS_ATTRIBUTE_INFORMATION) + space;
+		// Alas, many things compare string to "NTFS".
+		// FIXME FIELD_OFFSET
+		space = IrpSp->Parameters.QueryVolume.Length - FIELD_OFFSET(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName);
+			
+		UNICODE_STRING                  name;
+		RtlInitUnicodeString(&name, L"NTFS");
 
-//		if (space < zmo->name.Length)
-//			Status = STATUS_BUFFER_OVERFLOW;
-//		else
+		space = MIN(space, name.Length);
+		ffai->FileSystemNameLength = name.Length;
+		RtlCopyMemory(ffai->FileSystemName, name.Buffer, space);
+		Irp->IoStatus.Information = FIELD_OFFSET(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName) + space;
+			
+
+		if (space < zmo->name.Length)
+			Status = STATUS_BUFFER_OVERFLOW;
+		else
 			Status = STATUS_SUCCESS;
 		ASSERT(Irp->IoStatus.Information <= IrpSp->Parameters.QueryVolume.Length);
 		break;
 	case FileFsControlInformation:
-		dprintf("* %s: FileFsControlInformation\n", __func__);
+		dprintf("* %s: FileFsControlInformation NOT IMPLEMENTED\n", __func__);
 		break;
 	case FileFsDeviceInformation:
-		dprintf("* %s: FileFsDeviceInformation\n", __func__);
+		dprintf("* %s: FileFsDeviceInformation NOT IMPLEMENTED\n", __func__);
 		break;
 	case FileFsDriverPathInformation:
-		dprintf("* %s: FileFsDriverPathInformation\n", __func__);
+		dprintf("* %s: FileFsDriverPathInformation NOT IMPLEMENTED\n", __func__);
 		break;
 	case FileFsFullSizeInformation:   //**
 		dprintf("* %s: FileFsFullSizeInformation\n", __func__);
@@ -1235,44 +1296,57 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		Status = STATUS_SUCCESS;
 		break;
 	case FileFsObjectIdInformation:
-		dprintf("* %s: FileFsObjectIdInformation\n", __func__);
+		dprintf("* %s: FileFsObjectIdInformation NOT IMPLEMENTED\n", __func__);
 		break;
-	case FileFsSizeInformation:
-		dprintf("* %s: FileFsSizeInformation\n", __func__);
-		break;
-	case FileFsVolumeInformation:   
-		//
-		// If overflow, set Information to input_size and NameLength to required size.
-		//
+	case FileFsVolumeInformation:
 		dprintf("* %s: FileFsVolumeInformation\n", __func__);
 		if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_VOLUME_INFORMATION)) {
 			Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION);
 			Status = STATUS_BUFFER_TOO_SMALL;
 			break;
 		}
-
 		FILE_FS_VOLUME_INFORMATION *ffvi = Irp->AssociatedIrp.SystemBuffer;
-		ffvi->VolumeSerialNumber = ZFS_SERIAL;
+		ffvi->VolumeCreationTime.QuadPart = 0;
+		ffvi->VolumeSerialNumber = 0x19831116;
+		ffvi->VolumeLabelLength =
+			(USHORT)wcslen(VOLUME_LABEL) * sizeof(WCHAR);
 		ffvi->SupportsObjects = FALSE;
-		KeQuerySystemTimePrecise(&ffvi->VolumeCreationTime);
+		DWORD RequiredLength = sizeof(FILE_FS_VOLUME_INFORMATION) +
+			ffvi->VolumeLabelLength - sizeof(WCHAR);
 
-		// There is room for one char in the struct
-		// This ends up being the name of the disk in Explorer, so send dataset name
-		space = IrpSp->Parameters.QueryVolume.Length - sizeof(FILE_FS_VOLUME_INFORMATION);
-		space = MIN(space, zmo->name.Length);
-		ffvi->VolumeLabelLength = zmo->name.Length;
-		RtlCopyMemory(ffvi->VolumeLabel, zmo->name.Buffer, space + sizeof(ffvi->VolumeLabel));
-		Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION) + space;
-
-		if (space < zmo->name.Length)
+		if (IrpSp->Parameters.QueryVolume.Length < RequiredLength) {
+			Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION);
 			Status = STATUS_BUFFER_OVERFLOW;
-		else
-			Status = STATUS_SUCCESS; 
+			break;
+		}
 
-		ASSERT(Irp->IoStatus.Information <= IrpSp->Parameters.QueryVolume.Length);
+		RtlCopyMemory(ffvi->VolumeLabel, VOLUME_LABEL,
+			ffvi->VolumeLabelLength);
+
+		Irp->IoStatus.Information = RequiredLength;
+		Status = STATUS_SUCCESS;
+		break;
+	case FileFsSizeInformation:   
+		//
+		// If overflow, set Information to input_size and NameLength to required size.
+		//
+		dprintf("* %s: FileFsSizeInformation\n", __func__);
+		if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_SIZE_INFORMATION)) {
+			Irp->IoStatus.Information = sizeof(FILE_FS_SIZE_INFORMATION);
+			Status = STATUS_BUFFER_TOO_SMALL;
+			break;
+		}
+
+		FILE_FS_SIZE_INFORMATION *ffsi = Irp->AssociatedIrp.SystemBuffer;
+		ffsi->TotalAllocationUnits.QuadPart = 1024 * 1024 * 1024;
+		ffsi->AvailableAllocationUnits.QuadPart = 1024 * 1024 * 1024;
+		ffsi->SectorsPerAllocationUnit = 1;
+		ffsi->BytesPerSector = 512;
+		Irp->IoStatus.Information = sizeof(FILE_FS_SIZE_INFORMATION);
+		Status = STATUS_SUCCESS;
 		break;
 	case FileFsSectorSizeInformation:
-		dprintf("* %s: FileFsSectorSizeInformation\n", __func__);
+		dprintf("* %s: FileFsSectorSizeInformation NOT IMPLEMENTED\n", __func__);
 		Status = STATUS_NOT_IMPLEMENTED;
 		break;
 	default:
@@ -1523,6 +1597,18 @@ NTSTATUS file_network_open_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 	return STATUS_OBJECT_PATH_NOT_FOUND;
 }
 
+NTSTATUS file_standard_link_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_STANDARD_LINK_INFORMATION *fsli)
+{
+	dprintf("   %s\n", __func__);
+
+	fsli->NumberOfAccessibleLinks = 0; // FIXME
+	fsli->TotalNumberOfLinks = 0; // FIXME
+	fsli->DeletePending = FALSE; // FIXME
+	fsli->Directory = TRUE; // FIXME
+
+	return STATUS_SUCCESS;
+}
+
 
 //
 // If overflow, set Information to input_size and NameLength to required size.
@@ -1546,6 +1632,9 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	char strname[MAXPATHLEN + 2];
 	int error = 0;
 	uint64_t parent;
+
+	ASSERT(zp != NULL);
+
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 	NTSTATUS Status = STATUS_SUCCESS;
 
@@ -1574,7 +1663,7 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		name->FileNameLength, sizeof(FILE_NAME_INFORMATION));
 
 	// Calculate how much room there is for filename, after the struct and its first wchar
-	int space = IrpSp->Parameters.QueryFile.Length - sizeof(FILE_NAME_INFORMATION);
+	int space = IrpSp->Parameters.QueryFile.Length - FIELD_OFFSET(FILE_NAME_INFORMATION, FileName);
 	space = MIN(space, name->FileNameLength);
 
 	ASSERT(space >= 0);
@@ -1591,9 +1680,8 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	// which is used with sizeof(struct) to work out how much bigger the return is.
 	if (usedspace) *usedspace = space; // Space will always be 2 or more, since struct has room for 1 wchar
 
-	dprintf("* %s: partial name of %.*S struct size 0x%x and FileNameLength 0x%x Usedspace 0x%x\n", __func__, name->FileNameLength / sizeof(WCHAR), name->FileName,
+	dprintf("* %s: partial name of '%.*S' struct size 0x%x and FileNameLength 0x%x Usedspace 0x%x\n", __func__, name->FileNameLength / sizeof(WCHAR), name->FileName,
 		sizeof(FILE_NAME_INFORMATION), name->FileNameLength, space);
-
 	return Status;
 }
 
@@ -1625,14 +1713,14 @@ NTSTATUS file_stream_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	stream->StreamAllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
 	stream->StreamSize.QuadPart = zp->z_size;
 
-	int space = IrpSp->Parameters.QueryFile.Length - sizeof(FILE_STREAM_INFORMATION);
+	int space = IrpSp->Parameters.QueryFile.Length - FIELD_OFFSET(FILE_STREAM_INFORMATION, StreamName);
 	space = MIN(space, name.Length);
 	stream->StreamNameLength = name.Length;
 	ASSERT(space >= 0);
 	// Copy over as much as we can, including the first wchar
 	RtlCopyMemory(stream->StreamName, name.Buffer, space + sizeof(stream->StreamName));
 
-	Irp->IoStatus.Information = sizeof(FILE_STREAM_INFORMATION) + space;
+	Irp->IoStatus.Information = FIELD_OFFSET(FILE_STREAM_INFORMATION, StreamName) + space;
 
 	if (space < name.Length)
 		Status = STATUS_BUFFER_OVERFLOW;
@@ -1688,7 +1776,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 		// file_name_information sets FileNameLength, so update size to be ALL struct not NAME struct
 		// However, there is room for one char in the struct, so subtract that from total.
-		Irp->IoStatus.Information = sizeof(FILE_ALL_INFORMATION) + usedspace;
+		Irp->IoStatus.Information = FIELD_OFFSET(FILE_ALL_INFORMATION, NameInformation) + usedspace;
 
 		dprintf("Input size 0x%x namelen 0x%x ret size 0x%x\n",
 			sizeof(FILE_ALL_INFORMATION),
@@ -1716,16 +1804,17 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		Irp->IoStatus.Information = sizeof(FILE_BASIC_INFORMATION);
 		break;
 	case FileCompressionInformation:
-		dprintf("* %s: FileCompressionInformation\n", __func__);
+		dprintf("* %s: FileCompressionInformation NOT IMPLEMENTED\n", __func__);
 		break;
 	case FileEaInformation:
-		dprintf("* %s: FileEaInformation\n", __func__);
+		dprintf("* %s: FileEaInformation NOT IMPLEMENTED\n", __func__);
 		break;
 	case FileInternalInformation:
-		dprintf("* %s: FileInternalInformation\n", __func__);
+		dprintf("* %s: FileInternalInformation NOT IMPLEMENTED\n", __func__);
 		break;
 	case FileNormalizedNameInformation:
-		normalize = 1;  // What is a normalized name?
+		normalize = 1; 
+		/* According to fastfat, this means never return shortnames */
 		/* fall through */
 	case FileNameInformation:
 		//
@@ -1740,7 +1829,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		FILE_NAME_INFORMATION *name = Irp->AssociatedIrp.SystemBuffer;
 
 		Status = file_name_information(DeviceObject, Irp, IrpSp, name, &usedspace);
-		Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION) + usedspace;
+		Irp->IoStatus.Information = FIELD_OFFSET(FILE_NAME_INFORMATION, FileName) + usedspace;
 		break;
 	case FileNetworkOpenInformation:   
 		dprintf("* %s: FileNetworkOpenInformation\n", __func__);
@@ -1780,13 +1869,24 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		Irp->IoStatus.Information = sizeof(FILE_STREAM_INFORMATION) + usedspace;
 		break;
 	case FileHardLinkInformation:
-		dprintf("* %s: FileHardLinkInformation\n", __func__);
+		dprintf("* %s: FileHardLinkInformation NOT IMPLEMENTED\n", __func__);
 		break;
 	case FileRemoteProtocolInformation:
-		dprintf("* %s: FileRemoteProtocolInformation\n", __func__);
+		dprintf("* %s: FileRemoteProtocolInformation NOT IMPLEMENTED\n", __func__);
+		break;
+	case FileStandardLinkInformation:
+		dprintf("* %s: FileStandardLinkInformation\n", __func__);
+		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_STANDARD_LINK_INFORMATION)) {
+			Irp->IoStatus.Information = sizeof(FILE_STANDARD_LINK_INFORMATION);
+			Status = STATUS_BUFFER_TOO_SMALL;
+			break;
+		}
+		FILE_STANDARD_LINK_INFORMATION *fsli = Irp->AssociatedIrp.SystemBuffer;
+		Status = file_standard_link_information(DeviceObject, Irp, IrpSp, fsli);
+		Irp->IoStatus.Information = sizeof(FILE_STANDARD_LINK_INFORMATION);
 		break;
 	default:
-		dprintf("* %s: unknown class 0x%x\n", __func__, IrpSp->Parameters.QueryFile.FileInformationClass);
+		dprintf("* %s: unknown class 0x%x NOT IMPLEMENTED\n", __func__, IrpSp->Parameters.QueryFile.FileInformationClass);
 		break;
 	}
 
@@ -1975,6 +2075,8 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 		// Set correct buffer size returned.
 		Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - uio_resid(uio);
 
+		dprintf("dirlist information size %d\n", Irp->IoStatus.Information);
+
 		// Return saying there are entries in buffer, or, ]
 		// if we sent same data previously, but now EOF send NO MORE,
 		// or if there was nothing sent at all (search pattern failed), send NO SUCH
@@ -2031,7 +2133,7 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 
 	switch (IrpSp->Parameters.SetFile.FileInformationClass) {
 	case FileAllocationInformation: // set allocation size, refreserve?
-		dprintf("* FileAllocationInformation\n");
+		dprintf("* FileAllocationInformation: NOTIMPLEMENTED\n");
 		break;
 	case FileBasicInformation: // chmod
 		dprintf("* FileBasicInformation\n");
@@ -2079,6 +2181,8 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 				struct vnode *vp = IrpSp->FileObject->FsContext;
 				VN_HOLD(vp);
+				dprintf("Deletion set on '%wZ'\n",
+					IrpSp->FileObject->FileName);
 				vnode_setunlink(vp);
 				VN_RELE(vp);
 				Status = STATUS_SUCCESS;
@@ -2102,19 +2206,19 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		}
 		break;
 	case FileLinkInformation: // symlink
-		dprintf("* FileLinkInformation\n");
+		dprintf("* FileLinkInformation NOTIMPLEMENTED\n");
 		break;
 	case FilePositionInformation: // seek
-		dprintf("* FilePositionInformation\n");
+		dprintf("* FilePositionInformation NOTIMPLEMENTED\n");
 		break;
 	case FileRenameInformation: // vnop_rename
 		Status = file_rename_information(DeviceObject, Irp, IrpSp);
 		break;
 	case FileValidDataLengthInformation:  // truncate?
-		dprintf("* FileValidDataLengthInformation\n");
+		dprintf("* FileValidDataLengthInformation NOTIMPLEMENTED\n");
 		break;
 	default:
-		dprintf("* %s: unknown type\n", __func__);
+		dprintf("* %s: unknown type NOTIMPLEMENTED\n", __func__);
 		break;
 	}
 
@@ -2350,8 +2454,11 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	if (vnode_isdir(vp)) {
 
-		error = zfs_rmdir(dvp, finalname, NULL, NULL, NULL, 0);
-
+		if (!vnode_isinuse(dvp, 1)) {
+			error = zfs_rmdir(dvp, finalname, NULL, NULL, NULL, 0);
+			if (!error)
+				zfs_vnop_recycle(VTOZ(vp), 0);
+		}
 	} else {
 
 		error = zfs_remove(dvp, finalname, NULL, NULL, 0);
@@ -2388,18 +2495,18 @@ NTSTATUS flush_buffers(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION
 
 NTSTATUS ioctl_storage_get_device_number(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
-	PSTORAGE_DEVICE_NUMBER sdn = Irp->AssociatedIrp.SystemBuffer;
 
 	if (IrpSp->Parameters.QueryFile.Length < sizeof(STORAGE_DEVICE_NUMBER)) {
 		Irp->IoStatus.Information = sizeof(STORAGE_DEVICE_NUMBER);
 		return STATUS_BUFFER_TOO_SMALL;
 	}
 
-	Irp->IoStatus.Information = sizeof(STORAGE_DEVICE_NUMBER);
+	PSTORAGE_DEVICE_NUMBER sdn = Irp->AssociatedIrp.SystemBuffer;
 	sdn->DeviceNumber = 0;
 	sdn->DeviceType = FILE_DEVICE_VIRTUAL_DISK;
 	sdn->PartitionNumber = -1; // -1 means can't be partitioned
 
+	Irp->IoStatus.Information = sizeof(STORAGE_DEVICE_NUMBER);
 	return STATUS_SUCCESS;
 }
 
@@ -2417,6 +2524,48 @@ NTSTATUS ioctl_volume_get_volume_disk_extents(PDEVICE_OBJECT DeviceObject, PIRP 
 	RtlZeroMemory(vde, sizeof(VOLUME_DISK_EXTENTS));
 	vde->NumberOfDiskExtents = 1;
 
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS volume_create(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	mount_t *zmo = DeviceObject->DeviceExtension;
+
+	// This is also called from fsContext when IRP_MJ_CREATE FileName is NULL
+	/* VERIFY(zmo->type == MOUNT_TYPE_DCB); */
+	if (zmo->vpb != NULL)
+		IrpSp->FileObject->Vpb = zmo->vpb;
+	else
+		IrpSp->FileObject->Vpb = DeviceObject->Vpb;
+
+	//		dprintf("Setting FileObject->Vpb to %p\n", IrpSp->FileObject->Vpb);
+	//SetFileObjectForVCB(IrpSp->FileObject, zmo);
+	//IrpSp->FileObject->SectionObjectPointer = &zmo->SectionObjectPointers;
+	//IrpSp->FileObject->FsContext = &zmo->VolumeFileHeader;
+
+	/*
+	 * Check the ShareAccess requested:
+	 *         0         : exclusive
+	 * FILE_SHARE_READ   : The file can be opened for read access by other threads 
+	 * FILE_SHARE_WRITE  : The file can be opened for write access by other threads
+	 * FILE_SHARE_DELETE : The file can be opened for delete access by other threads
+	 */
+	if ((IrpSp->Parameters.Create.ShareAccess == 0) &&
+		zmo->volume_opens != 0) {
+		dprintf("%s: sharing violation\n", __func__);
+		return STATUS_SHARING_VIOLATION;
+	}
+
+	atomic_inc_64(&zmo->volume_opens);
+	Irp->IoStatus.Information = FILE_OPENED;
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS volume_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	mount_t *zmo = DeviceObject->DeviceExtension;
+	VERIFY(zmo->type == MOUNT_TYPE_DCB);
+	atomic_dec_64(&zmo->volume_opens);
 	return STATUS_SUCCESS;
 }
 
@@ -2536,9 +2685,9 @@ ioctlDispatcher(
 	switch (IrpSp->MajorFunction) {
 
 	case IRP_MJ_CREATE:
-		dprintf("IRP_MJ_CREATE: FileObject %p related %p name '%wZ' flags 0x%x\n",
-			IrpSp->FileObject, IrpSp->FileObject ? IrpSp->FileObject->RelatedFileObject : NULL,
-			IrpSp->FileObject->FileName, IrpSp->Flags);
+		dprintf("IRP_MJ_CREATE: FileObject %p name '%wZ' length %u flags 0x%x\n",
+			IrpSp->FileObject, IrpSp->FileObject->FileName, 
+			IrpSp->FileObject->FileName.Length, IrpSp->Flags);
 		Status = zfsdev_open(IrpSp->FileObject, Irp);
 		break;
 	case IRP_MJ_CLOSE:
@@ -2706,24 +2855,11 @@ diskDispatcher(
 		dprintf("IRP_MJ_CREATE: FileObject %p related %p name '%wZ' flags 0x%x\n",
 			IrpSp->FileObject, IrpSp->FileObject ? IrpSp->FileObject->RelatedFileObject : NULL,
 			IrpSp->FileObject->FileName, IrpSp->Flags);
-		Status = STATUS_SUCCESS;
 
-		mount_t *zmo = DeviceObject->DeviceExtension;
-		VERIFY(zmo->type == MOUNT_TYPE_DCB);
-
-		if (zmo->deviceObject != NULL)
-			IrpSp->FileObject->Vpb = zmo->deviceObject->Vpb;
-		else
-			IrpSp->FileObject->Vpb = DeviceObject->Vpb;
-//		dprintf("Setting FileObject->Vpb to %p\n", IrpSp->FileObject->Vpb);
-			//SetFileObjectForVCB(IrpSp->FileObject, zmo);
-			//IrpSp->FileObject->SectionObjectPointer = &zmo->SectionObjectPointers;
-			//IrpSp->FileObject->FsContext = &zmo->VolumeFileHeader;
-		Irp->IoStatus.Information = FILE_OPENED;
-		Status = STATUS_SUCCESS;
+		Status = volume_create(DeviceObject, Irp, IrpSp);
 		break;
 	case IRP_MJ_CLOSE:
-		Status = STATUS_SUCCESS;
+		Status = volume_close(DeviceObject, Irp, IrpSp);
 		break;
 	case IRP_MJ_DEVICE_CONTROL:
 	{
@@ -2753,6 +2889,11 @@ diskDispatcher(
 			dprintf("IOCTL_VOLUME_ONLINE\n");
 			Status = STATUS_SUCCESS;
 			break;
+		case IOCTL_VOLUME_OFFLINE:
+		case IOCTL_VOLUME_IS_OFFLINE:
+			dprintf("IOCTL_VOLUME_OFFLINE\n");
+			Status = STATUS_SUCCESS;
+			break;
 		case IOCTL_DISK_IS_WRITABLE:
 			dprintf("IOCTL_DISK_IS_WRITABLE\n");
 			Status = STATUS_SUCCESS;
@@ -2777,7 +2918,19 @@ diskDispatcher(
 			dprintf("IOCTL_STORAGE_QUERY_PROPERTY\n");
 			Status = ioctl_storage_query_property(DeviceObject, Irp, IrpSp);
 			break;
+		case IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS:
+			dprintf("IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS\n");
+			Status = ioctl_volume_get_volume_disk_extents(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_STORAGE_GET_DEVICE_NUMBER:
+			dprintf("IOCTL_STORAGE_GET_DEVICE_NUMBER\n");
+			Status = ioctl_storage_get_device_number(DeviceObject, Irp, IrpSp);
+			break;
 		case IOCTL_DISK_CHECK_VERIFY:
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_STORAGE_CHECK_VERIFY2:
+			dprintf("IOCTL_STORAGE_CHECK_VERIFY2\n");
 			Status = STATUS_SUCCESS;
 			break;
 		case IOCTL_VOLUME_IS_DYNAMIC:
@@ -2804,6 +2957,16 @@ diskDispatcher(
 	break;
 
 	case IRP_MJ_CLEANUP:
+		Status = STATUS_SUCCESS;
+		break;
+
+		// Technically we don't really let them read from the virtual devices that
+		// hold the ZFS filesystem, so we just return all zeros.
+	case IRP_MJ_READ:
+		dprintf("disk fake read\n");
+		uint64_t bufferLength;
+		bufferLength = IrpSp->Parameters.Read.Length;
+		Irp->IoStatus.Information = bufferLength;
 		Status = STATUS_SUCCESS;
 		break;
 
@@ -2879,9 +3042,9 @@ fsDispatcher(
 	switch (IrpSp->MajorFunction) {
 
 	case IRP_MJ_CREATE:
-		dprintf("IRP_MJ_CREATE: FileObject %p related %p name '%wZ' flags 0x%x\n",
+		dprintf("IRP_MJ_CREATE: FileObject %p related %p name '%wZ' flags 0x%x sharing 0x%x\n",
 			IrpSp->FileObject, IrpSp->FileObject ? IrpSp->FileObject->RelatedFileObject : NULL,
-			IrpSp->FileObject->FileName, IrpSp->Flags);
+			IrpSp->FileObject->FileName, IrpSp->Flags, IrpSp->Parameters.Create.ShareAccess);
 
 		Irp->IoStatus.Information = FILE_OPENED;
 		Status = STATUS_SUCCESS;
@@ -2898,13 +3061,6 @@ fsDispatcher(
 		mount_t *zmo = DeviceObject->DeviceExtension;
 		VERIFY(zmo->type == MOUNT_TYPE_VCB);
 
-		if (zmo->deviceObject != NULL)
-			IrpSp->FileObject->Vpb = zmo->deviceObject->Vpb;
-		else
-			IrpSp->FileObject->Vpb = DeviceObject->Vpb;
-	//	dprintf("Setting FileObject->Vpb to %p\n", IrpSp->FileObject->Vpb);
-
-
 		//
 		//  Check if we are opening the volume and not a file/directory.
 		//  We are opening the volume if the name is empty and there
@@ -2917,7 +3073,7 @@ fsDispatcher(
 
 			// If DirectoryFile return STATUS_NOT_A_DIRECTORY
 			// If OpenTargetDirectory return STATUS_INVALID_PARAMETER
-
+			Status = volume_create(DeviceObject, Irp, IrpSp);
 			break;
 		}
 
@@ -2927,7 +3083,6 @@ fsDispatcher(
 			zmo) {
 
 			Status = zfs_vnop_lookup(Irp, IrpSp, zmo);
-
 		}
 		break;
 
@@ -2948,7 +3103,8 @@ fsDispatcher(
 				// TODO: Does not recycle vnode when file is added to unlink_queue?
 				delete_entry(DeviceObject, Irp, IrpSp);
 			} else {
-				zfs_vnop_recycle(VTOZ(vp), 0);
+				if (vp && VTOZ(vp))
+					zfs_vnop_recycle(VTOZ(vp), 0);
 			}
 		}
 
@@ -2988,6 +3144,10 @@ fsDispatcher(
 			break;
 		case IOCTL_VOLUME_ONLINE:
 			dprintf("IOCTL_VOLUME_ONLINE\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_VOLUME_OFFLINE:
+			dprintf("IOCTL_VOLUME_OFFLINE\n");
 			Status = STATUS_SUCCESS;
 			break;
 		case IOCTL_DISK_IS_WRITABLE:
@@ -3030,15 +3190,18 @@ fsDispatcher(
 			dprintf("IOCTL_STORAGE_GET_HOTPLUG_INFO\n");
 			Status = ioctl_storage_get_hotplug_info(DeviceObject, Irp, IrpSp);
 			break;
-		case IOCTL_STORAGE_GET_DEVICE_NUMBER:
-			dprintf("IOCTL_STORAGE_GET_DEVICE_NUMBER\n");
-			Status = ioctl_storage_get_device_number(DeviceObject, Irp, IrpSp);
-			break;
 		case IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS:
 			dprintf("IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS\n");
 			Status = ioctl_volume_get_volume_disk_extents(DeviceObject, Irp, IrpSp);
 			break;
-
+		case IOCTL_DISK_GET_LENGTH_INFO:
+			dprintf("IOCTL_DISK_GET_LENGTH_INFO\n");
+			Status = ioctl_disk_get_length_info(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_STORAGE_GET_DEVICE_NUMBER:
+			dprintf("IOCTL_STORAGE_GET_DEVICE_NUMBER\n");
+			Status = ioctl_storage_get_device_number(DeviceObject, Irp, IrpSp);
+			break;
 		default:
 			dprintf("**** unknown fsWindows IOCTL: 0x%lx\n", cmd);
 		}
@@ -3160,6 +3323,8 @@ char *common_status_str(NTSTATUS Status)
 		return "ObjectPathNotFound";
 	case STATUS_NO_SUCH_FILE:
 		return "NoSuchFile";
+	case STATUS_ACCESS_DENIED:
+		return "AccessDenied";
 	case STATUS_NOT_IMPLEMENTED:
 		return "NotImplemented";
 	default:
@@ -3209,8 +3374,8 @@ dispatcher(
 
 	IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
-	dprintf("%s: enter: major %d: minor %d: %s\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
-		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
+//	dprintf("%s: enter: major %d: minor %d: %s\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
+//		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
 
 	Status = STATUS_NOT_IMPLEMENTED;
 
@@ -3233,9 +3398,15 @@ dispatcher(
 	if (TopLevel) { IoSetTopLevelIrp(NULL); }
 	FsRtlExitFileSystem();
 
-	dprintf("%s: exit: 0x%x %s Information 0x%x\n", __func__, Status, 
-		common_status_str(Status),
-		Irp->IoStatus.Information);
+	switch (Status) {
+	case STATUS_SUCCESS:
+	case STATUS_BUFFER_OVERFLOW:
+		break;
+	default:
+		dprintf("%s: exit: 0x%x %s Information 0x%x : %s\n", __func__, Status,
+			common_status_str(Status),
+			Irp->IoStatus.Information, major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
+	}
 
 	// Complete the request if it isn't pending (ie, we called zfsdev_async())
 	if (Status != STATUS_PENDING)

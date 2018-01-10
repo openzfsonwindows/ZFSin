@@ -670,6 +670,16 @@ int     vnode_put(vnode_t *vp)
 	ASSERT(!(vp->v_flags & VNODE_DEAD));
 	ASSERT(vp->v_iocount > 0);
 	atomic_dec_32(&vp->v_iocount);
+
+	// Was it marked TERM, but we were waiting for last ref to leave.
+	if ((vp->v_flags & VNODE_MARKTERM) &&
+		(vp->v_usecount == 0) &&
+		(vp->v_iocount == 0)) {
+		vnode_recycle(vp);
+	}
+
+	// There is currently nothing freeing a 0,0 vnode
+
 	return 0;
 }
 
@@ -733,13 +743,17 @@ int     vnode_isinuse(vnode_t *vp, int refcnt)
 
 int     vnode_recycle(vnode_t *vp)
 {
-	vp->v_flags |= VNODE_DEAD; // Mark it dead
+	vp->v_flags |= VNODE_MARKTERM; // Mark it terminating
 
 	if ((vp->v_usecount == 0) &&
-		(vp->v_iocount == 1)) {
+		(vp->v_iocount == 0)) {
+
+		vp->v_flags |= VNODE_DEAD; // Mark it dead
 
 		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
 		// mutex does not need releasing.
+
+		dprintf("Actually releasing vp %p\n");
 
 		// Free vp memory
 		kmem_free(vp, sizeof(*vp));

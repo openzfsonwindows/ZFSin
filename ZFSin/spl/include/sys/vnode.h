@@ -49,6 +49,7 @@
  * request to be handled.
  */
 #define VNODE_DEAD 1<<0
+#define VNODE_MARKTERM 1<<1
 
 struct vnode {
 	// Windows specific header, has to be first. Not sure we are using

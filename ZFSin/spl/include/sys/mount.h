@@ -97,6 +97,8 @@ struct mount
 	UNICODE_STRING fs_name;
 	UNICODE_STRING name;
 	UNICODE_STRING uuid;
+	uint64_t volume_opens;
+	PVPB vpb;
 };
 typedef struct mount mount_t;
 #define LK_NOWAIT 1
