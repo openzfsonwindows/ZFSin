@@ -308,6 +308,28 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		(CreateDisposition == FILE_OPEN_IF) ||
 		(CreateDisposition == FILE_OVERWRITE_IF)));
 
+
+	// If it is a volumeopen, we just grab rootvp so that directory listings work
+	if (FileObject->FileName.Length == 0 && FileObject->RelatedFileObject == NULL) {
+		// If DirectoryFile return STATUS_NOT_A_DIRECTORY
+		// If OpenTargetDirectory return STATUS_INVALID_PARAMETER
+		error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
+		if (error != 0) return FILE_DOES_NOT_EXIST;  // No root dir?!
+
+		dvp = ZTOV(zp);
+		vnode_ref(dvp); // Hold open reference, until CLOSE
+		VN_RELE(dvp);
+
+		FileObject->FsContext = dvp;
+		zfs_dirlist_t *zccb = kmem_zalloc(sizeof(zfs_dirlist_t), KM_SLEEP);
+		zccb->magic = ZFS_DIRLIST_MAGIC;
+		IrpSp->FileObject->FsContext2 = zccb;
+
+		Irp->IoStatus.Information = FILE_OPENED;
+		return STATUS_SUCCESS;
+	}
+
+
 	// Convert incoming filename to utf8
 	error = RtlUnicodeToUTF8N(filename,	MAXNAMELEN,	&outlen,
 		FileObject->FileName.Buffer, FileObject->FileName.Length);
@@ -1119,7 +1141,7 @@ NTSTATUS ioctl_storage_query_property(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO
 
 	default:
 		dprintf("%s: unknown Querytype: 0x%x\n", __func__, spq->QueryType);
-		status = STATUS_ACCESS_DENIED;
+		status = STATUS_NOT_IMPLEMENTED;
 		break;
 	}
 
@@ -1171,7 +1193,8 @@ NTSTATUS ioctl_mountdev_query_suggested_link_name(PDEVICE_OBJECT DeviceObject, P
 {
 	MOUNTDEV_SUGGESTED_LINK_NAME *linkName;
 	ULONG				bufferLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
-	UNICODE_STRING MountPoint;
+//	UNICODE_STRING MountPoint;
+	mount_t *zmo = (mount_t *)DeviceObject->DeviceExtension;
 
 	dprintf("%s: \n", __func__);
 
@@ -1180,10 +1203,17 @@ NTSTATUS ioctl_mountdev_query_suggested_link_name(PDEVICE_OBJECT DeviceObject, P
 		return STATUS_BUFFER_TOO_SMALL;
 	}
 
-	// This code works, for driveletters.
-	return STATUS_NOT_FOUND;
+	// We only reply to strict driveletter mounts, not paths...
+	if (!zmo->justDriveLetter)
+		return STATUS_NOT_FOUND;
 
-//	RtlInitUnicodeString(&MountPoint, L"\\DosDevices\\G:");
+	// This code works, for driveletters.
+	// The mountpoint string is "\\??\\f:" so change
+	// that to DosDevicesF:
+	DECLARE_UNICODE_STRING_SIZE(MountPoint, ZFS_MAX_DATASET_NAME_LEN); // 36(uuid) + 6 (punct) + 6 (Volume)
+	RtlUnicodeStringPrintf(&MountPoint, L"\\DosDevices\\%wc:", towupper(zmo->mountpoint.Buffer[4]));  // "\??\F:"
+
+	//RtlInitUnicodeString(&MountPoint, L"\\DosDevices\\G:");
 
 	linkName = (PMOUNTDEV_SUGGESTED_LINK_NAME)Irp->AssociatedIrp.SystemBuffer;
 
@@ -1308,23 +1338,26 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		FILE_FS_VOLUME_INFORMATION *ffvi = Irp->AssociatedIrp.SystemBuffer;
 		ffvi->VolumeCreationTime.QuadPart = 0;
 		ffvi->VolumeSerialNumber = 0x19831116;
-		ffvi->VolumeLabelLength =
-			(USHORT)wcslen(VOLUME_LABEL) * sizeof(WCHAR);
 		ffvi->SupportsObjects = FALSE;
-		DWORD RequiredLength = sizeof(FILE_FS_VOLUME_INFORMATION) +
-			ffvi->VolumeLabelLength - sizeof(WCHAR);
+		ffvi->VolumeLabelLength =
+			zmo->name.Length;
 
-		if (IrpSp->Parameters.QueryVolume.Length < RequiredLength) {
-			Irp->IoStatus.Information = sizeof(FILE_FS_VOLUME_INFORMATION);
+		int space = IrpSp->Parameters.QueryFile.Length - FIELD_OFFSET(FILE_FS_VOLUME_INFORMATION, VolumeLabel);
+		space = MIN(space, ffvi->VolumeLabelLength);
+
+		/* 
+		 * This becomes the name displayed in Explorer, so we return the
+		 * dataset name here, as much as we can
+		 */
+		RtlCopyMemory(ffvi->VolumeLabel, zmo->name.Buffer, space);
+		
+		Irp->IoStatus.Information = FIELD_OFFSET(FILE_FS_VOLUME_INFORMATION, VolumeLabel) + space;
+
+		if (space < ffvi->VolumeLabelLength) 
 			Status = STATUS_BUFFER_OVERFLOW;
-			break;
-		}
+		else
+			Status = STATUS_SUCCESS;
 
-		RtlCopyMemory(ffvi->VolumeLabel, VOLUME_LABEL,
-			ffvi->VolumeLabelLength);
-
-		Irp->IoStatus.Information = RequiredLength;
-		Status = STATUS_SUCCESS;
 		break;
 	case FileFsSizeInformation:   
 		//
@@ -2114,13 +2147,13 @@ NTSTATUS query_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		Status = query_directory_FileFullDirectoryInformation(DeviceObject, Irp, IrpSp);
 		break;
 	case FileQuotaInformation:
-		dprintf("   %s FileQuotaInformation\n", __func__);
+		dprintf("   %s FileQuotaInformation *NotImplemented\n", __func__);
 		break;
 	case FileReparsePointInformation:
-		dprintf("   %s FileReparsePointInformation\n", __func__);
+		dprintf("   %s FileReparsePointInformation *NotImplemented\n", __func__);
 		break;
 	default:
-		dprintf("   %s unknown 0x%x\n", __func__, IrpSp->Parameters.QueryDirectory.FileInformationClass);
+		dprintf("   %s unknown 0x%x *NotImplemented\n", __func__, IrpSp->Parameters.QueryDirectory.FileInformationClass);
 		break;
 	}
 
@@ -3067,19 +3100,10 @@ fsDispatcher(
 		//  isn't a related file object.  If there is a related file object
 		//  then it is the Vcb itself.
 		//
-		if (IrpSp->FileObject->FileName.Length == 0) {
-			// relatedFileObject should be NULL, OR, point to UserVolumeOpen
-			// This opens the Volume; we should handle reading of it too
-
-			// If DirectoryFile return STATUS_NOT_A_DIRECTORY
-			// If OpenTargetDirectory return STATUS_INVALID_PARAMETER
-			Status = volume_create(DeviceObject, Irp, IrpSp);
-			break;
-		}
 
 		// We have a name, so we are looking for something specific
 		// Attempt to find the requested object
-		if (IrpSp && IrpSp->FileObject && IrpSp->FileObject->FileName.Buffer &&
+		if (IrpSp && IrpSp->FileObject && /* IrpSp->FileObject->FileName.Buffer && */
 			zmo) {
 
 			Status = zfs_vnop_lookup(Irp, IrpSp, zmo);

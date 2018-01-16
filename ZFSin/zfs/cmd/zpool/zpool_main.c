@@ -450,38 +450,6 @@ usage(boolean_t requested)
 		(void) printf("dumping core by request\n");
 		abort();
 	}
-
-
-	fprintf(stderr, "trying to set the mountpoint\r\n");
-	int ret;
-	ret = SetVolumeMountPoint(
-		L"C:\\BOOM\\",
-		L"\\\\?\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}\\"  //  This string must be of the form "\\?\Volume{GUID}\" 
-	);
-
-	fprintf(stderr, "trying to set the mountpoint: %d %d\r\n", ret, GetLastError());
-
-	ret = SetVolumeMountPoint(
-		L"C:\\BOOM\\",
-		L"E:\\"  //  This string must be of the form "\\?\Volume{GUID}\" 
-	);
-
-	fprintf(stderr, "trying to set the mountpoint: %d %d\r\n", ret, GetLastError());
-
-	ret = SetVolumeMountPoint(
-		L"F:\\",
-		L"\\\\?\\Volume{7cc377b6-beac-11e7-b56d-02150b22a130}\\"  //  This string must be of the form "\\?\Volume{GUID}\" 
-	);
-
-	fprintf(stderr, "trying to set the mountpoint: %d %d\r\n", ret, GetLastError());
-
-	ret = SetVolumeMountPoint(
-		L"F:\\",
-		L"\\\\?\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}\\"  //  This string must be of the form "\\?\Volume{GUID}\" 
-	);
-
-	fprintf(stderr, "trying to set the mountpoint: %d %d\r\n", ret, GetLastError());
-
 	exit(requested ? 0 : 2);
 }
 

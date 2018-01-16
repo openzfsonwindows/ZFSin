@@ -34,7 +34,6 @@
 #include <sys/zfs_ioctl.h>
 #include <sys/w32_types.h>
 
-
 int
 zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 	char *dataptr, int datalen, char *optptr, int optlen)
@@ -42,11 +41,19 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 	int ret = 0;
 
 	// mount 'spec' "tank/joe" on path 'dir' "/home/joe".
-	fprintf(stderr, "zmount running\r\n"); fflush(stderr);
+	fprintf(stderr, "zmount running, emulating Unix mount\r\n"); fflush(stderr);
 	zfs_cmd_t zc = { "\0" };
 
 	(void)strlcpy(zc.zc_name, zhp->zfs_name, sizeof(zc.zc_name));
-	(void)strlcpy(zc.zc_value, dir, sizeof(zc.zc_value));
+	//(void)strlcpy(zc.zc_value, dir, sizeof(zc.zc_value));
+
+	// Setup mount point, then convert Unix slash to Win32 backslash
+	//(void)strlcpy(zc.zc_value, "\\??\\c:\\BOOM", sizeof(zc.zc_value));
+	// example assumes "C:" - we need to go find drive letter here.
+	snprintf(zc.zc_value, sizeof(zc.zc_value), "\\??\\c:%s", dir); // "\\??\\c:/BOOM/lower"
+	for (int i = 0; zc.zc_value[i]; i++)
+		if (zc.zc_value[i] == '/')
+			zc.zc_value[i] = '\\'; // "\\??\\c:\\BOOM\\lower"
 
 	ret = zfs_ioctl(zhp->zfs_hdl, ZFS_IOC_MOUNT, &zc);
 
@@ -208,7 +215,7 @@ FIELD_OFFSET(REPARSE_DATA_BUFFER, GenericReparseBuffer)
 	}
 
 	ZeroMemory(targetDeviceName, sizeof(targetDeviceName));
-	wcscat_s(targetDeviceName, MAX_PATH, L"\\??\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}\\");
+	wcscat_s(targetDeviceName, MAX_PATH, L"\\??\\Volume{7cc383a0-beac-11e7-b56d-02150b22a130}");
 
 	targetLength = (USHORT)wcslen(targetDeviceName) * sizeof(WCHAR);
 	bufferLength =
@@ -263,31 +270,11 @@ FIELD_OFFSET(REPARSE_DATA_BUFFER, GenericReparseBuffer)
 
 	ret = SetVolumeMountPoint(
 		L"C:\\BOOM\\",
-		L"\\\\?\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}\\"  //  This string must be of the form "\\?\Volume{GUID}\" 
+		L"\\\\?\\Volume{7cc383a0-beac-11e7-b56d-02150b22a130}\\"  //  This string must be of the form "\\?\Volume{GUID}\" 
 	);
 
 	fprintf(stderr, "trying to set the mountpoint: %d %d\r\n", ret, GetLastError());
 
-	ret = SetVolumeMountPoint(
-		L"C:\\BOOM\\",
-		L"E:\\"  //  This string must be of the form "\\?\Volume{GUID}\" 
-	);
-
-	fprintf(stderr, "trying to set the mountpoint: %d %d\r\n", ret, GetLastError());
-	
-	ret = SetVolumeMountPoint(
-		L"F:\\",
-		L"\\\\?\\Volume{7cc377b6-beac-11e7-b56d-02150b22a130}\\"  //  This string must be of the form "\\?\Volume{GUID}\" 
-	);
-
-	fprintf(stderr, "trying to set the mountpoint: %d %d\r\n", ret, GetLastError());
-
-	ret = SetVolumeMountPoint(
-		L"F:\\",
-		L"\\\\?\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}\\"  //  This string must be of the form "\\?\Volume{GUID}\" 
-	);
-
-	fprintf(stderr, "trying to set the mountpoint: %d %d\r\n", ret, GetLastError());
 #endif
 
 

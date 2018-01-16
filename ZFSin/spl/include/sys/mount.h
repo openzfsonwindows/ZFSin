@@ -97,6 +97,8 @@ struct mount
 	UNICODE_STRING fs_name;
 	UNICODE_STRING name;
 	UNICODE_STRING uuid;
+	UNICODE_STRING mountpoint;
+	boolean_t justDriveLetter;
 	uint64_t volume_opens;
 	PVPB vpb;
 };

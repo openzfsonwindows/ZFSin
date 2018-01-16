@@ -819,6 +819,12 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 #else
 	if (lstat(mountpoint, &buf) != 0) {
 #endif
+
+/*
+ * In windows, we do not create the directory, as it is made
+ * when we create the reparse point.
+ */
+#ifndef _WIN32
 		if (mkdirp(mountpoint, 0755) != 0) {
 			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
 			    "failed to create mountpoint"));
@@ -826,7 +832,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 			    dgettext(TEXT_DOMAIN, "cannot mount '%s'"),
 			    mountpoint));
 		}
-
+#endif
 	}
 
 	/*
@@ -842,6 +848,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 		}
 	}
 
+#ifndef _WIN32
 	/*
 	 * Determine if the mountpoint is empty.  If so, refuse to perform the
 	 * mount.  We don't perform this check if 'remount' is
@@ -854,7 +861,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 		return (zfs_error_fmt(hdl, EZFS_MOUNTFAILED,
 		    dgettext(TEXT_DOMAIN, "cannot mount '%s'"), mountpoint));
 	}
-
+#endif
 	/* perform the mount */
 #ifdef __LINUX__
 	rc = do_mount(zfs_get_name(zhp), mountpoint, mntopts);

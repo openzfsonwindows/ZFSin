@@ -544,6 +544,7 @@ void zfs_release_mount(mount_t *zmo)
 	FreeUnicodeString(&zmo->device_name);
 	FreeUnicodeString(&zmo->fs_name);
 	FreeUnicodeString(&zmo->uuid);
+	FreeUnicodeString(&zmo->mountpoint);
 
 	if (zmo->vpb) {
 		zmo->vpb->DeviceObject = NULL;
@@ -561,6 +562,20 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	PDEVICE_OBJECT pdo = NULL;
 	PDEVICE_OBJECT diskDeviceObject = NULL;
 	PDEVICE_OBJECT fsDeviceObject = NULL;
+
+	/*
+	 * We expect mountpath (zv_value) to be already sanitised, ie, Windows 
+	 * translated paths. So it should be on this style:
+	 * "\\??\\c:"  mount as drive letter C:
+	 * "\\??\\?:"  mount as first available drive letter
+	 * "\\??\\c:\\BOOM"  mount as drive letter C:\BOOM
+	 */
+	int mplen = strlen(zc->zc_value);
+	if ((mplen < 6) ||
+		strncmp("\\??\\", zc->zc_value, 4)) {
+		dprintf("%s: mountpoint '%s' does not start with \\??\\x:", __func__, zc->zc_value);
+		return EINVAL;
+	}
 
 	zfs_vfs_uuid_gen(zc->zc_name, uuid);
 	zfs_vfs_uuid_unparse(uuid, uuid_a);
@@ -605,6 +620,15 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	zmo_dcb->type = MOUNT_TYPE_DCB;
 	zmo_dcb->size = sizeof(mount_t);
 	vfs_setfsprivate(zmo_dcb, NULL);
+
+	// Is it talking about just a drive letter? But NOT if its wildcard "\\??\\?:"
+	// these are handled in SuggestedLinkName
+	AsciiStringToUnicodeString(zc->zc_value, &zmo_dcb->mountpoint);
+	if ((mplen == 6) && (zc->zc_value[4] != '?'))
+		zmo_dcb->justDriveLetter = B_TRUE;
+	else
+		zmo_dcb->justDriveLetter = B_FALSE;
+
 	AsciiStringToUnicodeString(uuid_a, &zmo_dcb->uuid);
 	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
 	AsciiStringToUnicodeString(buf, &zmo_dcb->device_name);
@@ -629,8 +653,6 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	dprintf("%s: new fsname '%wZ'\n", __func__, &fsDeviceName);
 	AsciiStringToUnicodeString(buf, &zmo_dcb->fs_name);
 
-
-
 	diskDeviceObject->Flags |= DO_DIRECT_IO;
 
 
@@ -642,10 +664,6 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 		return status;
 	}
 
-
-	// Mark devices as initialized
-	diskDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
-	ObReferenceObject(diskDeviceObject);
 	//InsertMountEntry(WIN_DriverObject, NULL, FALSE);
 
 
@@ -669,6 +687,9 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 		return status;
 	}
 
+	// Mark devices as initialized
+	diskDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
+	ObReferenceObject(diskDeviceObject);
 
 	dprintf("Verify Volume\n");
 	IoVerifyVolume(diskDeviceObject, FALSE);
@@ -686,6 +707,42 @@ VOID InitVpb(__in PVPB Vpb, __in PDEVICE_OBJECT VolumeDevice)
 			sizeof(Vpb->VolumeLabel) / sizeof(WCHAR), VOLUME_LABEL);
 		Vpb->SerialNumber = 0x19831116;
 	}
+}
+
+
+
+NTSTATUS CreateReparsePoint(POBJECT_ATTRIBUTES poa, LPCWSTR SubstituteName, LPCWSTR PrintName)
+{
+	HANDLE hFile;
+	IO_STATUS_BLOCK iosb;
+
+	dprintf("%s: \n", __func__);
+	NTSTATUS status = ZwCreateFile(&hFile, FILE_ALL_ACCESS, poa, &iosb, 0, 0, 0,
+		FILE_CREATE, FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, 0, 0);
+	if (0 > status)
+		return status;
+	dprintf("%s: create ok\n", __func__);
+	USHORT SubstituteNameLength = (USHORT)wcslen(SubstituteName) * sizeof (WCHAR);
+	USHORT PrintNameLength = (USHORT)wcslen(PrintName) * sizeof (WCHAR);
+	USHORT cb = 2 * sizeof(WCHAR) + FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer.PathBuffer) + SubstituteNameLength + PrintNameLength;
+	PREPARSE_DATA_BUFFER prdb = (PREPARSE_DATA_BUFFER)alloca(cb);
+	RtlZeroMemory(prdb, cb);
+	prdb->ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
+	prdb->ReparseDataLength = cb - REPARSE_DATA_BUFFER_HEADER_SIZE;
+	prdb->MountPointReparseBuffer.SubstituteNameLength = SubstituteNameLength;
+	prdb->MountPointReparseBuffer.PrintNameLength = PrintNameLength;
+	prdb->MountPointReparseBuffer.PrintNameOffset = SubstituteNameLength + sizeof(WCHAR);
+	memcpy(prdb->MountPointReparseBuffer.PathBuffer, SubstituteName, SubstituteNameLength);
+	memcpy(RtlOffsetToPointer(prdb->MountPointReparseBuffer.PathBuffer, SubstituteNameLength + sizeof(WCHAR)), PrintName, PrintNameLength);
+	status = ZwFsControlFile(hFile, 0, 0, 0, &iosb, FSCTL_SET_REPARSE_POINT, prdb, cb, 0, 0);
+	dprintf("%s: ControlFile %d / 0x%x\n", __func__, status, status);
+
+	if (0 > status) {
+		static FILE_DISPOSITION_INFORMATION fdi = { TRUE };
+		ZwSetInformationFile(hFile, &iosb, &fdi, sizeof fdi, FileDispositionInformation);
+	}
+	ZwClose(hFile);
+	return status;
 }
 
 int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp)
@@ -747,6 +804,7 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	RtlDuplicateUnicodeString(0, &dcb->name, &vcb->name);
 	RtlDuplicateUnicodeString(0, &dcb->device_name, &vcb->device_name);
 	RtlDuplicateUnicodeString(0, &dcb->symlink_name, &vcb->symlink_name);
+	RtlDuplicateUnicodeString(0, &dcb->uuid, &vcb->uuid);
 
 
 	//InitializeListHead(&vcb->DirNotifyList);
@@ -814,6 +872,7 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	PFILE_OBJECT                        fileObject;
 	PDEVICE_OBJECT                      deviceObject;
 
+	// Query MntMgr for points, just informative
 	RtlInitUnicodeString(&name, MOUNTMGR_DEVICE_NAME);
 	status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &fileObject,
 		&deviceObject);
@@ -822,6 +881,27 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	status = mountmgr_get_drive_letter(deviceObject, &dcb->device_name, namex);
 	ObDereferenceObject(fileObject);
 
+	// Set the mountpoint, if not a drive letter.
+#if 0
+	OBJECT_ATTRIBUTES poa;
+	UNICODE_STRING usStr;
+	RtlInitUnicodeString(&usStr, L"\\??\\c:\\BOOM");
+	InitializeObjectAttributes(&poa, &usStr,  OBJ_KERNEL_HANDLE, NULL, NULL);
+	//CreateReparsePoint(&poa, L"\\??\\Volume{7cc383a0-beac-11e7-b56d-02150b22a130}", L"AnyBOOM");
+	CreateReparsePoint(&poa, L"\\??\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}", L"AnyBOOM");
+#endif
+
+	// Check if we are to mount as path (not just drive letter)
+	if (!dcb->justDriveLetter) {
+		OBJECT_ATTRIBUTES poa;
+		DECLARE_UNICODE_STRING_SIZE(volStr, ZFS_MAX_DATASET_NAME_LEN); // 36(uuid) + 6 (punct) + 6 (Volume)
+		RtlUnicodeStringPrintf(&volStr, L"\\??\\Volume{%wZ}", vcb->uuid); // "\??\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}"
+		InitializeObjectAttributes(&poa, &dcb->mountpoint, OBJ_KERNEL_HANDLE, NULL, NULL);
+		dprintf("Creating reparse mountpoint on '%wZ' for volume '%wZ'\n", &dcb->mountpoint, &volStr);
+		CreateReparsePoint(&poa, volStr.Buffer, vcb->name.Buffer);  // Don't think 3rd arg is used.
+
+		// Remove drive letter?
+	}
 
 	return STATUS_SUCCESS;
 }
