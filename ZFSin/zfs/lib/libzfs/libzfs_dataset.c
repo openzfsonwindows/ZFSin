@@ -2609,7 +2609,7 @@ zfs_prop_get(zfs_handle_t *zhp, zfs_prop_t prop, char *propbuf, size_t proplen,
 			    relpath[0] != '\0'))
 				str++;
 
-#ifdef __APPLE__
+#ifdef WIN33
 			/*
 			 * On OSX by default we mount pools under /Volumes unless
 			 * the dataset property mountpoint specifies otherwise.
@@ -2619,7 +2619,7 @@ zfs_prop_get(zfs_handle_t *zhp, zfs_prop_t prop, char *propbuf, size_t proplen,
 			 */
 			char *default_mountpoint;
 			default_mountpoint = getenv("__ZFS_MAIN_MOUNTPOINT_DIR");
-			if (!default_mountpoint) default_mountpoint = "/Volumes/";
+			if (!default_mountpoint) default_mountpoint = WIN_DRIVELETTER "?:/";
 
 			//Temporarily allowing snapshot mounting
 			if (zhp->zfs_type == ZFS_TYPE_SNAPSHOT) {
@@ -2663,7 +2663,7 @@ zfs_prop_get(zfs_handle_t *zhp, zfs_prop_t prop, char *propbuf, size_t proplen,
 				    root, str);
 			else
 				(void) snprintf(propbuf, proplen, "%s%s%s%s",
-#ifdef __APPLE__
+#ifdef WIN33
 				    root, str, source == NULL ||
 				    source[0] == '\0' ? default_mountpoint : "/",
 #else
@@ -2672,7 +2672,7 @@ zfs_prop_get(zfs_handle_t *zhp, zfs_prop_t prop, char *propbuf, size_t proplen,
 				    relpath);
 
 
-#ifdef __APPLE__
+#ifdef WIN33
 			}
 #endif
 		} else {

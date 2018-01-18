@@ -1207,9 +1207,14 @@ NTSTATUS ioctl_mountdev_query_suggested_link_name(PDEVICE_OBJECT DeviceObject, P
 	if (!zmo->justDriveLetter)
 		return STATUS_NOT_FOUND;
 
+	// If "?:" then just let windows pick drive letter
+	if (zmo->mountpoint.Buffer[4] == L'?')
+		return STATUS_NOT_FOUND;
+
 	// This code works, for driveletters.
 	// The mountpoint string is "\\??\\f:" so change
 	// that to DosDevicesF:
+
 	DECLARE_UNICODE_STRING_SIZE(MountPoint, ZFS_MAX_DATASET_NAME_LEN); // 36(uuid) + 6 (punct) + 6 (Volume)
 	RtlUnicodeStringPrintf(&MountPoint, L"\\DosDevices\\%wc:", towupper(zmo->mountpoint.Buffer[4]));  // "\??\F:"
 

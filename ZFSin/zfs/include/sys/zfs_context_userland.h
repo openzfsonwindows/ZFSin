@@ -735,7 +735,6 @@ void ksiddomain_rele(ksiddomain_t *);
 //#include <libkern/OSByteOrder.h>
 #define htobe32(x) _byteswap_ulong(x)
 
-
 #endif /* !_KERNEL */
 
 

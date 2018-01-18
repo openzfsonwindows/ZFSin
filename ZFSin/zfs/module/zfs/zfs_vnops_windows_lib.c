@@ -564,7 +564,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	PDEVICE_OBJECT fsDeviceObject = NULL;
 
 	/*
-	 * We expect mountpath (zv_value) to be already sanitised, ie, Windows 
+	 * We expect mountpath (zv_value) to be already sanitised, ie, Windows
 	 * translated paths. So it should be on this style:
 	 * "\\??\\c:"  mount as drive letter C:
 	 * "\\??\\?:"  mount as first available drive letter
@@ -589,13 +589,13 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	UNICODE_STRING		fsDeviceName;
 	UNICODE_STRING		symbolicLinkTarget;
 
-		ANSI_STRING pants;
+	ANSI_STRING pants;
 	ULONG				deviceCharacteristics;
 	deviceCharacteristics = FILE_DEVICE_IS_MOUNTED;
 	deviceCharacteristics |= FILE_REMOVABLE_MEDIA;
 
 	snprintf(buf, sizeof(buf), "\\Device\\Volume{%s}", uuid_a);
-//	snprintf(buf, sizeof(buf), "\\Device\\ZFS_%s", zc->zc_name);
+	//	snprintf(buf, sizeof(buf), "\\Device\\ZFS_%s", zc->zc_name);
 	pants.Buffer = buf;
 	pants.Length = strlen(buf);
 	pants.MaximumLength = PATH_MAX;
@@ -621,14 +621,6 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	zmo_dcb->size = sizeof(mount_t);
 	vfs_setfsprivate(zmo_dcb, NULL);
 
-	// Is it talking about just a drive letter? But NOT if its wildcard "\\??\\?:"
-	// these are handled in SuggestedLinkName
-	AsciiStringToUnicodeString(zc->zc_value, &zmo_dcb->mountpoint);
-	if ((mplen == 6) && (zc->zc_value[4] != '?'))
-		zmo_dcb->justDriveLetter = B_TRUE;
-	else
-		zmo_dcb->justDriveLetter = B_FALSE;
-
 	AsciiStringToUnicodeString(uuid_a, &zmo_dcb->uuid);
 	AsciiStringToUnicodeString(zc->zc_name, &zmo_dcb->name);
 	AsciiStringToUnicodeString(buf, &zmo_dcb->device_name);
@@ -643,7 +635,6 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	status = RtlAnsiStringToUnicodeString(&symbolicLinkTarget, &pants, TRUE);
 	dprintf("%s: new symlink '%wZ'\n", __func__, &symbolicLinkTarget);
 	AsciiStringToUnicodeString(buf, &zmo_dcb->symlink_name);
-	strlcpy(zc->zc_value, buf, sizeof(zc->zc_value)); // Copy to userland
 
 	snprintf(buf, sizeof(buf), "\\Device\\ZFS{%s}", uuid_a);
 	pants.Buffer = buf;
@@ -686,6 +677,26 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 		IoDeleteDevice(diskDeviceObject);
 		return status;
 	}
+
+	// Check if we are to mount with driveletter, or path
+	// We already check that path is "\\??\\" above, and 
+	// at least 6 chars. Seventh char can be zero, or "/"
+	// then zero, for drive only mount.
+	if ((zc->zc_value[6] == 0) ||
+		((zc->zc_value[6] == '/') &&
+		(zc->zc_value[7] == 0))) {
+		zmo_dcb->justDriveLetter = B_TRUE;
+	} else {
+		zmo_dcb->justDriveLetter = B_FALSE;
+	}
+
+	// Remember mountpoint path
+	AsciiStringToUnicodeString(zc->zc_value, &zmo_dcb->mountpoint);
+
+	dprintf("%s: driveletter %d '%wZ'\n", __func__, zmo_dcb->justDriveLetter, &zmo_dcb->mountpoint);
+
+	// Return volume name to userland
+	snprintf(zc->zc_value, sizeof(zc->zc_value), "\\DosDevices\\Global\\Volume{%s}", uuid_a);
 
 	// Mark devices as initialized
 	diskDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;

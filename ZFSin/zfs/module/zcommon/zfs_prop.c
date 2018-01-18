@@ -580,6 +580,11 @@ zfs_prop_init(void)
 	    ZFS_TYPE_FILESYSTEM, "on | off", "COM.APPLE.MIMIC_HFS", boolean_table);
 #endif
 
+#ifdef _WIN32
+	zprop_register_string(ZFS_PROP_DRIVELETTER, "driveletter", "notset",
+		0, ZFS_TYPE_FILESYSTEM, "off | ? | A-Z ",
+		"DRIVELETTER");
+#endif
 
 }
 

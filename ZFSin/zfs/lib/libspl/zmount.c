@@ -20,7 +20,7 @@
 * CDDL HEADER END
 */
 /*
-* Copyright (c) 2017 Jorgen Lundman <lundman@lundman.net.  All rights reserved.
+* Copyright (c) 2018 Jorgen Lundman <lundman@lundman.net.  All rights reserved.
 */
 
 /*
@@ -39,21 +39,74 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 	char *dataptr, int datalen, char *optptr, int optlen)
 {
 	int ret = 0;
+	int ispool = 0;
+	char driveletter[100] = { 0 };
+	int hasprop = 0;
 
 	// mount 'spec' "tank/joe" on path 'dir' "/home/joe".
-	fprintf(stderr, "zmount running, emulating Unix mount\r\n"); fflush(stderr);
+	fprintf(stderr, "zmount running, emulating Unix mount: '%s'\r\n", dir); fflush(stderr);
 	zfs_cmd_t zc = { "\0" };
 
-	(void)strlcpy(zc.zc_name, zhp->zfs_name, sizeof(zc.zc_name));
-	//(void)strlcpy(zc.zc_value, dir, sizeof(zc.zc_value));
+	if (zhp) {
+		if (zhp->zpool_hdl &&
+			!strcmp(zpool_get_name(zhp->zpool_hdl),
+				zfs_get_name(zhp)))
+			ispool = 1;
 
-	// Setup mount point, then convert Unix slash to Win32 backslash
-	//(void)strlcpy(zc.zc_value, "\\??\\c:\\BOOM", sizeof(zc.zc_value));
-	// example assumes "C:" - we need to go find drive letter here.
-	snprintf(zc.zc_value, sizeof(zc.zc_value), "\\??\\c:%s", dir); // "\\??\\c:/BOOM/lower"
+		ret = zfs_prop_get(zhp, ZFS_PROP_DRIVELETTER, driveletter,
+			sizeof(driveletter), NULL, NULL, 0, B_FALSE);
+
+		hasprop = ret ? 0 : 1;
+		if (!ret && !strncmp("notset", driveletter, sizeof(driveletter)))
+			hasprop = 0;
+	}
+
+	(void)strlcpy(zc.zc_name, zhp->zfs_name, sizeof(zc.zc_name));
+	(void)strlcpy(zc.zc_value, dir, sizeof(zc.zc_value));
+
+	// If hasprop is set, use 'driveletter' and ignore mountpoint path
+	// if !hasprop && rootds same
+	if (hasprop ||
+		(!hasprop && ispool)) {
+		// We just pass "\\??\\X:" to kernel.
+		snprintf(zc.zc_value, sizeof(zc.zc_value), "\\??\\%c:", 
+			hasprop ? tolower(driveletter[0]) : '?');
+	} else {
+		// We are to mount with path. Attempt to find parent
+		// driveletter, if any. Otherwise assume c:/
+		driveletter[0] = 'c';
+
+		if (!ispool) {
+			char parent[ZFS_MAX_DATASET_NAME_LEN] = "";
+			struct mnttab entry = { 0 };
+
+			if ((zfs_parent_name(zhp, parent, sizeof(parent)) == 0) &&
+				(libzfs_mnttab_find(zhp->zfs_hdl, parent, &entry) == 0) &&
+				(entry.mnt_mountp[1] == ':'))
+				driveletter[0] = entry.mnt_mountp[0];
+			fprintf(stderr, "we think '%s' parent is '%s' and its mounts are: '%s'\r\n",
+				zfs_get_name(zhp), parent, entry.mnt_mountp); fflush(stderr);
+
+			// We need to skip the parent name part, in mountpoint "dir" here,ie
+			// if parent is "BOOM/lower" we need to skip to the 3nd slash
+			// in "/BOOM/lower/newfs"
+			// So, check if the mounted name is in the string
+			snprintf(parent, sizeof(parent), "/%s/", entry.mnt_special); // "BOOM" -> "/BOOM/"
+			char *part = strstr(dir, parent);
+			if (part) dir = &part[strlen(parent) - 1];
+		}
+		
+		snprintf(zc.zc_value, sizeof(zc.zc_value), "\\??\\%c%s",
+			tolower(driveletter[0]), dir);
+	}
+
+	// Convert Unix slash to Win32 backslash
 	for (int i = 0; zc.zc_value[i]; i++)
 		if (zc.zc_value[i] == '/')
 			zc.zc_value[i] = '\\'; // "\\??\\c:\\BOOM\\lower"
+
+	fprintf(stderr, "zmount(%s,'%s') hasprop %d ispool %d\n",
+		zhp->zfs_name, zc.zc_value, hasprop, ispool); fflush(stderr);
 
 	ret = zfs_ioctl(zhp->zfs_hdl, ZFS_IOC_MOUNT, &zc);
 
@@ -68,7 +121,7 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 	// "\\\??\\\Volume{7cc383a0-beac-11e7-b56d-02150b22a130}"
 	// and if change that to "\\\\?\\Volume{7cc383a0-beac-11e7-b56d-02150b22a130}\\";
 	// we can use GetVolumePathNamesForVolumeName() to get back "\\DosDevices\\E".
-
+#if 0
 	char out[MAXPATHLEN];
 	DWORD outlen;
 
@@ -114,6 +167,8 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 		}
 		fprintf(stderr, "\r\n");
 	}
+#endif
+
 #if 0
 	fprintf(stderr, "Trying mountmgr\r\n");
 #define MOUNTMGR_DOS_DEVICE_NAME L"\\\\.\\MountPointManager"
@@ -277,8 +332,6 @@ FIELD_OFFSET(REPARSE_DATA_BUFFER, GenericReparseBuffer)
 
 #endif
 
-
-	ret = 0;
 	return ret;
 }
 
