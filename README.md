@@ -11,7 +11,7 @@ and create two VMs.
 * Host (running Visual Studio and Kernel Debugger)
 * Target (runs the compiled kernel module)
 
-The VM images comes with Visual Studio 2017, which we use to compile the driver. 
+The VM images comes with Visual Studio 2017, which we use to compile the driver.
 
 It is recommended that the VMs are placed on static IP, as they can
 change IP with all the crashes, and you have to configure the remote
@@ -228,6 +228,23 @@ it makes zio_taskq_member(taskq_member()) crash. Investigate.
 expected. Currently looks up the information in the Registry.
 kmem should also use Windows signals
 "\KernelObjects\LowMemoryCondition" to sense pressure.
+
+Thinking on mount structure. Second design:
+
+Add dataset property WinDriveLetter, which is ignored on Unix system.
+So for a simple drive letter dataset:
+
+zfs set windriveletter=Z: pool
+
+The default creating of a new pool, AND, importing a UNIX pool, would
+set the root dataset to
+
+windriveletter=?:
+
+So it is assigned first-available drive letter. All lower datasets
+will be mounted inside the drive letter. If pool's WinDriveLetter is
+not set, it will mount "/pool" as "C:/pool".
+
 
 * Creating filebased pools would look like:
 ```
