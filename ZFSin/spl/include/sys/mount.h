@@ -105,6 +105,9 @@ struct mount
 typedef struct mount mount_t;
 #define LK_NOWAIT 1
 
+#define TYPE2ATTRIBUTES(Z) (S_ISDIR((Z)->z_mode) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL) | \
+							((Z)->z_pflags & ZFS_REPARSEPOINT ? FILE_ATTRIBUTE_REPARSE_POINT : 0 )
+
 int     vfs_busy(mount_t *mp, int flags);
 void    vfs_unbusy(mount_t *mp);
 int     vfs_isrdonly(mount_t *mp);

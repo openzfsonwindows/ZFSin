@@ -96,7 +96,7 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 			if (part) dir = &part[strlen(parent) - 1];
 		}
 		
-		snprintf(zc.zc_value, sizeof(zc.zc_value), "\\??\\%c%s",
+		snprintf(zc.zc_value, sizeof(zc.zc_value), "\\??\\%c:%s",
 			tolower(driveletter[0]), dir);
 	}
 

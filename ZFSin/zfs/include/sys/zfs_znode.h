@@ -69,10 +69,10 @@ extern "C" {
 
 #ifdef _WIN32
 	/* Unsure how we officially register new flags bits, but
-	 * I guess we will claim the whole nibble for OSX
-	 * 0x00n0000000000000ull : n = 1 2 4 8
+	 * I guess we will claim the whole nibble for Windows
+	 * 0x0n00000000000000ull : n = 1 2 4 8
 	 */
-#define	ZFS_TRACKED		0x0010000000000000ull
+#define	ZFS_REPARSEPOINT		0x0100000000000000ull
 #endif
 
 #define	ZFS_ATTR_SET(zp, attr, value, pflags, tx) \

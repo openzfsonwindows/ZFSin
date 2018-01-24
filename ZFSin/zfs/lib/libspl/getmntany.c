@@ -391,7 +391,7 @@ int getfsstat(struct statfs *buf, int bufsize, int flags)
 			BOOL gotname = FALSE;
 
 			gotname = DeviceIoControl(h, IOCTL_MOUNTDEV_QUERY_UNIQUE_ID, NULL, 0, UID, sizeof(cheat) - 1, &Size, NULL);
-//			printf("deviocon %d: namelen %d\n", status, UID->UniqueIdLength);
+			//printf("deviocon %d: namelen %d\n", status, UID->UniqueIdLength);
 			if (gotname) {
 				UID->UniqueId[UID->UniqueIdLength] = 0; // Kernel doesn't null terminate
 				//printf("'%s' ==> '%s'\n", name, UID->UniqueId);

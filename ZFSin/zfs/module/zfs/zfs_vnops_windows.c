@@ -313,6 +313,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if (FileObject->FileName.Length == 0 && FileObject->RelatedFileObject == NULL) {
 		// If DirectoryFile return STATUS_NOT_A_DIRECTORY
 		// If OpenTargetDirectory return STATUS_INVALID_PARAMETER
+		dprintf("Started NULL open, returning root of mount\n");
 		error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
 		if (error != 0) return FILE_DOES_NOT_EXIST;  // No root dir?!
 
@@ -341,8 +342,9 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	// Output string is only null terminated if input is, so do so now.
 	filename[outlen] = 0;
-	dprintf("%s: converted name is '%s' input len bytes %d (err %d) %s\n", __func__, filename, FileObject->FileName.Length, error,
-		DeleteOnClose?"DeleteOnClose":"");
+	dprintf("%s: converted name is '%s' input len bytes %d (err %d) %s %s\n", __func__, filename, FileObject->FileName.Length, error,
+		DeleteOnClose?"DeleteOnClose":"",
+		IrpSp->Flags&SL_CASE_SENSITIVE?"CaseSensitive":"CaseInsensitive");
 
 	// Check if we are called as VFS_ROOT();
 	OpenRoot = (strncmp("\\", filename, MAXNAMELEN) == 0 || strncmp("\\*", filename, MAXNAMELEN) == 0);
@@ -408,7 +410,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		return STATUS_OBJECT_NAME_NOT_FOUND;
 	}
 
-
 	// Here we have "dvp" of the directory. 
 	// "vp" if the final part was a file.
 	if (CreateDirectory) {
@@ -455,6 +456,35 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_OBJECT_NAME_NOT_FOUND; // wanted file, found dir error
 	}
+
+	VN_HOLD(dvp);
+	znode_t *dzp = VTOZ(dvp);
+	if (dzp->z_pflags & ZFS_REPARSEPOINT) {
+		/* How reparse points work from the point of view of the filesystem appears to
+		* undocumented. When returning STATUS_REPARSE, MSDN encourages us to return
+		* IO_REPARSE in Irp->IoStatus.Information, but that means we have to do our own
+		* translation. If we instead return the reparse tag in Information, and store
+		* a pointer to the reparse data buffer in Irp->Tail.Overlay.AuxiliaryBuffer,
+		* IopSymlinkProcessReparse will do the translation for us. 
+		* - maharmstone
+		*/
+		REPARSE_DATA_BUFFER *rpb;
+		rpb = ExAllocatePoolWithTag(PagedPool, dzp->z_size, '!FSZ');
+		uio_t *uio;
+		uio = uio_create(1, 0, UIO_SYSSPACE, UIO_READ);
+		uio_addiov(uio, rpb, dzp->z_size);
+		zfs_readlink(dvp, uio, NULL, NULL);
+		uio_free(uio);
+		VN_RELE(dvp);
+
+		// Return in Reserved the amount of path that was parsed.
+		//rpb->Reserved = FileObject->FileName.Length - parsed;
+		Irp->IoStatus.Information = rpb->ReparseTag;
+		Irp->Tail.Overlay.AuxiliaryBuffer = (void*)rpb;
+		dprintf("%s: returning REPARSE\n", __func__);
+		return STATUS_REPARSE;
+	}
+	VN_RELE(dvp);
 
 	if (CreateFile) {
 		vattr_t vap = { 0 };
@@ -784,7 +814,7 @@ NTSTATUS QueryCapabilities(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 	DeviceCapabilities->SurpriseRemovalOK = TRUE;
 	DeviceCapabilities->LockSupported = TRUE;
 	DeviceCapabilities->EjectSupported = TRUE;
-	DeviceCapabilities->Removable = TRUE;
+	DeviceCapabilities->Removable = FALSE; // XX
 	DeviceCapabilities->DockDevice = FALSE;
 	DeviceCapabilities->D1Latency = DeviceCapabilities->D2Latency = DeviceCapabilities->D3Latency = 0;
 	DeviceCapabilities->NoDisplayInUI = 0;
@@ -1061,7 +1091,7 @@ NTSTATUS ioctl_storage_get_hotplug_info(PDEVICE_OBJECT DeviceObject, PIRP Irp, P
 
 	STORAGE_HOTPLUG_INFO *hot = Irp->AssociatedIrp.SystemBuffer;
 	hot->Size = sizeof(STORAGE_HOTPLUG_INFO);
-	hot->MediaRemovable = TRUE;
+	hot->MediaRemovable = FALSE; // XX
 	hot->DeviceHotplug = TRUE;
 	hot->MediaHotplug = FALSE;
 	hot->WriteCacheEnableOverride = NULL;
@@ -1277,13 +1307,13 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 
 		FILE_FS_ATTRIBUTE_INFORMATION *ffai = Irp->AssociatedIrp.SystemBuffer;
 		ffai->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_CASE_SENSITIVE_SEARCH | FILE_NAMED_STREAMS |
-			FILE_PERSISTENT_ACLS | /*FILE_SUPPORTS_OBJECT_IDS |*/ FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS |
-			FILE_SUPPORTS_REPARSE_POINTS;
+			FILE_PERSISTENT_ACLS | FILE_SUPPORTS_OBJECT_IDS | FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS |
+			FILE_SUPPORTS_REPARSE_POINTS | FILE_UNICODE_ON_DISK | FILE_SUPPORTS_HARD_LINKS | FILE_SUPPORTS_OPEN_BY_FILE_ID |
+			FILE_SUPPORTS_EXTENDED_ATTRIBUTES;
 		ffai->MaximumComponentNameLength = PATH_MAX;
 
 		// There is room for one char in the struct
 		// Alas, many things compare string to "NTFS".
-		// FIXME FIELD_OFFSET
 		space = IrpSp->Parameters.QueryVolume.Length - FIELD_OFFSET(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName);
 			
 		UNICODE_STRING                  name;
@@ -1541,8 +1571,8 @@ NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK
 		TIME_UNIX_TO_WINDOWS(crtime, basic->CreationTime.QuadPart);
 		TIME_UNIX_TO_WINDOWS(zp->z_atime, basic->LastAccessTime.QuadPart);
 
-		basic->FileAttributes = S_ISDIR(zp->z_mode) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
-
+		basic->FileAttributes = TYPE2ATTRIBUTES(zp);
+		dprintf("set attributes to 0x%x\n", basic->FileAttributes);
 		VN_RELE(vp);
 		return STATUS_SUCCESS;
 	}
@@ -1627,7 +1657,7 @@ NTSTATUS file_network_open_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 		TIME_UNIX_TO_WINDOWS(zp->z_atime, netopen->LastAccessTime.QuadPart);
 		netopen->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
 		netopen->EndOfFile.QuadPart = zp->z_size;
-		netopen->FileAttributes = S_ISDIR(zp->z_mode) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+		netopen->FileAttributes = TYPE2ATTRIBUTES(zp);
 		VN_RELE(vp);
 		return STATUS_SUCCESS;
 	}
@@ -1637,12 +1667,21 @@ NTSTATUS file_network_open_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 
 NTSTATUS file_standard_link_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_STANDARD_LINK_INFORMATION *fsli)
 {
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+
 	dprintf("   %s\n", __func__);
 
-	fsli->NumberOfAccessibleLinks = 0; // FIXME
-	fsli->TotalNumberOfLinks = 0; // FIXME
-	fsli->DeletePending = FALSE; // FIXME
-	fsli->Directory = TRUE; // FIXME
+	struct vnode *vp = FileObject->FsContext;
+
+	VN_HOLD(vp);
+	znode_t *zp = VTOZ(vp);
+
+	fsli->NumberOfAccessibleLinks = zp->z_links; 
+	fsli->TotalNumberOfLinks = zp->z_links; 
+	fsli->DeletePending = vnode_unlink(vp); 
+	fsli->Directory = S_ISDIR(zp->z_mode); 
+
+	VN_RELE(vp);
 
 	return STATUS_SUCCESS;
 }
@@ -1825,7 +1864,21 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		dprintf("* %s: FileAttributeTagInformation\n", __func__);
 		FILE_ATTRIBUTE_TAG_INFORMATION *tag = Irp->AssociatedIrp.SystemBuffer;
 		if (vp) {
-			tag->FileAttributes = vnode_isdir(vp) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+			VN_HOLD(vp);
+			znode_t *zp = VTOZ(vp);
+			tag->FileAttributes = TYPE2ATTRIBUTES(zp);
+			if (zp->z_pflags & ZFS_REPARSEPOINT) {
+				int err;
+				uio_t *uio;
+				REPARSE_DATA_BUFFER tagdata;
+				uio = uio_create(1, 0, UIO_SYSSPACE, UIO_READ);	
+				uio_addiov(uio, &tagdata, sizeof(tagdata));
+				err = zfs_readlink(vp, uio, NULL, NULL);
+				tag->ReparseTag = tagdata.ReparseTag;
+				dprintf("Returning tag 0x%x\n", tag->ReparseTag);
+				uio_free(uio);
+			}
+			VN_RELE(vp);
 			Irp->IoStatus.Information = sizeof(FILE_ATTRIBUTE_TAG_INFORMATION);
 			Status = STATUS_SUCCESS;
 		}
@@ -1923,6 +1976,8 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		Status = file_standard_link_information(DeviceObject, Irp, IrpSp, fsli);
 		Irp->IoStatus.Information = sizeof(FILE_STANDARD_LINK_INFORMATION);
 		break;
+	case FileReparsePointInformation:
+		break;
 	default:
 		dprintf("* %s: unknown class 0x%x NOT IMPLEMENTED\n", __func__, IrpSp->Parameters.QueryFile.FileInformationClass);
 		break;
@@ -1932,6 +1987,127 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		VN_RELE(vp);
 		vp = NULL;
 	}
+	return Status;
+}
+
+NTSTATUS get_reparse_point(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	NTSTATUS Status = STATUS_NOT_A_REPARSE_POINT;
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	DWORD outlen = IrpSp->Parameters.FileSystemControl.OutputBufferLength;
+	void *buffer = Irp->AssociatedIrp.SystemBuffer;
+	struct vnode *vp;
+
+	if (FileObject == NULL) return STATUS_INVALID_PARAMETER;
+
+	vp = FileObject->FsContext;
+
+	if (vp) {
+		VN_HOLD(vp);
+		znode_t *zp = VTOZ(vp);
+
+		if (zp->z_pflags & ZFS_REPARSEPOINT) {
+			int err;
+			int size = MIN(zp->z_size, outlen);
+			uio_t *uio;
+			uio = uio_create(1, 0, UIO_SYSSPACE, UIO_READ);
+			uio_addiov(uio, buffer, size);
+			err = zfs_readlink(vp, uio, NULL, NULL);
+			uio_free(uio);
+
+			if (outlen < zp->z_size)
+				Status = STATUS_BUFFER_OVERFLOW;
+			else
+				Status = STATUS_SUCCESS;
+
+			Irp->IoStatus.Information = size;
+
+			REPARSE_DATA_BUFFER *rdb = buffer;
+			dprintf("Returning tag 0x%x\n", rdb->ReparseTag);
+		}
+		VN_RELE(vp);
+	}
+	dprintf("%s: returning 0x%x\n", __func__, Status);
+	return Status;
+}
+
+NTSTATUS set_reparse_point(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	DWORD inlen = IrpSp->Parameters.DeviceIoControl.InputBufferLength;
+	void *buffer = Irp->AssociatedIrp.SystemBuffer;
+	REPARSE_DATA_BUFFER *rdb = buffer;
+	ULONG tag;
+
+	if (!FileObject) 
+		return STATUS_INVALID_PARAMETER;
+
+	if (Irp->UserBuffer)
+		return STATUS_INVALID_PARAMETER;
+
+	if (inlen < sizeof(ULONG)) {
+		return STATUS_INVALID_BUFFER_SIZE;
+	}
+
+	Status = FsRtlValidateReparsePointBuffer(inlen, rdb);
+	if (!NT_SUCCESS(Status)) {
+		dprintf("FsRtlValidateReparsePointBuffer returned %08x\n", Status);
+		goto out;
+	}
+
+	RtlCopyMemory(&tag, buffer, sizeof(ULONG));
+	dprintf("Received tag 0x%x\n", tag);
+
+	struct vnode *vp = IrpSp->FileObject->FsContext;
+	VN_HOLD(vp);
+	znode_t *zp = VTOZ(vp);
+
+	// Like zfs_symlink, write the data as SA attribute.
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+	int err;
+	dmu_tx_t	*tx;
+
+	// Set flags to indicate we are reparse point
+	zp->z_pflags |= ZFS_REPARSEPOINT;
+
+	// Start TX and save FLAGS, SIZE and SYMLINK to disk.
+top:		
+	tx = dmu_tx_create(zfsvfs->z_os);
+	dmu_tx_hold_sa(tx, zp->z_sa_hdl, B_FALSE);
+	err = dmu_tx_assign(tx, TXG_WAIT);
+	if (err) {
+		dmu_tx_abort(tx);
+		if (err == ERESTART)
+			goto top;
+		goto out;
+	}
+
+	(void)sa_update(zp->z_sa_hdl, SA_ZPL_FLAGS(zfsvfs),
+		&zp->z_pflags, sizeof(zp->z_pflags), tx);
+
+	mutex_enter(&zp->z_lock);
+	if (zp->z_is_sa)
+		err = sa_update(zp->z_sa_hdl, SA_ZPL_SYMLINK(zfsvfs),
+			buffer, inlen, tx);
+	else
+		zfs_sa_symlink(zp, buffer, inlen, tx);
+	mutex_exit(&zp->z_lock);
+
+	zp->z_size = inlen;
+	(void)sa_update(zp->z_sa_hdl, SA_ZPL_SIZE(zfsvfs),
+		&zp->z_size, sizeof(zp->z_size), tx);
+
+	dmu_tx_commit(tx);
+
+	VN_RELE(vp);
+
+	if (zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
+		zil_commit(zfsvfs->z_log, 0);
+
+out:
+	dprintf("%s: returning 0x%x\n", __func__, Status);
+
 	return Status;
 }
 
@@ -1995,7 +2171,11 @@ NTSTATUS user_fs_request(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		break;
 	case FSCTL_GET_REPARSE_POINT:
 		dprintf("    FSCTL_GET_REPARSE_POINT\n");
-		Status = STATUS_NOT_A_REPARSE_POINT;
+		Status = get_reparse_point(DeviceObject, Irp, IrpSp);
+		break;
+	case FSCTL_SET_REPARSE_POINT:
+		dprintf("    FSCTL_SET_REPARSE_POINT\n");
+		Status = set_reparse_point(DeviceObject, Irp, IrpSp);
 		break;
 	case FSCTL_CREATE_OR_GET_OBJECT_ID:
 		dprintf("    FSCTL_CREATE_OR_GET_OBJECT_ID\n");
@@ -2985,6 +3165,14 @@ diskDispatcher(
 			break;
 		case 0x4d0010: // Same as IOCTL_MOUNTDEV_LINK_CREATED but bit 14,15 are 0 (access permissions)
 			dprintf("IOCTL_MOUNTDEV_LINK_CREATED v2\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_MOUNTDEV_LINK_DELETED:
+			dprintf("IOCTL_MOUNTDEV_LINK_DELETED\n");
+			Status = STATUS_SUCCESS;
+			break;
+		case 0x4d0014: // Same as IOCTL_MOUNTDEV_LINK_DELETED but bit 14,15 are 0 (access permissions)
+			dprintf("IOCTL_MOUNTDEV_LINK_DELETED v2\n");
 			Status = STATUS_SUCCESS;
 			break;
 		default:

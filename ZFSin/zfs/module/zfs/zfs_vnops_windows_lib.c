@@ -531,6 +531,71 @@ SendVolumeCreatePoint(__in PUNICODE_STRING DeviceName,
 	return status;
 }
 
+NTSTATUS
+SendVolumeDeletePoints(__in PUNICODE_STRING MountPoint,
+	__in PUNICODE_STRING DeviceName)
+{
+	NTSTATUS status;
+	PMOUNTMGR_MOUNT_POINT point;
+	PMOUNTMGR_MOUNT_POINTS deletedPoints;
+	ULONG length;
+	ULONG olength;
+
+	dprintf("=> DokanSendVolumeDeletePoints\n");
+
+	length = sizeof(MOUNTMGR_MOUNT_POINT) + MountPoint->Length;
+	if (DeviceName != NULL) {
+		length += DeviceName->Length;
+	}
+	point = kmem_alloc(length, KM_SLEEP);
+
+	if (point == NULL) {
+		dprintf("  can't allocate MOUNTMGR_CREATE_POINT_INPUT\n");
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	olength = sizeof(MOUNTMGR_MOUNT_POINTS) + 1024;
+	deletedPoints = kmem_alloc(olength, KM_SLEEP);
+	if (deletedPoints == NULL) {
+		dprintf("  can't allocate PMOUNTMGR_MOUNT_POINTS\n");
+		kmem_free(point, length);
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	RtlZeroMemory(point, length); //kmem_zalloc
+	RtlZeroMemory(deletedPoints, olength);
+
+	dprintf("  MountPoint: %wZ\n", MountPoint);
+	point->SymbolicLinkNameOffset = sizeof(MOUNTMGR_MOUNT_POINT);
+	point->SymbolicLinkNameLength = MountPoint->Length;
+	RtlCopyMemory((PCHAR)point + point->SymbolicLinkNameOffset,
+		MountPoint->Buffer, MountPoint->Length);
+	if (DeviceName != NULL) {
+		dprintf("  DeviceName: %wZ\n", DeviceName);
+		point->DeviceNameOffset =
+			point->SymbolicLinkNameOffset + point->SymbolicLinkNameLength;
+		point->DeviceNameLength = DeviceName->Length;
+		RtlCopyMemory((PCHAR)point + point->DeviceNameOffset, DeviceName->Buffer,
+			DeviceName->Length);
+	}
+
+	status = SendIoctlToMountManager(IOCTL_MOUNTMGR_DELETE_POINTS, point,
+		length, deletedPoints, olength);
+
+	if (NT_SUCCESS(status)) {
+		dprintf("  IoCallDriver success, %d mount points deleted.\n",
+			deletedPoints->NumberOfMountPoints);
+	} else {
+		dprintf("  IoCallDriver failed: 0x%x\n", status);
+	}
+
+	kmem_free(point, length);
+	kmem_free(deletedPoints, olength);
+
+	dprintf("<= DokanSendVolumeDeletePoints\n");
+
+	return status;
+}
 
 void FreeUnicodeString(PUNICODE_STRING s)
 {
@@ -888,7 +953,7 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &fileObject,
 		&deviceObject);
 	//status = mountmgr_add_drive_letter(deviceObject, &fsDeviceName);
-	char namex[200];
+	char namex[200] = "";
 	status = mountmgr_get_drive_letter(deviceObject, &dcb->device_name, namex);
 	ObDereferenceObject(fileObject);
 
@@ -909,9 +974,13 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		RtlUnicodeStringPrintf(&volStr, L"\\??\\Volume{%wZ}", vcb->uuid); // "\??\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}"
 		InitializeObjectAttributes(&poa, &dcb->mountpoint, OBJ_KERNEL_HANDLE, NULL, NULL);
 		dprintf("Creating reparse mountpoint on '%wZ' for volume '%wZ'\n", &dcb->mountpoint, &volStr);
-		CreateReparsePoint(&poa, volStr.Buffer, vcb->name.Buffer);  // Don't think 3rd arg is used.
+		CreateReparsePoint(&poa, volStr.Buffer, vcb->name.Buffer);  // 3rd arg is visible in DOS box
 
 		// Remove drive letter?
+		//RtlUnicodeStringPrintf(&volStr, L"\\DosDevices\\E:");  // FIXME 
+		//RtlUnicodeStringPrintf(&volStr, L"%s", namex); // "\??\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}"
+		RtlUTF8ToUnicodeN(volStr.Buffer, ZFS_MAX_DATASET_NAME_LEN, &volStr.Length, namex, strlen(namex));
+		SendVolumeDeletePoints(&volStr, &dcb->device_name);
 	}
 
 	return STATUS_SUCCESS;
