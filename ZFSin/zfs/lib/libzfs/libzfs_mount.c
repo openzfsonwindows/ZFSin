@@ -780,7 +780,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 #endif /* __LINUX__ */
 
 	/* Create the directory if it doesn't already exist */
-#ifdef __APPLE__
+#ifdef _WIN32
 	/*
 	 * If the filesystem is encrypted the key must be loaded  in order to
 	 * mount. If the key isn't loaded, the MS_CRYPT flag decides whether
@@ -824,7 +824,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
  * In windows, we do not create the directory, as it is made
  * when we create the reparse point.
  */
-#ifndef _WIN32
+#ifndef _WIN33
 		if (mkdirp(mountpoint, 0755) != 0) {
 			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
 			    "failed to create mountpoint"));
@@ -848,7 +848,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 		}
 	}
 
-#ifndef _WIN32
+#ifndef _WIN33
 	/*
 	 * Determine if the mountpoint is empty.  If so, refuse to perform the
 	 * mount.  We don't perform this check if 'remount' is
@@ -895,7 +895,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 			    (u_longlong_t)zfs_prop_get_int(zhp,
 			    ZFS_PROP_VERSION), spa_version);
 			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, buf));
-#ifdef __APPLE__
+#ifdef _WIN32
 		} else if (((errno == ESRCH) || (errno == EINVAL) ||
 		    (errno == ENOENT && lstat(mountpoint, &buf) != 0)) &&
 		    zfs_get_type(zhp) == ZFS_TYPE_SNAPSHOT) {

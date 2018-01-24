@@ -791,9 +791,13 @@ NTSTATUS CreateReparsePoint(POBJECT_ATTRIBUTES poa, LPCWSTR SubstituteName, LPCW
 {
 	HANDLE hFile;
 	IO_STATUS_BLOCK iosb;
+	NTSTATUS status;
 
 	dprintf("%s: \n", __func__);
-	NTSTATUS status = ZwCreateFile(&hFile, FILE_ALL_ACCESS, poa, &iosb, 0, 0, 0,
+
+	status = ZwDeleteFile(poa);
+	if (status != STATUS_SUCCESS) dprintf("pre-rmdir failed 0x%x\n", status);
+	status = ZwCreateFile(&hFile, FILE_ALL_ACCESS, poa, &iosb, 0, 0, 0,
 		FILE_CREATE, FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, 0, 0);
 	if (0 > status)
 		return status;

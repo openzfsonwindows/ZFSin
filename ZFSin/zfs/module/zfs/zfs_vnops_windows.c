@@ -128,6 +128,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 	char *word = NULL;
 	char *brkt = NULL;
 	struct componentname cn;
+	int fullstrlen;
 
 	// Iterate from dvp if given, otherwise root
 	dvp = *dvpp;
@@ -139,6 +140,8 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 	} else {
 		VN_HOLD(dvp);
 	}
+
+	fullstrlen = strlen(filename);
 
 	for (word = strtok_r(filename, "/\\", &brkt);
 		word;
@@ -164,6 +167,36 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		// If last lookup hit a non-directory type, we stop
 		zp = VTOZ(vp);
 		if (S_ISDIR(zp->z_mode)) {
+
+			// Quick check to see if we are reparsepoint directory
+			if (zp->z_pflags & ZFS_REPARSEPOINT) {
+				/* How reparse points work from the point of view of the filesystem appears to
+				* undocumented. When returning STATUS_REPARSE, MSDN encourages us to return
+				* IO_REPARSE in Irp->IoStatus.Information, but that means we have to do our own
+				* translation. If we instead return the reparse tag in Information, and store
+				* a pointer to the reparse data buffer in Irp->Tail.Overlay.AuxiliaryBuffer,
+				* IopSymlinkProcessReparse will do the translation for us.
+				* - maharmstone
+				*/
+				REPARSE_DATA_BUFFER *rpb;
+				rpb = ExAllocatePoolWithTag(PagedPool, zp->z_size, '!FSZ');
+				uio_t *uio;
+				uio = uio_create(1, 0, UIO_SYSSPACE, UIO_READ);
+				uio_addiov(uio, rpb, zp->z_size);
+				zfs_readlink(vp, uio, NULL, NULL);
+				uio_free(uio);
+				VN_RELE(vp);
+
+				// Return in Reserved the amount of path that was parsed.
+				/* FileObject->FileName.Length - parsed*/
+				rpb->Reserved = (fullstrlen - ( ( word - filename ) + strlen(word))) * sizeof(WCHAR);
+				// We overload the lastname thing a bit, to return the reparsebuffer
+				if (lastname) *lastname = rpb;
+				dprintf("%s: returning REPARSE\n", __func__);
+				return STATUS_REPARSE;
+			}
+
+			// Not reparse
 			VN_RELE(dvp);
 			dvp = vp;
 			vp = NULL;
@@ -383,6 +416,14 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// We need to have a parent from here on.
 	error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), &finalname, &dvp, &vp);
 	if (error) {
+
+		if (error == STATUS_REPARSE) {
+			REPARSE_DATA_BUFFER *rpb = finalname;
+			Irp->IoStatus.Information = rpb->ReparseTag;
+			Irp->Tail.Overlay.AuxiliaryBuffer = (void*)rpb;
+			return error;
+		}
+
 		if (!dvp && error == ESRCH) {
 			dprintf("%s: failed to find dvp for '%s' \n", __func__, filename);
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
@@ -456,35 +497,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_OBJECT_NAME_NOT_FOUND; // wanted file, found dir error
 	}
-
-	VN_HOLD(dvp);
-	znode_t *dzp = VTOZ(dvp);
-	if (dzp->z_pflags & ZFS_REPARSEPOINT) {
-		/* How reparse points work from the point of view of the filesystem appears to
-		* undocumented. When returning STATUS_REPARSE, MSDN encourages us to return
-		* IO_REPARSE in Irp->IoStatus.Information, but that means we have to do our own
-		* translation. If we instead return the reparse tag in Information, and store
-		* a pointer to the reparse data buffer in Irp->Tail.Overlay.AuxiliaryBuffer,
-		* IopSymlinkProcessReparse will do the translation for us. 
-		* - maharmstone
-		*/
-		REPARSE_DATA_BUFFER *rpb;
-		rpb = ExAllocatePoolWithTag(PagedPool, dzp->z_size, '!FSZ');
-		uio_t *uio;
-		uio = uio_create(1, 0, UIO_SYSSPACE, UIO_READ);
-		uio_addiov(uio, rpb, dzp->z_size);
-		zfs_readlink(dvp, uio, NULL, NULL);
-		uio_free(uio);
-		VN_RELE(dvp);
-
-		// Return in Reserved the amount of path that was parsed.
-		//rpb->Reserved = FileObject->FileName.Length - parsed;
-		Irp->IoStatus.Information = rpb->ReparseTag;
-		Irp->Tail.Overlay.AuxiliaryBuffer = (void*)rpb;
-		dprintf("%s: returning REPARSE\n", __func__);
-		return STATUS_REPARSE;
-	}
-	VN_RELE(dvp);
 
 	if (CreateFile) {
 		vattr_t vap = { 0 };
