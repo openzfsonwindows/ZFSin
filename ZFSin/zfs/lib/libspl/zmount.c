@@ -89,14 +89,23 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 
 		if (!ispool) {
 			char parent[ZFS_MAX_DATASET_NAME_LEN] = "";
+			char *slashp;
 			struct mnttab entry = { 0 };
 
-			if ((zfs_parent_name(zhp, parent, sizeof(parent)) == 0) &&
-				(libzfs_mnttab_find(zhp->zfs_hdl, parent, &entry) == 0) &&
-				(entry.mnt_mountp[1] == ':'))
-				driveletter[0] = entry.mnt_mountp[0];
-			fprintf(stderr, "we think '%s' parent is '%s' and its mounts are: '%s'\r\n",
-				zfs_get_name(zhp), parent, entry.mnt_mountp); fflush(stderr);
+			zfs_parent_name(zhp, parent, sizeof(parent));
+
+			while (strlen(parent) >= 1) {
+				if ((libzfs_mnttab_find(zhp->zfs_hdl, parent, &entry) == 0) &&
+					(entry.mnt_mountp[1] == ':')) {
+					driveletter[0] = entry.mnt_mountp[0];
+					fprintf(stderr, "we think '%s' parent is '%s' and its mounts are: '%s'\r\n",
+						zfs_get_name(zhp), parent, entry.mnt_mountp); fflush(stderr);
+					break;
+				}
+				if ((slashp = strrchr(parent, '/')) == NULL)
+					break;
+				*slashp = '\0';
+			}
 
 			// We need to skip the parent name part, in mountpoint "dir" here,ie
 			// if parent is "BOOM/lower" we need to skip to the 3nd slash
