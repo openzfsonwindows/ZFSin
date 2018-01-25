@@ -2600,7 +2600,11 @@ zpool_vdev_online(zpool_handle_t *zhp, const char *path, int flags,
 			char buf[MAXPATHLEN];
 
 			if (path[0] != '/') {
-				error = zfs_resolve_shortname(path, buf,
+
+				// Convert possible INVD name, to diskX name
+				fullpath = zpool_vdev_name(hdl, zhp, tgt, VDEV_NAME_FOLLOW_LINKS);
+				// convert diskX to /dev/diskX
+				error = zfs_resolve_shortname(fullpath ? fullpath : path, buf,
 				    sizeof (buf));
 				if (error != 0)
 					return (zfs_error(hdl, EZFS_NODEVICE,
