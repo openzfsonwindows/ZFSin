@@ -912,6 +912,16 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	}
 #endif
 #endif
+
+	// Directory notification
+	InitializeListHead(&vcb->DirNotifyList);
+	FsRtlNotifyInitializeSync(&vcb->NotifySync);
+	//   FsRtlNotifyCleanup(vcb->NotifySync, &vcb->DirNotifyList, ccb);
+	// VOID FsRtlNotifyCleanupAll(
+	//_In_ PNOTIFY_SYNC NotifySync,
+	//	_In_ PLIST_ENTRY  NotifyList
+	//	);
+
 	PVPB vpb = NULL;
 	vpb = IrpSp->Parameters.MountVolume.Vpb;
 	InitVpb(vpb, volDeviceObject);
@@ -1037,8 +1047,10 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 		dprintf("%s: zfs_vfs_unmount %d\n", __func__, error);
 		if (error) goto out_unlock;
 
-		// Release devices
+		// Release any notifications
+		FsRtlNotifyCleanupAll(zmo->NotifySync, &zmo->DirNotifyList);
 
+		// Release devices
 		IoDeleteSymbolicLink(&zmo->symlink_name);
 
 		// fsDeviceObject
@@ -1057,7 +1069,16 @@ out_unlock:
 	return error;
 }
 
+/*
+ * This is connected to IRP_MN_NOTIFY_DIRECTORY_CHANGE
+ * and sending the notifications of changes
+ */
+void zfs_send_notify(zfsvfs_t *zfsvfs, char *name, ULONG FilterMatch, ULONG Action)
+{
 
+	// Insert magic here
+
+}
 
 int zfs_windows_zvol_create(zfs_cmd_t *zc)
 {

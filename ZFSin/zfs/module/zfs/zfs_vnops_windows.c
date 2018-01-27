@@ -116,8 +116,22 @@ uint64_t vnop_num_vnodes = 0;
 /*
  * zfs vfs operations.
  */
+zfs_dirlist_t *zfs_dirlist_alloc(void)
+{
+	zfs_dirlist_t *zccb = kmem_zalloc(sizeof(zfs_dirlist_t), KM_SLEEP);
+	zccb->magic = ZFS_DIRLIST_MAGIC;
+	return zccb;
+}
 
-
+void zfs_dirlist_free(zfs_dirlist_t *zccb)
+{
+	if (zccb->magic == ZFS_DIRLIST_MAGIC) {
+		zccb->magic = 0;
+		if (zccb->searchname.Buffer && zccb->searchname.Length)
+			kmem_free(zccb->searchname.Buffer, zccb->searchname.Length);
+		kmem_free(zccb, sizeof(zfs_dirlist_t));
+	}
+}
 
 int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, char **lastname, struct vnode **dvpp, struct vnode **vpp)
 {
@@ -309,13 +323,15 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	OpenTargetDirectory = BooleanFlagOn(IrpSp->Flags, SL_OPEN_TARGET_DIRECTORY);
 
 	/*
-	 *	CreateDisposition value	Action if file exists	Action if file does not exist
-		FILE_SUPERSEDE		Replace the file.		Create the file.
-		FILE_CREATE		Return an error.		Create the file.
-		FILE_OPEN		Open the file.		Return an error.
-		FILE_OPEN_IF		Open the file.		Create the file.
-		FILE_OVERWRITE		Open the file, and overwrite it.		Return an error.
-		FILE_OVERWRITE_IF		Open the file, and overwrite it.		Create the file.
+	 *	CreateDisposition value	Action if file exists	Action if file does not exist  UNIX Perms
+		FILE_SUPERSEDE		Replace the file.		    Create the file.               Unlink + O_CREAT | O_TRUNC
+		FILE_CREATE		    Return an error.		    Create the file.               O_CREAT | O_EXCL
+		FILE_OPEN		    Open the file.		        Return an error.               0
+		FILE_OPEN_IF		Open the file.		        Create the file.               O_CREAT
+		FILE_OVERWRITE		Open the file, overwrite it.	Return an error.           O_TRUNC
+		FILE_OVERWRITE_IF	Open the file, overwrite it.	Create the file.           O_CREAT | O_TRUNC
+
+		Apparently SUPERSEDE is more of less Unlink entry before recreate, so it loses ACLs, XATTRs and NamedStreams.
 
 		IoStatus return codes:
 		FILE_CREATED
@@ -326,6 +342,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		FILE_DOES_NOT_EXIST
 
 	*/
+
 	// Dir create/open is straight forward, do that here
 	// Files are harder, do that once we know if it exists.
 	CreateDirectory = (BOOLEAN)(DirectoryFile &&
@@ -355,9 +372,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		VN_RELE(dvp);
 
 		FileObject->FsContext = dvp;
-		zfs_dirlist_t *zccb = kmem_zalloc(sizeof(zfs_dirlist_t), KM_SLEEP);
-		zccb->magic = ZFS_DIRLIST_MAGIC;
-		IrpSp->FileObject->FsContext2 = zccb;
+
+		IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 
 		Irp->IoStatus.Information = FILE_OPENED;
 		return STATUS_SUCCESS;
@@ -397,12 +413,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				VN_RELE(vp);
 
 				// A valid lookup gets a ccb attached
-				zfs_dirlist_t *zccb = kmem_zalloc(sizeof(zfs_dirlist_t), KM_SLEEP);
-				zccb->magic = ZFS_DIRLIST_MAGIC;
-				//zccb->uio_offset = 0;
-				//zccb->dir_eof = 0;
-				IrpSp->FileObject->FsContext2 = zccb;
-
+				IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 
 				Irp->IoStatus.Information = FILE_OPENED;
 				return STATUS_SUCCESS;
@@ -437,10 +448,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if (OpenTargetDirectory) {
 		if (dvp) {
 			dprintf("%s: opening PARENT directory\n", __func__);
-			zfs_dirlist_t *zccb = kmem_zalloc(sizeof(zfs_dirlist_t), KM_SLEEP);
-			ASSERT(IrpSp->FileObject->FsContext2 == NULL);
-			zccb->magic = ZFS_DIRLIST_MAGIC;
-			IrpSp->FileObject->FsContext2 = zccb;
+			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 			FileObject->FsContext = dvp;
 			VN_HOLD(dvp);
 			vnode_ref(dvp); // Hold open reference, until CLOSE
@@ -469,10 +477,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		if (error == 0) {
 
 			// TODO: move creating zccb to own function
-			zfs_dirlist_t *zccb = kmem_zalloc(sizeof(zfs_dirlist_t), KM_SLEEP);
-			ASSERT(IrpSp->FileObject->FsContext2 == NULL);
-			zccb->magic = ZFS_DIRLIST_MAGIC;
-			IrpSp->FileObject->FsContext2 = zccb;
+			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 			FileObject->FsContext = vp;
 			vnode_ref(vp); // Hold open reference, until CLOSE
 			if (DeleteOnClose) vnode_setunlink(vp);
@@ -500,32 +505,51 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	if (CreateFile) {
 		vattr_t vap = { 0 };
+		int replacing = 0;
+
+		// Would we replace file?
+		if (vp) {
+			//VN_RELE(vp);
+			replacing = 1;
+		}
+
 		vap.va_mask = AT_MODE | AT_TYPE;
 		vap.va_type = VREG;
 		vap.va_mode = 0644;
 
-		error = zfs_create(dvp, finalname, &vap, 0, vap.va_mode, &vp, NULL);
+		// If O_TRUNC:
+		switch (CreateDisposition) {
+		case FILE_SUPERSEDE:
+		case FILE_OVERWRITE_IF:
+		case FILE_OVERWRITE:
+			vap.va_mask |= AT_SIZE;
+			vap.va_size = 0;
+			break;
+		}
+
+		// O_EXCL only if FILE_CREATE
+		error = zfs_create(dvp, finalname, &vap, CreateDisposition == FILE_CREATE, vap.va_mode, &vp, NULL);
 		if (error == 0) {
 			FileObject->FsContext = vp;
 			vnode_ref(vp); // Hold open reference, until CLOSE
 			if (DeleteOnClose) vnode_setunlink(vp);
 			FileObject->SectionObjectPointer = &vp->SectionObjectPointers;  // API this?
 			VN_RELE(vp);
-			Irp->IoStatus.Information = FILE_CREATED;
+
+			Irp->IoStatus.Information = replacing ? CreateDisposition == FILE_SUPERSEDE ?
+				FILE_SUPERSEDED : FILE_OVERWRITTEN : FILE_CREATED;
+
 			return STATUS_SUCCESS;
 		}
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-		return STATUS_OBJECT_NAME_NOT_FOUND; // create file error
+		return STATUS_OBJECT_NAME_COLLISION; // create file error
 	}
 
 
 	// Just open it, if the open was to a directory, add ccb
 	ASSERT(IrpSp->FileObject->FsContext == NULL);
 	if (vp == NULL) {
-		zfs_dirlist_t *zccb = kmem_zalloc(sizeof(zfs_dirlist_t), KM_SLEEP);
-		ASSERT(IrpSp->FileObject->FsContext2 == NULL);
-		zccb->magic = ZFS_DIRLIST_MAGIC;
-		IrpSp->FileObject->FsContext2 = zccb;
+		IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 		FileObject->FsContext = dvp;
 		VN_HOLD(dvp);
 		vnode_ref(dvp); // Hold open reference, until CLOSE
@@ -1550,6 +1574,18 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		tdvp, remainder ? remainder : filename,
 		NULL, NULL, 0);
 
+	zfs_send_notify(zfsvfs, fromname,
+		vnode_isdir(fvp) ? 
+		FILE_NOTIFY_CHANGE_DIR_NAME :
+		FILE_NOTIFY_CHANGE_FILE_NAME,
+		FILE_ACTION_RENAMED_OLD_NAME);
+
+	zfs_send_notify(zfsvfs, remainder ? remainder : filename,
+		vnode_isdir(fvp) ?
+		FILE_NOTIFY_CHANGE_DIR_NAME :
+		FILE_NOTIFY_CHANGE_FILE_NAME,
+		FILE_ACTION_RENAMED_NEW_NAME);
+
 	// Release all holds
 	VN_RELE(tdvp);
 	VN_RELE(fdvp);
@@ -2355,6 +2391,37 @@ NTSTATUS query_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 	}
 
 	return Status;
+}
+
+NTSTATUS notify_change_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	PFILE_OBJECT fileObject = IrpSp->FileObject;
+	mount_t *zmo;
+
+	dprintf("%s\n", __func__);
+	zmo = DeviceObject->DeviceExtension;
+	if (zmo->type != MOUNT_TYPE_VCB) {
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	struct vnode *vp = fileObject->FsContext;
+	ASSERT(vp != NULL);
+
+	VN_HOLD(vp);
+	znode_t *zp = VTOZ(vp);
+
+	if (!vnode_isdir(vp)) {
+		VN_RELE(vp);
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	FsRtlNotifyFullChangeDirectory(
+		zmo->NotifySync, &zmo->DirNotifyList, zp, (PSTRING)&fileObject->FileName,
+		(IrpSp->Flags & SL_WATCH_TREE) ? TRUE : FALSE, FALSE,
+		IrpSp->Parameters.NotifyDirectory.CompletionFilter, Irp, NULL, NULL);
+
+	VN_RELE(vp);
+	return STATUS_PENDING;
 }
 
 NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
@@ -3345,16 +3412,13 @@ fsDispatcher(
 					zfs_vnop_recycle(VTOZ(vp), 0);
 			}
 		}
-
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext2) {
-			zfs_dirlist_t *zccb = IrpSp->FileObject->FsContext2;
-			if (zccb->magic == ZFS_DIRLIST_MAGIC) {
-				zccb->magic = 0;
-				if (zccb->searchname.Buffer && zccb->searchname.Length)
-					kmem_free(zccb->searchname.Buffer, zccb->searchname.Length);
-				kmem_free(zccb, sizeof(zfs_dirlist_t));
-				IrpSp->FileObject->FsContext2 = NULL;
-			}
+			zfs_dirlist_free((zfs_dirlist_t *)IrpSp->FileObject->FsContext2);
+			IrpSp->FileObject->FsContext2 = NULL;
+			// Cancel any Notifications this dir may have had
+			zmo = DeviceObject->DeviceExtension;
+			VERIFY(zmo->type == MOUNT_TYPE_VCB);
+			FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, IrpSp->FileObject->FsContext);
 		}
 		break;
 	case IRP_MJ_DEVICE_CONTROL:
@@ -3521,7 +3585,7 @@ fsDispatcher(
 	case IRP_MJ_DIRECTORY_CONTROL:
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_NOTIFY_CHANGE_DIRECTORY:
-			Status = STATUS_SUCCESS;
+			Status = notify_change_directory(DeviceObject, Irp, IrpSp);
 			break;
 		case IRP_MN_QUERY_DIRECTORY:
 			Status = query_directory(DeviceObject, Irp, IrpSp);

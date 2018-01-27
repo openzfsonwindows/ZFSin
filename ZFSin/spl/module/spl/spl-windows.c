@@ -389,6 +389,9 @@ int spl_start (void)
     //len = sizeof(utsname.version);
     //sysctlbyname("kern.version", &utsname.version, &len, NULL, 0);
 
+	// Fetch time to ensure we dont return 0
+	gethrtime(); gethrtime();
+
     //strlcpy(utsname.nodename, hostname, sizeof(utsname.nodename));
     strlcpy(utsname.nodename, "Windows", sizeof(utsname.nodename));
     spl_mutex_subsystem_init();

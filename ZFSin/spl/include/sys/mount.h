@@ -101,6 +101,11 @@ struct mount
 	boolean_t justDriveLetter;
 	uint64_t volume_opens;
 	PVPB vpb;
+
+	// NotifySync is used by notify directory change
+	PNOTIFY_SYNC NotifySync;
+	LIST_ENTRY DirNotifyList;
+
 };
 typedef struct mount mount_t;
 #define LK_NOWAIT 1
