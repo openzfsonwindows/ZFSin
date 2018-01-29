@@ -1513,6 +1513,8 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	char buffer[MAXNAMELEN], *filename;
 	struct vnode *tdvp = NULL, *tvp = NULL, *fdvp = NULL;
 	uint64_t parent;
+	char *fromname = NULL;
+	int fromnamesize, namepart;
 
 	// Convert incoming filename to utf8
 	error = RtlUnicodeToUTF8N(buffer, MAXNAMELEN, &outlen,
@@ -1544,7 +1546,8 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 
 	// If we have a "tvp" here, then something exists where we are to rename
 	if (tvp && !ren->ReplaceIfExists) {
-		return STATUS_OBJECT_NAME_EXISTS;
+		error = STATUS_OBJECT_NAME_EXISTS;
+		goto out;
 	}
 
 
@@ -1554,42 +1557,50 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	// Fetch fdvp
 	error = zfs_zget(zfsvfs, parent, &dzp);
 	if (error) {
-		return STATUS_OBJECTID_NOT_FOUND;
+		error = STATUS_OBJECTID_NOT_FOUND;
+		goto out;
 	}
 
-	char fromname[MAXPATHLEN + 2];
-	error = zap_value_search(zfsvfs->z_os, dzp->z_id, zp->z_id,
-		ZFS_DIRENT_OBJ(-1ULL), fromname);
+	// Lookup name
+	error = zfs_build_path(zp, dzp, &fromname, &fromnamesize, &namepart);
 	if (error) {
-		return STATUS_OBJECTID_NOT_FOUND;
+		error = STATUS_OBJECTID_NOT_FOUND;
+		goto out;
 	}
-
 
 	fdvp = ZTOV(dzp);
 	VN_HOLD(fvp);
 	VN_HOLD(tdvp);
 	// We now hold everything but "tvp".
 
-	error = zfs_rename(fdvp, fromname, 
+	error = zfs_rename(fdvp, &fromname[namepart], 
 		tdvp, remainder ? remainder : filename,
 		NULL, NULL, 0);
 
-	zfs_send_notify(zfsvfs, fromname,
-		vnode_isdir(fvp) ? 
-		FILE_NOTIFY_CHANGE_DIR_NAME :
-		FILE_NOTIFY_CHANGE_FILE_NAME,
-		FILE_ACTION_RENAMED_OLD_NAME);
+	if (error == 0) {
+		zfs_send_notify(zfsvfs, fromname, namepart,
+			vnode_isdir(fvp) ?
+			FILE_NOTIFY_CHANGE_DIR_NAME :
+			FILE_NOTIFY_CHANGE_FILE_NAME,
+			FILE_ACTION_RENAMED_OLD_NAME);
 
-	zfs_send_notify(zfsvfs, remainder ? remainder : filename,
-		vnode_isdir(fvp) ?
-		FILE_NOTIFY_CHANGE_DIR_NAME :
-		FILE_NOTIFY_CHANGE_FILE_NAME,
-		FILE_ACTION_RENAMED_NEW_NAME);
-
+		// Release fromname, and lookup new name
+		kmem_free(fromname, fromnamesize);
+		fromname = NULL;
+		if (zfs_build_path(zp, VTOZ(tdvp), &fromname, &fromnamesize, &namepart) == 0) {
+			zfs_send_notify(zfsvfs, fromname, namepart,
+				vnode_isdir(fvp) ?
+				FILE_NOTIFY_CHANGE_DIR_NAME :
+				FILE_NOTIFY_CHANGE_FILE_NAME,
+				FILE_ACTION_RENAMED_NEW_NAME);
+		}
+	}
 	// Release all holds
-	VN_RELE(tdvp);
-	VN_RELE(fdvp);
-	VN_RELE(fvp);
+out:
+	if (fromname) kmem_free(fromname, fromnamesize);
+	if (tdvp) VN_RELE(tdvp);
+	if (fdvp) VN_RELE(fdvp);
+	if (fvp) VN_RELE(fvp);
 
 	return error;
 }
@@ -1738,7 +1749,7 @@ NTSTATUS file_standard_link_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, P
 //
 // If overflow, set Information to input_size and NameLength to required size.
 //
-NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_NAME_INFORMATION *name, PULONG usedspace)
+NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_NAME_INFORMATION *name, PULONG usedspace, int normalize)
 {
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
 
@@ -1765,14 +1776,33 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 
 	VN_HOLD(vp);
 
+
+	// FIXME - all this string copying around is lame, 1 copy is enough
+	if (normalize && !zp->z_name_cache[0]) {
+		char *fullpath;
+		uint32_t retsize, offset;
+		error = zfs_build_path(zp, NULL, &fullpath, &retsize, &offset);
+		if (!error) {
+			dprintf("fullpath is '%s' len %d and offset %d\n", fullpath, retsize, offset);
+			strlcpy(zp->z_name_cache, fullpath, MAXPATHLEN);
+			kmem_free(fullpath, retsize);
+		}
+	}
+
 	if (zp->z_id == zfsvfs->z_root) {
 		strlcpy(strname, "\\", MAXPATHLEN);
 	} else {
-		VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zfsvfs),
-			&parent, sizeof(parent)) == 0);
 
-		error = zap_value_search(zfsvfs->z_os, parent, zp->z_id,
-			ZFS_DIRENT_OBJ(-1ULL), strname);
+		if (zp->z_name_cache[0]) {
+			strlcpy(strname, zp->z_name_cache, MAXPATHLEN);
+		} else {
+
+			VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zfsvfs),
+				&parent, sizeof(parent)) == 0);
+
+			error = zap_value_search(zfsvfs->z_os, parent, zp->z_id,
+				ZFS_DIRENT_OBJ(-1ULL), strname);
+		}
 	}
 	VN_RELE(vp);
 
@@ -1896,7 +1926,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 		// First get the Name, to make sure we have room
 		IrpSp->Parameters.QueryFile.Length -= offsetof(FILE_ALL_INFORMATION, NameInformation);
-		Status = file_name_information(DeviceObject, Irp, IrpSp, &all->NameInformation, &usedspace);
+		Status = file_name_information(DeviceObject, Irp, IrpSp, &all->NameInformation, &usedspace, 0);
 		IrpSp->Parameters.QueryFile.Length += offsetof(FILE_ALL_INFORMATION, NameInformation);
 
 		// file_name_information sets FileNameLength, so update size to be ALL struct not NAME struct
@@ -1967,7 +1997,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		}
 		FILE_NAME_INFORMATION *name = Irp->AssociatedIrp.SystemBuffer;
 
-		Status = file_name_information(DeviceObject, Irp, IrpSp, name, &usedspace);
+		Status = file_name_information(DeviceObject, Irp, IrpSp, name, &usedspace, normalize);
 		Irp->IoStatus.Information = FIELD_OFFSET(FILE_NAME_INFORMATION, FileName) + usedspace;
 		break;
 	case FileNetworkOpenInformation:   

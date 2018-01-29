@@ -1069,17 +1069,6 @@ out_unlock:
 	return error;
 }
 
-/*
- * This is connected to IRP_MN_NOTIFY_DIRECTORY_CHANGE
- * and sending the notifications of changes
- */
-void zfs_send_notify(zfsvfs_t *zfsvfs, char *name, ULONG FilterMatch, ULONG Action)
-{
-
-	// Insert magic here
-
-}
-
 int zfs_windows_zvol_create(zfs_cmd_t *zc)
 {
 	dprintf("%s: '%s' '%s'\n", __func__, zc->zc_name, zc->zc_value);
@@ -2448,4 +2437,131 @@ zfs_vfs_uuid_gen(const char *osname, uuid_t uuid)
 	    uuid[12], uuid[13], uuid[14], uuid[15]);
 #endif
 	return (0);
+}
+
+
+/*
+ * Attempt to build a full path from a zp, traversing up through parents.
+ * start_zp should already be held (VN_HOLD()) and if parent_zp is
+ * not NULL, it too should be held.
+ * Returned is an allocated string (kmem_alloc) which should be freed
+ * by caller (kmem_free(fullpath, returnsize)).
+ * If supplied, start_zp_offset, is the index into fullpath where the 
+ * start_zp component name starts. (Point between start_parent/start_zp).
+ * returnsize includes the final NULL, so it is strlen(fullpath)+1
+ */
+int zfs_build_path(znode_t *start_zp, znode_t *start_parent, char **fullpath, uint32_t *returnsize, uint32_t *start_zp_offset)
+{
+	char *work;
+	int index, size, part, error;
+	struct vnode *vp = NULL;
+	struct vnode *dvp = NULL;
+	znode_t *zp = NULL;
+	znode_t *dzp = NULL;
+	uint64_t parent;
+	zfsvfs_t *zfsvfs;
+	char name[MAXPATHLEN];
+	// No output? nothing to do
+	if (!fullpath) return EINVAL;
+	// No input? nothing to do
+	if (!start_zp) return EINVAL;
+
+	zfsvfs = start_zp->z_zfsvfs;
+	zp = start_zp;
+
+	VN_HOLD(ZTOV(zp));
+
+	work = kmem_alloc(MAXPATHLEN * 2, KM_SLEEP);
+	index = MAXPATHLEN * 2 - 1;
+
+	work[--index] = 0;
+	size = 1;
+
+	while(1) {
+
+		// Fetch parent
+		if (start_parent) {
+			dzp = start_parent;
+			VN_HOLD(ZTOV(dzp));
+			parent = dzp->z_id;
+			start_parent = NULL;
+		} else {
+			VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zfsvfs),
+				&parent, sizeof(parent)) == 0);
+			error = zfs_zget(zfsvfs, parent, &dzp);
+			if (error) goto failed;
+		}
+		// dzp held from here.
+
+		// Find name
+		if (zap_value_search(zfsvfs->z_os, parent, zp->z_id,
+			ZFS_DIRENT_OBJ(-1ULL), name) != 0) goto failed;
+
+		// Copy in name.
+		part = strlen(name);
+		// Check there is room
+		if (part + 1 > index) goto failed;
+
+		index -= part;
+		memcpy(&work[index], name, part);
+
+		// If start_zp, remember index (to be adjusted)
+		if (zp == start_zp && start_zp_offset)
+			*start_zp_offset = index;
+
+		// Prepend "/"
+		work[--index] = '\\';
+		size += part + 1;
+
+		// Swap dzp and zp to "go up one".
+		VN_RELE(ZTOV(zp)); // we are done with zp.
+		zp = dzp; // Now focus on parent
+		dzp = NULL;
+
+		// If parent, stop, "/" is already copied in.
+		if (zp->z_id == zfsvfs->z_root) break;
+
+	}
+
+	// Release "parent" if it was held, now called zp.
+	if (zp) VN_RELE(ZTOV(zp));
+
+	// Correct index
+	if (start_zp_offset)
+		*start_zp_offset = *start_zp_offset - index;
+	if (returnsize)
+		*returnsize = size;
+
+	*fullpath = kmem_alloc(size, KM_SLEEP);
+	memmove(*fullpath, &work[index], size);
+	kmem_free(work, MAXPATHLEN * 2);
+	return 0;
+
+failed:
+	if (zp) VN_RELE(ZTOV(zp));
+	if (dzp) VN_RELE(ZTOV(dzp));
+
+	kmem_free(work, MAXPATHLEN * 2);
+	return -1;
+}
+
+/*
+* This is connected to IRP_MN_NOTIFY_DIRECTORY_CHANGE
+* and sending the notifications of changes
+*/
+void zfs_send_notify(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG FilterMatch, ULONG Action)
+{
+	mount_t *zmo;
+	zmo = zfsvfs->z_vfs;
+	UNICODE_STRING ustr;
+
+	AsciiStringToUnicodeString(name, &ustr);
+
+	FsRtlNotifyFullReportChange(zmo->NotifySync, &zmo->DirNotifyList,
+		(PSTRING)&ustr, nameoffset * sizeof(WCHAR),
+		NULL, // StreamName
+		NULL, // NormalizedParentName
+		FilterMatch, Action,
+		NULL); // TargetContext
+	FreeUnicodeString(&ustr);
 }
