@@ -27,6 +27,10 @@
 # Copyright (c) 2012 by Marcelo Leal. All rights reserved.
 #
 
+#
+# Copyright (c) 2016, 2018 by Delphix. All rights reserved.
+#
+
 . $STF_SUITE/tests/functional/acl/acl_common.kshlib
 
 #
@@ -51,8 +55,7 @@ function cleanup
 	destroy_dataset -f $TESTPOOL/$TESTFS1
 
 	(( ${#cwd} != 0 )) && cd $cwd
-	[[ -d $TESTDIR1 ]] && log_must $RM -rf $TESTDIR1
-	[[ -d $TESTDIR/ ]] && log_must $RM -rf $TESTDIR/*
+	log_must rm -rf $TESTDIR1 $TESTDIR/* $mytestfile
 }
 
 log_assert "Verify that '$TAR' command supports to archive ZFS ACLs & xattrs."
@@ -61,7 +64,9 @@ log_onexit cleanup
 
 set -A ops " A+user:other1:add_file:allow" "A+everyone@:execute:allow" "a-x" \
     "777"
-mytestfile=/kernel/drv/zfs
+mytestfile=$(mktemp -t file.XXXX)
+log_must dd if=/dev/urandom of=$mytestfile bs=1024k count=1
+log_must chmod 644 $mytestfile
 
 TARFILE=tarfile.$$.tar
 cwd=$PWD
