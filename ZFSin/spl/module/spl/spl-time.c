@@ -49,9 +49,10 @@ hrtime_t gethrtime(void)
     //static uint64_t start = 0;
 	static LARGE_INTEGER start = { 0 };
 	LARGE_INTEGER now;
-    if (start.QuadPart == 0)
-        //start = mach_absolute_time();
+	if (start.QuadPart == 0) {
 		KeQueryTickCount(&start);
+		start.QuadPart--;
+	}
 	KeQueryTickCount(&now);
     return zfs_abs_to_nano(now.QuadPart - start.QuadPart);
 }

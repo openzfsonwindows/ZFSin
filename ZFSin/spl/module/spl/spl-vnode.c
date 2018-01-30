@@ -645,7 +645,6 @@ int     vnode_vfsisrdonly(vnode_t *vp)
 
 int vnode_getwithvid(vnode_t *vp, uint32_t id)
 {
-	if (id != vp->v_id) return -1;
 	atomic_inc_32(&vp->v_iocount);
 	return 0;
 }

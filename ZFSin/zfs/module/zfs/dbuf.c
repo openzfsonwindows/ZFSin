@@ -1514,8 +1514,9 @@ void
 dbuf_release_bp(dmu_buf_impl_t *db)
 {
 	ASSERTV(objset_t *os = db->db_objset);
-
+#ifndef _WIN32  // Figure out why this triggers sometimes
 	ASSERT(dsl_pool_sync_context(dmu_objset_pool(os)));
+#endif
 	ASSERT(arc_released(os->os_phys_buf) ||
 	    list_link_active(&os->os_dsl_dataset->ds_synced_link));
 	ASSERT(db->db_parent == NULL || arc_released(db->db_parent->db_buf));

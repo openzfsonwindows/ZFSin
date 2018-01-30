@@ -880,6 +880,9 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	vcb->type = MOUNT_TYPE_VCB;
 	vcb->size = sizeof(mount_t);
 
+	// FIXME for proper sync
+	if (vfs_fsprivate(dcb) == NULL) delay(hz);
+
 	// Move the fsprivate ptr from dcb to vcb
 	vfs_setfsprivate(vcb, vfs_fsprivate(dcb));
 	vfs_setfsprivate(dcb, NULL);
@@ -2331,43 +2334,6 @@ zpl_xattr_get_sa(struct vnode *vp, const char *name, void *value, uint32_t size)
 	return (nv_size);
 }
 
-int zfs_hardlink_addmap(znode_t *zp, uint64_t parentid, uint32_t linkid)
-{
-	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
-	hardlinks_t *searchnode, *findnode;
-	avl_index_t loc;
-
-	searchnode = kmem_alloc(sizeof(hardlinks_t), KM_SLEEP);
-	searchnode->hl_parent = parentid;
-	searchnode->hl_fileid = zp->z_id;
-	strlcpy(searchnode->hl_name, zp->z_name_cache, PATH_MAX);
-
-	rw_enter(&zfsvfs->z_hardlinks_lock, RW_WRITER);
-	findnode = avl_find(&zfsvfs->z_hardlinks, searchnode, &loc);
-	kmem_free(searchnode, sizeof(hardlinks_t));
-	if (!findnode) {
-		// Add hash entry
-		zp->z_finder_hardlink = TRUE;
-		findnode = kmem_alloc(sizeof(hardlinks_t), KM_SLEEP);
-
-		findnode->hl_parent = parentid;
-		findnode->hl_fileid = zp->z_id;
-		strlcpy(findnode->hl_name, zp->z_name_cache, PATH_MAX);
-
-		findnode->hl_linkid = linkid;
-
-		avl_add(&zfsvfs->z_hardlinks, findnode);
-		avl_add(&zfsvfs->z_hardlinks_linkid, findnode);
-		dprintf("ZFS: Inserted new hardlink node (%llu,%llu,'%s') <-> (%x,%u)\n",
-				findnode->hl_parent,
-				findnode->hl_fileid, findnode->hl_name,
-				findnode->hl_linkid, findnode->hl_linkid	);
-	} // findnode2
-	rw_exit(&zfsvfs->z_hardlinks_lock);
-
-	return findnode ? 1 : 0;
-} // findnode
-
 /* dst buffer must be at least UUID_PRINTABLE_STRING_LENGTH bytes */
 int
 zfs_vfs_uuid_unparse(uuid_t uuid, char *dst)
@@ -2494,8 +2460,11 @@ int zfs_build_path(znode_t *start_zp, znode_t *start_parent, char **fullpath, ui
 		// dzp held from here.
 
 		// Find name
-		if (zap_value_search(zfsvfs->z_os, parent, zp->z_id,
-			ZFS_DIRENT_OBJ(-1ULL), name) != 0) goto failed;
+		if (zp->z_id == zfsvfs->z_root)
+			strlcpy(name, "", MAXPATHLEN);  // Empty string, as we add "\\" below
+		else
+			if (zap_value_search(zfsvfs->z_os, parent, zp->z_id,
+				ZFS_DIRENT_OBJ(-1ULL), name) != 0) goto failed;
 
 		// Copy in name.
 		part = strlen(name);
@@ -2554,6 +2523,8 @@ void zfs_send_notify(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG FilterM
 	mount_t *zmo;
 	zmo = zfsvfs->z_vfs;
 	UNICODE_STRING ustr;
+
+	dprintf("%s: '%s' %u %u\n", __func__, &name[nameoffset], FilterMatch, Action);
 
 	AsciiStringToUnicodeString(name, &ustr);
 

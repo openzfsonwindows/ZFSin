@@ -1162,9 +1162,6 @@ zfs_write(vnode_t *vp, uio_t *uio, int ioflag, cred_t *cr, caller_context_t *ct)
 #ifdef _WIN32
 		if (!xuio && n > 0)
 			zfs_prefault_write(MIN(n, max_blksz), uio);
-
-		atomic_inc_64(&zp->z_write_gencount);
-
 #endif	/* sun */
 
 
@@ -4578,7 +4575,7 @@ top:
 				vn_renamepath(tdvp, ZTOV(szp), tnm,
 				    strlen(tnm));
 
-#ifdef _WIN32
+#ifdef __APPLE__
 				/* Update cached name - for vget, and access without
 				 * calling vnop_lookup first - it is easier to clear
 				 * it out and let getattr look it up if needed.

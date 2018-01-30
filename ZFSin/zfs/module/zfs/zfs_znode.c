@@ -702,13 +702,10 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	zp->z_is_zvol = 0;
 	zp->z_is_mapped = 0;
 	zp->z_is_ctldir = 0;
-	zp->z_vid = 0;
 	zp->z_uid = 0;
 	zp->z_gid = 0;
 	zp->z_size = 0;
-	zp->z_name_cache[0] = 0;
-	zp->z_finder_parentid = 0;
-	zp->z_finder_hardlink = FALSE;
+	zp->z_name_cache = NULL;
 
 	vp = ZTOV(zp); /* Does nothing in OSX */
 
@@ -1331,7 +1328,6 @@ again:
 		 * Since zp may disappear after we unlock below,
 		 * we save a copy of vp and it's vid
 		 */
-		vid = zp->z_vid;
 		vp = ZTOV(zp);
 
 		/*
@@ -1368,7 +1364,7 @@ again:
 			kpreempt(KPREEMPT_SYNC);
 			dprintf("zget racing attach\n");
 			//DbgBreakPoint();
-
+			IOSleep(hz>>2);
 			goto again;
 		}
 
@@ -1376,7 +1372,7 @@ again:
 		 * -> vnode_getwithvid() -> deadlock. Unsure why vnode_getwithvid()
 		 * ends up sleeping in msleep() but vnode_get() does not.
 		 */
-		if (!vp || (err=vnode_getwithvid(vp, vid) != 0)) {
+		if (!vp || (err=vnode_getwithvid(vp, 0) != 0)) {
 			//if ((err = vnode_get(vp)) != 0) {
 			dprintf("ZFS: vnode_get() returned %d\n", err);
 			kpreempt(KPREEMPT_SYNC);
@@ -1388,7 +1384,7 @@ again:
 		 * that we have the vnode and znode we had before.
 		 */
 		mutex_enter(&zp->z_lock);
-		if ((vid != zp->z_vid) || (vp != ZTOV(zp))) {
+		if ((vp != ZTOV(zp))) {
 			mutex_exit(&zp->z_lock);
 			/* Release the wrong vp from vnode_getwithvid(). This
 			 * call is missing in 10a286 - lundman */
@@ -1396,8 +1392,6 @@ again:
 			dprintf("ZFS: the vids do not match part 1\n");
 			goto again;
 		}
-		if (vnode_vid(vp) != zp->z_vid)
-			dprintf("ZFS: the vids do not match\n");
 		mutex_exit(&zp->z_lock);
 
 		*zpp = zp;
@@ -1657,6 +1651,11 @@ zfs_znode_free(znode_t *zp)
 	if (zp->z_xattr_cached) {
 		nvlist_free(zp->z_xattr_cached);
 		zp->z_xattr_cached = NULL;
+	}
+
+	if (zp->z_name_cache) {
+		kmem_free(zp->z_name_cache, zp->z_name_len);
+		zp->z_name_cache = NULL;
 	}
 
 	kmem_cache_free(znode_cache, zp);

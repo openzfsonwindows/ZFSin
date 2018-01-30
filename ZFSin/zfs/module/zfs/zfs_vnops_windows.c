@@ -180,6 +180,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		}
 		// If last lookup hit a non-directory type, we stop
 		zp = VTOZ(vp);
+		ASSERT(zp != NULL);
 		if (S_ISDIR(zp->z_mode)) {
 
 			// Quick check to see if we are reparsepoint directory
@@ -483,6 +484,10 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (DeleteOnClose) vnode_setunlink(vp);
 			VN_RELE(vp);
 			Irp->IoStatus.Information = FILE_CREATED;
+			zp = VTOZ(vp);
+			zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+				FILE_NOTIFY_CHANGE_DIR_NAME,
+				FILE_ACTION_ADDED);
 			return STATUS_SUCCESS;
 		}
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
@@ -539,6 +544,10 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			Irp->IoStatus.Information = replacing ? CreateDisposition == FILE_SUPERSEDE ?
 				FILE_SUPERSEDED : FILE_OVERWRITTEN : FILE_CREATED;
 
+			zp = VTOZ(vp);
+			zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+				FILE_NOTIFY_CHANGE_FILE_NAME,
+				FILE_ACTION_ADDED);
 			return STATUS_SUCCESS;
 		}
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
@@ -605,7 +614,12 @@ int zfs_vnop_recycle(znode_t *zp, int force)
 		VN_RELE(vp);
 	}
 
+	atomic_dec_64(&vnop_num_vnodes);
 	atomic_inc_64(&vnop_num_reclaims);
+
+	if (vnop_num_vnodes % 1000 == 0)
+		dprintf("%s: num_vnodes %llu\n", __func__, vnop_num_vnodes);
+		
 	return 0;
 }
 
@@ -649,9 +663,12 @@ zfs_znode_getvnode(znode_t *zp, zfsvfs_t *zfsvfs)
 	atomic_inc_64(&vnop_num_vnodes);
 
 	//dprintf("Assigned zp %p with vp %p\n", zp, vp);
-
-	zp->z_vid = vnode_vid(vp);
 	zp->z_vnode = vp;
+
+	// Build a fullpath string here, for Notifications and set_name_information
+	ASSERT(zp->z_name_cache == NULL);
+	if (zfs_build_path(zp, NULL, &zp->z_name_cache, &zp->z_name_len, &zp->z_name_offset) == -1)
+		dprintf("%s: failed to build fullpath\n", __func__);
 
 	return (0);
 }
@@ -1513,8 +1530,6 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	char buffer[MAXNAMELEN], *filename;
 	struct vnode *tdvp = NULL, *tvp = NULL, *fdvp = NULL;
 	uint64_t parent;
-	char *fromname = NULL;
-	int fromnamesize, namepart;
 
 	// Convert incoming filename to utf8
 	error = RtlUnicodeToUTF8N(buffer, MAXNAMELEN, &outlen,
@@ -1562,8 +1577,7 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	}
 
 	// Lookup name
-	error = zfs_build_path(zp, dzp, &fromname, &fromnamesize, &namepart);
-	if (error) {
+	if (zp->z_name_cache == NULL) {
 		error = STATUS_OBJECTID_NOT_FOUND;
 		goto out;
 	}
@@ -1573,22 +1587,22 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	VN_HOLD(tdvp);
 	// We now hold everything but "tvp".
 
-	error = zfs_rename(fdvp, &fromname[namepart], 
+	error = zfs_rename(fdvp, &zp->z_name_cache[zp->z_name_offset],  
 		tdvp, remainder ? remainder : filename,
 		NULL, NULL, 0);
 
 	if (error == 0) {
-		zfs_send_notify(zfsvfs, fromname, namepart,
+		zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
 			vnode_isdir(fvp) ?
 			FILE_NOTIFY_CHANGE_DIR_NAME :
 			FILE_NOTIFY_CHANGE_FILE_NAME,
 			FILE_ACTION_RENAMED_OLD_NAME);
 
 		// Release fromname, and lookup new name
-		kmem_free(fromname, fromnamesize);
-		fromname = NULL;
-		if (zfs_build_path(zp, VTOZ(tdvp), &fromname, &fromnamesize, &namepart) == 0) {
-			zfs_send_notify(zfsvfs, fromname, namepart,
+		kmem_free(zp->z_name_cache, zp->z_name_len);
+		zp->z_name_cache = NULL;
+		if (zfs_build_path(zp, VTOZ(tdvp), &zp->z_name_cache, &zp->z_name_len, &zp->z_name_offset) == 0) {
+			zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
 				vnode_isdir(fvp) ?
 				FILE_NOTIFY_CHANGE_DIR_NAME :
 				FILE_NOTIFY_CHANGE_FILE_NAME,
@@ -1597,7 +1611,6 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	}
 	// Release all holds
 out:
-	if (fromname) kmem_free(fromname, fromnamesize);
 	if (tdvp) VN_RELE(tdvp);
 	if (fdvp) VN_RELE(fdvp);
 	if (fvp) VN_RELE(fvp);
@@ -1762,7 +1775,6 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		return STATUS_BUFFER_TOO_SMALL;
 	}
 
-
 	struct vnode *vp = FileObject->FsContext;
 	znode_t *zp = VTOZ(vp);
 	char strname[MAXPATHLEN + 2];
@@ -1776,27 +1788,16 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 
 	VN_HOLD(vp);
 
-
-	// FIXME - all this string copying around is lame, 1 copy is enough
-	if (normalize && !zp->z_name_cache[0]) {
-		char *fullpath;
-		uint32_t retsize, offset;
-		error = zfs_build_path(zp, NULL, &fullpath, &retsize, &offset);
-		if (!error) {
-			dprintf("fullpath is '%s' len %d and offset %d\n", fullpath, retsize, offset);
-			strlcpy(zp->z_name_cache, fullpath, MAXPATHLEN);
-			kmem_free(fullpath, retsize);
-		}
-	}
-
 	if (zp->z_id == zfsvfs->z_root) {
 		strlcpy(strname, "\\", MAXPATHLEN);
 	} else {
 
-		if (zp->z_name_cache[0]) {
-			strlcpy(strname, zp->z_name_cache, MAXPATHLEN);
+		if (zp->z_name_cache != NULL) {
+			strlcpy(strname, normalize ? 
+				zp->z_name_cache : &zp->z_name_cache[ zp->z_name_offset],
+				MAXPATHLEN);
 		} else {
-
+			// Should never be used, in theory
 			VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zfsvfs),
 				&parent, sizeof(parent)) == 0);
 
@@ -2445,6 +2446,12 @@ NTSTATUS notify_change_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		return STATUS_INVALID_PARAMETER;
 	}
 
+	if (vnode_unlink(vp)) {
+		VN_RELE(vp);
+		return STATUS_DELETE_PENDING;
+	}
+
+	dprintf("%s: '%s' for %wZ\n", __func__, zp&&zp->z_name_cache?zp->z_name_cache:"", &fileObject->FileName);
 	FsRtlNotifyFullChangeDirectory(
 		zmo->NotifySync, &zmo->DirNotifyList, zp, (PSTRING)&fileObject->FileName,
 		(IrpSp->Flags & SL_WATCH_TREE) ? TRUE : FALSE, FALSE,
@@ -2520,6 +2527,15 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 				dprintf("Deletion set on '%wZ'\n",
 					IrpSp->FileObject->FileName);
 				vnode_setunlink(vp);
+
+				mount_t *zmo = DeviceObject->DeviceExtension;
+				FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, VTOZ(vp));
+#if 0
+				znode_t *zp = VTOZ(vp);
+				zfs_send_notify(zp->z_zfsvfs, zp->z_name_cache, zp->z_name_offset,
+					vnode_isdir(vp) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME,
+					FILE_ACTION_REMOVED);
+#endif
 				VN_RELE(vp);
 				Status = STATUS_SUCCESS;
 			}
@@ -2578,10 +2594,12 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		return STATUS_SUCCESS;
 	}
 
+#if 0
 	dprintf("   %s minor type %d flags 0x%x mdl %d System %d User %d paging %d\n", __func__, IrpSp->MinorFunction, 
 		DeviceObject->Flags, (Irp->MdlAddress != 0), (Irp->AssociatedIrp.SystemBuffer != 0), 
 		(Irp->UserBuffer != 0),
 		FlagOn(Irp->Flags, IRP_PAGING_IO));
+#endif
 
 	bufferLength = IrpSp->Parameters.Read.Length;
 	if (bufferLength == 0)
@@ -2637,8 +2655,8 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 
 	uio_free(uio);
 
-	dprintf("  FileName: %wZ offset 0x%llx len 0x%lx mdl %p System %p\n", &fileObject->FileName,
-		byteOffset.QuadPart, bufferLength, Irp->MdlAddress, Irp->AssociatedIrp.SystemBuffer);
+//	dprintf("  FileName: %wZ offset 0x%llx len 0x%lx mdl %p System %p\n", &fileObject->FileName,
+	//	byteOffset.QuadPart, bufferLength, Irp->MdlAddress, Irp->AssociatedIrp.SystemBuffer);
 
 	return Status;
 }
@@ -2660,7 +2678,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		return STATUS_SUCCESS;
 	}
 
-	dprintf("   %s paging %d\n", __func__, FlagOn(Irp->Flags, IRP_PAGING_IO));
+//	dprintf("   %s paging %d\n", __func__, FlagOn(Irp->Flags, IRP_PAGING_IO));
 
 	bufferLength = IrpSp->Parameters.Write.Length;
 	if (bufferLength == 0)
@@ -2719,8 +2737,8 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		Status = IoStatus.Status;		
 	}
 
-	dprintf("  FileName: %wZ offset 0x%llx len 0x%lx mdl %p System %p\n", &fileObject->FileName,
-		byteOffset.QuadPart, bufferLength, Irp->MdlAddress, Irp->AssociatedIrp.SystemBuffer);
+//	dprintf("  FileName: %wZ offset 0x%llx len 0x%lx mdl %p System %p\n", &fileObject->FileName,
+//		byteOffset.QuadPart, bufferLength, Irp->MdlAddress, Irp->AssociatedIrp.SystemBuffer);
 
 	return Status;
 }
@@ -2730,10 +2748,11 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	// In Unix, both zfs_unlink and zfs_rmdir expect a filename, and we do not have that here
-	struct vnode *vp = NULL,*dvp = NULL;
+	struct vnode *vp = NULL, *dvp = NULL;
 	int error;
 	char filename[MAXNAMELEN];
 	ULONG outlen;
+	znode_t *zp = NULL;
 
 	if (IrpSp->FileObject->FsContext == NULL ||
 		IrpSp->FileObject->FileName.Buffer == NULL ||
@@ -2743,6 +2762,9 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	}
 
 	vp = IrpSp->FileObject->FsContext;
+	zp = VTOZ(vp);
+	ASSERT(zp != NULL);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 
 	// If we are given a DVP, use it, if not, look up parent.
 	// both cases come out with dvp held.
@@ -2754,7 +2776,6 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	} else {
 		uint64_t parent;
-		znode_t *zp = VTOZ(vp);
 		znode_t *dzp;
 
 		// No dvp, lookup parent
@@ -2774,32 +2795,51 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	error = RtlUnicodeToUTF8N(filename, MAXNAMELEN, &outlen,
 		IrpSp->FileObject->FileName.Buffer, IrpSp->FileObject->FileName.Length);
-	
+
 	if (error != STATUS_SUCCESS &&
 		error != STATUS_SOME_NOT_MAPPED) {
 		return STATUS_ILLEGAL_CHARACTER;
 	}
 	filename[outlen] = 0;
 
+	// FIXME, use z_name_cache and offset
 	char *finalname;
 	if ((finalname = strrchr(filename, '\\')) != NULL)
 		finalname = &finalname[1];
 	else
 		finalname = filename;
 
+	// Keep a copy of the name, so we can send notifications after.
+	int namecopylen = zp->z_name_len;
+	char *namecopy = kmem_alloc(namecopylen, KM_SLEEP);
+	memcpy(namecopy, zp->z_name_cache, namecopylen);
+	int namecopyoffset = zp->z_name_offset;
 
 	if (vnode_isdir(vp)) {
-
-		if (!vnode_isinuse(dvp, 1)) {
+		
+		if (!vnode_isinuse(vp, 1)) {
 			error = zfs_rmdir(dvp, finalname, NULL, NULL, NULL, 0);
-			if (!error)
+			if (!error) {
+				dprintf("sending DIR notify: '%s' name '%s'\n", namecopy, &namecopy[namecopyoffset]);
+				zfs_send_notify(zfsvfs, namecopy, namecopyoffset,
+					FILE_NOTIFY_CHANGE_DIR_NAME,
+					FILE_ACTION_REMOVED);
 				zfs_vnop_recycle(VTOZ(vp), 0);
+			}
 		}
 	} else {
 
 		error = zfs_remove(dvp, finalname, NULL, NULL, 0);
 
+		if (error == 0) {
+			dprintf("sending FILE notify: '%s' name '%s'\n", namecopy, &namecopy[namecopyoffset]);
+			zfs_send_notify(zfsvfs, namecopy, namecopyoffset,
+				FILE_NOTIFY_CHANGE_FILE_NAME,
+				FILE_ACTION_REMOVED);
+		}
 	}
+	kmem_free(namecopy, namecopylen);
+
 	VN_RELE(dvp);
 
 	dprintf("%s: returning %d\n", __func__, error);
@@ -3421,16 +3461,22 @@ fsDispatcher(
 		}
 		break;
 
-	case IRP_MJ_CLOSE:
-		Status = STATUS_SUCCESS;
+		/*
+		 * CLEANUP comes before CLOSE. The IFSTEST.EXE on notifications 
+		 * require them to arrive at CLEANUP time, and deemed too late
+		 * to be sent from CLOSE. It is required we act on DELETE_ON_CLOSE
+		 * in CLEANUP.
+		 */
+	case IRP_MJ_CLEANUP: 
+		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
+			struct vnode *vp = IrpSp->FileObject->FsContext;
 
-		struct vnode *vp = IrpSp->FileObject->FsContext;
-		if (vp) {
 			VN_HOLD(vp);
+			znode_t *zp = VTOZ(vp); // zp for notify removal
 			vnode_rele(vp);
 			VN_RELE(vp);
-			dprintf("IRP_MJ_CLOSE: iocount %u usecount %u delete %u\n",
-				vp->v_iocount, vp->v_usecount, vp->v_unlink);
+			dprintf("IRP_MJ_CLEANUP: '%s' iocount %u usecount %u\n",
+				zp && zp->z_name_cache?zp->z_name_cache:"", vp->v_iocount, vp->v_usecount);
 
 			// Asked to delete?
 			if (vnode_unlink(vp)) {
@@ -3441,14 +3487,37 @@ fsDispatcher(
 				if (vp && VTOZ(vp))
 					zfs_vnop_recycle(VTOZ(vp), 0);
 			}
+
+			// If we are cleanup up a dir, we need to complete all the SendNotify
+			// we have attached. 
+			zmo = DeviceObject->DeviceExtension;
+			VERIFY(zmo->type == MOUNT_TYPE_VCB);
+			if (vnode_isdir(vp)) {
+				dprintf("Removing all notifications for directory: %p\n", zp);
+				FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, zp);
+			}
+			// Finish with Notifications
+			dprintf("Removing notifications for file\n");
+			FsRtlNotifyFullChangeDirectory(zmo->NotifySync, &zmo->DirNotifyList,
+				zp, NULL, FALSE, FALSE, 0, NULL, NULL, NULL);
+		}
+		Status = STATUS_SUCCESS;
+		break;
+
+	case IRP_MJ_CLOSE:
+		Status = STATUS_SUCCESS;
+
+		struct vnode *vp = IrpSp->FileObject->FsContext;
+		if (vp) {
+			znode_t *zp = VTOZ(vp);
+			dprintf("IRP_MJ_CLOSE: '%s' iocount %u usecount %u delete %u\n",
+				zp && zp->z_name_cache?zp->z_name_cache:"", vp->v_iocount, vp->v_usecount, vp->v_unlink);
+			// Destroy vnode
+			vnode_recycle(vp);
 		}
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext2) {
 			zfs_dirlist_free((zfs_dirlist_t *)IrpSp->FileObject->FsContext2);
 			IrpSp->FileObject->FsContext2 = NULL;
-			// Cancel any Notifications this dir may have had
-			zmo = DeviceObject->DeviceExtension;
-			VERIFY(zmo->type == MOUNT_TYPE_VCB);
-			FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, IrpSp->FileObject->FsContext);
 		}
 		break;
 	case IRP_MJ_DEVICE_CONTROL:
@@ -3540,21 +3609,6 @@ fsDispatcher(
 
 	}
 	break;
-
-	case IRP_MJ_CLEANUP:
-		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
-			struct vnode *vp = IrpSp->FileObject->FsContext;
-			dprintf("IRP_MJ_CLEANUP: iocount %u usecount %u\n",
-				vp->v_iocount, vp->v_usecount);
-			
-			// No operation intentially at the moment. Cleanups done on CLOSE.
-			// Called when all file handles are closed
-			// Kernel might still use hold reference for other operations
-			// https://msdn.microsoft.com/en-us/library/windows/hardware/ff548608(v=vs.85).aspx
-
-		}
-		Status = STATUS_SUCCESS;
-		break;
 
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
 		switch (IrpSp->MinorFunction) {
