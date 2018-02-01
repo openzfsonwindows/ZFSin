@@ -636,18 +636,18 @@ vmem_freelist_insert_sort_by_time(vmem_t *vmp, vmem_seg_t *vsp)
 		// below we set p to n and update n.
 		ASSERT(n != NULL);
 		if (n == nextlist) {
-			dprintf("SPL: %s: at marker (%s)(steps: %u) p->vs_start, end == %lu, %lu\n",
-			    __func__, vmp->vm_name, step,
-			    (uintptr_t)p->vs_start, (uintptr_t)p->vs_end);
+			//dprintf("SPL: %s: at marker (%s)(steps: %u) p->vs_start, end == %lu, %lu\n",
+			//    __func__, vmp->vm_name, step,
+			//    (uintptr_t)p->vs_start, (uintptr_t)p->vs_end);
 			// IOSleep(1);
 			// the next entry is the next marker (e.g. 16k marker)
 			break;
 		}
 		if (n->vs_start == 0) {
 			// from vmem_freelist_delete, this is a head
-			dprintf("SPL: %s: n->vs_start == 0 (%s)(steps: %u) p->vs_start, end == %lu, %lu\n",
-			    __func__, vmp->vm_name, step,
-			    (uintptr_t)p->vs_start, (uintptr_t)p->vs_end);
+			//dprintf("SPL: %s: n->vs_start == 0 (%s)(steps: %u) p->vs_start, end == %lu, %lu\n",
+			//    __func__, vmp->vm_name, step,
+			//    (uintptr_t)p->vs_start, (uintptr_t)p->vs_end);
 			// IOSleep(1);
 			break;
 		}
@@ -659,14 +659,14 @@ vmem_freelist_insert_sort_by_time(vmem_t *vmp, vmem_seg_t *vsp)
 				n = (vmem_seg_t *)nextlist;
 				p = nextlist->vs_kprev;
 			}
-			dprintf("SPL: %s: walked out (%s)\n", __func__, vmp->vm_name);
+			//dprintf("SPL: %s: walked out (%s)\n", __func__, vmp->vm_name);
 			// IOSleep(1);
 			atomic_inc_64(&spl_frag_walked_out);
 			break;
 		}
 		if (n->vs_knext == NULL) {
-			dprintf("SPL: %s: n->vs_knext == NULL (my_listnum == %d)\n",
-			    __func__, my_listnum);
+			//dprintf("SPL: %s: n->vs_knext == NULL (my_listnum == %d)\n",
+			//    __func__, my_listnum);
 			// IOSleep(1);
 			break;
 		}

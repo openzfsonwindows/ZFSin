@@ -34,6 +34,25 @@
 
 #include <sys/taskq.h>
 
+/* Counter for unique vnode ID */
+static uint64_t vnode_vid_counter = 0;
+
+/* Total number of active vnodes */
+static uint64_t vnode_active = 0;
+
+/* Maximum allowed active vnodes */
+uint64_t vnode_max = 300;
+/* When max is hit, decrease until watermark, 2% of max */
+#define vnode_max_watermark (vnode_max - (vnode_max * 2ULL / 100ULL))
+
+/* List of all vnodes */
+static kmutex_t vnode_all_list_lock;
+static list_t   vnode_all_list;
+
+/* list of all getf/releasef active */
+static kmutex_t spl_getf_lock;
+static list_t   spl_getf_list;
+
 enum vtype iftovt_tab[16] = {
 	VNON, VFIFO, VCHR, VNON, VDIR, VNON, VBLK, VNON,
 	VREG, VNON, VLNK, VNON, VSOCK, VNON, VNON, VBAD,
@@ -356,20 +375,22 @@ void dnlc_update(struct vnode *vp, char *name, struct vnode *tp)
 
 
 
-static kmutex_t spl_getf_lock;
-static list_t   spl_getf_list;
-
 
 int spl_vnode_init(void)
 {
 	mutex_init(&spl_getf_lock, NULL, MUTEX_DEFAULT, NULL);
 	list_create(&spl_getf_list, sizeof(struct spl_fileproc),
 		offsetof(struct spl_fileproc, f_next));
+	mutex_init(&vnode_all_list_lock, NULL, MUTEX_DEFAULT, NULL);
+	list_create(&vnode_all_list, sizeof(struct vnode),
+		offsetof(struct vnode, v_list));
 	return 0;
 }
 
 void spl_vnode_fini(void)
 {
+	mutex_destroy(&vnode_all_list_lock);
+	list_destroy(&vnode_all_list);
 	mutex_destroy(&spl_getf_lock);
 	list_destroy(&spl_getf_list);
 }
@@ -385,7 +406,7 @@ extern int fo_read(struct fileproc *fp, struct uio *uio, int flags,
 	vfs_context_t ctx);
 extern int fo_write(struct fileproc *fp, struct uio *uio, int flags,
 	vfs_context_t ctx);
-extern int file_vnode_withvid(int, struct vnode **, uint32_t *);
+extern int file_vnode_withvid(int, struct vnode **, uint64_t *);
 extern int file_drop(int);
 
 #if ZFS_LEOPARD_ONLY
@@ -406,7 +427,7 @@ void *getf(uint64_t fd)
 #if 1
 	struct fileproc     *fp  = NULL;
 	struct vnode *vp;
-	uint32_t vid;
+	uint64_t vid;
 
 	/*
 	 * We keep the "fp" pointer as well, both for unlocking in releasef() and
@@ -643,13 +664,7 @@ int     vnode_vfsisrdonly(vnode_t *vp)
 	return 0;
 }
 
-int vnode_getwithvid(vnode_t *vp, uint32_t id)
-{
-	atomic_inc_32(&vp->v_iocount);
-	return 0;
-}
-
-uint32_t vnode_vid(vnode_t *vp)
+uint64_t vnode_vid(vnode_t *vp)
 {
 	return vp->v_id;
 }
@@ -662,31 +677,6 @@ int     vnode_isreg(vnode_t *vp)
 int     vnode_isdir(vnode_t *vp)
 {
 	return vp->v_type == VDIR;
-}
-
-int     vnode_put(vnode_t *vp)
-{
-	ASSERT(!(vp->v_flags & VNODE_DEAD));
-	ASSERT(vp->v_iocount > 0);
-	atomic_dec_32(&vp->v_iocount);
-
-	// Was it marked TERM, but we were waiting for last ref to leave.
-	if ((vp->v_flags & VNODE_MARKTERM) &&
-		(vp->v_usecount == 0) &&
-		(vp->v_iocount == 0)) {
-		vnode_recycle(vp);
-	}
-
-	// There is currently nothing freeing a 0,0 vnode
-
-	return 0;
-}
-
-int     vnode_getwithref(vnode_t *vp)
-{
-	ASSERT(!(vp->v_flags & VNODE_DEAD));
-	atomic_inc_32(&vp->v_iocount);
-	return 0;
 }
 
 void *vnode_fsnode(struct vnode *dvp)
@@ -735,30 +725,156 @@ void ubc_setsize(struct vnode *vp, uint64_t size)
 
 int     vnode_isinuse(vnode_t *vp, int refcnt)
 {
-	if (((vp->v_usecount) >  refcnt))
+	if (((vp->v_usecount + vp->v_iocount) >  refcnt))
 		return 1;
 	return 0;
 }
 
-int     vnode_recycle(vnode_t *vp)
+int vnode_getwithref(vnode_t *vp)
 {
+	KIRQL OldIrql;
+	int error = 0;
+	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	if ((vp->v_flags & VNODE_DEAD))
+		error = ENOENT;
+	else
+		atomic_inc_32(&vp->v_iocount);
+	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	return error;
+}
+
+int vnode_getwithvid(vnode_t *vp, uint64_t id)
+{
+	KIRQL OldIrql;
+	int error = 0;
+	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	if ((vp->v_flags & VNODE_DEAD))
+		error = ENOENT;
+	else if (id != vp->v_id)
+		error = ENOENT;
+	else
+		atomic_inc_32(&vp->v_iocount);
+	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	return error;
+}
+
+extern void zfs_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct);
+
+int vnode_put(vnode_t *vp)
+{
+	ASSERT(!(vp->v_flags & VNODE_DEAD));
+	ASSERT(vp->v_iocount > 0);
+	atomic_dec_32(&vp->v_iocount);
+
+	// If it needs INACTIVE, do so now.
+	if (vp->v_flags & VNODE_NEEDINACTIVE) {
+		vp->v_flags &= ~VNODE_NEEDINACTIVE;
+		zfs_inactive(vp, NULL, NULL);
+	}
+
+	// Was it marked TERM, but we were waiting for last ref to leave.
+	if ((vp->v_flags & VNODE_MARKTERM)) {
+		vnode_recycle(vp);
+	}
+
+	return 0;
+}
+
+extern int zfs_vnop_reclaim(struct vnode *);
+
+int vnode_recycle(vnode_t *vp)
+{
+	KIRQL OldIrql;
+	ASSERT(!vp->v_flags & VNODE_DEAD);
 	vp->v_flags |= VNODE_MARKTERM; // Mark it terminating
 
+	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 	if ((vp->v_usecount == 0) &&
 		(vp->v_iocount == 0)) {
 
+		// Call inactive?
+		ASSERT(!(vp->v_flags & VNODE_NEEDINACTIVE));
+
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
+		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 
 		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
 		// mutex does not need releasing.
+
+		// Call sync?
+		//zfs_fsync(vp, 0, NULL, NULL);
+
+		// Tell FS to release node.
+		if (zfs_vnop_reclaim(vp))
+			panic("vnode_recycle: cannot reclaim\n"); // My fav panic from OSX
+
+		// Remove from list
+		mutex_enter(&vnode_all_list_lock);
+		list_remove(&vnode_all_list, vp);
+		mutex_exit(&vnode_all_list_lock);
+
+		// There is no spinlock destroy call
+		// vp->v_spinlock
 
 		dprintf("Actually releasing vp %p\n");
 
 		// Free vp memory
 		kmem_free(vp, sizeof(*vp));
+
+		atomic_dec_64(&vnode_active);
+		return 0;
 	}
+	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 
 	return 0;
+}
+
+void vnode_create(void *v_data, int type, struct vnode **vpp)
+{
+	*vpp = kmem_zalloc(sizeof(**vpp), KM_SLEEP);  // FIXME Change me to kmem_cache
+	(*vpp)->v_data = v_data;
+	(*vpp)->v_type = type;
+	(*vpp)->v_id = atomic_inc_64_nv(&(vnode_vid_counter));
+	KeInitializeSpinLock(&(*vpp)->v_spinlock);
+	atomic_inc_64(&(*vpp)->v_iocount);
+	atomic_inc_64(&vnode_active);
+
+	mutex_enter(&vnode_all_list_lock);
+	list_insert_tail(&vnode_all_list, *vpp);
+	mutex_exit(&vnode_all_list_lock);
+
+	// Initialise the Windows specific data.
+	ExInitializeFastMutex(&(*vpp)->AdvancedFcbHeaderMutex);
+	FsRtlSetupAdvancedHeader(&(*vpp)->FileHeader, &(*vpp)->AdvancedFcbHeaderMutex);
+
+	// Release vnodes if needed
+	if (vnode_active >= vnode_max) {
+		uint64_t reclaims = 0;
+
+		dprintf("%s: vnode_max reclaim processing\n", __func__);
+
+		while (vnode_active >= vnode_max_watermark) {
+			struct vnode *rvp;
+
+			/* Find free vnode, call recycle */
+			mutex_enter(&vnode_all_list_lock);
+			for (rvp = list_head(&vnode_all_list);
+				rvp;
+				rvp = list_next(&vnode_all_list, rvp)) {
+				if (rvp->v_iocount == 0 &&
+					rvp->v_usecount == 0) {
+					reclaims++;
+					mutex_exit(&vnode_all_list_lock);
+					vnode_recycle(rvp);
+					mutex_enter(&vnode_all_list_lock);
+					break; // must restart loop
+				}
+			}
+			mutex_exit(&vnode_all_list_lock);
+		} // while active >= max
+
+		dprintf("%s: %llu reclaims processed.\n", __func__, reclaims);
+	}
 }
 
 int     vnode_isvroot(vnode_t *vp)
@@ -788,6 +904,11 @@ void   vnode_setunlink(vnode_t *vp)
 	vp->v_unlink = 1;
 }
 
+void *vnode_sectionpointer(vnode_t *vp)
+{
+	return &vp->SectionObjectPointers;
+}
+
 int
 vnode_ref(vnode_t *vp)
 {
@@ -804,23 +925,10 @@ vnode_rele(vnode_t *vp)
 	ASSERT(vp->v_iocount > 0);
 	ASSERT(vp->v_usecount > 0);
 	atomic_dec_32(&vp->v_usecount);
+	// If we were the last usecount, we set NEEDINACTIVE
+	if (vp->v_usecount == 0)
+		vp->v_flags |= VNODE_NEEDINACTIVE;
 }
-
-static uint32_t vnode_vid_counter = 0;
-void vnode_create(void *v_data, int type, struct vnode **vpp)
-{
-	*vpp = kmem_zalloc(sizeof(**vpp), KM_SLEEP);
-	(*vpp)->v_data = v_data;
-	(*vpp)->v_type = type;
-	(*vpp)->v_id = atomic_inc_32_nv(&(vnode_vid_counter));
-	atomic_inc_32(&(*vpp)->v_iocount);
-
-	// Initialise the Windows specific data.
-	ExInitializeFastMutex( &(*vpp)->AdvancedFcbHeaderMutex );
-    FsRtlSetupAdvancedHeader( &(*vpp)->FileHeader, &(*vpp)->AdvancedFcbHeaderMutex );
-}
-
-
 
 int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 {

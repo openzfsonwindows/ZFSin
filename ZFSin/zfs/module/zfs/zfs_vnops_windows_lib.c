@@ -887,7 +887,7 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	vfs_setfsprivate(vcb, vfs_fsprivate(dcb));
 	vfs_setfsprivate(dcb, NULL);
 	zfsvfs_t *zfsvfs = vfs_fsprivate(vcb);
-	VERIFY(zfsvfs != NULL);
+	if (zfsvfs == NULL) return STATUS_MOUNT_POINT_NOT_RESOLVED;
 	zfsvfs->z_vfs = vcb;
 
 	// vcb is the ptr used in unmount, so set both devices here.
@@ -1040,7 +1040,7 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 		while ((zp = list_head(&zfsvfs->z_all_znodes)) != NULL) {
 
 			// Recycling the node will remove it from the list
-			zfs_vnop_recycle(zp, 1);
+			vnode_recycle(ZTOV(zp));
 		}
 
 		// Flush volume

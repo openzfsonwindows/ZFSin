@@ -50,6 +50,7 @@
  */
 #define VNODE_DEAD 1<<0
 #define VNODE_MARKTERM 1<<1
+#define VNODE_NEEDINACTIVE 1<<2
 
 struct vnode {
 	// Windows specific header, has to be first. Not sure we are using
@@ -59,6 +60,7 @@ struct vnode {
 	FAST_MUTEX AdvancedFcbHeaderMutex;
 	// mmap file access struct
 	SECTION_OBJECT_POINTERS SectionObjectPointers;
+	KSPIN_LOCK v_spinlock;
 
 	// Our implementation data fields
 	uint32_t v_flags;
@@ -67,7 +69,9 @@ struct vnode {
 	int v_unlink;
 	uint32_t v_iocount;  // Short term holds
 	uint32_t v_usecount; // Long term holds
-	uint32_t v_id;
+	uint64_t v_id;
+
+	list_node_t v_list; // vnode_all_list member node.
 };
 typedef struct vnode vnode_t;
 
@@ -432,8 +436,8 @@ struct vnode *getrootdir(void);
 void spl_vfs_start(void);
 
 int     vnode_vfsisrdonly(vnode_t *vp);
-int     vnode_getwithvid(vnode_t *, uint32_t);
-uint32_t        vnode_vid(vnode_t *vp);
+int     vnode_getwithvid(vnode_t *, uint64_t);
+uint64_t        vnode_vid(vnode_t *vp);
 int     vnode_isreg(vnode_t *vp);
 int     vnode_isdir(vnode_t *vp);
 int     vnode_put(vnode_t *vp);
@@ -458,6 +462,7 @@ void   vnode_setunlink(vnode_t *vp);
 void vnode_create(void *v_data, int type, struct vnode **vpp);
 int vnode_ref(vnode_t *vp);
 void vnode_rele(vnode_t *vp);
+void *vnode_sectionpointer(vnode_t *vp);
 
 #define VNODE_READDIR_EXTENDED 1
 

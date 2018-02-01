@@ -2781,8 +2781,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			// buffer might not have enough room to hold the whole name, and
 			// we need the whole name to do search match.
 			error = RtlUTF8ToUnicodeN(tmpname, PATH_MAX, &tmpnamelen, zap.za_name, namelen);
-			dprintf("%s: '%.*S' -> '%s'\n", __func__,
-				tmpnamelen / sizeof(WCHAR), tmpname, zap.za_name);
+			//dprintf("%s: '%.*S' -> '%s'\n", __func__,
+			//	tmpnamelen / sizeof(WCHAR), tmpname, zap.za_name);
 
 
 			thisname.Buffer = tmpname;
@@ -2801,10 +2801,10 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					NULL))
 					skip_this_entry = 1;
 			}
-			dprintf("comparing names '%.*S' == '%.*S' skip %d\n",
-				thisname.Length / sizeof(WCHAR), thisname.Buffer,
-				zccb->searchname.Length / sizeof(WCHAR), zccb->searchname.Buffer,
-				skip_this_entry);
+			//dprintf("comparing names '%.*S' == '%.*S' skip %d\n",
+			//	thisname.Length / sizeof(WCHAR), thisname.Buffer,
+			//	zccb->searchname.Length / sizeof(WCHAR), zccb->searchname.Buffer,
+			//	skip_this_entry);
 			}
 
 
@@ -2907,8 +2907,6 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				structsize = FIELD_OFFSET(FILE_DIRECTORY_INFORMATION, FileName[0]);
 				if (outcount + structsize > bufsize) break;
 				eodp = (FILE_DIRECTORY_INFORMATION *)bufptr;
-				dprintf("type 1 struct size is %d and field_offset size %d size of Name[0] %d\n",
-					sizeof(FILE_DIRECTORY_INFORMATION), structsize, sizeof(eodp->FileName));
 				//FILE_DIRECTORY_INFORMATION *fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
 				fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
 				fdi->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
@@ -2951,8 +2949,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			ULONG namelenholder2 = 0;
 			error = RtlUTF8ToUnicodeN(nameptr, namelenholder, &namelenholder2, zap.za_name, namelen);
 			ASSERT(namelenholder == namelenholder2);
-			dprintf("%s: '%.*S' -> '%s' (namelen %d bytes: structsize %d)\n", __func__,
-				namelenholder / sizeof(WCHAR), nameptr, zap.za_name, namelenholder, structsize);
+			//dprintf("%s: '%.*S' -> '%s' (namelen %d bytes: structsize %d)\n", __func__,
+			//	namelenholder / sizeof(WCHAR), nameptr, zap.za_name, namelenholder, structsize);
 
 			// Release the zp
 			if (get_zp == 0) {
@@ -3001,7 +2999,6 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 	if ((outcount > last_alignment) &&
 		(last_alignment > 0)) {
 		outcount -= last_alignment;
-		dprintf("outsize adjusted to %d\n", outcount);
 	}
 
 	zp->z_zn_prefetch = B_FALSE; /* a lookup will re-enable pre-fetching */

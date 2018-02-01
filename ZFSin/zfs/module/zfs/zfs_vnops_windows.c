@@ -133,7 +133,7 @@ void zfs_dirlist_free(zfs_dirlist_t *zccb)
 	}
 }
 
-int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, char **lastname, struct vnode **dvpp, struct vnode **vpp)
+int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, char **lastname, struct vnode **dvpp, struct vnode **vpp, int flags)
 {
 	int error = ENOENT;
 	znode_t *zp;
@@ -165,8 +165,9 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		cn.cn_flags = ISLASTCN;
 		cn.cn_namelen = strlen(word);
 		cn.cn_nameptr = word;
+
 		error = zfs_lookup(dvp, word,
-			&vp, &cn, cn.cn_nameiop, NULL, /* flags */ 0);
+			&vp, &cn, cn.cn_nameiop, NULL, flags);
 
 		if (error != 0) {
 
@@ -286,6 +287,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	BOOLEAN CreateFile;
 	ULONG CreateDisposition;
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+	int flags = 0;
 
 	if (zfsvfs == NULL) return STATUS_OBJECT_PATH_NOT_FOUND;
 
@@ -424,9 +426,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			return STATUS_OBJECT_PATH_NOT_FOUND;
 	} // OpenRoot
 
-
 	// We need to have a parent from here on.
-	error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), &finalname, &dvp, &vp);
+	error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), &finalname, &dvp, &vp, flags);
 	if (error) {
 
 		if (error == STATUS_REPARSE) {
@@ -538,7 +539,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			FileObject->FsContext = vp;
 			vnode_ref(vp); // Hold open reference, until CLOSE
 			if (DeleteOnClose) vnode_setunlink(vp);
-			FileObject->SectionObjectPointer = &vp->SectionObjectPointers;  // API this?
+			FileObject->SectionObjectPointer = vnode_sectionpointer(vp);
 			VN_RELE(vp);
 
 			Irp->IoStatus.Information = replacing ? CreateDisposition == FILE_SUPERSEDE ?
@@ -569,7 +570,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		VN_HOLD(vp);
 		vnode_ref(vp); // Hold open reference, until CLOSE
 		if (DeleteOnClose) vnode_setunlink(vp);
-		FileObject->SectionObjectPointer = &vp->SectionObjectPointers;
+		FileObject->SectionObjectPointer = vnode_sectionpointer(vp);
 		VN_RELE(vp);
 	}
 
@@ -577,41 +578,50 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	return STATUS_SUCCESS;
 }
 
-
-int zfs_vnop_recycle(znode_t *zp, int force)
+/*
+ * reclaim is called when a vnode is to be terminated, 
+ * VFS (spl-vnode.c) will hold iocount == 1, usecount == 0
+ * so release associated ZFS node, and free everything
+ */
+int zfs_vnop_reclaim(struct vnode *vp)
 {
-	struct vnode *vp = ZTOV(zp);
+	znode_t *zp = VTOZ(vp);
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+	boolean_t fastpath;
 
-	VN_HOLD(vp);
+	dprintf("  zfs_vnop_recycle: releasing zp %p and vp %p: '%s'\n", zp, vp,
+		zp->z_name_cache ? zp->z_name_cache : "");
 
-	if ((force != 0)  ||  
-		(vp->v_iocount == 1 && vp->v_usecount == 0)) { // fix vnode_isbusy()
+	SECTION_OBJECT_POINTERS *section;
+	section = vnode_sectionpointer(vp);
+	if (section->DataSectionObject != NULL) {
+		CcFlushCache(section, NULL, 0, NULL);
+		CcPurgeCacheSection(section, NULL, 0, FALSE);
+	}
+	//IrpSp->FileObject->SectionObjectPointer = NULL;
 
-		dprintf("  zfs_vnop_recycle: releasing zp %p and vp %p\n", zp, vp);
+	// Decouple the nodes
+	ZTOV(zp) = NULL;
+	vnode_clearfsnode(vp); /* vp->v_data = NULL */
+	//vnode_removefsref(vp); /* ADDREF from vnode_create */
+	vp = NULL;
 
-		if (vp->SectionObjectPointers.DataSectionObject != NULL) {
-			CcFlushCache( &vp->SectionObjectPointers, NULL, 0, NULL );
-			CcPurgeCacheSection(&vp->SectionObjectPointers, NULL, 0, FALSE);
-		}
+	fastpath = zp->z_fastpath;
 
-
-		// Decouple the nodes
-		ZTOV(zp) = NULL;
-		vnode_clearfsnode(vp); /* vp->v_data = NULL */
-		vnode_recycle(vp); // releases hold - marks dead
-		vp = NULL;
-
-		// Release znode
+	// Release znode
+	/*
+	* This will release as much as it can, based on reclaim_reentry,
+	* if we are from fastpath, we do not call free here, as zfs_remove
+	* calls zfs_znode_delete() directly.
+	* zfs_zinactive() will leave earlier if z_reclaim_reentry is true.
+	*/
+	if (fastpath == B_FALSE) {
 		rw_enter(&zfsvfs->z_teardown_inactive_lock, RW_READER);
 		if (zp->z_sa_hdl == NULL)
 			zfs_znode_free(zp);
 		else
 			zfs_zinactive(zp);
 		rw_exit(&zfsvfs->z_teardown_inactive_lock);
-
-	} else {
-		VN_RELE(vp);
 	}
 
 	atomic_dec_64(&vnop_num_vnodes);
@@ -663,6 +673,7 @@ zfs_znode_getvnode(znode_t *zp, zfsvfs_t *zfsvfs)
 	atomic_inc_64(&vnop_num_vnodes);
 
 	//dprintf("Assigned zp %p with vp %p\n", zp, vp);
+	zp->z_vid = vnode_vid(vp);
 	zp->z_vnode = vp;
 
 	// Build a fullpath string here, for Notifications and set_name_information
@@ -1554,7 +1565,7 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		(filename[6] == '\\'))
 		filename = &filename[6];
 
-	error = zfs_find_dvp_vp(zfsvfs, filename, 1, &remainder, &tdvp, &tvp);
+	error = zfs_find_dvp_vp(zfsvfs, filename, 1, &remainder, &tdvp, &tvp, 0);
 	if (error) {
 		return STATUS_OBJECTID_NOT_FOUND;
 	}
@@ -1919,10 +1930,11 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		if (Status != STATUS_SUCCESS) break;
 		Status = file_position_information(DeviceObject, Irp, IrpSp, &all->PositionInformation);
 		if (Status != STATUS_SUCCESS) break;
-
+#if 0
 		all->AccessInformation.AccessFlags = GENERIC_ALL | GENERIC_EXECUTE | GENERIC_READ | GENERIC_WRITE;
 		if (vp)
 			all->ModeInformation.Mode = vnode_unlink(vp) ? FILE_DELETE_ON_CLOSE : 0;
+#endif
 		all->AlignmentInformation.AlignmentRequirement = 0;
 
 		// First get the Name, to make sure we have room
@@ -2529,13 +2541,8 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 				vnode_setunlink(vp);
 
 				mount_t *zmo = DeviceObject->DeviceExtension;
+				// Dirs marked for Deletion should release all pending Notify events
 				FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, VTOZ(vp));
-#if 0
-				znode_t *zp = VTOZ(vp);
-				zfs_send_notify(zp->z_zfsvfs, zp->z_name_cache, zp->z_name_offset,
-					vnode_isdir(vp) ? FILE_NOTIFY_CHANGE_DIR_NAME : FILE_NOTIFY_CHANGE_FILE_NAME,
-					FILE_ACTION_REMOVED);
-#endif
 				VN_RELE(vp);
 				Status = STATUS_SUCCESS;
 			}
@@ -2745,6 +2752,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 
 // IRP_MJ_CLEANUP was called, and the FileObject had been marked to delete
+// This call expects iocount to be held (VN_HOLD)
 NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	// In Unix, both zfs_unlink and zfs_rmdir expect a filename, and we do not have that here
@@ -2815,17 +2823,20 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	memcpy(namecopy, zp->z_name_cache, namecopylen);
 	int namecopyoffset = zp->z_name_offset;
 
-	if (vnode_isdir(vp)) {
+	// Release final HOLD on item, ready for deletion
+	int isdir = vnode_isdir(vp);
+	VN_RELE(vp);
+
+	if (isdir) {
 		
-		if (!vnode_isinuse(vp, 1)) {
-			error = zfs_rmdir(dvp, finalname, NULL, NULL, NULL, 0);
-			if (!error) {
-				dprintf("sending DIR notify: '%s' name '%s'\n", namecopy, &namecopy[namecopyoffset]);
-				zfs_send_notify(zfsvfs, namecopy, namecopyoffset,
-					FILE_NOTIFY_CHANGE_DIR_NAME,
-					FILE_ACTION_REMOVED);
-				zfs_vnop_recycle(VTOZ(vp), 0);
-			}
+		// We expect usecount == 0, and iocount == 1 (only us) then we can delete immediately.
+		error = zfs_rmdir(dvp, finalname, NULL, NULL, NULL, 0);
+
+		if (!error) {
+			dprintf("sending DIR notify: '%s' name '%s'\n", namecopy, &namecopy[namecopyoffset]);
+			zfs_send_notify(zfsvfs, namecopy, namecopyoffset,
+				FILE_NOTIFY_CHANGE_DIR_NAME,
+				FILE_ACTION_REMOVED);
 		}
 	} else {
 
@@ -2840,6 +2851,7 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	}
 	kmem_free(namecopy, namecopylen);
 
+	// Release parent.
 	VN_RELE(dvp);
 
 	dprintf("%s: returning %d\n", __func__, error);
@@ -3465,7 +3477,7 @@ fsDispatcher(
 		 * CLEANUP comes before CLOSE. The IFSTEST.EXE on notifications 
 		 * require them to arrive at CLEANUP time, and deemed too late
 		 * to be sent from CLOSE. It is required we act on DELETE_ON_CLOSE
-		 * in CLEANUP.
+		 * in CLEANUP, which means we have to call delete here.
 		 */
 	case IRP_MJ_CLEANUP: 
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
@@ -3473,26 +3485,39 @@ fsDispatcher(
 
 			VN_HOLD(vp);
 			znode_t *zp = VTOZ(vp); // zp for notify removal
-			vnode_rele(vp);
-			VN_RELE(vp);
+			vnode_rele(vp); // Release longterm hold finally.
 			dprintf("IRP_MJ_CLEANUP: '%s' iocount %u usecount %u\n",
 				zp && zp->z_name_cache?zp->z_name_cache:"", vp->v_iocount, vp->v_usecount);
 
+			int isdir = vnode_isdir(vp);
+
 			// Asked to delete?
 			if (vnode_unlink(vp)) {
-				// Delete entry recycles vnode
-				// TODO: Does not recycle vnode when file is added to unlink_queue?
+
+				/*
+				 * This call to delete_entry may release the vp/zp in one case
+				 * So care needs to be taken. Most branches the vp/zp lives with
+				 * zero iocount, ready to be reused.
+				 * delete_entry() requires iocount to be held.
+				 */
 				delete_entry(DeviceObject, Irp, IrpSp);
 			} else {
-				if (vp && VTOZ(vp))
-					zfs_vnop_recycle(VTOZ(vp), 0);
+				/*
+				 * Leave node alone, VFS layer will release it when appropriate.
+				 */
+				//if (vp && VTOZ(vp))
+				//	zfs_vnop_recycle(VTOZ(vp), 0);
+
+				// Release our (last?) iocount here, since we didnt call delete_entry
+				VN_RELE(vp);
 			}
 
 			// If we are cleanup up a dir, we need to complete all the SendNotify
 			// we have attached. 
 			zmo = DeviceObject->DeviceExtension;
 			VERIFY(zmo->type == MOUNT_TYPE_VCB);
-			if (vnode_isdir(vp)) {
+		    /* The use of "zp" is only used as identity, not referenced. */
+			if (isdir) {
 				dprintf("Removing all notifications for directory: %p\n", zp);
 				FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, zp);
 			}
@@ -3507,6 +3532,14 @@ fsDispatcher(
 	case IRP_MJ_CLOSE:
 		Status = STATUS_SUCCESS;
 
+		/*
+		 * CLOSE is mostly a NOOP now, in fastfat it is used to 
+		 * release the directory CCB, and finally FCB. But we
+		 * leave vnodes around to be reused. 
+		 */
+
+		dprintf("IRP_MJ_CLOSE: \n");
+#if 0
 		struct vnode *vp = IrpSp->FileObject->FsContext;
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
@@ -3515,6 +3548,14 @@ fsDispatcher(
 			// Destroy vnode
 			vnode_recycle(vp);
 		}
+#endif
+
+		// Disconnect Windows to vnode now, so they can't use stale vnode data.
+		// When they open file again, znode will have vnode ptr still if available.
+		// Or VFS has called reclaim, and znode was released.
+		IrpSp->FileObject->FsContext = NULL;
+		IrpSp->FileObject->SectionObjectPointer = NULL;
+
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext2) {
 			zfs_dirlist_free((zfs_dirlist_t *)IrpSp->FileObject->FsContext2);
 			IrpSp->FileObject->FsContext2 = NULL;

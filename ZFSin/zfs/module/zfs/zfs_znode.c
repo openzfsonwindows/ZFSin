@@ -702,6 +702,7 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	zp->z_is_zvol = 0;
 	zp->z_is_mapped = 0;
 	zp->z_is_ctldir = 0;
+	zp->z_vid = 0;
 	zp->z_uid = 0;
 	zp->z_gid = 0;
 	zp->z_size = 0;
@@ -1279,9 +1280,9 @@ zfs_zget_ext(zfsvfs_t *zfsvfs, uint64_t obj_num, znode_t **zpp,
 	struct vnode		*vp = NULL;
 	sa_handle_t	*hdl;
 	int err;
-	uint32_t        vid;
+	uint64_t        vid;
 
-	dprintf("+zget %lld\n", obj_num);
+	//dprintf("+zget %lld\n", obj_num);
 
 	getnewvnode_reserve(1);
 
@@ -1328,6 +1329,7 @@ again:
 		 * Since zp may disappear after we unlock below,
 		 * we save a copy of vp and it's vid
 		 */
+		vid = zp->z_vid;
 		vp = ZTOV(zp);
 
 		/*
@@ -1372,10 +1374,12 @@ again:
 		 * -> vnode_getwithvid() -> deadlock. Unsure why vnode_getwithvid()
 		 * ends up sleeping in msleep() but vnode_get() does not.
 		 */
-		if (!vp || (err=vnode_getwithvid(vp, 0) != 0)) {
-			//if ((err = vnode_get(vp)) != 0) {
+		if (!vp || (err=vnode_getwithvid(vp, zp->z_vid) != 0)) {
+			// vid is no longer valid
+			ZTOV(zp) = NULL;
 			dprintf("ZFS: vnode_get() returned %d\n", err);
 			kpreempt(KPREEMPT_SYNC);
+			IOSleep(hz >> 2);
 			goto again;
 		}
 
@@ -1384,12 +1388,14 @@ again:
 		 * that we have the vnode and znode we had before.
 		 */
 		mutex_enter(&zp->z_lock);
-		if ((vp != ZTOV(zp))) {
+		if ((vid != zp->z_vid) || (vp != ZTOV(zp))) {
 			mutex_exit(&zp->z_lock);
 			/* Release the wrong vp from vnode_getwithvid(). This
 			 * call is missing in 10a286 - lundman */
 			VN_RELE(vp);
 			dprintf("ZFS: the vids do not match part 1\n");
+			IOSleep(hz >> 2);
+			DbgBreakPoint();
 			goto again;
 		}
 		mutex_exit(&zp->z_lock);
@@ -1456,7 +1462,7 @@ again:
 		zfs_znode_getvnode(zp, zfsvfs); /* Assigns both vp and z_vnode */
 	}
 
-	dprintf("zget returning %d\n", err);
+	//dprintf("zget returning %d\n", err);
 	return (err);
 }
 

@@ -228,7 +228,7 @@ typedef struct znode {
     krwlock_t   z_map_lock;     /* page map lock */
 
 #ifdef _WIN32
-    uint32_t    z_vid;  /* OSX vnode_vid */
+    uint64_t    z_vid;  /* OSX vnode_vid */
 	boolean_t   z_fastpath;
 
 	uint32_t    z_name_len;    // Allocated size of z_name_cache
