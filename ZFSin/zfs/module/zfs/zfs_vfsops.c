@@ -188,8 +188,62 @@ extern void zfs_ioctl_fini(void);
 
 #endif
 
+static int
+zfsvfs_parse_option(char *option, char *value, vfs_t *vfsp)
+{
+	if (!option || !*option) return 0;
+	dprintf("parse '%s' '%s'\n", option?option:"",
+		value?value:"");
+	if (!strcasecmp(option, "readonly")) {
+		if (value && *value &&
+			!strcasecmp(value, "off"))
+			vfs_clearflags(vfsp, (uint64_t)MNT_RDONLY);
+		else
+			vfs_setflags(vfsp, (uint64_t)MNT_RDONLY);
+	}
+	return 0;
+}
 
+/*
+ * Parse the raw mntopts and return a vfs_t describing the options.
+ */
+static int
+zfsvfs_parse_options(char *mntopts, vfs_t *vfsp)
+{
+	int error = 0;
 
+	if (mntopts != NULL) {
+		char *p, *t, *v;
+		char *keep;
+
+		int len = strlen(mntopts) + 1;
+		keep = kmem_alloc(len, KM_SLEEP);
+		t = keep;
+		memcpy(t, mntopts, len);
+
+		while(1) {
+			while (t && *t == ' ') t++;
+
+			p = strpbrk(t, ",");
+			if (p) *p = 0;
+
+			// find "="
+			v = strpbrk(t, "=");
+			if (v) {
+				*v = 0;
+				v++;
+				while (*v == ' ') v++;
+			}
+			error = zfsvfs_parse_option(t, v, vfsp);
+			if (error) break;
+			if (!p) break;
+			t = &p[1];
+		}
+		kmem_free(keep, len);
+	}
+
+	return (error);
+}
 
 int
 zfs_vfs_sync(struct mount *vfsp,  int waitfor,  vfs_context_t *context)
@@ -1421,7 +1475,8 @@ zfs_set_fuid_feature(zfsvfs_t *zfsvfs)
 }
 
 static int
-zfs_domount(struct mount *vfsp, dev_t mount_dev, char *osname, vfs_context_t *ctx)
+zfs_domount(struct mount *vfsp, dev_t mount_dev, char *osname, char *options,
+	vfs_context_t *ctx)
 {
 dprintf("%s\n", __func__);
 	int error = 0;
@@ -1441,6 +1496,10 @@ dprintf("%s\n", __func__);
 	if (error)
 		return (error);
 	zfsvfs->z_vfs = vfsp;
+
+	error = zfsvfs_parse_options(options, zfsvfs->z_vfs);
+	if (error)
+		goto out;
 
 #ifdef illumos
 	/* Initialize the generic filesystem structure. */
@@ -1567,7 +1626,8 @@ dprintf("%s\n", __func__);
 		mutex_exit(&zfsvfs->z_os->os_user_ptr_lock);
 
 	} else {
-		error = zfsvfs_setup(zfsvfs, B_TRUE);
+		if ((error = zfsvfs_setup(zfsvfs, B_TRUE)))
+			goto out;
 	}
 
 #ifdef _WIN32
@@ -1598,6 +1658,7 @@ dprintf("%s\n", __func__);
 #endif
 out:
 	if (error) {
+		vfs_setfsprivate(vfsp, NULL);
 		dmu_objset_disown(zfsvfs->z_os, B_TRUE, zfsvfs);
 		zfsvfs_free(zfsvfs);
 	} else {
@@ -1915,7 +1976,7 @@ printf("ZFS: %s\n", __func__);
 
 	printf("Setting readonly\n");
 
-	if ((error = zfs_domount(mp, dev, zfs_bootfs, ctx)) != 0) {
+	if ((error = zfs_domount(mp, dev, zfs_bootfs, NULL, ctx)) != 0) {
 		//cmn_err(CE_NOTE, "zfs_domount: error %d", error);
 		printf("zfs_domount: error %d", error);
 		/* Only drop the usecount if mount fails */
@@ -2238,7 +2299,7 @@ dprintf("%s cmdflags %u rdonly %d\n", __func__, cmdflags, rdonly);
 //dprintf("%s: calling zfs_domount\n", __func__);
 #endif
 
-	error = zfs_domount(vfsp, 0, osname, context);
+	error = zfs_domount(vfsp, 0, osname, options, context);
 
 	if (error) {
 		//cmn_err(CE_NOTE, "%s: zfs_domount returned %d\n",
