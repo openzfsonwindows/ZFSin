@@ -913,11 +913,11 @@ zfs_mknode(znode_t *dzp, vattr_t *vap, dmu_tx_t *tx, cred_t *cr,
 	uint64_t	dzp_pflags = 0;
 	uint64_t	rdev = 0;
 	zfsvfs_t	*zfsvfs = dzp->z_zfsvfs;
-	dmu_buf_t	*db;
+	dmu_buf_t	*db = NULL;
 	timestruc_t	now;
 	uint64_t	gen, obj;
 	int		bonuslen;
-	sa_handle_t	*sa_hdl;
+	sa_handle_t	*sa_hdl = NULL;
 	dmu_object_type_t obj_type;
 	sa_bulk_attr_t  *sa_attrs;
 	int		cnt = 0;

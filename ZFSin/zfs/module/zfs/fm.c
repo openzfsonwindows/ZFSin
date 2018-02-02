@@ -619,7 +619,7 @@ zfs_zevent_next(zfs_zevent_t *ze, nvlist_t **event, uint64_t *event_size,
     uint64_t *dropped)
 {
 	zevent_t *ev;
-	uint32_t size;
+	uint32_t size = 0;
 	int error = 0;
 
 	mutex_enter(&zevent_lock);

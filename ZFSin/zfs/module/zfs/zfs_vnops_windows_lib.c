@@ -1674,7 +1674,7 @@ zfs_getbsdflags(znode_t *zp)
 void
 zfs_setbsdflags(znode_t *zp, uint32_t bsdflags)
 {
-    uint64_t zflags;
+    uint64_t zflags = 0;
     VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_FLAGS(zp->z_zfsvfs),
                      &zflags, sizeof (zflags)) == 0);
 #if 0

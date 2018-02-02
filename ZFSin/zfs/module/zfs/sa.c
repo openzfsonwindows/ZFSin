@@ -1060,8 +1060,8 @@ sa_setup(objset_t *os, uint64_t sa_obj, sa_attr_reg_t *reg_attrs, int count,
 		for (zap_cursor_init(&zc, os, sa->sa_layout_attr_obj);
 		    (error = zap_cursor_retrieve(&zc, &za)) == 0;
 		    zap_cursor_advance(&zc)) {
-			sa_attr_type_t *lot_attrs;
-			uint64_t lot_num;
+			sa_attr_type_t *lot_attrs = NULL;
+			uint64_t lot_num = 0;
 
 			lot_attrs = kmem_zalloc(sizeof (sa_attr_type_t) *
 			    za.za_num_integers, KM_SLEEP);

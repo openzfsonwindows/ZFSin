@@ -673,7 +673,7 @@ void
 mzap_create_impl(objset_t *os, uint64_t obj, int normflags, zap_flags_t flags,
     dmu_tx_t *tx)
 {
-	dmu_buf_t *db;
+	dmu_buf_t *db = NULL;
 	mzap_phys_t *zp;
 
 	VERIFY(0 == dmu_buf_hold(os, obj, 0, FTAG, &db, DMU_READ_NO_PREFETCH));

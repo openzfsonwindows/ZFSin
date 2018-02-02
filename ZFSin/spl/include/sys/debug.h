@@ -57,61 +57,33 @@
 
 #include <spl-debug.h>
 
-//inline static void panic(char *str, ...) { (void)str; __halt(); }
-//inline static void panic(char *str, ...) { KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, str, __VA_ARGS__ )); DbgBreakPoint(); }
-#define panic(...) do { KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__)); DbgBreakPoint(); windows_delay(hz); } while(1)
-#if 1
+#define panic(...) do { KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__)); DbgBreakPoint(); windows_delay(hz); } while (1)
+
+#ifdef DBG /* Debugging Disabled */
+#undef KdPrintEx
+#define KdPrintEx(_x_) DbgPrintEx _x_
 #define dprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
 #define IOLog(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
+#define PANIC(fmt, ...)						\
+do {									\
+	dprintf(fmt, __VA_ARGS__); \
+	DbgBreackPoint();
+} while (0)
 #else
+//#undef KdPrintEx
+//#define KdPrintEx(_x_) DbgPrintEx _x_
+//#define dprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
+//#define IOLog(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
 #define dprintf(...)
 #define IOLog(...)
-#endif
-#ifdef NDEBUG /* Debugging Disabled */
-
-/* Define SPL_DEBUG_STR to make clear which ASSERT definitions are used */
-#define SPL_DEBUG_STR	""
-
-#if 0
-#define PANIC(fmt, a...)						\
+#define PANIC(fmt, ...)						\
 do {									\
-	printk(KERN_EMERG fmt, ## a);					\
-	spl_debug_bug(__FILE__, __FUNCTION__, __LINE__, 0);		\
+	dprintf(fmt, __VA_ARGS__); \
 } while (0)
 #endif
 
-#define	PANIC panic
+#ifdef DBG /* Debugging Disabled */
 
-#define __ASSERT(x)			((void)0)
-#define ASSERT(x)			((void)0)
-#define ASSERTF(x, y, z, ...)		((void)0)
-#define ASSERTV(x)
-#define VERIFY(cond)							\
-do {									\
-	if (unlikely(!(cond)))						\
-		PANIC("VERIFY(" #cond ") failed\n");			\
-} while (0)
-
-#define VERIFY3_IMPL(LEFT, OP, RIGHT, TYPE, FMT, CAST)			\
-do {									\
-	if (!((TYPE)(LEFT) OP (TYPE)(RIGHT)))				\
-		PANIC("VERIFY3(" #LEFT " " #OP " " #RIGHT ") "		\
-		    "failed (" FMT " " #OP " " FMT ")\n",		\
-		    CAST (LEFT), CAST (RIGHT));				\
-} while (0)
-
-#define VERIFY3S(x,y,z)	VERIFY3_IMPL(x, y, z, int64_t, "%lld", (long long))
-#define VERIFY3U(x,y,z)	VERIFY3_IMPL(x, y, z, uint64_t, "%llu",		\
-				    (unsigned long long))
-#define VERIFY3P(x,y,z)	VERIFY3_IMPL(x, y, z, uintptr_t, "%p", (void *))
-#define VERIFY0(x)	VERIFY3_IMPL(0, ==, x, int64_t, "%lld",	(long long))
-
-#define ASSERT3S(x,y,z)	((void)0)
-#define ASSERT3U(x,y,z)	((void)0)
-#define ASSERT3P(x,y,z)	((void)0)
-#define ASSERT0(x)	((void)0)
-
-#else /* Debugging Enabled */
 
 /* Define SPL_DEBUG_STR to make clear which ASSERT definitions are used */
 #define SPL_DEBUG_STR	" (DEBUG mode)"
@@ -138,6 +110,30 @@ do {									\
 		PANIC("ASSERTION(" #cond ") failed: " fmt, __VA_ARGS__);	\
 } while (0)
 
+#define ASSERT3S(x,y,z)	VERIFY3S(x, y, z)
+#define ASSERT3U(x,y,z)	VERIFY3U(x, y, z)
+#define ASSERT3P(x,y,z)	VERIFY3P(x, y, z)
+#define ASSERT0(x)	VERIFY0(x)
+
+#define ASSERTV(x)	x
+
+#else /* Debugging Enabled */
+
+/* Define SPL_DEBUG_STR to make clear which ASSERT definitions are used */
+#define SPL_DEBUG_STR	""
+
+#define __ASSERT(x)			((void)0)
+#define ASSERTF(x, y, z, ...)		((void)0)
+#define ASSERTV(x)
+
+#define ASSERT3S(x,y,z)	((void)0)
+#define ASSERT3U(x,y,z)	((void)0)
+#define ASSERT3P(x,y,z)	((void)0)
+#define ASSERT0(x)	((void)0)
+
+#endif /* DBG */
+
+// VERIFY macros do not change wrt DEBUG vs RELEASE
 #define VERIFY3_IMPL(LEFT, OP, RIGHT, TYPE, FMT, CAST)			\
 do {									\
 	if (!((TYPE)(LEFT) OP (TYPE)(RIGHT)))				\
@@ -152,15 +148,7 @@ do {									\
 #define VERIFY3P(x,y,z)	VERIFY3_IMPL(x, y, z, uintptr_t, "%p", (void *))
 #define VERIFY0(x)	VERIFY3_IMPL(0, ==, x, int64_t, "%lld", (long long))
 
-#define ASSERT3S(x,y,z)	VERIFY3S(x, y, z)
-#define ASSERT3U(x,y,z)	VERIFY3U(x, y, z)
-#define ASSERT3P(x,y,z)	VERIFY3P(x, y, z)
-#define ASSERT0(x)	VERIFY0(x)
-
-#define ASSERTV(x)	x
-#define VERIFY(x)	ASSERT(x)
-
-#endif /* NDEBUG */
+#define VERIFY(EX) do { if (!(EX)) panic("PANIC: %s %s:%d\n", #EX, __FILE__, __LINE__); } while(0)
 
 /*
  * IMPLY and EQUIV are assertions of the form:

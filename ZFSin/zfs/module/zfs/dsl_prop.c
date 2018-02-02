@@ -941,7 +941,7 @@ dsl_prop_get_all_impl(objset_t *mos, uint64_t propobj,
 	for (zap_cursor_init(&zc, mos, propobj);
 	    (err = zap_cursor_retrieve(&zc, &za)) == 0;
 	    zap_cursor_advance(&zc)) {
-		nvlist_t *propval;
+		nvlist_t *propval = NULL;
 		zfs_prop_t prop;
 		char buf[ZAP_MAXNAMELEN];
 		char *valstr;

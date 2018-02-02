@@ -1538,8 +1538,8 @@ zfs_acl_inherit(zfsvfs_t *zfsvfs, umode_t umode, zfs_acl_t *paclp,
 	uint32_t	access_mask;
 	uint16_t	iflags, newflags, type;
 	size_t		ace_size;
-	void		*data1, *data2;
-	size_t		data1sz, data2sz;
+	void		*data1, *data2 = NULL;
+	size_t		data1sz, data2sz = 0;
 	uint_t          aclinherit;
 	boolean_t       isdir = S_ISDIR(umode);
 	boolean_t       islnk = S_ISLNK(umode);
@@ -1650,7 +1650,7 @@ zfs_acl_ids_create(znode_t *dzp, int flag, vattr_t *vap, cred_t *cr,
 {
 	int		error;
 	zfsvfs_t	*zfsvfs = dzp->z_zfsvfs;
-	zfs_acl_t	*paclp;
+	zfs_acl_t	*paclp = NULL;
 	gid_t		gid;
 	boolean_t	trim = B_FALSE;
 	boolean_t	inherited = B_FALSE;

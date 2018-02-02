@@ -73,7 +73,7 @@ fzap_byteswap(void *vbuf, size_t size)
 void
 fzap_upgrade(zap_t *zap, dmu_tx_t *tx, zap_flags_t flags)
 {
-	dmu_buf_t *db;
+	dmu_buf_t *db = NULL;
 	zap_leaf_t *l;
 	int i;
 	zap_phys_t *zp;
@@ -147,7 +147,7 @@ zap_table_grow(zap_t *zap, zap_table_phys_t *tbl,
     dmu_tx_t *tx)
 {
 	uint64_t b, newblk;
-	dmu_buf_t *db_old, *db_new;
+	dmu_buf_t *db_old, *db_new = NULL;
 	int err;
 	int bs = FZAP_BLOCK_SHIFT(zap);
 	int hepb = 1<<(bs-4);

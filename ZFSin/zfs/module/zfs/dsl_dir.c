@@ -903,7 +903,7 @@ dsl_dir_create_sync(dsl_pool_t *dp, dsl_dir_t *pds, const char *name,
 	objset_t *mos = dp->dp_meta_objset;
 	uint64_t ddobj;
 	dsl_dir_phys_t *ddphys;
-	dmu_buf_t *dbuf;
+	dmu_buf_t *dbuf = NULL;
 
 	ddobj = dmu_object_alloc(mos, DMU_OT_DSL_DIR, 0,
 	    DMU_OT_DSL_DIR, sizeof (dsl_dir_phys_t), tx);

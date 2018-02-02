@@ -84,7 +84,7 @@ spa_history_log_to_phys(uint64_t log_off, spa_history_phys_t *shpp)
 void
 spa_history_create_obj(spa_t *spa, dmu_tx_t *tx)
 {
-	dmu_buf_t *dbp;
+	dmu_buf_t *dbp = NULL;
 	spa_history_phys_t *shpp;
 	objset_t *mos = spa->spa_meta_objset;
 

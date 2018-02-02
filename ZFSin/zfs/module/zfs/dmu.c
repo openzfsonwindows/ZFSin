@@ -1137,8 +1137,8 @@ void
 dmu_prealloc(objset_t *os, uint64_t object, uint64_t offset, uint64_t size,
     dmu_tx_t *tx)
 {
-	dmu_buf_t **dbp;
-	int numbufs, i;
+	dmu_buf_t **dbp = NULL;
+	int numbufs = 0, i;
 
 	if (size == 0)
 		return;
@@ -1859,7 +1859,7 @@ void
 dmu_assign_arcbuf_by_dnode(dnode_t *dn, uint64_t offset, arc_buf_t *buf,
     dmu_tx_t *tx)
 {
-	dmu_buf_impl_t *db;
+	dmu_buf_impl_t *db = NULL;
 	objset_t *os = dn->dn_objset;
 	uint64_t object = dn->dn_object;
 	uint32_t blksz = (uint32_t)arc_buf_lsize(buf);

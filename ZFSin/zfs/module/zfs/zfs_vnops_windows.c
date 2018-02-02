@@ -1540,7 +1540,7 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	char *remainder = NULL;
 	char buffer[MAXNAMELEN], *filename;
 	struct vnode *tdvp = NULL, *tvp = NULL, *fdvp = NULL;
-	uint64_t parent;
+	uint64_t parent = 0;
 
 	// Convert incoming filename to utf8
 	error = RtlUnicodeToUTF8N(buffer, MAXNAMELEN, &outlen,
@@ -1790,7 +1790,7 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	znode_t *zp = VTOZ(vp);
 	char strname[MAXPATHLEN + 2];
 	int error = 0;
-	uint64_t parent;
+	uint64_t parent = 0;
 
 	ASSERT(zp != NULL);
 
@@ -1885,7 +1885,7 @@ NTSTATUS file_stream_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	stream->StreamNameLength = name.Length;
 	ASSERT(space >= 0);
 	// Copy over as much as we can, including the first wchar
-	RtlCopyMemory(stream->StreamName, name.Buffer, space + sizeof(stream->StreamName));
+	RtlCopyMemory(stream->StreamName, name.Buffer, space);
 
 	Irp->IoStatus.Information = FIELD_OFFSET(FILE_STREAM_INFORMATION, StreamName) + space;
 
@@ -2783,7 +2783,7 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 		VN_HOLD(dvp);
 
 	} else {
-		uint64_t parent;
+		uint64_t parent = 0;
 		znode_t *dzp;
 
 		// No dvp, lookup parent

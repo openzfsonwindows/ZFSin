@@ -2108,7 +2108,7 @@ zfs_ioc_objset_zplprops(zfs_cmd_t *zc)
 	if (zc->zc_nvlist_dst != 0 &&
 	    !zc->zc_objset_stats.dds_inconsistent &&
 	    dmu_objset_type(os) == DMU_OST_ZFS) {
-		nvlist_t *nv;
+		nvlist_t *nv = NULL;
 
 		VERIFY(nvlist_alloc(&nv, NV_UNIQUE_NAME, KM_SLEEP) == 0);
 		if ((err = nvl_add_zplprop(os, nv, ZFS_PROP_VERSION)) == 0 &&
@@ -2276,7 +2276,7 @@ zfs_prop_set_userquota(const char *dsname, nvpair_t *pair)
 	int err;
 
 	if (nvpair_type(pair) == DATA_TYPE_NVLIST) {
-		nvlist_t *attrs;
+		nvlist_t *attrs = NULL;
 		VERIFY(nvpair_value_nvlist(pair, &attrs) == 0);
 		if (nvlist_lookup_nvpair(attrs, ZPROP_VALUE,
 								 &pair) != 0)
@@ -2708,7 +2708,7 @@ zfs_ioc_inherit_prop(zfs_cmd_t *zc)
 							 : ZPROP_SRC_INHERITED);	/* explicitly inherit */
 
 	if (received) {
-		nvlist_t *dummy;
+		nvlist_t *dummy = NULL;
 		nvpair_t *pair;
 		zprop_type_t type;
 		int err;
@@ -3930,7 +3930,7 @@ zfs_check_clearable(char *dataset, nvlist_t *props, nvlist_t **errlist)
 {
 	zfs_cmd_t *zc;
 	nvpair_t *pair, *next_pair;
-	nvlist_t *errors;
+	nvlist_t *errors = NULL;
 	int err, rv = 0;
 
 	if (props == NULL)
@@ -3992,13 +3992,13 @@ propval_equals(nvpair_t *p1, nvpair_t *p2)
 		return (B_FALSE);
 
 	if (nvpair_type(p1) == DATA_TYPE_STRING) {
-		char *valstr1, *valstr2;
+		char *valstr1 = NULL, *valstr2 = NULL;
 
 		VERIFY(nvpair_value_string(p1, (char **)&valstr1) == 0);
 		VERIFY(nvpair_value_string(p2, (char **)&valstr2) == 0);
 		return (strcmp(valstr1, valstr2) == 0);
 	} else {
-		uint64_t intval1, intval2;
+		uint64_t intval1 = 0, intval2 = 0;
 
 		VERIFY(nvpair_value_uint64(p1, &intval1) == 0);
 		VERIFY(nvpair_value_uint64(p2, &intval2) == 0);
@@ -4055,7 +4055,7 @@ props_reduce(nvlist_t *props, nvlist_t *origprops)
 static nvlist_t *
 extract_delay_props(nvlist_t *props)
 {
-	nvlist_t *delayprops;
+	nvlist_t *delayprops = NULL;
 	nvpair_t *nvp, *tmp;
 	static const zfs_prop_t delayable[] = {
 		ZFS_PROP_REFQUOTA,
@@ -6936,10 +6936,11 @@ zfs_ioctl_osx_init(void)
 
 	zfs_ioctl_installed = 1;
 #endif
-	dprintf("ZFS: Loaded module v%s-%s%s, "
-	    "ZFS pool version %s, ZFS filesystem version %s\n",
-	    ZFS_META_VERSION, ZFS_META_RELEASE, ZFS_DEBUG_STR,
-	    SPA_VERSION_STRING, ZPL_VERSION_STRING);
+	DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+		"ZFS: Loaded module v%s-%s%s, "
+			"ZFS pool version %s, ZFS filesystem version %s\n",
+			ZFS_META_VERSION, ZFS_META_RELEASE, ZFS_DEBUG_STR,
+			SPA_VERSION_STRING, ZPL_VERSION_STRING);
 
 	return (0);
 

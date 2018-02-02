@@ -53,7 +53,9 @@
 #define	HAVE_HTONL
 #endif
 #include <sys/isa_defs.h>	/* for _ILP32 */
-
+#ifndef _KERNEL
+#include <WinSock2.h>
+#endif
 static void Encode(uint8_t *, uint32_t *, size_t);
 static void Encode64(uint8_t *, uint64_t *, size_t);
 

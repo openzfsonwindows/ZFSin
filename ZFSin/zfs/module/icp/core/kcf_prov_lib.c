@@ -49,7 +49,7 @@ crypto_uio_data(crypto_data_t *data, uchar_t *buf, int len, cmd_type_t cmd,
 	uint_t vec_idx;
 	size_t cur_len;
 	uchar_t *datap;
-	user_addr_t iov_base;
+	user_addr_t iov_base = NULL;
 	user_size_t iov_len;
 
 	ASSERT(data->cd_format == CRYPTO_DATA_UIO);
@@ -276,7 +276,7 @@ crypto_update_uio(void *ctx, crypto_data_t *input, crypto_data_t *output,
 	size_t length = input->cd_length;
 	uint_t vec_idx;
 	size_t cur_len;
-	user_addr_t iov_base;
+	user_addr_t iov_base = NULL;
 	user_size_t iov_len;
 
 	if (input->cd_miscdata != NULL) {

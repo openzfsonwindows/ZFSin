@@ -105,7 +105,7 @@ zfs_sa_symlink(znode_t *zp, char *link, int len, dmu_tx_t *tx)
 			    ZFS_OLD_ZNODE_PHYS_SIZE, len);
 		}
 	} else {
-		dmu_buf_t *dbp;
+		dmu_buf_t *dbp = NULL;
 
 		zfs_grow_blocksize(zp, len, tx);
 		VERIFY(0 == dmu_buf_hold(zp->z_zfsvfs->z_os,
@@ -123,7 +123,7 @@ void
 zfs_sa_get_scanstamp(znode_t *zp, xvattr_t *xvap)
 {
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
-	xoptattr_t *xoap;
+	xoptattr_t *xoap = NULL;
 
 	ASSERT(MUTEX_HELD(&zp->z_lock));
 	VERIFY((xoap = xva_getxoptattr(xvap)) != NULL);
@@ -157,7 +157,7 @@ void
 zfs_sa_set_scanstamp(znode_t *zp, xvattr_t *xvap, dmu_tx_t *tx)
 {
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
-	xoptattr_t *xoap;
+	xoptattr_t *xoap = NULL;
 
 	ASSERT(MUTEX_HELD(&zp->z_lock));
 	VERIFY((xoap = xva_getxoptattr(xvap)) != NULL);

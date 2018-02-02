@@ -114,7 +114,7 @@ uint64_t
 zfs_fuid_table_load(objset_t *os, uint64_t fuid_obj, avl_tree_t *idx_tree,
     avl_tree_t *domain_tree)
 {
-	dmu_buf_t *db;
+	dmu_buf_t *db = NULL;
 	uint64_t fuid_size;
 
 	ASSERT(fuid_obj != 0);
@@ -126,7 +126,7 @@ zfs_fuid_table_load(objset_t *os, uint64_t fuid_obj, avl_tree_t *idx_tree,
 	if (fuid_size)  {
 		nvlist_t **fuidnvp;
 		nvlist_t *nvp = NULL;
-		uint_t count;
+		uint_t count = 0;
 		char *packed;
 		int i;
 
@@ -140,8 +140,8 @@ zfs_fuid_table_load(objset_t *os, uint64_t fuid_obj, avl_tree_t *idx_tree,
 
 		for (i = 0; i != count; i++) {
 			fuid_domain_t *domnode;
-			char *domain;
-			uint64_t idx;
+			char *domain = NULL;
+			uint64_t idx = 0;
 
 			VERIFY(nvlist_lookup_string(fuidnvp[i], FUID_DOMAIN,
 			    &domain) == 0);
@@ -225,11 +225,11 @@ zfs_fuid_init(zfsvfs_t *zfsvfs)
 void
 zfs_fuid_sync(zfsvfs_t *zfsvfs, dmu_tx_t *tx)
 {
-	nvlist_t *nvp;
+	nvlist_t *nvp = NULL;
 	nvlist_t **fuids;
 	size_t nvsize = 0;
 	char *packed;
-	dmu_buf_t *db;
+	dmu_buf_t *db = NULL;
 	fuid_domain_t *domnode;
 	int numnodes;
 	int i;

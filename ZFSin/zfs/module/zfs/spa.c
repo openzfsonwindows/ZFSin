@@ -178,7 +178,7 @@ spa_prop_add_list(nvlist_t *nvl, zpool_prop_t prop, char *strval,
     uint64_t intval, zprop_source_t src)
 {
 	const char *propname = zpool_prop_to_name(prop);
-	nvlist_t *propval;
+	nvlist_t *propval = NULL;
 
 	VERIFY(nvlist_alloc(&propval, NV_UNIQUE_NAME, KM_SLEEP) == 0);
 	VERIFY(nvlist_add_uint64(propval, ZPROP_SOURCE, src) == 0);
@@ -1554,10 +1554,10 @@ spa_load_spares(spa_t *spa)
 static void
 spa_load_l2cache(spa_t *spa)
 {
-	nvlist_t **l2cache;
-	uint_t nl2cache;
+	nvlist_t **l2cache = NULL;
+	uint_t nl2cache = 0;
 	int i, j, oldnvdevs;
-	uint64_t guid;
+	uint64_t guid = NULL;
 	vdev_t *vd, **oldvdevs, **newvdevs;
 	spa_aux_vdev_t *sav = &spa->spa_l2cache;
 
@@ -1738,8 +1738,8 @@ spa_config_valid_zaps(vdev_t *vd, vdev_t *mvd)
 static boolean_t
 spa_config_valid(spa_t *spa, nvlist_t *config)
 {
-	vdev_t *mrvd, *rvd = spa->spa_root_vdev;
-	nvlist_t *nv;
+	vdev_t *mrvd = NULL, *rvd = spa->spa_root_vdev;
+	nvlist_t *nv = NULL;
 	int c, i;
 
 	VERIFY(nvlist_lookup_nvlist(config, ZPOOL_CONFIG_VDEV_TREE, &nv) == 0);
@@ -1755,7 +1755,7 @@ spa_config_valid(spa_t *spa, nvlist_t *config)
 	 * We'll pass this up to the user for further processing.
 	 */
 	if (!(spa->spa_import_flags & ZFS_IMPORT_MISSING_LOG)) {
-		nvlist_t **child, *nv;
+		nvlist_t **child, *nv = NULL;
 		uint64_t idx = 0;
 
 		child = kmem_alloc(rvd->vdev_children * sizeof (nvlist_t **),
@@ -2477,7 +2477,7 @@ spa_load_impl(spa_t *spa, uint64_t pool_guid, nvlist_t *config,
 	 * cannot open a pool.
 	 */
 	if (ub->ub_version >= SPA_VERSION_FEATURES) {
-		nvlist_t *unsup_feat;
+		nvlist_t *unsup_feat = NULL;
 		nvpair_t *nvp;
 
 		VERIFY(nvlist_alloc(&unsup_feat, NV_UNIQUE_NAME, KM_SLEEP) ==
@@ -2659,7 +2659,7 @@ spa_load_impl(spa_t *spa, uint64_t pool_guid, nvlist_t *config,
 
 		if (!spa_is_root(spa) && nvlist_lookup_uint64(nvconfig,
 		    ZPOOL_CONFIG_HOSTID, &hostid) == 0) {
-			char *hostname;
+			char *hostname = NULL;
 			unsigned long myhostid = 0;
 
 			VERIFY(nvlist_lookup_string(nvconfig,
@@ -3351,10 +3351,10 @@ static void
 spa_add_spares(spa_t *spa, nvlist_t *config)
 {
 	nvlist_t **spares;
-	uint_t i, nspares;
+	uint_t i, nspares = 0;
 	nvlist_t *nvroot;
-	uint64_t guid;
-	vdev_stat_t *vs;
+	uint64_t guid = 0;
+	vdev_stat_t *vs = NULL;
 	uint_t vsc;
 	uint64_t pool;
 
@@ -3399,12 +3399,12 @@ spa_add_spares(spa_t *spa, nvlist_t *config)
 static void
 spa_add_l2cache(spa_t *spa, nvlist_t *config)
 {
-	nvlist_t **l2cache;
-	uint_t i, j, nl2cache;
+	nvlist_t **l2cache = NULL;
+	uint_t i, j, nl2cache = 0;
 	nvlist_t *nvroot;
-	uint64_t guid;
+	uint64_t guid = 0;
 	vdev_t *vd;
-	vdev_stat_t *vs;
+	vdev_stat_t *vs = NULL;
 	uint_t vsc;
 
 	ASSERT(spa_config_held(spa, SCL_CONFIG, RW_READER));
@@ -3715,7 +3715,7 @@ spa_set_aux_vdevs(spa_aux_vdev_t *sav, nvlist_t **devs, int ndevs,
 
 	if (sav->sav_config != NULL) {
 		nvlist_t **olddevs;
-		uint_t oldndevs;
+		uint_t oldndevs = 0;
 		nvlist_t **newdevs;
 
 		/*
@@ -4213,9 +4213,9 @@ spa_import_rootpool(char *devpath, char *devid)
 {
 	spa_t *spa;
 	vdev_t *rvd, *bvd /*, *avd = NULL*/;
-	nvlist_t *config = NULL, *nvtop;
+	nvlist_t *config = NULL, *nvtop = NULL;
 	uint64_t guid = 0, txg;
-	char *pname;
+	char *pname = NULL;
 	int error;
 
 	/*
@@ -4335,7 +4335,7 @@ spa_import(char *pool, nvlist_t *config, nvlist_t *props, uint64_t flags)
 	uint64_t mode = spa_mode_global;
 	uint64_t readonly = B_FALSE;
 	int error;
-	nvlist_t *nvroot;
+	nvlist_t *nvroot = NULL;
 	nvlist_t **spares, **l2cache;
 	uint_t nspares, nl2cache;
 
@@ -5660,7 +5660,7 @@ spa_nvlist_lookup_by_guid(nvlist_t **nvpp, int count, uint64_t target_guid)
 	int i;
 
 	for (i = 0; i < count; i++) {
-		uint64_t guid;
+		uint64_t guid = 0;
 
 		VERIFY(nvlist_lookup_uint64(nvpp[i], ZPOOL_CONFIG_GUID,
 		    &guid) == 0);
@@ -6369,7 +6369,7 @@ spa_sync_nvlist(spa_t *spa, uint64_t obj, nvlist_t *nv, dmu_tx_t *tx)
 	char *packed = NULL;
 	size_t bufsize;
 	size_t nvsize = 0;
-	dmu_buf_t *db;
+	dmu_buf_t *db = NULL;
 
 	VERIFY(nvlist_size(nv, &nvsize, NV_ENCODE_XDR) == 0);
 
@@ -6399,7 +6399,7 @@ static void
 spa_sync_aux_dev(spa_t *spa, spa_aux_vdev_t *sav, dmu_tx_t *tx,
     const char *config, const char *entry)
 {
-	nvlist_t *nvroot;
+	nvlist_t *nvroot = NULL;
 	nvlist_t **list;
 	int i;
 

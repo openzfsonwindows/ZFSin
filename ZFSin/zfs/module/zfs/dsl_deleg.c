@@ -98,7 +98,7 @@ dsl_deleg_can_allow(char *ddname, nvlist_t *nvp, cred_t *cr)
 		return (error);
 
 	while ((whopair = nvlist_next_nvpair(nvp, whopair))) {
-		nvlist_t *perms;
+		nvlist_t *perms = NULL;
 		nvpair_t *permpair = NULL;
 
 		VERIFY(nvpair_value_nvlist(whopair, &perms) == 0);

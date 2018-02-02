@@ -107,7 +107,7 @@ static int
 ddt_object_load(ddt_t *ddt, enum ddt_type type, enum ddt_class class)
 {
 	ddt_object_t *ddo = &ddt->ddt_object_stats[type][class];
-	dmu_object_info_t doi;
+	dmu_object_info_t doi = { 0 };
 	char name[DDT_NAMELEN];
 	int error;
 
@@ -141,7 +141,7 @@ ddt_object_sync(ddt_t *ddt, enum ddt_type type, enum ddt_class class,
     dmu_tx_t *tx)
 {
 	ddt_object_t *ddo = &ddt->ddt_object_stats[type][class];
-	dmu_object_info_t doi;
+	dmu_object_info_t doi = { 0 };
 	char name[DDT_NAMELEN];
 
 	ddt_object_name(ddt, type, class, name);
