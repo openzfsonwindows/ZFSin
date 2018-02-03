@@ -192,7 +192,7 @@ Windows Updates run, you can disable those in gpedit.msc
   ✅ git clone ZFS repo on ZFS mounted fs
 
   ❎ Compile ZFS on top of ZFS
-  *  VS catches on fire loading project
+  *  VS loads project, compiles 1 file then screams in terror.
 
   ❎ Scrooge McDuck style swim in cash
 
@@ -245,11 +245,72 @@ So it is assigned first-available drive letter. All lower datasets
 will be mounted inside the drive letter. If pool's WinDriveLetter is
 not set, it will mount "/pool" as "C:/pool".
 
+---
+
+# Installing a binary release
+
+Latest binary files are available on GitHub:
+
+https://github.com/openzfsonwindows/ZFSin/releases
+
+Download your preferred package.
+
+Enable unsigned drivers:
+
+* bcdedit.exe -set testsigning on
+
+Then **reboot**. After restart it should have _Test Mode_ bottom right
+corner of the screen.
+
+* Right click the .INF file
+* Click on "Install" to install the ZFSin.sys driver
+* Start a CMDline as Administrator
+* Run "zpool.exe status" to confirm it can talk to the kernel
+
+Failure would be:
+```
+Unable to open \\.\ZFS: No error.
+```
+
+Success would be:
+```
+No pools configured.
+```
+
+---
+
+# Creating your first pool.
+
+The basic syntax to creating a pool is as below. We use the pool name
+"tank" here as with Open ZFS documentation. Feel free to pick your own
+pool name.
+
+```
+# zpool create [options] tank disk
+  - Create single disk pool
+
+# zpool create [options] tank mirror disk1 disk2
+  - Create mirrored pool ("raid1")
+
+# zpool create [options] tank raidz disk1 disk2 disk3 .... diskn
+  - Create raidz ("raid5") pool of multiple disks
+
+```
+
+The default _options_ will "mostly" work in Windows, but for best compatibility
+should use a case insensitive filesystem.
+
+The recommended _options_ string for Windows is currently:
+
+```
+zpool create -O casesensitivity=insensitive -O compression=lz4 \
+     -O atime=off -o ashift=12 tank disk
+```
 
 * Creating filebased pools would look like:
 ```
 # fsutil file createnew C:\poolfile.bin 200000000
-# zpool.exe create TEST \\?\C:\poolfile.bin
+# zpool.exe create tank \\?\C:\poolfile.bin
 
 Note that "\\?\C:\" needs to be escaped in bash shell, ie
 "\\\\?\\C:\\".
@@ -257,3 +318,23 @@ Note that "\\?\C:\" needs to be escaped in bash shell, ie
         TEST                   ONLINE       0     0     0
         \??\C:\poolfile.bin  ONLINE       0     0     0
 ```
+
+* Creating a HDD pool
+
+First, locate disk name
+
+```
+Insert magic here - how do you list the physical disks?
+```
+
+
+# Exporting the pool
+
+If you have finished with ZFS, or want to eject the USB or HDD that the
+pool resides on, it must first be _exported_. Similar to "ejecting" a
+USB device before unplugging it.
+
+```
+# zpool export tank
+```
+
