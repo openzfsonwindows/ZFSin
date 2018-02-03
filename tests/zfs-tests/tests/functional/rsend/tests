@@ -1,0 +1,14 @@
+Warning: Test 'send-c_mixed_compression' removed from TestGroup '/Users/zfs-tests/Developer/zfs-test/zfs-tests/tests/functional/rsend' because it failed verification.
+Warning: Test 'send-cD' removed from TestGroup '/Users/zfs-tests/Developer/zfs-test/zfs-tests/tests/functional/rsend' because it failed verification.
+Warning: Test 'send-c_resume' removed from TestGroup '/Users/zfs-tests/Developer/zfs-test/zfs-tests/tests/functional/rsend' because it failed verification.
+Warning: Test 'send-c_recv_dedup' removed from TestGroup '/Users/zfs-tests/Developer/zfs-test/zfs-tests/tests/functional/rsend' because it failed verification.
+Warning: Test 'send_freeobjects' removed from TestGroup '/Users/zfs-tests/Developer/zfs-test/zfs-tests/tests/functional/rsend' because it failed verification.
+Warning: Test 'zpool_import_errata3' removed from TestGroup '/Users/zfs-tests/Developer/zfs-test/zfs-tests/tests/functional/cli_root/zpool_import' because it failed verification.
+
+send-c_mixed_compression
+send-cD
+send-c_resume
+send-c_recv_dedup
+send_freeobjects
+zpool_import_errata3
+send-c_lz4_disabled

@@ -43,7 +43,6 @@ POOL_FILE=cryptv0.dat
 
 function uncompress_pool
 {
-
 	log_note "Creating pool from $POOL_FILE"
 	log_must bzcat \
 	    $STF_SUITE/tests/functional/cli_root/zpool_import/$POOL_FILE.bz2 \
@@ -72,6 +71,7 @@ log_must zfs mount -o ro $POOL_NAME/testfs
 
 old_mntpnt=$(get_prop mountpoint $POOL_NAME/testfs)
 log_must eval "ls $old_mntpnt | grep -q testfile"
+block_device_wait
 log_mustnot dd if=/dev/zero of=/dev/zvol/$POOL_NAME/testvol bs=512 count=1
 log_must dd if=/dev/zvol/$POOL_NAME/testvol of=/dev/null bs=512 count=1
 log_must eval "echo 'password' | zfs create \

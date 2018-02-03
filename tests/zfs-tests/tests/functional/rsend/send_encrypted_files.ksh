@@ -41,7 +41,7 @@ verify_runnable "both"
 
 function set_metadata_compression_disabled # <0|1>
 {
-	echo $1 > /sys/module/zfs/parameters/zfs_mdcomp_disable
+	sysctl -w kstat.zfs.darwin.tunable.zfs_mdcomp_disable=$1
 }
 
 function cleanup
@@ -65,11 +65,11 @@ log_must zfs create -o encryption=on -o keyformat=passphrase \
 	-o keylocation=file://$keyfile $TESTPOOL/$TESTFS2
 
 log_must touch /$TESTPOOL/$TESTFS2/empty
-log_must mkfile 512 /$TESTPOOL/$TESTFS2/small
-log_must mkfile 32M /$TESTPOOL/$TESTFS2/full
+log_must mkfile -n 512 /$TESTPOOL/$TESTFS2/small
+log_must mkfile -n 32M /$TESTPOOL/$TESTFS2/full
 log_must dd if=/dev/urandom of=/$TESTPOOL/$TESTFS2/sparse \
 	bs=512 count=1 seek=10G >/dev/null 2>&1
-log_must mkfile 32M /$TESTPOOL/$TESTFS2/truncated
+log_must mkfile -n 32M /$TESTPOOL/$TESTFS2/truncated
 log_must truncate -s 4M /$TESTPOOL/$TESTFS2/truncated
 sync
 
