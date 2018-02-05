@@ -2482,7 +2482,7 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 		len = strtoull(end, &end, 10);
 		while (end && *end == '#') end++;
 		fd = CreateFile(end,
-			GENERIC_READ,
+			oflag & O_RDWR ? GENERIC_READ | GENERIC_WRITE : GENERIC_READ,
 			FILE_SHARE_READ | FILE_SHARE_WRITE,
 			NULL,
 			OPEN_EXISTING,
@@ -2492,7 +2492,7 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 	} else {
 
 		fd = CreateFile(path,
-			GENERIC_READ,
+			oflag & O_RDWR ? GENERIC_READ | GENERIC_WRITE : GENERIC_READ,
 			FILE_SHARE_READ | FILE_SHARE_WRITE,
 			NULL,
 			OPEN_EXISTING,
@@ -4323,18 +4323,30 @@ zpool_label_disk_check(char *path)
 		return (errno);
 
 	if ((err = efi_alloc_and_read(fd, &vtoc)) != 0) {
+#ifdef _WIN32
+		CloseHandle(fd);
+#else
 		(void) close(fd);
+#endif
 		return (err);
 	}
 
 	if (vtoc->efi_flags & EFI_GPT_PRIMARY_CORRUPT) {
 		efi_free(vtoc);
-		(void) close(fd);
+#ifdef _WIN32
+		CloseHandle(fd);
+#else
+		(void)close(fd);
+#endif
 		return (EIDRM);
 	}
 
 	efi_free(vtoc);
-	(void) close(fd);
+#ifdef _WIN32
+	CloseHandle(fd);
+#else
+	(void)close(fd);
+#endif
 	return (0);
 }
 
@@ -4382,7 +4394,11 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 		start_block = NEW_START_BLOCK;
 	}
 
+#ifdef _WIN32
+	(void)snprintf(path, sizeof(path), "%s%s", "\\\\?\\", name);
+#else
 	(void) snprintf(path, sizeof (path), "%s/%s", ZFS_DISK_ROOT, name);
+#endif
 
 	if ((fd = zpool_open_delay(10, path, O_RDWR|O_DIRECT)) < 0) {
 		/*
@@ -4401,8 +4417,11 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 		 */
 		if (errno == ENOMEM)
 			(void) no_memory(hdl);
-
+#ifdef _WIN32
+		CloseHandle(fd);
+#else
 		(void) close(fd);
+#endif
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, "cannot "
 		    "label '%s': unable to read disk capacity"), path);
 
@@ -4441,7 +4460,11 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 		 * ecting the user to manually label the disk and give
 		 * a specific slice.
 		 */
+#ifdef _WIN32
+		CloseHandle(fd);
+#else
 		(void) close(fd);
+#endif
 		efi_free(vtoc);
 
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, "try using "
@@ -4449,12 +4472,17 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 		return (zfs_error(hdl, EZFS_LABELFAILED, errbuf));
 	}
 
-	(void) close(fd);
+#ifdef _WIN32
+	CloseHandle(fd);
+#else
+	(void)close(fd);
+#endif
 	efi_free(vtoc);
 
 	/* Wait for the first expected partition to appear. */
 
-	(void) snprintf(path, sizeof (path), "%s/%s", ZFS_DISK_ROOT, name);
+#ifndef _WIN32
+	(void)snprintf(path, sizeof(path), "%s/%s", ZFS_DISK_ROOT, name);
 	(void) zfs_append_partition(path, MAXPATHLEN);
 
 	rval = zpool_label_disk_wait(path, 3000);
@@ -4463,9 +4491,14 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 		    "detect device partitions on '%s': %d"), path, rval);
 		return (zfs_error(hdl, EZFS_LABELFAILED, errbuf));
 	}
+#endif
 
 	/* We can't be to paranoid.  Read the label back and verify it. */
-	(void) snprintf(path, sizeof (path), "%s/%s", ZFS_DISK_ROOT, name);
+#ifdef _WIN32
+	(void)snprintf(path, sizeof(path), "%s%s", "\\\\?\\", name);
+#else
+	(void)snprintf(path, sizeof(path), "%s/%s", ZFS_DISK_ROOT, name);
+#endif
 	rval = zpool_label_disk_check(path);
 	if (rval) {
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, "freshly written "

@@ -197,23 +197,10 @@ read_disk_info(HANDLE fd, diskaddr_t *capacity, uint_t *lbsize)
 
 		*lbsize = (uint_t)geometry_ex.Geometry.BytesPerSector;
 		*capacity = (diskaddr_t)geometry_ex.DiskSize.QuadPart;
-
+		*capacity /= *lbsize; // Capacity is in # blocks
 		return 0;
 	}
 
-	PARTITION_INFORMATION partInfo;
-
-	if (DeviceIoControl(fd,
-		IOCTL_DISK_GET_PARTITION_INFO,
-		(LPVOID)NULL,
-		(DWORD)0,
-		(LPVOID)&partInfo,
-		sizeof(partInfo),
-		&len,
-		(LPOVERLAPPED)NULL)) {
-
-		*capacity = (diskaddr_t)partInfo.PartitionLength.QuadPart;
-	}
 	return 0;
 }
 
@@ -382,6 +369,30 @@ efi_get_info(HANDLE fd, struct dk_cinfo *dki_info)
 			    "'%s' is not virtual\n",
 			    pathbuf);
 	}
+#elif _WIN32
+
+	// Ask it for partitions
+	PARTITION_INFORMATION partInfo;
+	DWORD retcount = 0;
+	int err;
+	err = DeviceIoControl(fd,
+		IOCTL_DISK_GET_PARTITION_INFO,
+		(LPVOID)NULL,
+		(DWORD)0,
+		(LPVOID)&partInfo,
+		sizeof(partInfo),
+		&retcount,
+		(LPOVERLAPPED)NULL);
+	if (err) {
+		dki_info->dki_partition = 0;
+		strlcpy(dki_info->dki_dname,
+		"getnamehere",
+		sizeof(dki_info->dki_dname));
+	}
+	else {
+		err = GetLastError();
+	}
+
 #endif
 	return (0);
 error:
@@ -616,8 +627,11 @@ efi_ioctl(HANDLE fd, int cmd, dk_efi_t *dk_ioc)
 		}
 
 		/* Sync the new EFI table to disk */
+#ifdef _WIN32
+		FlushFileBuffers(fd); // I think I added fsync to posix.c, but this is the only call?
+#else
 		error = fsync(fd);
-
+#endif
 		if (error == -1)
 			return (error);
 
