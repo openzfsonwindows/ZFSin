@@ -604,16 +604,17 @@ static boolean_t
 is_whole_disk(const char *path)
 {
 	struct dk_gpt *label;
-	int fd;
+	HANDLE h;
 
-	if ((fd = open(path, O_RDONLY|O_DIRECT)) < 0)
+	h = CreateFile(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+	if ((h == INVALID_HANDLE_VALUE))
 		return (B_FALSE);
-	if (efi_alloc_and_init(fd, EFI_NUMPAR, &label) != 0) {
-		(void) close(fd);
+	if (efi_alloc_and_init(h, EFI_NUMPAR, &label) != 0) {
+		(void) CloseHandle(h);
 		return (B_FALSE);
 	}
 	efi_free(label);
-	(void) close(fd);
+	(void) CloseHandle(h);
 	return (B_TRUE);
 }
 
@@ -714,6 +715,7 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 	boolean_t wholedisk = B_FALSE;
 	uint64_t ashift = 0;
 	int err;
+	HANDLE h = 0;
 
 	/*
 	 * Determine what type of vdev this is, and put the full path into
@@ -725,6 +727,7 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 		|| arg[0] == '\\'
 #endif
 		) {
+
 		/*
 		 * Complete device or file path.  Exact type is determined by
 		 * examining the file descriptor afterwards.  Symbolic links
@@ -740,13 +743,29 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 		}
 
 		wholedisk = is_whole_disk(path);
+
+#ifdef _WIN32
+		/* Let users use short name like \\.\PHYSICALDISK2 so open
+		* the device and query the full name
+		*/
+		h = CreateFile(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+		if (h == INVALID_HANDLE_VALUE) {
+			(void)fprintf(stderr,
+				gettext("cannot open '%s': %s\n"),
+				path, strerror(errno));
+			return NULL;
+	}
+
+#endif
+
+#ifndef _WIN32
 		if (!wholedisk && (stat(path, &statbuf) != 0)) {
 			(void) fprintf(stderr,
 			    gettext("cannot open '%s': %s\n"),
 			    path, strerror(errno));
 			return (NULL);
 		}
-
+#endif
 		/* After is_whole_disk() check restore original passed path */
 		strlcpy(path, arg, MAXPATHLEN);
 	} else {
@@ -779,13 +798,22 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 	/*
 	 * Determine whether this is a device or a file.
 	 */
+#ifdef _WIN32
+	if (wholedisk || GetFileType(h) == FILE_TYPE_DISK) {
+#else
 	if (wholedisk || S_ISBLK(statbuf.st_mode)) {
-		type = VDEV_TYPE_DISK;
+#endif
+			type = VDEV_TYPE_DISK;
+#ifdef _WIN32
+	} else if (GetFileAttributes(h) == FILE_ATTRIBUTE_NORMAL) {
+#else
 	} else if (S_ISREG(statbuf.st_mode)) {
+#endif
 		type = VDEV_TYPE_FILE;
 	} else {
 		(void) fprintf(stderr, gettext("cannot use '%s': must be a "
 		    "block device or regular file\n"), path);
+		CloseHandle(h);
 		return (NULL);
 	}
 
@@ -827,6 +855,7 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 	if (ashift > 0)
 		nvlist_add_uint64(vdev, ZPOOL_CONFIG_ASHIFT, ashift);
 
+	CloseHandle(h);
 	return (vdev);
 }
 
