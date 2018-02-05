@@ -67,7 +67,7 @@
 #define PANIC(fmt, ...)						\
 do {									\
 	dprintf(fmt, __VA_ARGS__); \
-	DbgBreackPoint();
+	DbgBreakPoint(); \
 } while (0)
 #else
 //#undef KdPrintEx
@@ -87,12 +87,6 @@ do {									\
 
 /* Define SPL_DEBUG_STR to make clear which ASSERT definitions are used */
 #define SPL_DEBUG_STR	" (DEBUG mode)"
-
-#define PANIC(fmt, ...)						\
-do {									\
-	dprintf(fmt, __VA_ARGS__); \
-} while (0)
-
 
 /* ASSERTION that is safe to use within the debug system */
 #define __ASSERT(cond)							\
