@@ -605,8 +605,9 @@ is_whole_disk(const char *path)
 {
 	struct dk_gpt *label;
 	HANDLE h;
-
-	h = CreateFile(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+	
+	h = CreateFile("\\\\?\\SCSI\\DISK&VEN_VMWARE_&PROD_VMWARE_VIRTUAL_S\\5&1EC51BF7&0&000100", 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+	//h = CreateFile(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 	if ((h == INVALID_HANDLE_VALUE))
 		return (B_FALSE);
 	if (efi_alloc_and_init(h, EFI_NUMPAR, &label) != 0) {
