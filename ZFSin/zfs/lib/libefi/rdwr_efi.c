@@ -640,8 +640,11 @@ efi_ioctl(HANDLE fd, int cmd, dk_efi_t *dk_ioc)
 		}
 
 		/* Sync the new EFI table to disk */
+#ifdef _WIN32
+		FlushFileBuffers(fd); // I think I added fsync to posix.c, but this is the only call?
+#else
 		error = fsync(fd);
-
+#endif
 		if (error == -1)
 			return (error);
 

@@ -606,8 +606,8 @@ is_whole_disk(const char *path)
 	struct dk_gpt *label;
 	HANDLE h;
 	
-	h = CreateFile("\\\\?\\SCSI\\DISK&VEN_VMWARE_&PROD_VMWARE_VIRTUAL_S\\5&1EC51BF7&0&000100", 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
-	//h = CreateFile(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+	//h = CreateFile("\\\\?\\SCSI\\DISK&VEN_VMWARE_&PROD_VMWARE_VIRTUAL_S\\5&1EC51BF7&0&000100", 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+	h = CreateFile(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 	if ((h == INVALID_HANDLE_VALUE))
 		return (B_FALSE);
 	if (efi_alloc_and_init(h, EFI_NUMPAR, &label) != 0) {
@@ -743,8 +743,6 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 			return (NULL);
 		}
 
-		wholedisk = is_whole_disk(path);
-
 #ifdef _WIN32
 		/* Let users use short name like \\.\PHYSICALDISK2 so open
 		* the device and query the full name
@@ -757,7 +755,59 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 			return NULL;
 	}
 
+		PARTITION_INFORMATION partInfo;
+		DWORD retcount = 0;
+		int err;
+		char buf[1024];
+#define IOCTL_MOUNTDEV_QUERY_DEVICE_NAME 0x004d0008
+		err = DeviceIoControl(h,
+			IOCTL_MOUNTDEV_QUERY_DEVICE_NAME,
+			(LPVOID)NULL,
+			(DWORD)0,
+			(LPVOID)buf,
+			sizeof(buf),
+			&retcount,
+			(LPOVERLAPPED)NULL);
+		fprintf(stderr, "DeviceName said %s with '%S'\n\n", err?"OK":"NG", buf);
+		DISK_GEOMETRY_EX *p = buf;
+		err = DeviceIoControl(h,
+			IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
+			(LPVOID)NULL,
+			(DWORD)0,
+			(LPVOID)buf,
+			sizeof(buf),
+			&retcount,
+			(LPOVERLAPPED)NULL);
+		fprintf(stderr, "DriveGeometry said %s\n", err ? "OK" : "NG");
+		DRIVE_LAYOUT_INFORMATION_EX *x = buf;
+		err = DeviceIoControl(h,
+			IOCTL_DISK_GET_DRIVE_LAYOUT_EX,
+			(LPVOID)NULL,
+			(DWORD)0,
+			(LPVOID)buf,
+			sizeof(buf),
+			&retcount,
+			(LPOVERLAPPED)NULL);
+		fprintf(stderr, "LayoutInfo said %s\n", err ? "OK" : "NG");
+		VOLUME_DISK_EXTENTS  *e = buf;
+		err = DeviceIoControl(h,
+			IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
+			(LPVOID)NULL,
+			(DWORD)0,
+			(LPVOID)buf,
+			sizeof(buf),
+			&retcount,
+			(LPOVERLAPPED)NULL);
+		fprintf(stderr, "DiskExtents said %s\n", err ? "OK" : "NG");
+
+		// If no extents, full disk?
+		if (!err)
+			wholedisk = 1;
+		else
+			wholedisk = 0;
 #endif
+
+//		wholedisk = is_whole_disk(path);
 
 #ifndef _WIN32
 		if (!wholedisk && (stat(path, &statbuf) != 0)) {
@@ -1347,11 +1397,17 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 				if (ret == 0 && S_ISLNK(statbuf.st_mode))
 					(void) unlink(udevpath);
 			}
-
-			if (zpool_label_disk(g_zfs, zhp,
-			    strrchr(devpath, '/') + 1) == -1)
+			char *r;
+			r = strrchr(devpath, '/');
+			if (!r)
+				r = strrchr(devpath, '\\');
+			if (r)
+				r++;
+			else
+				r = devpath;
+			if (zpool_label_disk(g_zfs, zhp, r) == -1)
 				return (-1);
-
+#ifndef _WIN32
 			ret = zpool_label_disk_wait(udevpath, DISK_LABEL_WAIT);
 			if (ret) {
 				(void) fprintf(stderr, gettext("cannot "
@@ -1360,6 +1416,23 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 			}
 
 			(void) zero_label(udevpath);
+#else
+			// Update name to be the windows encoding
+			HANDLE h;
+			h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+			if (h != INVALID_HANDLE_VALUE) {
+				struct dk_gpt *vtoc;
+				if ((efi_alloc_and_read(h, &vtoc)) == 0) {
+					// Slice 1 should be ZFS
+					snprintf(udevpath, MAXPATHLEN, "#%llu#%llu#%s",
+						vtoc->efi_parts[0].p_start,
+						vtoc->efi_parts[0].p_size,
+						path);
+					efi_free(vtoc);
+				}
+				CloseHandle(h);
+			}
+#endif
 		}
 
 		/*

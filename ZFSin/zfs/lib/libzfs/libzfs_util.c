@@ -1088,7 +1088,10 @@ int
 zfs_append_partition(char *path, size_t max_len)
 {
 	int len = strlen(path);
-
+#ifdef _WIN32
+	// No slice names in Windows
+	return 0;
+#endif
 	if (strncmp(path, UDISK_ROOT"/by-id",
 	    strlen(UDISK_ROOT) + 6) == 0 ||
 	    strncmp(path, UDISK_ROOT_ALT"/by-id",
