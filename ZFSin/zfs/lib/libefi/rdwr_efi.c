@@ -197,23 +197,10 @@ read_disk_info(HANDLE fd, diskaddr_t *capacity, uint_t *lbsize)
 
 		*lbsize = (uint_t)geometry_ex.Geometry.BytesPerSector;
 		*capacity = (diskaddr_t)geometry_ex.DiskSize.QuadPart;
-
+		*capacity /= *lbsize; // Capacity is in # blocks
 		return 0;
 	}
 
-	PARTITION_INFORMATION partInfo;
-
-	if (DeviceIoControl(fd,
-		IOCTL_DISK_GET_PARTITION_INFO,
-		(LPVOID)NULL,
-		(DWORD)0,
-		(LPVOID)&partInfo,
-		sizeof(partInfo),
-		&len,
-		(LPOVERLAPPED)NULL)) {
-
-		*capacity = (diskaddr_t)partInfo.PartitionLength.QuadPart;
-	}
 	return 0;
 }
 
