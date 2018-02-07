@@ -242,6 +242,7 @@ spa_history_log_sync(void *arg, dmu_tx_t *tx)
 			    fnvlist_lookup_uint64(nvl, ZPOOL_HIST_DSID),
 			    fnvlist_lookup_string(nvl, ZPOOL_HIST_INT_STR));
 		} else {
+			// Can assert here due to missing host_int_str
 			zfs_dbgmsg("txg %lld %s %s",
 			    fnvlist_lookup_uint64(nvl, ZPOOL_HIST_TXG),
 			    fnvlist_lookup_string(nvl, ZPOOL_HIST_INT_NAME),

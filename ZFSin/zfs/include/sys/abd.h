@@ -137,7 +137,7 @@ static inline void
 abd_copy_from_buf(abd_t *abd, const void *buf, size_t size)
 {
 #ifdef _KERNEL
-	ASSERT3S((size_t)abd->abd_size,==,size);
+	//ASSERT3S((size_t)abd->abd_size,==,size);
 #endif
 	abd_copy_from_buf_off(abd, buf, 0, size);
 }
