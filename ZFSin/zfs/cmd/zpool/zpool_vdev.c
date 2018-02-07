@@ -1425,8 +1425,8 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 				if ((efi_alloc_and_read(h, &vtoc)) == 0) {
 					// Slice 1 should be ZFS
 					snprintf(udevpath, MAXPATHLEN, "#%llu#%llu#%s",
-						vtoc->efi_parts[0].p_start,
-						vtoc->efi_parts[0].p_size,
+						vtoc->efi_parts[0].p_start * vtoc->efi_lbasize,
+						vtoc->efi_parts[0].p_size * vtoc->efi_lbasize,
 						path);
 					efi_free(vtoc);
 				}
