@@ -30,5 +30,8 @@
     <ClCompile Include="..\..\..\module\nvpair\nvpair_alloc_fixed.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\libnvpair_json.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

@@ -35,6 +35,7 @@ extern "C" {
 
 extern boolean_t zfs_allocatable_devs(nvlist_t *);
 extern void zpool_get_load_policy(nvlist_t *, zpool_load_policy_t *);
+extern boolean_t dataset_name_hidden(const char *);
 
 extern int zfs_zpl_version_map(int spa_version);
 extern int zfs_spa_version_map(int zpl_version);

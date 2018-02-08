@@ -1006,6 +1006,12 @@ libzfs_init(void)
 	libshare_init();
 #endif
 
+    //fprintf(stderr, "make_dataset_handle %p\r\n", hdl->libzfs_log_str);
+
+	if (getenv("ZFS_PROP_DEBUG") != NULL) {
+		hdl->libzfs_prop_debug = B_TRUE;
+	}
+
 	return (hdl);
 }
 

@@ -33,6 +33,8 @@
 #ifndef _SYS_ZFS_CONTEXT_H
 #define	_SYS_ZFS_CONTEXT_H
 
+#include <stddef.h>
+
 #define	vnevent_create(vp, ct)			do { } while (0)
 #define	vnevent_link(vp, ct)			do { } while (0)
 #define	vnevent_remove(vp, dvp, name, ct)	do { } while (0)
@@ -63,7 +65,7 @@
 #endif
 
 #define ENOTACTIVE EOWNERDEAD
-
+#define ECHRNG EPROTO
 #define noinline
 
 #ifndef MAX_UPL_TRANSFER
@@ -73,7 +75,5 @@
 #define ZVOL_ROOT "/var/run"
 
 #define MNTTYPE_ZFS_SUBTYPE ('Z'<<24|'F'<<16|'S'<<8)
-
-
 
 #endif	/* _SYS_ZFS_CONTEXT_H */

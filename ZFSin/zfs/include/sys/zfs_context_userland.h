@@ -85,6 +85,7 @@
 #include <stropts.h>
 #include <sys/sysevent.h>
 #include <sys/sysevent/eventdefs.h>
+#include <setjmp.h>
 
 /*
  * Stack
@@ -737,6 +738,9 @@ void ksiddomain_rele(ksiddomain_t *);
 
 //#include <libkern/OSByteOrder.h>
 #define htobe32(x) _byteswap_ulong(x)
+
+extern boolean_t dataset_name_hidden(const char *);
+
 
 #endif /* !_KERNEL */
 

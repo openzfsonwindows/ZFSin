@@ -88,6 +88,7 @@ struct libzfs_handle {
 	libzfs_fru_t *libzfs_fru_list;
 #endif /* HAVE_LIBTOPO */
 	char libzfs_chassis_id[256];
+	boolean_t libzfs_prop_debug;
 };
 
 #define	ZFSSHARE_MISS	0x01	/* Didn't find entry in cache */
