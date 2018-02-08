@@ -86,6 +86,9 @@
     <Filter Include="zlib">
       <UniqueIdentifier>{f68fe6c9-c72b-442b-b9e4-698115df2977}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\ZFS\module\lua">
+      <UniqueIdentifier>{e92a001f-3a8d-40a3-be3a-e834a5d18078}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="ZFSin.inf">
@@ -696,6 +699,102 @@
     <ClCompile Include="zfs\module\zfs\zfs_windows_zvol_scsi.c">
       <Filter>Source Files\ZFS\module\zfs</Filter>
     </ClCompile>
+    <ClCompile Include="zfs\module\lua\lapi.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lauxlib.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lbaselib.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lbitlib.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lcode.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lcompat.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lcorolib.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lctype.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\ldebug.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\ldo.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\ldump.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lfunc.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lgc.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\llex.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lmem.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lobject.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lopcodes.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lparser.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lstate.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lstring.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lstrlib.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\ltable.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\ltablib.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\ltm.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lundump.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lvm.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\lua\lzio.c">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zcp.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zcp_get.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zcp_global.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zcp_iter.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zcp_synctask.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h">
@@ -706,6 +805,66 @@
     </ClInclude>
     <ClInclude Include="zfs\module\icp\algs\skein\skein_port.h">
       <Filter>Source Files\ZFS\module\icp\algs\skein</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lapi.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lcode.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lctype.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\ldebug.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\ldo.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lfunc.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lgc.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\llex.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\llimits.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lmem.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lobject.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lopcodes.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lparser.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lstate.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lstring.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\ltable.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\ltm.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lundump.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lvm.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\lua\lzio.h">
+      <Filter>Source Files\ZFS\module\lua</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

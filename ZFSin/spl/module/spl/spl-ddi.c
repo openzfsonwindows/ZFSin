@@ -473,6 +473,84 @@ ddi_strtoull(const char *str, char **nptr, int base, unsigned long long *result)
 	return (0);
 }
 
+int
+ddi_strtoll(const char *str, char **nptr, int base, long long *result)
+{
+	long long val;
+	int c;
+	int xx;
+	int neg = 0;
+	long long multmin;
+	long long limit;
+	const char **ptr = (const char **)nptr;
+	const unsigned char *ustr = (const unsigned char *)str;
+
+	if (ptr != (const char **)0)
+		*ptr = (char *)ustr; /* in case no number is formed */
+	if (base < 0 || base > MBASE || base == 1) {
+		/* base is invalid -- should be a fatal error */
+		return (EINVAL);
+	}
+	if (!isalnum(c = *ustr)) {
+		while (isspace(c))
+			c = *++ustr;
+		switch (c) {
+		case '-':
+			neg++;
+			/* FALLTHROUGH */
+		case '+':
+			c = *++ustr;
+		}
+	}
+	if (base == 0)
+		if (c != '0')
+			base = 10;
+		else if (ustr[1] == 'x' || ustr[1] == 'X')
+			base = 16;
+		else
+			base = 8;
+	/*
+	* for any base > 10, the digits incrementally following
+	*	9 are assumed to be "abc...z" or "ABC...Z"
+	*/
+	if (!lisalnum(c) || (xx = DIGIT(c)) >= base) {
+		/* no number formed */
+		return (EINVAL);
+	}
+	if (base == 16 && c == '0' && (ustr[1] == 'x' || ustr[1] == 'X') &&
+		isxdigit(ustr[2]))
+		c = *(ustr += 2); /* skip over leading "0x" or "0X" */
+
+						  /* this code assumes that abs(LONG_MIN) >= abs(LONG_MAX) */
+	if (neg)
+		limit = LONGLONG_MIN;
+	else
+		limit = -LONGLONG_MAX;
+	multmin = limit / (long)base;
+	val = -DIGIT(c);
+	for (c = *++ustr; lisalnum(c) && (xx = DIGIT(c)) < base; ) {
+		/* accumulate neg avoids surprises near LONG_MAX */
+		if (val < multmin)
+			goto overflow;
+		val *= base;
+		if (val < limit + xx)
+			goto overflow;
+		val -= xx;
+		c = *++ustr;
+	}
+	if (ptr != (const char **)0)
+		*ptr = (char *)ustr;
+	*result = neg ? val : -val;
+	return (0);
+
+overflow:
+	for (c = *++ustr; lisalnum(c) && (xx = DIGIT(c)) < base; (c = *++ustr))
+		;
+	if (ptr != (const char **)0)
+		*ptr = (char *)ustr;
+	return (ERANGE);
+}
+
 #define LONG_BIT 64
 #define IDX(c)  ((uint8_t)(c) / LONG_BIT)
 #define BIT(c)  ((u_long)1 << ((uint8_t)(c) % LONG_BIT))

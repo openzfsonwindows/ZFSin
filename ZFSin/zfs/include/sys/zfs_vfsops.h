@@ -214,6 +214,8 @@ extern boolean_t zfs_owner_overquota(zfsvfs_t *zfsvfs, struct znode *,
 extern boolean_t zfs_fuid_overquota(zfsvfs_t *zfsvfs, boolean_t isgroup,
     uint64_t fuid);
 extern int zfs_set_version(zfsvfs_t *zfsvfs, uint64_t newvers);
+extern int zfsvfs_create(const char *name, zfsvfs_t **zfvp);
+extern int zfsvfs_create_impl(zfsvfs_t **zfvp, zfsvfs_t *zfsvfs, objset_t *os);
 
 extern int zfs_get_zplprop(objset_t *os, zfs_prop_t prop,
     uint64_t *value);

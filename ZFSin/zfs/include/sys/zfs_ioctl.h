@@ -20,7 +20,7 @@
  */
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2012, 2015 by Delphix. All rights reserved.
+ * Copyright (c) 2012, 2016 by Delphix. All rights reserved.
  * Copyright 2016 RackTop Systems.
  */
 
@@ -579,6 +579,8 @@ typedef enum zfs_ioc {
 	ZFS_IOC_POOL_DISCARD_CHECKPOINT = CTL_CODE(ZFSIOCTL_TYPE, 0x84b, METHOD_NEITHER, FILE_ANY_ACCESS),
 	ZFS_IOC_POOL_INITIALIZE		= CTL_CODE(ZFSIOCTL_TYPE, 0x84c, METHOD_NEITHER, FILE_ANY_ACCESS),
 
+	ZFS_IOC_CHANNEL_PROGRAM		= CTL_CODE(ZFSIOCTL_TYPE, 0x84d, METHOD_NEITHER, FILE_ANY_ACCESS),
+
 	/*
 	 * Linux - 3/64 numbers reserved.
 	 */
@@ -617,20 +619,20 @@ typedef struct zfs_useracct {
 #define	ZPOOL_EXPORT_AFTER_SPLIT 0x1
 
 #ifdef _KERNEL
+struct objset;
+struct zfsvfs;
 
 typedef struct zfs_creat {
 	nvlist_t	*zct_zplprops;
 	nvlist_t	*zct_props;
 } zfs_creat_t;
 
-extern int zfs_secpolicy_snapshot_perms(const char *name, cred_t *cr);
-extern int zfs_secpolicy_rename_perms(const char *from,
-    const char *to, cred_t *cr);
-extern int zfs_secpolicy_destroy_perms(const char *name, cred_t *);
+extern int zfs_secpolicy_snapshot_perms(const char *, cred_t *);
+extern int zfs_secpolicy_rename_perms(const char *, const char *, cred_t *);
+extern int zfs_secpolicy_destroy_perms(const char *, cred_t *);
 extern int zfs_unmount_snap(const char *);
 extern void zfs_destroy_unmount_origin(const char *);
-
-extern boolean_t dataset_name_hidden(const char *name);
+extern int getzfsvfs_impl(struct objset *, struct zfsvfs **);
 
 enum zfsdev_state_type {
 	ZST_ONEXIT,

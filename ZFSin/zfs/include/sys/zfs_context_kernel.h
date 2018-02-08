@@ -73,6 +73,7 @@ extern "C" {
 #include <sys/atomic.h>
 #include <sys/sysevent.h>
 #include <sys/sysevent/eventdefs.h>
+#include <zfs_comutil.h>
 
 //#include <linux/dcache_compat.h>
 

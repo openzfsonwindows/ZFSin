@@ -21,7 +21,7 @@
 .\"
 .\" Copyright (c) 2009 Sun Microsystems, Inc. All Rights Reserved.
 .\" Copyright 2011 Joshua M. Clulow <josh@sysmgr.org>
-.\" Copyright (c) 2011, 2016 by Delphix. All rights reserved.
+.\" Copyright (c) 2011, 2017 by Delphix. All rights reserved.
 .\" Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
 .\" Copyright (c) 2014, Joyent, Inc. All rights reserved.
 .\" Copyright (c) 2014 by Adam Stevko. All rights reserved.
@@ -271,10 +271,15 @@
 .Ar snapshot Ar snapshot Ns | Ns Ar filesystem
 .Nm
 .Cm program
+.Op Fl jn
 .Op Fl t Ar timeout
 .Op Fl m Ar memory_limit
 .Ar pool script
 .Op Ar arg1 No ...
+<<<<<<< HEAD
+=======
+.Nm
+>>>>>>> d99a015... OpenZFS 7431 - ZFS Channel Programs
 .Cm load-key
 .Op Fl rn
 .Op Fl L Ar keylocation
@@ -3730,6 +3735,7 @@ Display the path's inode change time as the first column of output.
 .It Xo
 .Nm
 .Cm program
+.Op Fl jn
 .Op Fl t Ar timeout
 .Op Fl m Ar memory_limit
 .Ar pool script
@@ -3749,8 +3755,20 @@ Channel programs may only be run with root privileges.
 .sp
 For full documentation of the ZFS channel program interface, see the manual
 page for
-.Xr zfs-program 1M .
+.Xr zfs-program 8 .
 .Bl -tag -width ""
+.It Fl j
+Display channel program output in JSON format. When this flag is specified and
+standard output is empty - channel program encountered an error. The details of
+such an error will be printed to standard error in plain text.
+.It Fl n
+Executes a read-only channel program, which runs faster.
+The program cannot change on-disk state by calling functions from
+the zfs.sync submodule.
+The program can be used to gather information such as properties and
+determining if changes would succeed (zfs.check.*).
+Without this flag, all pending changes must be synced to disk before
+a channel program can complete.
 .It Fl t Ar timeout
 Execution time limit, in milliseconds.
 If a channel program executes for longer than the provided timeout, it will
@@ -3765,8 +3783,11 @@ The default memory limit is 10 MB, and can be set to a maximum of 100 MB.
 All remaining argument strings are passed directly to the channel program as
 arguments.
 See
-.Xr zfs-program 1M
+.Xr zfs-program 8
 for more information.
+.El
+.It Xo
+.Nm
 .Cm load-key
 .Op Fl nr
 .Op Fl L Ar keylocation

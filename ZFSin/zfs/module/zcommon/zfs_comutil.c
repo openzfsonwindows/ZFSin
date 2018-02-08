@@ -158,6 +158,21 @@ zfs_spa_version_map(int zpl_version)
 	return (version);
 }
 
+boolean_t
+dataset_name_hidden(const char *name)
+{
+	/*
+	 * Skip over datasets that are not visible in this zone,
+	 * internal datasets (which have a $ in their name), and
+	 * temporary datasets (which have a % in their name).
+	 */
+	if (strchr(name, '$') != NULL)
+		return (B_TRUE);
+	if (strchr(name, '%') != NULL)
+		return (B_TRUE);
+	return (B_FALSE);
+}
+
 /*
  * This is the table of legacy internal event names; it should not be modified.
  * The internal events are now stored in the history log as strings.

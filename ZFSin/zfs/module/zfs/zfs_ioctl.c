@@ -27,7 +27,7 @@
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
  * Copyright 2015 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2014, Joyent, Inc. All rights reserved.
- * Copyright (c) 2011, 2014 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2016 by Delphix. All rights reserved.
  * Copyright (c) 2013 by Saso Kiselkov. All rights reserved.
  * Copyright (c) 2017 Jorgen Lundman <lundman@lundman.net>
  * Copyright (c) 2013 Steven Hartland. All rights reserved.
@@ -91,6 +91,7 @@
 #include <sys/dsl_bookmark.h>
 #include <sys/dsl_userhold.h>
 #include <sys/zfeature.h>
+#include <sys/zcp.h>
 #include <sys/zio_checksum.h>
 #include <sys/vdev_removal.h>
 #include <sys/vdev_impl.h>
@@ -108,6 +109,14 @@
 #endif
 
 //#define dprintf printf
+#include <sys/lua/lua.h>
+#include <sys/lua/lauxlib.h>
+
+/*
+ * Limit maximum nvlist size.  We don't want users passing in insane values
+ * for zc->zc_nvlist_src_size, since we will need to allocate that much memory.
+ */
+#define	MAX_NVLIST_SRC_SIZE	KMALLOC_MAX_SIZE
 
 kmutex_t zfsdev_state_lock;
 zfsdev_state_t *zfsdev_state_list;
@@ -1319,23 +1328,11 @@ put_nvlist(zfs_cmd_t *zc, nvlist_t *nvl)
 	return (error);
 }
 
-
-/*
- * OSX:
- * This call withh lock VFS with vfs_busy() if it succeeds, the
- * caller has to call vfs_unbusy(); when done with 'zfsvfs'.
- */
 int
-getzfsvfs(const char *dsname, zfsvfs_t **zfvp)
+getzfsvfs_impl(objset_t *os, zfsvfs_t **zfvp)
 {
-    objset_t *os;
-    int error;
-
-    error = dmu_objset_hold(dsname, FTAG, &os);
-    if (error != 0)
-        return (error);
-    if (dmu_objset_type(os) != DMU_OST_ZFS) {
-        dmu_objset_rele(os, FTAG);
+	int error = 0;
+	if (dmu_objset_type(os) != DMU_OST_ZFS) {
 		return (SET_ERROR(EINVAL));
     }
 
@@ -1347,9 +1344,28 @@ getzfsvfs(const char *dsname, zfsvfs_t **zfvp)
 		error = SET_ERROR(ESRCH);
     }
     mutex_exit(&os->os_user_ptr_lock);
-    dmu_objset_rele(os, FTAG);
 	if (error != 0) *zfvp = NULL;
     return (error);
+}
+
+/*
+ * OSX:
+ * This call with lock VFS with vfs_busy() if it succeeds, the
+ * caller has to call vfs_unbusy(); when done with 'zfsvfs'.
+ */
+int
+getzfsvfs(const char *dsname, zfsvfs_t **zfvp)
+{
+	objset_t *os;
+	int error;
+
+	error = dmu_objset_hold(dsname, FTAG, &os);
+	if (error != 0)
+		return (error);
+
+	error = getzfsvfs_impl(os, zfvp);
+	dmu_objset_rele(os, FTAG);
+	return (error);
 }
 
 
@@ -2137,23 +2153,6 @@ zfs_ioc_objset_zplprops(zfs_cmd_t *zc)
 	}
 	dmu_objset_rele(os, FTAG);
 	return (err);
-}
-
-boolean_t
-dataset_name_hidden(const char *name)
-{
-	/*
-	 * Skip over datasets that are not visible in this zone,
-	 * internal datasets (which have a $ in their name), and
-	 * temporary datasets (which have a % in their name).
-	 */
-	if (strchr(name, '$') != NULL)
-		return (B_TRUE);
-	if (strchr(name, '%') != NULL)
-		return (B_TRUE);
-	if (!INGLOBALZONE(curproc) && !zone_dataset_visible(name, NULL))
-		return (B_TRUE);
-	return (B_FALSE);
 }
 
 /*
@@ -3590,6 +3589,40 @@ zfs_ioc_destroy_bookmarks(const char *poolname, nvlist_t *innvl,
 
 	error = dsl_bookmark_destroy(innvl, outnvl);
 	return (error);
+}
+
+static int
+zfs_ioc_channel_program(const char *poolname, nvlist_t *innvl,
+    nvlist_t *outnvl)
+{
+	char *program;
+	uint64_t instrlimit, memlimit;
+	boolean_t sync_flag;
+	nvpair_t *nvarg = NULL;
+
+	if (0 != nvlist_lookup_string(innvl, ZCP_ARG_PROGRAM, &program)) {
+		return (EINVAL);
+	}
+	if (0 != nvlist_lookup_boolean_value(innvl, ZCP_ARG_SYNC, &sync_flag)) {
+		sync_flag = B_TRUE;
+	}
+	if (0 != nvlist_lookup_uint64(innvl, ZCP_ARG_INSTRLIMIT, &instrlimit)) {
+		instrlimit = ZCP_DEFAULT_INSTRLIMIT;
+	}
+	if (0 != nvlist_lookup_uint64(innvl, ZCP_ARG_MEMLIMIT, &memlimit)) {
+		memlimit = ZCP_DEFAULT_MEMLIMIT;
+	}
+	if (0 != nvlist_lookup_nvpair(innvl, ZCP_ARG_ARGLIST, &nvarg)) {
+		return (EINVAL);
+	}
+
+	if (instrlimit == 0 || instrlimit > zfs_lua_max_instrlimit)
+		return (EINVAL);
+	if (memlimit == 0 || memlimit > zfs_lua_max_memlimit)
+		return (EINVAL);
+
+	return (zcp_eval(poolname, program, sync_flag, instrlimit, memlimit,
+	    nvarg, outnvl));
 }
 
 /*
@@ -6035,6 +6068,11 @@ zfs_ioctl_init(void)
 	    zfs_ioc_pool_initialize, zfs_secpolicy_config, POOL_NAME,
 	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_TRUE, B_TRUE);
 
+	zfs_ioctl_register("channel_program", ZFS_IOC_CHANNEL_PROGRAM,
+	    zfs_ioc_channel_program, zfs_secpolicy_config,
+	    POOL_NAME, POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_TRUE,
+	    B_TRUE);
+
 	/* IOCTLS that use the legacy function signature */
 
 	zfs_ioctl_register_legacy(ZFS_IOC_POOL_FREEZE, zfs_ioc_pool_freeze,
@@ -6639,11 +6677,22 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg, int xflag, struct proc *p)
 		outnvl = fnvlist_alloc();
 		error = vec->zvec_func(zc->zc_name, innvl, outnvl);
 
-		if (error == 0 && vec->zvec_allow_log &&
+		/*
+		 * Some commands can partially execute, modify state, and still
+		 * return an error.  In these cases, attempt to record what
+		 * was modified.
+		 */
+		if ((error == 0 ||
+		    (cmd == ZFS_IOC_CHANNEL_PROGRAM && error != EINVAL)) &&
+		    vec->zvec_allow_log &&
 		    spa_open(zc->zc_name, &spa, FTAG) == 0) {
 			if (!nvlist_empty(outnvl)) {
 				fnvlist_add_nvlist(lognv, ZPOOL_HIST_OUTPUT_NVL,
 				    outnvl);
+			}
+			if (error != 0) {
+				fnvlist_add_int64(lognv, ZPOOL_HIST_ERRNO,
+				    error);
 			}
 			(void) spa_history_log_nvl(spa, lognv);
 			spa_close(spa, FTAG);

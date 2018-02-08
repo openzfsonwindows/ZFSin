@@ -65,7 +65,11 @@ typedef int ddi_devid_t;
 #define isupper(ch)     ((ch) >= 'A' && (ch) <= 'Z')
 #define isxdigit(ch)    (isdigit(ch) || ((ch) >= 'a' && (ch) <= 'f') || \
                         ((ch) >= 'A' && (ch) <= 'F'))
-
+#define isgraph(C)      ((C) >= 0x21 && (C) <= 0x7E)
+#define ispunct(C)      (((C) >= 0x21 && (C) <= 0x2F) || \
+    ((C) >= 0x3A && (C) <= 0x40) || \
+    ((C) >= 0x5B && (C) <= 0x60) || \
+    ((C) >= 0x7B && (C) <= 0x7E))
 
 #define DIGIT(x)        \
         (isdigit(x) ? (x) - '0' : islower(x) ? (x) + 10 - 'a' : (x) + 10 - 'A')
@@ -117,6 +121,7 @@ struct dev_info {
 typedef struct dev_info dev_info_t;
 
 int	ddi_strtoull(const char *, char **, int, unsigned long long *);
+int	ddi_strtoll(const char *, char **, int, long long *);
 int	ddi_strtoul(const char *, char **, int, unsigned long *);
 int	ddi_strtol(const char *, char **, int, long *);
 int	ddi_soft_state_init(void **, uint32_t, uint32_t);

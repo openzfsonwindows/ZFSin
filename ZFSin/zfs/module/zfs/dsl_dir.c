@@ -1103,30 +1103,22 @@ dsl_dir_get_remaptxg(dsl_dir_t *dd, uint64_t *count)
 void
 dsl_dir_stats(dsl_dir_t *dd, nvlist_t *nv)
 {
-
 	mutex_enter(&dd->dd_lock);
-	dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_USED,
-	    dsl_dir_phys(dd)->dd_used_bytes);
 	dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_QUOTA,
-	    dsl_dir_phys(dd)->dd_quota);
+	    dsl_dir_get_quota(dd));
 	dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_RESERVATION,
-	    dsl_dir_phys(dd)->dd_reserved);
-	dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_COMPRESSRATIO,
-	    dsl_dir_phys(dd)->dd_compressed_bytes == 0 ? 100 :
-	    (dsl_dir_phys(dd)->dd_uncompressed_bytes * 100 /
-	    dsl_dir_phys(dd)->dd_compressed_bytes));
+	    dsl_dir_get_reservation(dd));
 	dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_LOGICALUSED,
-	    dsl_dir_phys(dd)->dd_uncompressed_bytes);
+	    dsl_dir_get_logicalused(dd));
 	if (dsl_dir_phys(dd)->dd_flags & DD_FLAG_USED_BREAKDOWN) {
 		dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_USEDSNAP,
-		    dsl_dir_phys(dd)->dd_used_breakdown[DD_USED_SNAP]);
+		    dsl_dir_get_usedsnap(dd));
 		dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_USEDDS,
-		    dsl_dir_phys(dd)->dd_used_breakdown[DD_USED_HEAD]);
+		    dsl_dir_get_usedds(dd));
 		dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_USEDREFRESERV,
-		    dsl_dir_phys(dd)->dd_used_breakdown[DD_USED_REFRSRV]);
+		    dsl_dir_get_usedrefreserv(dd));
 		dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_USEDCHILD,
-		    dsl_dir_phys(dd)->dd_used_breakdown[DD_USED_CHILD] +
-		    dsl_dir_phys(dd)->dd_used_breakdown[DD_USED_CHILD_RSRV]);
+		    dsl_dir_get_usedchild(dd));
 	}
 	mutex_exit(&dd->dd_lock);
 
@@ -1149,6 +1141,7 @@ dsl_dir_stats(dsl_dir_t *dd, nvlist_t *nv)
 		dsl_dir_get_origin(dd, buf);
 		dsl_prop_nvlist_add_string(nv, ZFS_PROP_ORIGIN, buf);
 	}
+
 }
 
 void

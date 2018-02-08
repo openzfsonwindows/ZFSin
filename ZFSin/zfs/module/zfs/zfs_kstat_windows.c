@@ -169,6 +169,9 @@ osx_kstat_t osx_kstat = {
 	{"zio_dva_throttle_enabled",KSTAT_DATA_UINT64  },
 
 	{"zfs_vdev_file_size_mismatch_cnt",KSTAT_DATA_UINT64  },
+
+	{"zfs_lua_max_instrlimit",KSTAT_DATA_UINT64  },
+	{"zfs_lua_max_memlimit",KSTAT_DATA_UINT64  },
 };
 
 
@@ -355,7 +358,12 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 
 		zio_dva_throttle_enabled =
 		    (boolean_t) ks->zio_dva_throttle_enabled.value.ui64;
-	} else {
+
+		zfs_lua_max_instrlimit =
+		    ks->zfs_lua_max_instrlimit.value.ui64;
+		zfs_lua_max_memlimit =
+		    ks->zfs_lua_max_memlimit.value.ui64;
+} else {
 
 		/* kstat READ */
 		ks->spa_version.value.ui64                   = SPA_VERSION;
@@ -527,6 +535,9 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		ks->zio_dva_throttle_enabled.value.ui64 = (uint64_t) zio_dva_throttle_enabled;
 
 		ks->zfs_vdev_file_size_mismatch_cnt.value.ui64 = zfs_vdev_file_size_mismatch_cnt;
+
+		ks->zfs_lua_max_instrlimit.value.ui64 = zfs_lua_max_instrlimit;
+		ks->zfs_lua_max_memlimit.value.ui64 = zfs_lua_max_memlimit;
 	}
 
 	return 0;

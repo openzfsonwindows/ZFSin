@@ -20,8 +20,9 @@
  */
 
 /*
- * Copyright (c) 2012, 2014 by Delphix. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
+ * Copyright (c) 2012, 2017 by Delphix. All rights reserved.
+ * Copyright (c) 2017 Datto Inc.
  * Copyright 2017 RackTop Systems.
  */
 
@@ -102,6 +103,16 @@ int lzc_rollback_to(const char *, const char *);
 
 int lzc_pool_checkpoint(const char *);
 int lzc_pool_checkpoint_discard(const char *);
+int lzc_channel_program(const char *, const char *, uint64_t, uint64_t,
+    nvlist_t *, nvlist_t **);
+
+int lzc_channel_program(const char *, const char *, uint64_t,
+    uint64_t, nvlist_t *, nvlist_t **);
+int lzc_channel_program_nosync(const char *, const char *, uint64_t,
+    uint64_t, nvlist_t *, nvlist_t **);
+
+int lzc_sync(const char *, nvlist_t *, nvlist_t **);
+int lzc_reopen(const char *, boolean_t);
 
 #ifdef	__cplusplus
 }

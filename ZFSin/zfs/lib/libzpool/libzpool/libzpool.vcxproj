@@ -35,6 +35,33 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\..\module\lua\lapi.c" />
+    <ClCompile Include="..\..\..\module\lua\lauxlib.c" />
+    <ClCompile Include="..\..\..\module\lua\lbaselib.c" />
+    <ClCompile Include="..\..\..\module\lua\lbitlib.c" />
+    <ClCompile Include="..\..\..\module\lua\lcode.c" />
+    <ClCompile Include="..\..\..\module\lua\lcompat.c" />
+    <ClCompile Include="..\..\..\module\lua\lcorolib.c" />
+    <ClCompile Include="..\..\..\module\lua\lctype.c" />
+    <ClCompile Include="..\..\..\module\lua\ldebug.c" />
+    <ClCompile Include="..\..\..\module\lua\ldo.c" />
+    <ClCompile Include="..\..\..\module\lua\ldump.c" />
+    <ClCompile Include="..\..\..\module\lua\lfunc.c" />
+    <ClCompile Include="..\..\..\module\lua\lgc.c" />
+    <ClCompile Include="..\..\..\module\lua\llex.c" />
+    <ClCompile Include="..\..\..\module\lua\lmem.c" />
+    <ClCompile Include="..\..\..\module\lua\lobject.c" />
+    <ClCompile Include="..\..\..\module\lua\lopcodes.c" />
+    <ClCompile Include="..\..\..\module\lua\lparser.c" />
+    <ClCompile Include="..\..\..\module\lua\lstate.c" />
+    <ClCompile Include="..\..\..\module\lua\lstring.c" />
+    <ClCompile Include="..\..\..\module\lua\lstrlib.c" />
+    <ClCompile Include="..\..\..\module\lua\ltable.c" />
+    <ClCompile Include="..\..\..\module\lua\ltablib.c" />
+    <ClCompile Include="..\..\..\module\lua\ltm.c" />
+    <ClCompile Include="..\..\..\module\lua\lundump.c" />
+    <ClCompile Include="..\..\..\module\lua\lvm.c" />
+    <ClCompile Include="..\..\..\module\lua\lzio.c" />
     <ClCompile Include="..\..\..\module\zcommon\zfs_comutil.c" />
     <ClCompile Include="..\..\..\module\zcommon\zfs_deleg.c" />
     <ClCompile Include="..\..\..\module\zcommon\zfs_fletcher.c" />
@@ -123,6 +150,11 @@
     <ClCompile Include="..\..\..\module\zfs\zap.c" />
     <ClCompile Include="..\..\..\module\zfs\zap_leaf.c" />
     <ClCompile Include="..\..\..\module\zfs\zap_micro.c" />
+    <ClCompile Include="..\..\..\module\zfs\zcp.c" />
+    <ClCompile Include="..\..\..\module\zfs\zcp_get.c" />
+    <ClCompile Include="..\..\..\module\zfs\zcp_global.c" />
+    <ClCompile Include="..\..\..\module\zfs\zcp_iter.c" />
+    <ClCompile Include="..\..\..\module\zfs\zcp_synctask.c" />
     <ClCompile Include="..\..\..\module\zfs\zfeature.c" />
     <ClCompile Include="..\..\..\module\zfs\zfeature_common.c" />
     <ClCompile Include="..\..\..\module\zfs\zfs_byteswap.c" />
