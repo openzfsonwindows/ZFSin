@@ -2364,7 +2364,7 @@ xnu_alloc_throttled_bail(uint64_t now_ticks, vmem_t *calling_vmp, uint32_t size,
 
 	const uint64_t bigtarget = MAX(size,16ULL*1024ULL*1024ULL);
 
-	static volatile _Atomic boolean_t alloc_lock = FALSE;
+	static volatile _Atomic uint64_t alloc_lock = FALSE;
 
 	static volatile _Atomic uint64_t force_time = 0;
 
@@ -2384,12 +2384,12 @@ xnu_alloc_throttled_bail(uint64_t now_ticks, vmem_t *calling_vmp, uint32_t size,
 			blocked_suspends++;
 			IOSleep(1);
 		} else	if (spl_vmem_xnu_useful_bytes_free() >= bigtarget) {
-			boolean_t f = FALSE;
+			uint64_t f = FALSE;
 			// if alloc_lock == f then alloc_lock = TRUE and result is TRUE
 			// otherwise result is FALSE and f = TRUE
 			//if ( ! __c11_atomic_compare_exchange_strong(&alloc_lock, &f, TRUE,
 			//	__ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
-			if (InterlockedCompareExchange64(&alloc_lock, TRUE, &f)) {
+			if (InterlockedCompareExchange64(&alloc_lock, TRUE, f) != f) {
 				// avoid (highly unlikely) data race on alloc_lock.
 				// if alloc_lock has become TRUE while we were in the
 				// else if expression then we effectively optimize away
@@ -2417,10 +2417,10 @@ xnu_alloc_throttled_bail(uint64_t now_ticks, vmem_t *calling_vmp, uint32_t size,
 				IOSleep(1);
 			}
 		} else if (zfs_lbolt() > timeout_time) {
-			boolean_t f = FALSE;
+			uint64_t f = FALSE;
 			//if ( ! __c11_atomic_compare_exchange_strong(&alloc_lock, &f, TRUE,
 			//	__ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
-			if (InterlockedCompareExchange64(&alloc_lock, TRUE, &f)) {
+			if (InterlockedCompareExchange64(&alloc_lock, TRUE, f) != f) {
 				// avoid (highly unlikely) data race on alloc_lock as above
 				continue;
 			}
@@ -2647,10 +2647,10 @@ xnu_free_throttled(vmem_t *vmp, void *vaddr, uint32_t size)
 			// if is_freeing == f, then set is_freeing to TRUE with
 			// release semantics (i.e. "push" it to other cores) then break;
 			// otherwise, set f to TRUE relaxedly (i.e., optimize it out)
-			boolean_t f = FALSE;
+			uint64_t f = FALSE;
 			//if (__c11_atomic_compare_exchange_weak(&is_freeing, &f, TRUE,
 			//	__ATOMIC_RELEASE, __ATOMIC_RELAXED)) {
-			if (InterlockedCompareExchange64(&is_freeing, TRUE, &f)) {
+			if (InterlockedCompareExchange64(&is_freeing, TRUE, f) != f) {
 				break;
 			}
 		}

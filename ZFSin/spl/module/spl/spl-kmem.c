@@ -6558,7 +6558,7 @@ ks_set_cp(ksupp_t *ks, kmem_cache_t *cp, const uint32_t cachenum)
 			kmem_cache_t *expected = NULL;
 			//if (__c11_atomic_compare_exchange_strong(&ks->cp_metadata, &expected, cp,
 			//	__ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
-			if (InterlockedCompareExchangePointer(&ks->cp_metadata, cp, expected)) {
+			if (InterlockedCompareExchangePointer(&ks->cp_metadata, cp, expected) == expected) {
 				dprintf("SPL: %s: set iskvec[%llu].ks->cp_metadata (%s) OK\n",
 				    __func__, b, cp->cache_name);
 				return;
@@ -6580,7 +6580,7 @@ ks_set_cp(ksupp_t *ks, kmem_cache_t *cp, const uint32_t cachenum)
 			kmem_cache_t *expected = NULL;
 			//if (__c11_atomic_compare_exchange_strong(&ks->cp_filedata, &expected, cp,
 			//	__ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
-			if (InterlockedCompareExchangePointer(&ks->cp_filedata, cp, expected)) {
+			if (InterlockedCompareExchangePointer(&ks->cp_filedata, cp, expected) == expected) {
 				dprintf("SPL: %s: set iskvec[%llu].ks->cp_filedata (%s) OK\n",
 				    __func__, b, cp->cache_name);
 				return;
