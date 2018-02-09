@@ -297,6 +297,7 @@ extern int VFS_ROOT(mount_t *, struct vnode **, vfs_context_t);
 int spl_vfs_root(mount_t *mount, struct vnode **vp)
 {
  //   return VFS_ROOT(mount, vp, vfs_context_current() );
+	return NULL;
 }
 
 
@@ -785,12 +786,15 @@ extern int zfs_vnop_reclaim(struct vnode *);
 int vnode_recycle(vnode_t *vp)
 {
 	KIRQL OldIrql;
-	ASSERT(!vp->v_flags & VNODE_DEAD);
+	ASSERT((vp->v_flags & VNODE_DEAD) == 0);
 	vp->v_flags |= VNODE_MARKTERM; // Mark it terminating
 
 	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+
+	// We will only reclaim idle nodes, and not mountpoints(ROOT)
 	if ((vp->v_usecount == 0) &&
-		(vp->v_iocount == 0)) {
+		(vp->v_iocount == 0) &&
+		((vp->v_flags&VNODE_MARKROOT) == 0)) {
 
 		// Call inactive?
 		ASSERT(!(vp->v_flags & VNODE_NEEDINACTIVE));
@@ -829,7 +833,7 @@ int vnode_recycle(vnode_t *vp)
 	return 0;
 }
 
-void vnode_create(void *v_data, int type, struct vnode **vpp)
+void vnode_create(void *v_data, int type, int flags, struct vnode **vpp)
 {
 	*vpp = kmem_zalloc(sizeof(**vpp), KM_SLEEP);  // FIXME Change me to kmem_cache
 	(*vpp)->v_data = v_data;
@@ -838,6 +842,8 @@ void vnode_create(void *v_data, int type, struct vnode **vpp)
 	KeInitializeSpinLock(&(*vpp)->v_spinlock);
 	atomic_inc_64(&(*vpp)->v_iocount);
 	atomic_inc_64(&vnode_active);
+	if (flags & VNODE_MARKROOT)
+		(*vpp)->v_flags |= VNODE_MARKROOT;
 
 	mutex_enter(&vnode_all_list_lock);
 	list_insert_tail(&vnode_all_list, *vpp);
@@ -871,6 +877,7 @@ void vnode_create(void *v_data, int type, struct vnode **vpp)
 				}
 			}
 			mutex_exit(&vnode_all_list_lock);
+			break; // Stop after one loop only
 		} // while active >= max
 
 		dprintf("%s: %llu reclaims processed.\n", __func__, reclaims);
@@ -932,7 +939,11 @@ vnode_rele(vnode_t *vp)
 
 int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 {
-	// Figure out how to flush files in Windows
+	// Iterate the vnode list and call reclaim
+	// flags:
+	//   SKIPROOT : dont release root nodes (mountpoints)
+	// SKIPSYSTEM : dont release vnodes marked as system
+	//      FORCE : release everything, force unmount
 
 	return 0;
 }

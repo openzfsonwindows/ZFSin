@@ -48,9 +48,10 @@
  * Lets define a vnode struct that will hold everything needed for Windows
  * request to be handled.
  */
-#define VNODE_DEAD 1<<0
-#define VNODE_MARKTERM 1<<1
-#define VNODE_NEEDINACTIVE 1<<2
+#define VNODE_DEAD			1
+#define VNODE_MARKTERM		2
+#define VNODE_NEEDINACTIVE	4
+#define VNODE_MARKROOT		8
 
 struct vnode {
 	// Windows specific header, has to be first. Not sure we are using
@@ -459,7 +460,7 @@ mount_t *vnode_mount(vnode_t *vp);
 void    vnode_clearfsnode(vnode_t *vp);
 int   vnode_unlink(vnode_t *vp);
 void   vnode_setunlink(vnode_t *vp);
-void vnode_create(void *v_data, int type, struct vnode **vpp);
+void vnode_create(void *v_data, int type, int flags, struct vnode **vpp);
 int vnode_ref(vnode_t *vp);
 void vnode_rele(vnode_t *vp);
 void *vnode_sectionpointer(vnode_t *vp);

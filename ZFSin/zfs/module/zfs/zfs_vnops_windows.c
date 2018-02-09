@@ -606,6 +606,11 @@ int zfs_vnop_reclaim(struct vnode *vp)
 	//vnode_removefsref(vp); /* ADDREF from vnode_create */
 	vp = NULL;
 
+	if (zp->z_name_cache != NULL)
+		kmem_free(zp->z_name_cache, zp->z_name_len);
+	zp->z_name_cache = NULL;
+	zp->z_name_len = 0x12345678; // DBG: show we have been reclaimed
+
 	fastpath = zp->z_fastpath;
 
 	// Release znode
@@ -656,19 +661,23 @@ int
 zfs_znode_getvnode(znode_t *zp, zfsvfs_t *zfsvfs)
 {
 	struct vnode *vp = NULL;
-
+	int flags = 0;
 	//dprintf("getvnode zp %p with vp %p zfsvfs %p vfs %p\n", zp, vp,
 	//    zfsvfs, zfsvfs->z_vfs);
 
 	if (zp->z_vnode)
 		panic("zp %p vnode already set\n", zp->z_vnode);
 
+	// "root" / mountpoint holds long term ref
+	if (zp->z_id == zfsvfs->z_root) {
+		flags |= VNODE_MARKROOT;
+	}
 
 	/*
 	 * vnode_create() has a habit of calling both vnop_reclaim() and
 	 * vnop_fsync(), which can create havok as we are already holding locks.
 	 */
-	vnode_create(zp, IFTOVT((mode_t)zp->z_mode), &vp);
+	vnode_create(zp, IFTOVT((mode_t)zp->z_mode), flags, &vp);
 
 	atomic_inc_64(&vnop_num_vnodes);
 
