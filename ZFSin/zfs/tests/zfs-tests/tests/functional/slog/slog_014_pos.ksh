@@ -26,7 +26,7 @@
 #
 
 #
-# Copyright (c) 2013 by Delphix. All rights reserved.
+# Copyright (c) 2013, 2018 by Delphix. All rights reserved.
 #
 
 . $STF_SUITE/tests/functional/slog/slog.kshlib
@@ -52,11 +52,20 @@ do
 		log_must $ZPOOL create $TESTPOOL $type $VDEV $spare $SDEV \
 			log $LDEV
 
+                # Create a file to be corrupted
+                dd if=/dev/urandom of=/$TESTPOOL/filler bs=1024k count=50
+
+                #
+                # Ensure the file has been synced out before attempting to
+                # corrupt its contents.
+                #
+                sync
+
+		#
 		# Corrupt a pool device to make the pool DEGRADED
-		$DD if=/dev/urandom of=/$TESTPOOL/filler bs=1024k count=20
 		# The oseek value below is to skip past the vdev label.
-		typeset seek="oseek" ; [[ -n "$LINUX" ]] && seek="seek"
-		log_must eval $DD if=/dev/urandom of=$VDIR/a bs=1024k $seek=4 \
+		#
+		log_must dd if=/dev/urandom of=$VDIR/a bs=1024k oseek=4 \
 		    conv=notrunc count=50
 		log_must $ZPOOL scrub $TESTPOOL
 		log_must display_status $TESTPOOL

@@ -24,7 +24,7 @@
  */
 
 /*
- * Copyright (c) 2012, 2017 by Delphix. All rights reserved.
+ * Copyright (c) 2012, 2018 by Delphix. All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  */
 
@@ -192,6 +192,16 @@ uint64_t zfs_vdev_queue_depth_pct = 1000;
 #else
 uint64_t zfs_vdev_queue_depth_pct = 300;
 #endif
+
+/*
+ * When performing allocations for a given metaslab, we want to make sure that
+ * there are enough IOs to aggregate together to improve throughput. We want to
+ * ensure that there are at least 128k worth of IOs that can be aggregated, and
+ * we assume that the average allocation size is 4k, so we need the queue depth
+ * to be 32 per allocator to get good aggregation of sequential writes.
+ */
+int zfs_vdev_def_queue_depth = 32;
+
 
 int
 vdev_queue_offset_compare(const void *x1, const void *x2)
