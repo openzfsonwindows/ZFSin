@@ -263,7 +263,7 @@ Then **reboot**. After restart it should have _Test Mode_ bottom right
 corner of the screen.
 
 * Start a CMDline as Administrator
-* Run ZFSinstall.bat 
+* Run ZFSinstall.bat
 * Click "Install anyway" in the "unknown developer" popup
 * Run "zpool.exe status" to confirm it can talk to the kernel
 
@@ -324,7 +324,9 @@ Note that "\\?\C:\" needs to be escaped in bash shell, ie
 First, locate disk name
 
 ```
-Insert magic here - how do you list the physical disks?
+# wmic diskdrive list brief
+VMware, VMware Virtual S SCSI Disk Device  \\.\PHYSICALDRIVE2  VMware, VMware Virtual S SCSI Disk Device  0           5362882560
+# zpool create tank \\.\PHYSICALDRIVE2
 ```
 
 
@@ -337,4 +339,3 @@ USB device before unplugging it.
 ```
 # zpool export tank
 ```
-
