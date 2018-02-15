@@ -2610,6 +2610,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 	case FileIdBothDirectoryInformation:
 	case FileBothDirectoryInformation:
 	case FileDirectoryInformation:
+	case FileNamesInformation:
 		break;
 	default:
 		dprintf("%s: ** Directory type %d not handled!\n", __func__, dirlisttype);
@@ -2923,6 +2924,18 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				fdi->FileNameLength = namelenholder;
 
 				break;
+
+			case FileNamesInformation:
+				structsize = FIELD_OFFSET(FILE_NAMES_INFORMATION, FileName[0]);
+				if (outcount + structsize > bufsize) break;
+				eodp = (FILE_NAMES_INFORMATION *)bufptr;
+				FILE_NAMES_INFORMATION *fni = (FILE_NAMES_INFORMATION *)bufptr;
+				fni = (FILE_NAMES_INFORMATION *)bufptr;
+				fni->FileIndex = offset;
+				nameptr = fni->FileName;
+				fni->FileNameLength = namelenholder;
+				break;
+
 			}
 
 			// One char fits inside struct, so adjust by removing one wchar
@@ -2933,7 +2946,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			/*
 			* Will this entry fit in the buffer?
 			*/
-			if (outcount + reclen > bufsize) {
+			if (outcount + rawsize > bufsize) {
 				/*
 				* Did we manage to fit anything in the buffer?
 				*/

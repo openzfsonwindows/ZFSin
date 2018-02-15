@@ -324,7 +324,7 @@ uint32_t	kmem_max_cached = KMEM_BIG_MAXBUF;	/* maximum kmem_alloc cache */
  * grind to a halt. But it is useful to enable if you can trigger a memory
  * fault, and wish to see the calling stack.
  */
-#ifdef DEBUG
+#ifdef DBG
 // can be 0 or KMF_LITE
 // or KMF_DEADBEEF | KMF_REDZONE | KMF_CONTENTS
 // with or without KMF_AUDIT

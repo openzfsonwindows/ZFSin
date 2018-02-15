@@ -671,5 +671,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.md" />
+    <None Include="..\Testing.md" />
   </ItemGroup>
 </Project>

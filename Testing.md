@@ -26,10 +26,10 @@
 |❌     | NonDirectoryFileOpenTest  | Fails but STATUS expected is STATUS received? |
 |❌     | OpenVolumeTest  | locking failure, should be exclusive |
 |❌     | CreatePagingFileTest  | not yet supported |
-|❌     | FileNameLengthTest  | fails at 512 out of 1024 |
+|✅     | FileNameLengthTest  | fails at 512 out of 1024 |
 |✅     | HFHTest  | |
 |✅     | UnicodeOnDiskTest  | |
-|❌     | CaseSensitiveTest  | |
+|✅     | CaseSensitiveTest  | |
 |✅     | PreserveCaseTest  | |
 |❌     | ShortFileNameTest  | Don't handle shortnames yet |
 |❌     | ShareAccessTest  | do not have any share logic locking out opens |
@@ -53,6 +53,9 @@
 |❌     | OverwriteAlwaysAllocTest  | |
 |❌     | OverwriteAlwaysAttrTest  | |
 |❌     | SupersedeFileTest  | |
+
+
+
 |❌     | SupersedeFileAllocTest  | |
 |❌     | SupersedeFileAttrTest  | |
 |❌     | FileAllocationSizeTest  | |

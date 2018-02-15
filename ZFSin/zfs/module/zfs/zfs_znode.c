@@ -1363,10 +1363,12 @@ again:
 		/* We are racing zfs_znode_getvnode() and we got here first, we
 		 * need to let it get ahead */
 		if (!vp) {
+			static int count = 0;
 			kpreempt(KPREEMPT_SYNC);
 			dprintf("zget racing attach\n");
 			//DbgBreakPoint();
 			IOSleep(hz>>2);
+			if (count++ > 50) DbgBreakPoint();
 			goto again;
 		}
 

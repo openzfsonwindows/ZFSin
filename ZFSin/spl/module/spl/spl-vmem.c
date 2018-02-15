@@ -2384,12 +2384,11 @@ xnu_alloc_throttled_bail(uint64_t now_ticks, vmem_t *calling_vmp, uint32_t size,
 			blocked_suspends++;
 			IOSleep(1);
 		} else	if (spl_vmem_xnu_useful_bytes_free() >= bigtarget) {
-			uint64_t f = FALSE;
 			// if alloc_lock == f then alloc_lock = TRUE and result is TRUE
 			// otherwise result is FALSE and f = TRUE
 			//if ( ! __c11_atomic_compare_exchange_strong(&alloc_lock, &f, TRUE,
 			//	__ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
-			if (InterlockedCompareExchange64(&alloc_lock, TRUE, f) != f) {
+			if (InterlockedCompareExchange64(&alloc_lock, TRUE, FALSE) != FALSE) {
 				// avoid (highly unlikely) data race on alloc_lock.
 				// if alloc_lock has become TRUE while we were in the
 				// else if expression then we effectively optimize away
@@ -2402,7 +2401,7 @@ xnu_alloc_throttled_bail(uint64_t now_ticks, vmem_t *calling_vmp, uint32_t size,
 			void *m = spl_vmem_malloc_if_no_pressure(size);
 			if (m != NULL) {
 				uint64_t ticks = zfs_lbolt() - now_ticks;
-				dprintf("SPL: %s returning %llu bytes after "
+				xprintf("SPL: %s returning %llu bytes after "
 				    "%llu ticks (hz=%u, seconds = %llu), "
 				    "%u suspends, %u blocked, %u tries (%s)\n",
 				    __func__, (uint64_t)size,
@@ -2417,10 +2416,9 @@ xnu_alloc_throttled_bail(uint64_t now_ticks, vmem_t *calling_vmp, uint32_t size,
 				IOSleep(1);
 			}
 		} else if (zfs_lbolt() > timeout_time) {
-			uint64_t f = FALSE;
 			//if ( ! __c11_atomic_compare_exchange_strong(&alloc_lock, &f, TRUE,
 			//	__ATOMIC_SEQ_CST, __ATOMIC_RELAXED)) {
-			if (InterlockedCompareExchange64(&alloc_lock, TRUE, f) != f) {
+			if (InterlockedCompareExchange64(&alloc_lock, TRUE, FALSE) != FALSE) {
 				// avoid (highly unlikely) data race on alloc_lock as above
 				continue;
 			}
@@ -2428,7 +2426,7 @@ xnu_alloc_throttled_bail(uint64_t now_ticks, vmem_t *calling_vmp, uint32_t size,
 			uint64_t now = zfs_lbolt();
 			uint64_t ticks = now - now_ticks;
 			force_time = now;
-			dprintf("SPL: %s TIMEOUT %llu bytes after "
+			xprintf("SPL: %s TIMEOUT %llu bytes after "
 			    "%llu ticks (hz=%u, seconds=%llu), "
 			    "%u suspends, %u blocked, %u tries (%s)\n",
 			    __func__, (uint64_t)size,
@@ -2523,7 +2521,7 @@ xnu_alloc_throttled(vmem_t *bvmp, uint32_t size, int vmflag)
 
 	if (waiters > max_waiters_seen) {
 		max_waiters_seen = waiters;
-		dprintf("SPL: %s: max_waiters_seen increased to %u\n", __func__, max_waiters_seen);
+		xprintf("SPL: %s: max_waiters_seen increased to %u\n", __func__, max_waiters_seen);
 	}
 
 	boolean_t local_xat_pressured = FALSE;
@@ -2579,7 +2577,7 @@ xnu_alloc_throttled(vmem_t *bvmp, uint32_t size, int vmflag)
 			bailing_threads++;
 			if (bailing_threads > max_bailers_seen) {
 				max_bailers_seen = bailing_threads;
-				dprintf("SPL: %s: max_bailers_seen increased to %u\n",
+				xprintf("SPL: %s: max_bailers_seen increased to %u\n",
 				    __func__, max_bailers_seen);
 			}
 			void *b = xnu_alloc_throttled_bail(now, bvmp, size, vmflag);
@@ -2626,7 +2624,7 @@ xnu_free_throttled(vmem_t *vmp, void *vaddr, uint32_t size)
 	static volatile _Atomic uint32_t a_waiters = 0;
 
 	// is_freeing protects the osif_free() call; see comment below
-	static volatile _Atomic boolean_t is_freeing = FALSE;
+	static volatile _Atomic uint64_t is_freeing = FALSE;
 
 	a_waiters++; // generates "lock incl ..."
 
@@ -2647,10 +2645,10 @@ xnu_free_throttled(vmem_t *vmp, void *vaddr, uint32_t size)
 			// if is_freeing == f, then set is_freeing to TRUE with
 			// release semantics (i.e. "push" it to other cores) then break;
 			// otherwise, set f to TRUE relaxedly (i.e., optimize it out)
-			uint64_t f = FALSE;
+			//uint64_t f = FALSE;
 			//if (__c11_atomic_compare_exchange_weak(&is_freeing, &f, TRUE,
 			//	__ATOMIC_RELEASE, __ATOMIC_RELAXED)) {
-			if (InterlockedCompareExchange64(&is_freeing, TRUE, f) != f) {
+			if (InterlockedCompareExchange64(&is_freeing, TRUE, FALSE) != FALSE) {
 				break;
 			}
 		}
