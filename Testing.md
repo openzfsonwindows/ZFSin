@@ -6,11 +6,11 @@
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
 |❌     | SetDaclSecurityTest    | Security not yet implemented |
-|❌     | SetOwnerSecurityTest   | |
-|❌     | SetGroupSecurityTest   | |
-|❌     | SetSaclSecurityTest    | |
-|❌     | AuditOwnerSecurityTest | |
-|❌     | DirectoryTraverseTest  | |
+|❌     | SetOwnerSecurityTest   | 〃 |
+|❌     | SetGroupSecurityTest   | 〃 |
+|❌     | SetSaclSecurityTest    | 〃 |
+|❌     | AuditOwnerSecurityTest | 〃 |
+|❌     | DirectoryTraverseTest  | 〃 |
 
 
 ## OpenCreateGeneral
@@ -26,7 +26,7 @@
 |❌     | NonDirectoryFileOpenTest  | Fails but STATUS expected is STATUS received? |
 |❌     | OpenVolumeTest  | locking failure, should be exclusive |
 |❌     | CreatePagingFileTest  | not yet supported |
-|✅     | FileNameLengthTest  | fails at 512 out of 1024 |
+|✅     | FileNameLengthTest  | |
 |✅     | HFHTest  | |
 |✅     | UnicodeOnDiskTest  | |
 |✅     | CaseSensitiveTest  | |
@@ -44,18 +44,15 @@
 |✅     | OpenFileTest  | |
 |✅     | OpenFileDirTest  | |
 |✅     | CreateFileTest  | |
-|❌     | CreateFileDirTest  | |
-|❌     | OpenAlwaysFileTest  | | *
-|❌     | OpenAlwaysFileDirTest  | |
+|✅     | CreateFileDirTest  | |
+|✅     | OpenAlwaysFileTest  | |
+|✅     | OpenAlwaysFileDirTest  | |
 |❌     | OverwriteFileTest  | |
 |❌     | OverwriteFileAllocTest  | |
 |❌     | OverwriteFileAttrTest  | |
 |❌     | OverwriteAlwaysAllocTest  | |
 |❌     | OverwriteAlwaysAttrTest  | |
 |❌     | SupersedeFileTest  | |
-
-
-
 |❌     | SupersedeFileAllocTest  | |
 |❌     | SupersedeFileAttrTest  | |
 |❌     | FileAllocationSizeTest  | |
@@ -109,11 +106,11 @@
 |       | SimpleRenameInformationTest  | |
 |❌     | ConflictingRenameInformationTest  | |
 |☢     | AlternateNameInformationTest  | |
-|       | FileNetworkOpenInformationTest  | |
-|       | StreamInformationTest  | |
-|       | StreamStandardInformationTest  | |
-|       | HardLinkInformationTest  | |
-|       | TimeStampTest  | |
+|❌     | FileNetworkOpenInformationTest  | 0x3e8 != 0x400 |
+|❌     | StreamInformationTest  | Streams not implemented |
+|❌     | StreamStandardInformationTest  | 〃 |
+|❌     | HardLinkInformationTest  | 〃 |
+|❌     | TimeStampTest  | Time disagrees |
 
 
 ## EaInformation
@@ -133,10 +130,10 @@
 
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
-|       |FileNameDirectoryInformationTest  | |
-|       |FileDirectoryInformationTest  | |
-|       |FullDirectoryInformationTest  | |
-|       |BothDirectoryInformationTest  | |
+|✅     |FileNameDirectoryInformationTest  | |
+|❌     |FileDirectoryInformationTest  | Off by 1ms |
+|❌     |FullDirectoryInformationTest  | EAsize wrong |
+|✅     |BothDirectoryInformationTest  | |
 
 
 ## FileLocking
@@ -175,29 +172,29 @@
 
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
-|       |NotificationDeleteTest  | |
-|       |NotificationCloseTest  | |
-|       |NotificationFilenameTest  | |
-|       |NotificationNonDirectoryTest  | |
-|       |NotificationSecurityTest  | |
-|       |NotificationCleanupAttribTest  | |
+|✅     |NotificationDeleteTest  | |
+|✅     |NotificationCloseTest  | |
+|❌     |NotificationFilenameTest  | |
+|❌     |NotificationNonDirectoryTest  | Last Write notify missing |
+|❌     |NotificationSecurityTest  | cmd blocks |
+|❌     |NotificationCleanupAttribTest  | 〃 |
 
 
 ## DeviceControl
 
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
-|       |DeviceIoControlTest  | |
+|❌     |DeviceIoControlTest  | timeout |
 
 
 ## FileSystemControlGeneral
 
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
-|       |GetRetrievalPointersTest  | |
-|       |SetCompressionTest  | |
-|       |GetVolumeBitmapTest  | |
-|       |MoveFileTest  | |
+|❌     |GetRetrievalPointersTest  | Probably wont implement |
+|       |SetCompressionTest  | ZFS claims not to do compression |
+|       |GetVolumeBitmapTest  | Not implemented |
+|❌     |MoveFileTest  | retrievea pointers ? |
 |       |AllowExtendedDASDTest  | |
 
 
@@ -205,39 +202,40 @@
 
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
-|       |ReadWriteTest  | |
-|       |ReadWriteCoherencyTest  | |
-|       |AppendDataTest  | |
-|       |AtomicSeekReadTest  | |
-|       |ZeroLengthIOTest  | |
-|       |ReadWriteRangeTest  | |
-|       |EventAsyncIOTest  | |
-|       |ZeroOnExtendTest  | |
+|❌     |ReadWriteTest  | async write changed file position |
+|✅     |ReadWriteCoherencyTest  | |
+|❌     |AppendDataTest  | read pattern failed |
+|✅     |AtomicSeekReadTest  | |
+|✅     |ZeroLengthIOTest  | |
+|✅     |ReadWriteRangeTest  | |
+|✅     |EventAsyncIOTest  | |
+|✅     |ZeroOnExtendTest  | |
 |       |APCSynchRWTest  | |
 |       |WriteThroughTest  | |
-|       |WriteThroughSVChangeLogTest  | |
-|       |IntegrityTest  | |
+|       |WriteThroughSyncTest  | |
+|❌     |AVChangeLogTest  | not implemented |
+|✅     |IntegrityTest  | |
 
 
 ## SectionsCaching
 
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
-|       |MaintainSectionMappingTest  | |
-|       |DataImageCoherencyTest  | |
-|       |ExistingUserMappingTest  | |
-|       |TruncateWithUserMappingTest  | |
-|       |ExtendingWithUserMappingTest  | |
-|       |FlushBuffersRootTest  | |
+|✅     |MaintainSectionMappingTest  | |
+|❌     |DataImageCoherencyTest  | Failed getting statistics |
+|❌     |ExistingUserMappingTest  | Expect sharing_violation |
+|❌     |TruncateWithUserMappingTest  | 〃 |
+|❌     |ExtendingWithUserMappingTest  | 〃 |
+|✅     |FlushBuffersRootTest  | Failed getting statistics |
 
 
 ## ObjectId
 
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
-|       |SetObjectIDTest  | |
-|       |GetObjectIDTest  | |
-|       |SetUniqueObjectIDDuplicateNameTest  | |
+|❌     |SetObjectIDTest  | |
+|❌     |GetObjectIDTest  | |
+|❌     |SetUniqueObjectIDDuplicateNameTest  | |
 |       |SetUniqueObjectIDNameCollisionTest  | |
 |       |DeleteObjectIDTest  | |
 |       |CreateOrGetObjectIDTest  | |
@@ -259,7 +257,7 @@
 
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
-|       |FileGraftTest  | |
+|❌     |FileGraftTest  | should fail file |
 |       |FileGraftStreamTest  | |
 |       |DirectoryGraftEmptyTest  | |
 |       |DirectoryGraftEmptyFileTest  | |
