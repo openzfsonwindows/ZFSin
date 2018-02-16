@@ -26,7 +26,7 @@
 |❌     | NonDirectoryFileOpenTest  | Fails but STATUS expected is STATUS received? |
 |❌     | OpenVolumeTest  | locking failure, should be exclusive |
 |❌     | CreatePagingFileTest  | not yet supported |
-|✅     | FileNameLengthTest  | fails at 512 out of 1024 |
+|✅     | FileNameLengthTest  | |
 |✅     | HFHTest  | |
 |✅     | UnicodeOnDiskTest  | |
 |✅     | CaseSensitiveTest  | |

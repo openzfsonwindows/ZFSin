@@ -141,7 +141,8 @@ void zfs_dirlist_free(zfs_dirlist_t *zccb)
  * - HOLD on vp
  * - final parsed filename part in 'lastname' (in the case of creating an entry)
  */
-int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, char **lastname, struct vnode **dvpp, struct vnode **vpp, int flags)
+int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, int finalpartmustnotexist,
+	char **lastname, struct vnode **dvpp, struct vnode **vpp, int flags)
 {
 	int error = ENOENT;
 	znode_t *zp;
@@ -250,9 +251,14 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 	if (error != 0 && !vp && !finalpartmaynotexist)
 		return ENOENT;
 
+	if (!word && finalpartmustnotexist && dvp && !vp) {
+		dprintf("CREATE with existing dir exit?\n");
+		return EEXIST;
+	}
+
 	if (lastname) {
 
-		*lastname = word ? word : filename;
+		*lastname = word /* ? word : filename */;
 
 		// Skip any leading "\"
 		while (*lastname != NULL &&
@@ -453,7 +459,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		}
 
 		// If we have dvp, it is HELD
-		error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), &finalname, &dvp, &vp, flags);
+		error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), (CreateDisposition == FILE_CREATE), &finalname, &dvp, &vp, flags);
 
 	} else {  // Open By File ID
 
@@ -502,6 +508,12 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			dprintf("%s: filename component too long\n", __func__);
 			return error;
 		}
+		// Open dir with FILE_CREATE but it exists
+		if (error == EEXIST) {
+			dprintf("%s: filename component too long\n", __func__);
+			Irp->IoStatus.Information = FILE_EXISTS;
+			return STATUS_OBJECT_NAME_COLLISION;
+		}
 		dprintf("%s: failed to find vp in dvp\n", __func__);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_OBJECT_NAME_NOT_FOUND;
@@ -516,17 +528,31 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (DeleteOnClose) vnode_setunlink(dvp);
 			ASSERT(vp == NULL);
 			VN_RELE(dvp);
+			Irp->IoStatus.Information = FILE_OPENED;
 			return STATUS_SUCCESS;
 		}
 		ASSERT(vp == NULL);
 		ASSERT(dvp == NULL);
+		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_OBJECT_NAME_NOT_FOUND;
 	}
 
 	// Here we have "dvp" of the directory. 
 	// "vp" if the final part was a file.
 
-	if (CreateDirectory) {
+	// Don't create if FILE_OPEN_IF (open existing)
+	if ((CreateDisposition == FILE_OPEN_IF) && (vp != NULL))
+		CreateDirectory = 0;
+
+	// Fail if FILE_CREATE but target exist
+	if ((CreateDisposition == FILE_CREATE) && (vp != NULL)) {
+		VN_RELE(vp);
+		VN_RELE(dvp);
+		Irp->IoStatus.Information = FILE_EXISTS;
+		return STATUS_OBJECT_NAME_COLLISION; // create file error
+	}
+
+	if (CreateDirectory && finalname) {
 		vattr_t vap = { 0 };
 
 		if (TemporaryFile) 
@@ -578,7 +604,13 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		return STATUS_FILE_IS_A_DIRECTORY; // wanted file, found dir error
 	}
 
-	if (CreateFile) {
+	// Some cases we always create the file, and sometimes only if
+	// it is not there. If the file exists and we are only to create
+	// the file if it is not there:
+	if ((CreateDisposition == FILE_OPEN_IF) && (vp != NULL))
+		CreateFile = 0;
+
+	if (CreateFile && finalname) {
 		vattr_t vap = { 0 };
 		int replacing = 0;
 
@@ -608,6 +640,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		if (error == 0) {
 			FileObject->FsContext = vp;
 			vnode_ref(vp); // Hold open reference, until CLOSE
+
 			if (DeleteOnClose) vnode_setunlink(vp);
 			FileObject->SectionObjectPointer = vnode_sectionpointer(vp);
 
@@ -622,8 +655,12 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			VN_RELE(dvp);
 			return STATUS_SUCCESS;
 		}
+		if (error== EEXIST)
+			Irp->IoStatus.Information = FILE_EXISTS;
+		else
+			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+
 		VN_RELE(dvp);
-		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_OBJECT_NAME_COLLISION; // create file error
 	}
 
@@ -1648,7 +1685,7 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		(filename[6] == '\\'))
 		filename = &filename[6];
 
-	error = zfs_find_dvp_vp(zfsvfs, filename, 1, &remainder, &tdvp, &tvp, 0);
+	error = zfs_find_dvp_vp(zfsvfs, filename, 1, 0, &remainder, &tdvp, &tvp, 0);
 	if (error) {
 		return STATUS_OBJECTID_NOT_FOUND;
 	}
