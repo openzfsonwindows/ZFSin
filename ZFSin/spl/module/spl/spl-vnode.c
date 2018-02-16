@@ -41,7 +41,7 @@ static uint64_t vnode_vid_counter = 0;
 static uint64_t vnode_active = 0;
 
 /* Maximum allowed active vnodes */
-uint64_t vnode_max = 300;
+uint64_t vnode_max = 3000;
 /* When max is hit, decrease until watermark, 2% of max */
 #define vnode_max_watermark (vnode_max - (vnode_max * 2ULL / 100ULL))
 
