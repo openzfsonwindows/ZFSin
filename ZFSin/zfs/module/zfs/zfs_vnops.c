@@ -2855,7 +2855,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				TIME_UNIX_TO_WINDOWS(crtime, eodp->CreationTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(tzp->z_atime, eodp->LastAccessTime.QuadPart);
 				eodp->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0; // Magic code to change dir icon to link
-				eodp->FileAttributes = TYPE2ATTRIBUTES(tzp); 
+				eodp->FileAttributes = zfs_getwinflags(tzp);
 				nameptr = eodp->FileName;
 				eodp->FileNameLength = namelenholder;
 
@@ -2874,7 +2874,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				TIME_UNIX_TO_WINDOWS(crtime, fibdi->CreationTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(tzp->z_atime, fibdi->LastAccessTime.QuadPart);
 				fibdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0;
-				fibdi->FileAttributes = TYPE2ATTRIBUTES(tzp);
+				fibdi->FileAttributes = zfs_getwinflags(tzp);
 				fibdi->FileId.QuadPart = objnum;
 				fibdi->FileIndex = offset;
 				fibdi->ShortNameLength = 0;
@@ -2896,7 +2896,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				TIME_UNIX_TO_WINDOWS(crtime, fbdi->CreationTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(tzp->z_atime, fbdi->LastAccessTime.QuadPart);
 				fbdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0;
-				fbdi->FileAttributes = TYPE2ATTRIBUTES(tzp); 
+				fbdi->FileAttributes = zfs_getwinflags(tzp);
 				fbdi->FileIndex = offset;
 				fbdi->ShortNameLength = 0;
 				nameptr = fbdi->FileName;
@@ -2916,7 +2916,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				TIME_UNIX_TO_WINDOWS(ctime, fdi->ChangeTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(crtime, fdi->CreationTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(tzp->z_atime, fdi->LastAccessTime.QuadPart);
-				fdi->FileAttributes = TYPE2ATTRIBUTES(tzp);
+				fdi->FileAttributes = zfs_getwinflags(tzp);
 				//dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY :
 				//	tzp->z_pflags&ZFS_REPARSEPOINT ? FILE_ATTRIBUTE_REPARSE_POINT : FILE_ATTRIBUTE_NORMAL;
 				fdi->FileIndex = offset;

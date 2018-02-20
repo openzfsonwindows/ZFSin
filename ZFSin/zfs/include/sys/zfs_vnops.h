@@ -187,6 +187,9 @@ extern int    zfs_vfsops_fini(void);
 /* zfs_vnops_osx_lib calls */
 extern int    zfs_ioflags( int ap_ioflag );
 extern int    zfs_getattr_znode_unlocked ( struct vnode *vp, vattr_t *vap );
+extern uint32_t zfs_getwinflags(znode_t *zp);
+extern int    zfs_setwinflags(znode_t *zp, uint32_t winflags);
+
 extern int    pn_alloc   ( pathname_t *p );
 extern int    pn_free    ( pathname_t *p );
 extern int    ace_trivial_common(void *acep, int aclcnt,

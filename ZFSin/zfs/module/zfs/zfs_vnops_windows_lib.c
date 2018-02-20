@@ -1641,88 +1641,71 @@ zfs_vnop_ioctl_fullfsync(struct vnode *vp, vfs_context_t *ct, zfsvfs_t *zfsvfs)
 }
 
 uint32_t
-zfs_getbsdflags(znode_t *zp)
+zfs_getwinflags(znode_t *zp)
 {
-	uint32_t  bsdflags = 0;
+	uint32_t  winflags = 0;
     uint64_t zflags=zp->z_pflags;
-#if 0
-	if (zflags & ZFS_NODUMP)
-		bsdflags |= UF_NODUMP;
-	if (zflags & ZFS_IMMUTABLE)
-		bsdflags |= UF_IMMUTABLE;
-	if (zflags & ZFS_APPENDONLY)
-		bsdflags |= UF_APPEND;
-	if (zflags & ZFS_OPAQUE)
-		bsdflags |= UF_OPAQUE;
+
 	if (zflags & ZFS_HIDDEN)
-		bsdflags |= UF_HIDDEN;
-	if (zflags & ZFS_TRACKED)
-		bsdflags |= UF_TRACKED;
-#endif
-	/*
-     * Due to every file getting archive set automatically, and OSX
-     * don't let you move/copy it as a user, we disable archive connection
-     * for now
+		winflags |= FILE_ATTRIBUTE_HIDDEN;
+	if (zflags & ZFS_SYSTEM)
+		winflags |= FILE_ATTRIBUTE_SYSTEM;
 	if (zflags & ZFS_ARCHIVE)
-		bsdflags |= SF_ARCHIVED;
-    */
-    dprintf("getbsd changing zfs %08lx to osx %08lx\n",
-           zflags, bsdflags);
-	return (bsdflags);
+		winflags |= FILE_ATTRIBUTE_ARCHIVE;
+	if (zflags & ZFS_READONLY)
+		winflags |= FILE_ATTRIBUTE_READONLY;
+	if (zflags & ZFS_REPARSEPOINT)
+		winflags |= FILE_ATTRIBUTE_REPARSE_POINT;
+
+	if (S_ISDIR(zp->z_mode)) {
+		winflags |= FILE_ATTRIBUTE_DIRECTORY;
+		winflags &= ~FILE_ATTRIBUTE_ARCHIVE;
+	}
+
+	if (winflags == 0)
+		winflags = FILE_ATTRIBUTE_NORMAL;
+
+	dprintf("%s: changing zfs 0x%08llx to win 0x%08lx\n", __func__,
+           zflags, winflags);
+	return (winflags);
 }
 
-void
-zfs_setbsdflags(znode_t *zp, uint32_t bsdflags)
+int 
+zfs_setwinflags(znode_t *zp, uint32_t winflags)
 {
     uint64_t zflags = 0;
-    VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_FLAGS(zp->z_zfsvfs),
-                     &zflags, sizeof (zflags)) == 0);
-#if 0
-	if (bsdflags & UF_NODUMP)
-		zflags |= ZFS_NODUMP;
-	else
-		zflags &= ~ZFS_NODUMP;
 
-	if (bsdflags & UF_IMMUTABLE)
-		zflags |= ZFS_IMMUTABLE;
-	else
-		zflags &= ~ZFS_IMMUTABLE;
+	VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_FLAGS(zp->z_zfsvfs),
+		&zflags, sizeof(zflags)) == 0);
 
-	if (bsdflags & UF_APPEND)
-		zflags |= ZFS_APPENDONLY;
-	else
-		zflags &= ~ZFS_APPENDONLY;
-
-	if (bsdflags & UF_OPAQUE)
-		zflags |= ZFS_OPAQUE;
-	else
-		zflags &= ~ZFS_OPAQUE;
-
-	if (bsdflags & UF_HIDDEN)
+	if (winflags & FILE_ATTRIBUTE_HIDDEN)
 		zflags |= ZFS_HIDDEN;
 	else
 		zflags &= ~ZFS_HIDDEN;
 
-	if (bsdflags & UF_TRACKED)
-		zflags |= ZFS_TRACKED;
+	if (winflags & FILE_ATTRIBUTE_SYSTEM)
+		zflags |= ZFS_SYSTEM;
 	else
-		zflags &= ~ZFS_TRACKED;
+		zflags &= ~ZFS_SYSTEM;
 
-    /*
-	if (bsdflags & SF_ARCHIVED)
+	if (winflags & FILE_ATTRIBUTE_ARCHIVE)
 		zflags |= ZFS_ARCHIVE;
 	else
 		zflags &= ~ZFS_ARCHIVE;
-    */
-#endif
-    zp->z_pflags = zflags;
-    dprintf("setbsd changing osx %08lx to zfs %08lx\n",
-           bsdflags, zflags);
 
-    /*
-      (void )sa_update(zp->z_sa_hdl, SA_ZPL_FLAGS(zp->z_zfsvfs),
-      (void *)&zp->z_pflags, sizeof (uint64_t), tx);
-    */
+	if (winflags & FILE_ATTRIBUTE_READONLY)
+		zflags |= ZFS_READONLY;
+	else
+		zflags &= ~ZFS_READONLY;
+
+	if (zp->z_pflags != zflags) {
+		zp->z_pflags = zflags;
+		dprintf("%s changing win 0x%08lx to zfs 0x%08llx\n", __func__,
+			winflags, zflags);
+		return 1;
+	}
+
+	return 0;
 }
 
 /*

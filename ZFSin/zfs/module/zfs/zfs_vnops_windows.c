@@ -386,6 +386,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	CreateFile = (BOOLEAN)(
 		((CreateDisposition == FILE_CREATE) ||
 		(CreateDisposition == FILE_OPEN_IF) ||
+		(CreateDisposition == FILE_SUPERSEDE) ||
 		(CreateDisposition == FILE_OVERWRITE_IF)));
 
 
@@ -428,6 +429,9 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		dprintf("%s: converted name is '%s' input len bytes %d (err %d) %s %s\n", __func__, filename, FileObject->FileName.Length, error,
 			DeleteOnClose ? "DeleteOnClose" : "",
 			IrpSp->Flags&SL_CASE_SENSITIVE ? "CaseSensitive" : "CaseInsensitive");
+
+		if (Irp->Overlay.AllocationSize.QuadPart > 0)
+			dprintf("AllocationSize requested %llu\n", Irp->Overlay.AllocationSize.QuadPart);
 
 		// Check if we are called as VFS_ROOT();
 		OpenRoot = (strncmp("\\", filename, PATH_MAX) == 0 || strncmp("\\*", filename, PATH_MAX) == 0);
@@ -558,7 +562,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		if (TemporaryFile) 
 			return STATUS_INVALID_PARAMETER;
 
-		vap.va_mask = AT_MODE | AT_TYPE;
+		vap.va_mask = AT_MODE | AT_TYPE ;
 		vap.va_type = VDIR;
 		vap.va_mode = 0755;
 		//VATTR_SET(&vap, va_mode, 0755);
@@ -602,6 +606,29 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		//return STATUS_OBJECT_NAME_NOT_FOUND; // wanted file, found dir error
 		return STATUS_FILE_IS_A_DIRECTORY; // wanted file, found dir error
+	}
+
+	// Check the attributes are valid, we found a file, and are to replace it
+	if ((vp != NULL) &&
+		((CreateDisposition == FILE_SUPERSEDE) ||
+		(CreateDisposition == FILE_OVERWRITE) ||
+		(CreateDisposition == FILE_OVERWRITE_IF))) {
+		zp = VTOZ(vp);
+		if (((zp->z_pflags&ZFS_HIDDEN) && !FlagOn(IrpSp->Parameters.Create.FileAttributes, FILE_ATTRIBUTE_HIDDEN)) ||
+			((zp->z_pflags&ZFS_SYSTEM) && !FlagOn(IrpSp->Parameters.Create.FileAttributes, FILE_ATTRIBUTE_SYSTEM))) {
+			VN_RELE(vp);
+			VN_RELE(dvp);
+			return STATUS_ACCESS_DENIED;
+		}
+	}
+	if ((vp != NULL) &&
+		((CreateDisposition == FILE_OVERWRITE) ||
+		(CreateDisposition == FILE_OVERWRITE_IF))) {
+		if (zp->z_pflags&ZFS_READONLY) {
+			VN_RELE(vp);
+			VN_RELE(dvp);
+			return STATUS_ACCESS_DENIED;
+		}
 	}
 
 	// Some cases we always create the file, and sometimes only if
@@ -648,6 +675,16 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				FILE_SUPERSEDED : FILE_OVERWRITTEN : FILE_CREATED;
 
 			zp = VTOZ(vp);
+
+			// Update pflags, if needed
+			zfs_setwinflags(zp, IrpSp->Parameters.Create.FileAttributes | FILE_ATTRIBUTE_ARCHIVE);
+
+			// Did they ask for an AllocationSize
+			if (Irp->Overlay.AllocationSize.QuadPart > 0) {
+				uint64_t allocsize = Irp->Overlay.AllocationSize.QuadPart;
+				zp->z_blksz = P2ROUNDUP(allocsize, 512);
+			}
+
 			zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
 				FILE_NOTIFY_CHANGE_FILE_NAME,
 				FILE_ACTION_ADDED);
@@ -678,11 +715,28 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		vnode_ref(vp); // Hold open reference, until CLOSE
 		if (DeleteOnClose) vnode_setunlink(vp);
 		FileObject->SectionObjectPointer = vnode_sectionpointer(vp);
+
+		zp = VTOZ(vp);
+
+		Irp->IoStatus.Information = FILE_OPENED;
+		// Did they set the open flags (clearing archive?)
+		if (IrpSp->Parameters.Create.FileAttributes)
+			zfs_setwinflags(zp, IrpSp->Parameters.Create.FileAttributes);
+		// If we are to truncate the file:
+		if (CreateDisposition == FILE_OVERWRITE) {
+			Irp->IoStatus.Information = FILE_OVERWRITTEN;
+			zp->z_pflags |= ZFS_ARCHIVE;
+			zfs_freesp(zp, 0, 0, FWRITE, B_TRUE);
+			// Did they ask for an AllocationSize
+			if (Irp->Overlay.AllocationSize.QuadPart > 0) {
+				uint64_t allocsize = Irp->Overlay.AllocationSize.QuadPart;
+				zp->z_blksz = P2ROUNDUP(allocsize, 512);
+			}
+		}
 		VN_RELE(vp);
 		VN_RELE(dvp);
 	}
 
-	Irp->IoStatus.Information = FILE_OPENED;
 	return STATUS_SUCCESS;
 }
 
@@ -1774,7 +1828,7 @@ NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK
 		TIME_UNIX_TO_WINDOWS(crtime, basic->CreationTime.QuadPart);
 		TIME_UNIX_TO_WINDOWS(zp->z_atime, basic->LastAccessTime.QuadPart);
 
-		basic->FileAttributes = TYPE2ATTRIBUTES(zp);
+		basic->FileAttributes = zfs_getwinflags(zp);
 		dprintf("set attributes to 0x%x\n", basic->FileAttributes);
 		VN_RELE(vp);
 		return STATUS_SUCCESS;
@@ -1816,11 +1870,13 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 		standard->Directory = S_ISDIR(zp->z_mode) ? TRUE : FALSE;
 		//         sa_object_size(zp->z_sa_hdl, &blksize, &nblks);
 		uint64_t blk = zfs_blksz(zp);
-		standard->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, blk);  // space taken on disk, multiples of block size
+		standard->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size?zp->z_size:1, blk);  // space taken on disk, multiples of block size
 		standard->EndOfFile.QuadPart = zp->z_size;       // byte size of file
 		standard->NumberOfLinks = zp->z_links;
 		standard->DeletePending = vnode_unlink(vp) ? TRUE : FALSE;
 		VN_RELE(vp);
+		dprintf("Returning size %llu and allocsize %llu\n",
+			standard->EndOfFile.QuadPart, standard->AllocationSize.QuadPart);
 		return STATUS_SUCCESS;
 	}
 	return STATUS_OBJECT_NAME_NOT_FOUND;
@@ -1860,7 +1916,7 @@ NTSTATUS file_network_open_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 		TIME_UNIX_TO_WINDOWS(zp->z_atime, netopen->LastAccessTime.QuadPart);
 		netopen->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
 		netopen->EndOfFile.QuadPart = zp->z_size;
-		netopen->FileAttributes = TYPE2ATTRIBUTES(zp);
+		netopen->FileAttributes = zfs_getwinflags(zp);
 		VN_RELE(vp);
 		return STATUS_SUCCESS;
 	}
@@ -2076,7 +2132,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		FILE_ATTRIBUTE_TAG_INFORMATION *tag = Irp->AssociatedIrp.SystemBuffer;
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
-			tag->FileAttributes = TYPE2ATTRIBUTES(zp);
+			tag->FileAttributes = zfs_getwinflags(zp);
 			if (zp->z_pflags & ZFS_REPARSEPOINT) {
 				int err;
 				uio_t *uio;
@@ -2860,6 +2916,8 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		uio_addiov(uio, Irp->AssociatedIrp.SystemBuffer, bufferLength);
 
 	error = zfs_write(vp, uio, 0, NULL, NULL);
+	//if (error == 0)
+	//	zp->z_pflags |= ZFS_ARCHIVE;
 	VN_RELE(vp);
 
 	// EOF?
@@ -2874,7 +2932,6 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		byteOffset.QuadPart + Irp->IoStatus.Information;
 
 	uio_free(uio);
-
 
 	if(!Status) {
 	    IO_STATUS_BLOCK IoStatus = { 0 };
