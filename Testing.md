@@ -47,22 +47,22 @@
 |✅     | CreateFileDirTest  | |
 |✅     | OpenAlwaysFileTest  | |
 |✅     | OpenAlwaysFileDirTest  | |
-|❌     | OverwriteFileTest  | |
-|❌     | OverwriteFileAllocTest  | |
-|❌     | OverwriteFileAttrTest  | |
-|❌     | OverwriteAlwaysAllocTest  | |
-|❌     | OverwriteAlwaysAttrTest  | |
-|❌     | SupersedeFileTest  | |
-|❌     | SupersedeFileAllocTest  | |
-|❌     | SupersedeFileAttrTest  | |
-|❌     | FileAllocationSizeTest  | |
+|✅     | OverwriteFileTest  | |
+|✅     | OverwriteFileAllocTest  | |
+|✅     | OverwriteFileAttrTest  | |
+|✅     | OverwriteAlwaysAllocTest  | |
+|✅     | OverwriteAlwaysAttrTest  |  |
+|✅     | SupersedeFileTest  | |
+|✅     | SupersedeFileAllocTest  | |
+|✅     | SupersedeFileAttrTest  | |
+|❌     | FileAllocationSizeTest  | Fails as allocsize is not zero |
 |✅     | ExecuteAccessTest  | |
-|❌     | ReadOnlyAttributeTest  | |
-|❌     | HiddenAttributeTest  | |
-|❌     | SystemAttributeTest  | |
-|❌     | ArchiveAttributeTest  | |
-|❌     | NormalAttributeTest  | |
-|❌     | DirectoryAttributeTest  | |
+|❌     | ReadOnlyAttributeTest  | No file permissions yet |
+|✅     | HiddenAttributeTest  | |
+|✅     | SystemAttributeTest  | |
+|✅     | ArchiveAttributeTest  | |
+|✅     | NormalAttributeTest  | |
+|✅     | DirectoryAttributeTest  | |
 
 
 ## CloseCleanupDelete
