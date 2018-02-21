@@ -91,7 +91,7 @@
 
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
-|❌     | BasicInformationTest  | |
+|✅     | BasicInformationTest  | |
 |❌     | StandardInformationTest  | |
 |✅     | InternalInformationTest  | |
 |❌     | EaInformationTest  | |
