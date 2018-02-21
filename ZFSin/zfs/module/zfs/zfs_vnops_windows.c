@@ -578,6 +578,9 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (DeleteOnClose) vnode_setunlink(vp);
 			Irp->IoStatus.Information = FILE_CREATED;
 			zp = VTOZ(vp);
+			// Update pflags, if needed
+			zfs_setwinflags(zp, IrpSp->Parameters.Create.FileAttributes);
+
 			zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
 				FILE_NOTIFY_CHANGE_DIR_NAME,
 				FILE_ACTION_ADDED);
@@ -604,16 +607,18 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		dprintf("%s: asked for file but found directory\n", __func__);
 		VN_RELE(dvp);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-		//return STATUS_OBJECT_NAME_NOT_FOUND; // wanted file, found dir error
 		return STATUS_FILE_IS_A_DIRECTORY; // wanted file, found dir error
 	}
 
-	// Check the attributes are valid, we found a file, and are to replace it
-	if ((vp != NULL) &&
+	if (vp)
+		zp = VTOZ(vp);
+
+	// If HIDDEN and SYSTEM are set, then the open of file must also have
+	// HIDDEN and SYSTEM set.
+	if ((zp != NULL) &&
 		((CreateDisposition == FILE_SUPERSEDE) ||
 		(CreateDisposition == FILE_OVERWRITE) ||
 		(CreateDisposition == FILE_OVERWRITE_IF))) {
-		zp = VTOZ(vp);
 		if (((zp->z_pflags&ZFS_HIDDEN) && !FlagOn(IrpSp->Parameters.Create.FileAttributes, FILE_ATTRIBUTE_HIDDEN)) ||
 			((zp->z_pflags&ZFS_SYSTEM) && !FlagOn(IrpSp->Parameters.Create.FileAttributes, FILE_ATTRIBUTE_SYSTEM))) {
 			VN_RELE(vp);
@@ -621,7 +626,9 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			return STATUS_ACCESS_DENIED;
 		}
 	}
-	if ((vp != NULL) &&
+
+	// If overwrite, and tagged readonly, fail (note, supersede should succeed)
+	if ((zp != NULL) &&
 		((CreateDisposition == FILE_OVERWRITE) ||
 		(CreateDisposition == FILE_OVERWRITE_IF))) {
 		if (zp->z_pflags&ZFS_READONLY) {
@@ -629,6 +636,14 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			VN_RELE(dvp);
 			return STATUS_ACCESS_DENIED;
 		}
+	}
+
+	// If flags are readonly, and tries to open with write, fail
+	if ((zp != NULL) && (IrpSp->Parameters.Create.SecurityContext->DesiredAccess&(FILE_WRITE_DATA | FILE_APPEND_DATA)) &&
+		(zp->z_pflags&ZFS_READONLY)) {
+		VN_RELE(vp);
+		VN_RELE(dvp);
+		return STATUS_ACCESS_DENIED;
 	}
 
 	// Some cases we always create the file, and sometimes only if
@@ -715,8 +730,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		vnode_ref(vp); // Hold open reference, until CLOSE
 		if (DeleteOnClose) vnode_setunlink(vp);
 		FileObject->SectionObjectPointer = vnode_sectionpointer(vp);
-
-		zp = VTOZ(vp);
 
 		Irp->IoStatus.Information = FILE_OPENED;
 		// Did they set the open flags (clearing archive?)
@@ -1829,7 +1842,6 @@ NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK
 		TIME_UNIX_TO_WINDOWS(zp->z_atime, basic->LastAccessTime.QuadPart);
 
 		basic->FileAttributes = zfs_getwinflags(zp);
-		dprintf("set attributes to 0x%x\n", basic->FileAttributes);
 		VN_RELE(vp);
 		return STATUS_SUCCESS;
 	}
@@ -2681,7 +2693,7 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 	case FileAllocationInformation: 
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 			FILE_ALLOCATION_INFORMATION *feofi = Irp->AssociatedIrp.SystemBuffer;
-			dprintf("* FileAllocationInformation %u\n", feofi->AllocationSize.QuadPart);
+			dprintf("* SET FileAllocationInformation %u\n", feofi->AllocationSize.QuadPart);
 			// This is a noop at the moment. It makes Windows Explorer and apps not crash
 			// From the documentation, setting the allocation size smaller than EOF should shrink it: 
 			// https://msdn.microsoft.com/en-us/library/windows/desktop/aa364214(v=vs.85).aspx
@@ -2691,7 +2703,7 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		}
 		break;
 	case FileBasicInformation: // chmod
-		dprintf("* FileBasicInformation\n");
+		dprintf("* SET FileBasicInformation\n");
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 			FILE_BASIC_INFORMATION *fbi = Irp->AssociatedIrp.SystemBuffer;
 			struct vnode *vp = IrpSp->FileObject->FsContext;
@@ -2701,17 +2713,11 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			uint64_t unixtime[2] = { 0 };
 
 			// can request that the file system not update .. LastAccessTime, LastWriteTime, and ChangeTime ..  setting the appropriate members to -1.
-			// * We abuse AT_CTIME here, to function as a place holder for "creation
-			// * time, " since you are not allowed to change "change time" in POSIX,
-			// * and we don't have an AT_CRTIME.
-
-#ifdef NOTINPOSIX
 			if (fbi->ChangeTime.QuadPart != -1) {
 				TIME_WINDOWS_TO_UNIX(fbi->ChangeTime.QuadPart, unixtime);
 				va.va_change_time.tv_sec = unixtime[0]; va.va_change_time.tv_nsec = unixtime[1];
 				va.va_active |= AT_CTIME;
 			}
-#endif
 			if (fbi->LastWriteTime.QuadPart != -1) {
 				TIME_WINDOWS_TO_UNIX(fbi->LastWriteTime.QuadPart, unixtime);
 				va.va_modify_time.tv_sec = unixtime[0]; va.va_modify_time.tv_nsec = unixtime[1];
@@ -2720,17 +2726,24 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			if (fbi->CreationTime.QuadPart != -1) {
 				TIME_WINDOWS_TO_UNIX(fbi->CreationTime.QuadPart, unixtime);
 				va.va_create_time.tv_sec = unixtime[0]; va.va_create_time.tv_nsec = unixtime[1];
-				va.va_active |= AT_CTIME;  // AT_CRTIME
+				va.va_active |= AT_CRTIME;  // AT_CRTIME
 			}
 			if (fbi->LastAccessTime.QuadPart != -1) TIME_WINDOWS_TO_UNIX(fbi->LastAccessTime.QuadPart, zp->z_atime);
 			
+			if (fbi->FileAttributes)
+				zfs_setwinflags(VTOZ(vp), fbi->FileAttributes);
+
 			Status = zfs_setattr(vp, &va, 0, NULL, NULL);
+
+			// zfs_setattr will turn ARCHIVE back on, when perhaps it is set off by this call
+			if (fbi->FileAttributes)
+				zfs_setwinflags(VTOZ(vp), fbi->FileAttributes);
 
 			VN_RELE(vp);
 		}
 		break;
 	case FileDispositionInformation: // unlink
-		dprintf("* FileDispositionInformation\n");
+		dprintf("* SET FileDispositionInformation\n");
 		FILE_DISPOSITION_INFORMATION *fdi = Irp->AssociatedIrp.SystemBuffer;
 		if (fdi->DeleteFile) {
 			if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
@@ -2749,7 +2762,7 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		}
 		break;
 	case FileEndOfFileInformation: // extend?
-		dprintf("* FileEndOfFileInformation\n");
+		dprintf("* SET FileEndOfFileInformation\n");
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 			FILE_END_OF_FILE_INFORMATION *feofi = Irp->AssociatedIrp.SystemBuffer;
 			struct vnode *vp = IrpSp->FileObject->FsContext;
@@ -2765,16 +2778,16 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		}
 		break;
 	case FileLinkInformation: // symlink
-		dprintf("* FileLinkInformation NOTIMPLEMENTED\n");
+		dprintf("* SET FileLinkInformation NOTIMPLEMENTED\n");
 		break;
 	case FilePositionInformation: // seek
-		dprintf("* FilePositionInformation NOTIMPLEMENTED\n");
+		dprintf("* SET FilePositionInformation NOTIMPLEMENTED\n");
 		break;
 	case FileRenameInformation: // vnop_rename
 		Status = file_rename_information(DeviceObject, Irp, IrpSp);
 		break;
 	case FileValidDataLengthInformation:  // truncate?
-		dprintf("* FileValidDataLengthInformation NOTIMPLEMENTED\n");
+		dprintf("* SET FileValidDataLengthInformation NOTIMPLEMENTED\n");
 		break;
 	default:
 		dprintf("* %s: unknown type NOTIMPLEMENTED\n", __func__);
@@ -3645,10 +3658,10 @@ fsDispatcher(
 				*((uint64_t *)IrpSp->FileObject->FileName.Buffer), IrpSp->Flags, IrpSp->Parameters.Create.ShareAccess,
 				IrpSp->Parameters.Create.Options);
 		else
-			dprintf("IRP_MJ_CREATE: FileObject %p related %p name '%wZ' flags 0x%x sharing 0x%x options 0x%x\n",
+			dprintf("IRP_MJ_CREATE: FileObject %p related %p name '%wZ' flags 0x%x sharing 0x%x options 0x%x attr 0x%x DesAcc 0x%x\n",
 				IrpSp->FileObject, IrpSp->FileObject ? IrpSp->FileObject->RelatedFileObject : NULL,
 				IrpSp->FileObject->FileName, IrpSp->Flags, IrpSp->Parameters.Create.ShareAccess,
-				IrpSp->Parameters.Create.Options);
+				IrpSp->Parameters.Create.Options, IrpSp->Parameters.Create.FileAttributes, IrpSp->Parameters.Create.SecurityContext->DesiredAccess);
 
 		Irp->IoStatus.Information = FILE_OPENED;
 		Status = STATUS_SUCCESS;

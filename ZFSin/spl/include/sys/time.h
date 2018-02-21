@@ -95,14 +95,13 @@ extern void hrt2ts(hrtime_t hrt, struct timespec *tsp);
 // Windows time is 1 64bit value; representing the number of 100-nanosecond intervals since January 1, 1601 (UTC).
 // There's 116444736000000000 100ns between 1601 and 1970
 #define TIME_WINDOWS_TO_UNIX(WT, UT) do { \
-	(UT)[0] = ((WT) - 116444736000000000) / 10000000; \
-	(UT)[1] = (((WT) - 116444736000000000) * 100) % 1000000000; \
+	uint64_t unixepoch = (WT) - 116444736000000000ULL; \
+	(UT)[0] = /* seconds */ unixepoch / 10000000ULL; \
+	(UT)[1] = /* remainding nsec */ unixepoch - ((UT)[0] * 10000000ULL); \
 	} while(0)
 
 #define TIME_UNIX_TO_WINDOWS(UT, WT) do { \
-	(WT) = ((UT)[1] / 100) + 116444736000000000; \
-	(WT) += (UT)[0] * 10000000; \
+	(WT) = ((UT)[1]) + ((UT)[0] * 10000000ULL) + 116444736000000000ULL; \
 	} while(0)
-
 
 #endif  /* _SPL_TIME_H */

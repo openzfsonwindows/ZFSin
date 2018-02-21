@@ -52,8 +52,8 @@ uint64_t  total_memory = 0;
 uint64_t  real_total_memory = 0;
 
 uint64_t vm_page_free_wanted = 0;
-uint64_t vm_page_free_min = 0;
-uint64_t vm_page_free_count = 0;
+uint64_t vm_page_free_min = 512;
+uint64_t vm_page_free_count = 5000;
 uint64_t vm_page_speculative_count = 0;
 
 uint64_t spl_GetPhysMem(void);

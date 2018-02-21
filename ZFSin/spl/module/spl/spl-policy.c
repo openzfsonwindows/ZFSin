@@ -839,3 +839,21 @@ int secpolicy_fs_mount(const cred_t *cr, struct vnode *vp, struct mount *mp)
 {
 	return (spl_priv_check_cred(cr, PRIV_VFS_MOUNT, 0));
 }
+
+int
+secpolicy_vnode_setattr(cred_t *cr, struct vnode *vp, vattr_t *vap,
+	const vattr_t *ovap, int flags,
+	int unlocked_access(void *, int, cred_t *),
+	void *node)
+{
+	// FIXME
+	return (0);
+}
+
+int
+secpolicy_setid_setsticky_clear(vnode_t *vp, vattr_t *vap, const vattr_t *ovap,
+	cred_t *cr)
+{
+	// FIXME
+	return (0);
+}

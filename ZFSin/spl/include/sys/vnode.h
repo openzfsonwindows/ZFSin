@@ -182,6 +182,7 @@ enum create     { CRCREAT, CRMKNOD, CRMKDIR };  /* reason for create */
 #define AT_ATIME        VNODE_ATTR_va_access_time
 #define AT_MTIME        VNODE_ATTR_va_modify_time
 #define AT_CTIME        VNODE_ATTR_va_change_time
+#define AT_CRTIME       VNODE_ATTR_va_create_time
 #define AT_SIZE         VNODE_ATTR_va_data_size
 #define	AT_NOSET        0
 

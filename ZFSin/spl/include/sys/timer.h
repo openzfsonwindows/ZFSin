@@ -30,10 +30,11 @@
 #define _SPL_TIMER_H
 
 #include <osx/sched.h>
-
+// Typical timespec is smaller, but we need to retain the precision
+// to copy time between Unix and Windows.
 struct timespec {
-	unsigned long tv_sec;
-    long tv_nsec;
+	uint64_t tv_sec;
+    uint64_t tv_nsec;
 };
 
 //#define USEC_PER_SEC    1000000         /* microseconds per second */

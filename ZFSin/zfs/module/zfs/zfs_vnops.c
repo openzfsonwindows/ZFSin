@@ -3380,7 +3380,6 @@ zfs_setattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 	caller_context_t *ct)
 {
 	int		err=0, err2;
-#if 0
 	znode_t		*zp = VTOZ(vp);
 	zfsvfs_t	*zfsvfs = zp->z_zfsvfs;
 	zilog_t		*zilog;
@@ -3783,13 +3782,13 @@ top:
      */
 
 	if (mask & AT_ACL) {
-
-//        if ((vap->va_acl != (kauth_acl_t) KAUTH_FILESEC_NONE) &&
- //           (vap->va_acl->acl_entrycount > 0) &&
-   //         (vap->va_acl->acl_entrycount != KAUTH_FILESEC_NOACL)) {
+#if 0
+        if ((vap->va_acl != (kauth_acl_t) KAUTH_FILESEC_NONE) &&
+            (vap->va_acl->acl_entrycount > 0) &&
+	        (vap->va_acl->acl_entrycount != KAUTH_FILESEC_NOACL)) {
 
             vsecattr.vsa_mask = VSA_ACE;
-  //          kauth = vap->va_acl;
+            kauth = vap->va_acl;
 
 #if HIDE_TRIVIAL_ACL
 			// We might have to add <up to> 3 trivial acls, depending on
@@ -3797,13 +3796,13 @@ top:
             aclbsize = ( 3 + kauth->acl_entrycount ) * sizeof(ace_t);
             dprintf("Given %d ACLs, adding 3\n", kauth->acl_entrycount);
 #else
-    //        aclbsize = kauth->acl_entrycount * sizeof(ace_t);
-    //        dprintf("Given %d ACLs\n", kauth->acl_entrycount);
+            aclbsize = kauth->acl_entrycount * sizeof(ace_t);
+            dprintf("Given %d ACLs\n", kauth->acl_entrycount);
 #endif
-///
-	//		vsecattr.vsa_aclentp = kmem_zalloc(aclbsize, KM_SLEEP);
-      //      aaclp = vsecattr.vsa_aclentp;
-      //      vsecattr.vsa_aclentsz = aclbsize;
+
+			vsecattr.vsa_aclentp = kmem_zalloc(aclbsize, KM_SLEEP);
+            aaclp = vsecattr.vsa_aclentp;
+            vsecattr.vsa_aclentsz = aclbsize;
 
 #if HIDE_TRIVIAL_ACL
 			// Add in the trivials, keep "seen_type" as a bit pattern of
@@ -3844,6 +3843,7 @@ top:
             kmem_free(aaclp, aclbsize);
 
         } // blank ACL?
+#endif // 0
 	} // ACL
 
 
@@ -3980,7 +3980,7 @@ top:
          * now, we shall stick a plaster over this open-fracture
          */
         if (err == 2) {
-            printf("setattr: triggered SA_LOOKUP == NULL problem\n");
+            dprintf("setattr: triggered SA_LOOKUP == NULL problem\n");
             err = 0;
         }
 
@@ -4018,14 +4018,11 @@ top:
 		    mtime, sizeof (mtime));
 	}
 
-#ifdef _WIN32
-    /* CTIME overloaded to mean CRTIME */
-	if (mask & AT_CTIME) {
+	if (mask & AT_CRTIME) {
 		ZFS_TIME_ENCODE(&vap->va_crtime, crtime);
 		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL,
 		    crtime, sizeof (crtime));
 	}
-#endif
 
 	/* XXX - shouldn't this be done *before* the ATIME/MTIME checks? */
 	if (mask & AT_SIZE && !(mask & AT_MTIME)) {
@@ -4048,6 +4045,16 @@ top:
 			    mtime, ctime, B_TRUE);
 		}
 	}
+
+#ifdef _WIN32
+	// * you are not allowed to change "change time" in POSIX, But windows allows it (ifstest too)
+	if (mask & AT_CTIME) {
+		ZFS_TIME_ENCODE(&vap->va_ctime, ctime);
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL,
+			ctime, sizeof(ctime));
+	}
+#endif
+
 	/*
 	 * Do this after setting timestamps to prevent timestamp
 	 * update from toggling bit
@@ -4142,7 +4149,6 @@ out3:
 #undef _NUM_BULK
 
 	ZFS_EXIT(zfsvfs);
-#endif
 	return (err);
 }
 
