@@ -3726,6 +3726,7 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 
 	if (zfs_dataset_exists(hdl, zc.zc_name, ZFS_TYPE_DATASET)) {
 		zfs_handle_t *zhp;
+		boolean_t encrypted;
 
 		/*
 		 * Destination fs exists.  It must be one of these cases:
@@ -3773,21 +3774,33 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 		}
 
 		/*
-		 * zfs recv -F cant be used to blow away an existing
-		 * encrypted filesystem. This is because it would require
-		 * the dsl dir to point to the the new key (or lack of a
-		 * key) and the old key at the same time. The -F flag may
-		 * still be used for deleting intermediate snapshots that
-		 * would otherwise prevent the receive from working.
+		 * Raw sends can not be performed as an incremental on top
+		 * of existing unencryppted datasets. zfs recv -F cant be
+		 * used to blow away an existing encrypted filesystem. This
+		 * is because it would require the dsl dir to point to the
+		 * new key (or lack of a key) and the old key at the same
+		 * time. The -F flag may still be used for deleting
+		 * intermediate snapshots that would otherwise prevent the
+		 * receive from working.
 		 */
-
-		if (stream_wantsnewfs && flags->force &&
-		    zfs_prop_get_int(zhp, ZFS_PROP_ENCRYPTION) !=
-		    ZIO_CRYPT_OFF) {
+		encrypted = zfs_prop_get_int(zhp, ZFS_PROP_ENCRYPTION) !=
+		    ZIO_CRYPT_OFF;
+		if (!stream_wantsnewfs && !encrypted && raw) {
 			zfs_close(zhp);
 			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
-			    "zfs receive -F cannot be used to "
-			    "destroy an encrypted filesystem"));
+			    "cannot perform raw receive on top of "
+			    "existing unencrypted dataset"));
+			err = zfs_error(hdl, EZFS_BADRESTORE, errbuf);
+			goto out;
+		}
+
+		if (stream_wantsnewfs && flags->force &&
+		    ((raw && !encrypted) || encrypted)) {
+			zfs_close(zhp);
+			zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+			    "zfs receive -F cannot be used to destroy an "
+			    "encrypted filesystem or overwrite an "
+			    "unencrypted one with an encrypted one"));
 			err = zfs_error(hdl, EZFS_BADRESTORE, errbuf);
 			goto out;
 		}
