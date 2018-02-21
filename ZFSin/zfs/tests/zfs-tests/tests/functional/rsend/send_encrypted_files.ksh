@@ -74,12 +74,6 @@ log_must mkfile -n 32M /$TESTPOOL/$TESTFS2/truncated
 log_must truncate -s 4M /$TESTPOOL/$TESTFS2/truncated
 sync
 
-log_must set_metadata_compression_disabled 1
-log_must dd if=/dev/urandom of=/$TESTPOOL/$TESTFS2/no_mdcomp \
-	count=1 bs=512 seek=10G >/dev/null 2>&1
-sync
-log_must set_metadata_compression_disabled 0
-
 log_must mkdir -p /$TESTPOOL/$TESTFS2/dir
 for i in {1..1000}; do
 	log_must mkfile 512 /$TESTPOOL/$TESTFS2/dir/file-$i

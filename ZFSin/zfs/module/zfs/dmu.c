@@ -2402,16 +2402,12 @@ dmu_write_policy(objset_t *os, dnode_t *dn, int level, int wp, zio_prop_t *zp)
 	 *	 3. all other level 0 blocks
 	 */
 	if (ismd) {
-		if (zfs_mdcomp_disable) {
-			compress = ZIO_COMPRESS_EMPTY;
-		} else {
-			/*
-			 * XXX -- we should design a compression algorithm
-			 * that specializes in arrays of bps.
-			 */
-			compress = zio_compress_select(os->os_spa,
-			    ZIO_COMPRESS_ON, ZIO_COMPRESS_ON);
-		}
+		/*
+		 * XXX -- we should design a compression algorithm
+		 * that specializes in arrays of bps.
+		 */
+		compress = zio_compress_select(os->os_spa,
+		    ZIO_COMPRESS_ON, ZIO_COMPRESS_ON);
 
 		/*
 		 * Metadata always gets checksummed.  If the data

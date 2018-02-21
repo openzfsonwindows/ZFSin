@@ -3478,7 +3478,7 @@ dbuf_prepare_encrypted_dnode_leaf(dbuf_dirty_record_t *dr)
 		    dmu_objset_id(db->db_objset),
 		    dr->dt.dl.dr_byteorder, DMU_OT_DNODE,
 		    dr->dt.dl.dr_salt, dr->dt.dl.dr_iv, dr->dt.dl.dr_mac);
-	}
+        }
 }
 
 /*
