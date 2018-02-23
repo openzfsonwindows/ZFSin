@@ -8684,37 +8684,6 @@ l2arc_write_buffers(spa_t *spa, l2arc_dev_t *dev, uint64_t target_sz)
             (void) refcount_add_many(&dev->l2ad_alloc,
                 arc_hdr_size(hdr), hdr);
 
-			/*
-			 * Normally the L2ARC can use the hdr's data, but if
-			 * we're sharing data between the hdr and one of its
-			 * bufs, L2ARC needs its own copy of the data so that
-			 * the ZIO below can't race with the buf consumer.
-			 * Another case where we need to create a copy of the
-			 * data is when the buffer size is not device-aligned
-			 * and we need to pad the block to make it such.
-			 * That also keeps the clock hand suitably aligned.
-			 *
-			 * To ensure that the copy will be available for the
-			 * lifetime of the ZIO and be cleaned up afterwards, we
-			 * add it to the l2arc_free_on_write queue.
-			 */
-			asize = vdev_psize_to_asize(dev->l2ad_vdev,
-			    psize);
-			if (!HDR_SHARED_DATA(hdr) && psize == asize) {
-				to_write = hdr->b_l1hdr.b_pabd;
-			} else {
-				to_write = abd_alloc_for_io(asize,
-				    HDR_ISTYPE_METADATA(hdr));
-				ASSERT3S(psize, <=, hdr->b_l1hdr.b_pabd->abd_size);
-				abd_copy_off(to_write, hdr->b_l1hdr.b_pabd, 0, 0, psize);
-				if (asize != psize) {
-					abd_zero_off(to_write, psize,
-					    asize - psize);
-				}
-				l2arc_free_abd_on_write(to_write, asize,
-				    arc_buf_type(hdr));
-			}
-
 			wzio = zio_write_phys(pio, dev->l2ad_vdev,
 				hdr->b_l2hdr.b_daddr, asize, to_write,
 			    ZIO_CHECKSUM_OFF, NULL, hdr,
