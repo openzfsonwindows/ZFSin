@@ -1556,8 +1556,8 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		FILE_FS_ATTRIBUTE_INFORMATION *ffai = Irp->AssociatedIrp.SystemBuffer;
 		ffai->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_NAMED_STREAMS |
 			FILE_PERSISTENT_ACLS | FILE_SUPPORTS_OBJECT_IDS | FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS |
-			FILE_SUPPORTS_REPARSE_POINTS | FILE_UNICODE_ON_DISK | FILE_SUPPORTS_HARD_LINKS | FILE_SUPPORTS_OPEN_BY_FILE_ID |
-			FILE_SUPPORTS_EXTENDED_ATTRIBUTES;
+			FILE_SUPPORTS_REPARSE_POINTS | FILE_UNICODE_ON_DISK | FILE_SUPPORTS_HARD_LINKS | FILE_SUPPORTS_OPEN_BY_FILE_ID /* |
+			FILE_SUPPORTS_EXTENDED_ATTRIBUTES*/;
 		if (zfsvfs->z_case == ZFS_CASE_SENSITIVE) 
 			ffai->FileSystemAttributes |= FILE_CASE_SENSITIVE_SEARCH;
 
@@ -1783,7 +1783,7 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	fdvp = ZTOV(dzp);
 	VN_HOLD(fvp);
 	VN_HOLD(tdvp);
-	// We now hold everything but "tvp".
+	// "tvp" (if not NULL) and "tdvp" is held by zfs_find_dvp_vp
 
 	error = zfs_rename(fdvp, &zp->z_name_cache[zp->z_name_offset],  
 		tdvp, remainder ? remainder : filename,
@@ -1812,10 +1812,136 @@ out:
 	if (tdvp) VN_RELE(tdvp);
 	if (fdvp) VN_RELE(fdvp);
 	if (fvp) VN_RELE(fvp);
+	if (tvp) VN_RELE(tvp);
 
 	return error;
 }
 
+// create hardlink by calling zfs_create
+NTSTATUS file_link_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	NTSTATUS Status;
+	/*
+	typedef struct _FILE_LINK_INFORMATION {
+	BOOLEAN ReplaceIfExists;
+	HANDLE  RootDirectory;
+	ULONG   FileNameLength;
+	WCHAR   FileName[1];
+	} FILE_LINK_INFORMATION, *PFILE_LINK_INFORMATION;
+	*/
+
+	FILE_LINK_INFORMATION *link = Irp->AssociatedIrp.SystemBuffer;
+	dprintf("* FileLinkInformation: %.*S\n", link->FileNameLength / sizeof(WCHAR), link->FileName);
+
+	// So, use FileObject to get VP.
+	// Use VP to lookup parent.
+	// Use Filename to find destonation dvp, and vp if it exists.
+	if (IrpSp->FileObject == NULL || IrpSp->FileObject->FsContext == NULL)
+		return STATUS_INVALID_PARAMETER;
+
+	FILE_OBJECT *RootFileObject = NULL;
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	struct vnode *fvp = FileObject->FsContext;
+	znode_t *zp = VTOZ(fvp);
+	znode_t *dzp = NULL;
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+	int error;
+	ULONG outlen;
+	char *remainder = NULL;
+	char buffer[MAXNAMELEN], *filename;
+	struct vnode *tdvp = NULL, *tvp = NULL, *fdvp = NULL;
+	uint64_t parent = 0;
+
+	// If given a RootDirectory Handle, lookup tdvp
+	if (link->RootDirectory != 0) {
+		if (ObReferenceObjectByHandle(link->RootDirectory,
+			GENERIC_READ, *IoFileObjectType, KernelMode,
+			&RootFileObject, NULL) != STATUS_SUCCESS) {
+			return STATUS_INVALID_PARAMETER;
+		}
+		tdvp = RootFileObject->FsContext;
+		VN_HOLD(tdvp);
+	} else {
+		// Name can be absolute, if so use name, otherwise, use vp's parent.
+	}
+
+	// Convert incoming filename to utf8
+	error = RtlUnicodeToUTF8N(buffer, MAXNAMELEN, &outlen,
+		link->FileName, link->FileNameLength);
+
+	if (error != STATUS_SUCCESS &&
+		error != STATUS_SOME_NOT_MAPPED) {
+		return STATUS_ILLEGAL_CHARACTER;
+	}
+
+	// Output string is only null terminated if input is, so do so now.
+	buffer[outlen] = 0;
+	filename = buffer;
+
+	// Filename is often "\??\E:\name" so we want to eat everything up to the "\name"
+	if ((filename[0] == '\\') &&
+		(filename[1] == '?') &&
+		(filename[2] == '?') &&
+		(filename[3] == '\\') &&
+		/* [4] drive letter */
+		(filename[5] == ':') &&
+		(filename[6] == '\\'))
+		filename = &filename[6];
+
+	error = zfs_find_dvp_vp(zfsvfs, filename, 1, 0, &remainder, &tdvp, &tvp, 0);
+	if (error) {
+		return STATUS_OBJECTID_NOT_FOUND;
+	}
+
+	// Fetch parent
+	VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zfsvfs),
+		&parent, sizeof(parent)) == 0);
+
+	// Fetch fdvp
+	error = zfs_zget(zfsvfs, parent, &dzp);
+	if (error) {
+		error = STATUS_OBJECTID_NOT_FOUND;
+		goto out;
+	}
+
+	// Lookup name
+	if (zp->z_name_cache == NULL) {
+		error = STATUS_OBJECTID_NOT_FOUND;
+		goto out;
+	}
+
+	fdvp = ZTOV(dzp);
+	VN_HOLD(fvp);
+	// "tvp"(if not NULL) and "tdvp" is held by zfs_find_dvp_vp
+
+	// What about link->ReplaceIfExist ?
+
+	error = zfs_link(tdvp, fvp, remainder ? remainder : filename, NULL, NULL, 0);
+
+	if (error == 0) {
+
+	// FIXME, zget to get name?
+#if 0
+		// Release fromname, and lookup new name
+		kmem_free(zp->z_name_cache, zp->z_name_len);
+		zp->z_name_cache = NULL;
+		if (zfs_build_path(zp, VTOZ(tdvp), &zp->z_name_cache, &zp->z_name_len, &zp->z_name_offset) == 0) {
+			zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+				FILE_NOTIFY_CHANGE_CREATION,
+				FILE_ACTION_ADDED);
+		}
+#endif
+	}
+	// Release all holds
+out:
+	if (RootFileObject) ObDereferenceObject(RootFileObject);
+	if (tdvp) VN_RELE(tdvp);
+	if (fdvp) VN_RELE(fdvp);
+	if (fvp) VN_RELE(fvp);
+	if (tvp) VN_RELE(tvp);
+
+	return error;
+}
 
 
 NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_BASIC_INFORMATION *basic)
@@ -1883,6 +2009,7 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 		//         sa_object_size(zp->z_sa_hdl, &blksize, &nblks);
 		uint64_t blk = zfs_blksz(zp);
 		standard->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size?zp->z_size:1, blk);  // space taken on disk, multiples of block size
+		//standard->AllocationSize.QuadPart = zp->z_size;  // space taken on disk, multiples of block size
 		standard->EndOfFile.QuadPart = zp->z_size;       // byte size of file
 		standard->NumberOfLinks = zp->z_links;
 		standard->DeletePending = vnode_unlink(vp) ? TRUE : FALSE;
@@ -2175,7 +2302,16 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		dprintf("* %s: FileCompressionInformation NOT IMPLEMENTED\n", __func__);
 		break;
 	case FileEaInformation:
-		dprintf("* %s: FileEaInformation NOT IMPLEMENTED\n", __func__);
+		dprintf("* %s: FileEaInformation\n", __func__);
+		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_EA_INFORMATION)) {
+			Irp->IoStatus.Information = sizeof(FILE_EA_INFORMATION);
+			Status = STATUS_BUFFER_TOO_SMALL;
+			break;
+		}
+		FILE_EA_INFORMATION *ea = Irp->AssociatedIrp.SystemBuffer;
+		ea->EaSize = 0;
+		Irp->IoStatus.Information = sizeof(FILE_EA_INFORMATION);
+		Status = STATUS_SUCCESS;
 		break;
 	case FileInternalInformation:
 		dprintf("* %s: FileInternalInformation\n", __func__);
@@ -2195,6 +2331,9 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		Status = STATUS_NO_SUCH_FILE;
 		break;
 	case FileNormalizedNameInformation:
+		dprintf("FileNormalizedNameInformation\n");
+		// IFSTEST AllInformationTest requires this name, and FileAllInformation
+		// to be identical, so we no longer return the fullpath.
 		normalize = 1; 
 		/* According to fastfat, this means never return shortnames */
 		/* fall through */
@@ -2778,7 +2917,7 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		}
 		break;
 	case FileLinkInformation: // symlink
-		dprintf("* SET FileLinkInformation NOTIMPLEMENTED\n");
+		Status = file_link_information(DeviceObject, Irp, IrpSp);
 		break;
 	case FilePositionInformation: // seek
 		dprintf("* SET FilePositionInformation NOTIMPLEMENTED\n");
