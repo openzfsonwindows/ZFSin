@@ -92,11 +92,11 @@
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
 |✅     | BasicInformationTest  | |
-|❌     | StandardInformationTest  | |
+|✅     | StandardInformationTest  | pass but for allocationsize=0x3e4 |
 |✅     | InternalInformationTest  | |
-|❌     | EaInformationTest  | |
+|❌     | EaInformationTest  | EA needs attention |
 |✅     | NameInformationTest  | |
-|❌     | AllInformationTest  | |
+|❌     | AllInformationTest  | says filenames dont match when they do |
 |❌     | AllocationInformationTest  | |
 |❌     | ZeroAllocationInformationTest  | |
 |       | CompressionInformationTest  | |
