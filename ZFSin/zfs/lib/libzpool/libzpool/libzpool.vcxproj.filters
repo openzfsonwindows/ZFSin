@@ -336,5 +336,8 @@
     <ClCompile Include="..\..\..\module\zfs\spa_checkpoint.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\module\zfs\vdev_initialize.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

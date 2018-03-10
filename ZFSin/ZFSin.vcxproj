@@ -357,6 +357,7 @@
     <ClCompile Include="zfs\module\zfs\vdev_indirect.c" />
     <ClCompile Include="zfs\module\zfs\vdev_indirect_births.c" />
     <ClCompile Include="zfs\module\zfs\vdev_indirect_mapping.c" />
+    <ClCompile Include="zfs\module\zfs\vdev_initialize.c" />
     <ClCompile Include="zfs\module\zfs\vdev_label.c" />
     <ClCompile Include="zfs\module\zfs\vdev_mirror.c" />
     <ClCompile Include="zfs\module\zfs\vdev_missing.c" />

@@ -575,6 +575,7 @@ typedef enum zfs_ioc {
 	ZFS_IOC_REMAP,
     ZFS_IOC_POOL_CHECKPOINT,
     ZFS_IOC_POOL_DISCARD_CHECKPOINT,
+	ZFS_IOC_POOL_INITIALIZE,
 
 	/*
 	 * Linux - 3/64 numbers reserved.

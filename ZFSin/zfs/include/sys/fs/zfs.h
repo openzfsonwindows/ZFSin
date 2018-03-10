@@ -727,6 +727,13 @@ typedef struct zpool_load_policy {
 #define	VDEV_TOP_ZAP_POOL_CHECKPOINT_SM \
 	"com.delphix:pool_checkpoint_sm"
 
+#define	VDEV_LEAF_ZAP_INITIALIZE_LAST_OFFSET	\
+	"com.delphix:next_offset_to_initialize"
+#define	VDEV_LEAF_ZAP_INITIALIZE_STATE	\
+	"com.delphix:vdev_initialize_state"
+#define	VDEV_LEAF_ZAP_INITIALIZE_ACTION_TIME	\
+	"com.delphix:vdev_initialize_action_time"
+
 /*
  * This is needed in userland to report the minimum necessary device size.
  *
@@ -824,6 +831,15 @@ typedef enum pool_scrub_cmd {
 	POOL_SCRUB_FLAGS_END
 } pool_scrub_cmd_t;
 
+/*
+ * Initialize functions.
+ */
+typedef enum pool_initialize_func {
+	POOL_INITIALIZE_DO,
+	POOL_INITIALIZE_CANCEL,
+	POOL_INITIALIZE_SUSPEND,
+	POOL_INITIALIZE_FUNCS
+} pool_initialize_func_t;
 
 /*
  * ZIO types.  Needed to interpret vdev statistics below.
@@ -910,6 +926,14 @@ typedef struct pool_checkpoint_stat {
 	uint64_t pcs_space;		/* checkpointed space */
 } pool_checkpoint_stat_t;
 
+typedef enum {
+	VDEV_INITIALIZE_NONE,
+	VDEV_INITIALIZE_ACTIVE,
+	VDEV_INITIALIZE_CANCELED,
+	VDEV_INITIALIZE_SUSPENDED,
+	VDEV_INITIALIZE_COMPLETE
+} vdev_initializing_state_t;
+
 /*
  * Vdev statistics.  Note: all fields should be 64-bit because this
  * is passed between kernel and userland as an nvlist uint64 array.
@@ -928,11 +952,15 @@ typedef struct vdev_stat {
 	uint64_t	vs_read_errors;		/* read errors		*/
 	uint64_t	vs_write_errors;	/* write errors		*/
 	uint64_t	vs_checksum_errors;	/* checksum errors	*/
+	uint64_t	vs_initialize_errors;	/* initializing errors	*/
 	uint64_t	vs_self_healed;		/* self-healed bytes	*/
 	uint64_t	vs_scan_removing;	/* removing?	*/
 	uint64_t	vs_scan_processed;	/* scan processed bytes	*/
 	uint64_t	vs_fragmentation;	/* device fragmentation */
-
+	uint64_t	vs_initialize_bytes_done; /* bytes initialized */
+	uint64_t	vs_initialize_bytes_est; /* total bytes to initialize */
+	uint64_t	vs_initialize_state;	/* vdev_initialzing_state_t */
+	uint64_t	vs_initialize_action_time; /* time_t */
 	uint64_t	vs_checkpoint_space;    /* checkpoint-consumed space */
 } vdev_stat_t;
 
@@ -1111,6 +1139,12 @@ typedef enum {
  * history log.
  */
 #define	ZPOOL_HIDDEN_ARGS	"hidden_args"
+
+/*
+ * The following are names used when invoking ZFS_IOC_POOL_INITIALIZE.
+ */
+#define	ZPOOL_INITIALIZE_COMMAND	"initialize_command"
+#define	ZPOOL_INITIALIZE_VDEVS		"initialize_vdevs"
 
 /*
  * Flags for ZFS_IOC_VDEV_SET_STATE
