@@ -1,4 +1,4 @@
-#!/usr/bin/python2.6
+#!/usr/bin/python
 
 #
 # This file and its contents are supplied under the terms of the
