@@ -7652,8 +7652,8 @@ spa_sync_upgrades(spa_t *spa, dmu_tx_t *tx)
 static void
 vdev_indirect_state_sync_verify(vdev_t *vd)
 {
-	vdev_indirect_mapping_t *vim = vd->vdev_indirect_mapping;
-	vdev_indirect_births_t *vib = vd->vdev_indirect_births;
+	ASSERTV(vdev_indirect_mapping_t *vim = vd->vdev_indirect_mapping);
+	ASSERTV(vdev_indirect_births_t *vib = vd->vdev_indirect_births);
 
 	if (vd->vdev_ops == &vdev_indirect_ops) {
 		ASSERT(vim != NULL);

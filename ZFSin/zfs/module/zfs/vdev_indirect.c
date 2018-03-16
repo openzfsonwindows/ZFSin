@@ -429,7 +429,7 @@ spa_condense_indirect_commit_sync(void *arg, dmu_tx_t *tx)
 {
 	spa_condensing_indirect_t *sci = arg;
 	uint64_t txg = dmu_tx_get_txg(tx);
-	spa_t *spa = dmu_tx_pool(tx)->dp_spa;
+	ASSERTV(spa_t *spa = dmu_tx_pool(tx)->dp_spa);
 
 	ASSERT(dmu_tx_is_syncing(tx));
 	ASSERT3P(sci, ==, spa->spa_condensing_indirect);
@@ -699,7 +699,7 @@ void
 vdev_indirect_sync_obsolete(vdev_t *vd, dmu_tx_t *tx)
 {
 	spa_t *spa = vd->vdev_spa;
-	vdev_indirect_config_t *vic = &vd->vdev_indirect_config;
+	ASSERTV(vdev_indirect_config_t *vic = &vd->vdev_indirect_config);
 
 	ASSERT3U(vic->vic_mapping_object, !=, 0);
 	ASSERT(range_tree_space(vd->vdev_obsolete_segments) > 0);
@@ -786,7 +786,8 @@ vdev_obsolete_sm_object(vdev_t *vd)
 	}
 
 	uint64_t sm_obj = 0;
-	int err = zap_lookup(vd->vdev_spa->spa_meta_objset, vd->vdev_top_zap,
+	ASSERTV(int err = )
+		zap_lookup(vd->vdev_spa->spa_meta_objset, vd->vdev_top_zap,
 	    VDEV_TOP_ZAP_INDIRECT_OBSOLETE_SM, sizeof (sm_obj), 1, &sm_obj);
 
 	ASSERT(err == 0 || err == ENOENT);
@@ -803,7 +804,8 @@ vdev_obsolete_counts_are_precise(vdev_t *vd)
 	}
 
 	uint64_t val = 0;
-	int err = zap_lookup(vd->vdev_spa->spa_meta_objset, vd->vdev_top_zap,
+	ASSERTV(int err = )
+		zap_lookup(vd->vdev_spa->spa_meta_objset, vd->vdev_top_zap,
 	    VDEV_TOP_ZAP_OBSOLETE_COUNTS_ARE_PRECISE, sizeof (val), 1, &val);
 
 	ASSERT(err == 0 || err == ENOENT);
@@ -979,7 +981,7 @@ vdev_indirect_remap(vdev_t *vd, uint64_t offset, uint64_t asize,
 		 * of its execution.
 		 */
 		rw_enter(&v->vdev_indirect_rwlock, RW_READER);
-		vdev_indirect_mapping_t *vim = v->vdev_indirect_mapping;
+		ASSERTV(vdev_indirect_mapping_t *vim = v->vdev_indirect_mapping);
 		ASSERT3P(vim, !=, NULL);
 
 		vdev_indirect_mapping_entry_phys_t *mapping =
@@ -1096,7 +1098,7 @@ vdev_indirect_io_start_cb(uint64_t split_offset, vdev_t *vd, uint64_t offset,
 static void
 vdev_indirect_io_start(zio_t *zio)
 {
-	spa_t *spa = zio->io_spa;
+	ASSERTV(spa_t *spa = zio->io_spa);
 
 	ASSERT(spa_config_held(spa, SCL_ALL, RW_READER) != 0);
 	if (zio->io_type != ZIO_TYPE_READ) {

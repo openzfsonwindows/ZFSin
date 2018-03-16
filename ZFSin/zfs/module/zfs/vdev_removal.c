@@ -225,7 +225,7 @@ vdev_remove_initiate_sync(void *arg, dmu_tx_t *tx)
 	spa_t *spa = vd->vdev_spa;
 	objset_t *mos = spa->spa_dsl_pool->dp_meta_objset;
 	spa_vdev_removal_t *svr = NULL;
-	uint64_t txg = dmu_tx_get_txg(tx);
+	ASSERTV(uint64_t txg = dmu_tx_get_txg(tx));
 
 	ASSERT3P(vd->vdev_ops, !=, &vdev_raidz_ops);
 	svr = spa_vdev_removal_create(vd);
@@ -668,8 +668,8 @@ spa_finish_removal(spa_t *spa, dsl_scan_state_t state, dmu_tx_t *tx)
 		vdev_indirect_config_t *vic = &vd->vdev_indirect_config;
 
 		if (srp->sr_prev_indirect_vdev != UINT64_MAX) {
-			vdev_t *pvd = vdev_lookup_top(spa,
-			    srp->sr_prev_indirect_vdev);
+			ASSERTV(vdev_t *pvd = vdev_lookup_top(spa,
+			    srp->sr_prev_indirect_vdev));
 			ASSERT3P(pvd->vdev_ops, ==, &vdev_indirect_ops);
 		}
 
@@ -708,7 +708,7 @@ vdev_mapping_sync(void *arg, dmu_tx_t *tx)
 	spa_vdev_removal_t *svr = arg;
 	spa_t *spa = dmu_tx_pool(tx)->dp_spa;
 	vdev_t *vd = svr->svr_vdev;
-	vdev_indirect_config_t *vic = &vd->vdev_indirect_config;
+	ASSERTV(vdev_indirect_config_t *vic = &vd->vdev_indirect_config);
 	uint64_t txg = dmu_tx_get_txg(tx);
 	vdev_indirect_mapping_t *vim = vd->vdev_indirect_mapping;
 
@@ -760,7 +760,7 @@ spa_vdev_copy_segment_read_done(zio_t *zio)
 	dva_t *dest_dva = vcsa->vcsa_dest_dva;
 	uint64_t txg = vcsa->vcsa_txg;
 	spa_t *spa = zio->io_spa;
-	vdev_t *dest_vd = vdev_lookup_top(spa, DVA_GET_VDEV(dest_dva));
+	ASSERTV(vdev_t *dest_vd = vdev_lookup_top(spa, DVA_GET_VDEV(dest_dva)));
 	blkptr_t *bp = NULL;
 	dva_t *dva = NULL;
 	uint64_t size = zio->io_size;

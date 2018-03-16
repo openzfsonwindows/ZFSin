@@ -2619,7 +2619,8 @@ vdev_checkpoint_sm_object(vdev_t *vd)
 	}
 
 	uint64_t sm_obj = 0;
-	int err = zap_lookup(spa_meta_objset(vd->vdev_spa), vd->vdev_top_zap,
+	ASSERTV(int err = )
+		zap_lookup(spa_meta_objset(vd->vdev_spa), vd->vdev_top_zap,
 	    VDEV_TOP_ZAP_POOL_CHECKPOINT_SM, sizeof (uint64_t), 1, &sm_obj);
 
 	ASSERT(err == 0 || err == ENOENT);

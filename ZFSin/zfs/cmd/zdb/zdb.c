@@ -3344,7 +3344,7 @@ zdb_leak_init_prepare_indirect_vdevs(spa_t *spa, zdb_cb_t *zcb)
 		 */
 		VERIFY0(vdev_metaslab_init(vd, 0));
 
-		vdev_indirect_mapping_t *vim = vd->vdev_indirect_mapping;
+		ASSERTV(vdev_indirect_mapping_t *vim = vd->vdev_indirect_mapping);
 		uint64_t vim_idx = 0;
 		for (uint64_t m = 0; m < vd->vdev_ms_count; m++) {
 
@@ -3514,7 +3514,7 @@ zdb_leak_fini(spa_t *spa, zdb_cb_t *zcb)
 		vdev_t *rvd = spa->spa_root_vdev;
 		for (unsigned c = 0; c < rvd->vdev_children; c++) {
 			vdev_t *vd = rvd->vdev_child[c];
-			metaslab_group_t *mg = vd->vdev_mg;
+			ASSERTV(metaslab_group_t *mg = vd->vdev_mg);
 
 			if (zcb->zcb_vd_obsolete_counts[c] != NULL) {
 				leaks |= zdb_check_for_obsolete_leaks(vd, zcb);
@@ -4250,7 +4250,7 @@ verify_checkpoint_vdev_spacemaps(spa_t *checkpoint, spa_t *current)
 	if (ckpoint_rvd->vdev_children < current_rvd->vdev_children) {
 		for (uint64_t c = ckpoint_rvd->vdev_children;
 		    c < current_rvd->vdev_children; c++) {
-			vdev_t *current_vd = current_rvd->vdev_child[c];
+			ASSERTV(vdev_t *current_vd = current_rvd->vdev_child[c]);
 			ASSERT3P(current_vd->vdev_checkpoint_sm, ==, NULL);
 		}
 	}

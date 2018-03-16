@@ -250,6 +250,7 @@ spa_checkpoint_discard_sync_callback(maptype_t type, uint64_t offset,
 	return (0);
 }
 
+#ifdef DEBUG
 static void
 spa_checkpoint_accounting_verify(spa_t *spa)
 {
@@ -273,6 +274,7 @@ spa_checkpoint_accounting_verify(spa_t *spa)
 	}
 	ASSERT3U(spa->spa_checkpoint_info.sci_dspace, ==, ckpoint_sm_space_sum);
 }
+#endif
 
 static void
 spa_checkpoint_discard_thread_sync(void *arg, dmu_tx_t *tx)

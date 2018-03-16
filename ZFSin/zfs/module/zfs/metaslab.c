@@ -3946,7 +3946,7 @@ static void
 metaslab_check_free_impl(vdev_t *vd, uint64_t offset, uint64_t size)
 {
 	metaslab_t *msp;
-	spa_t *spa = vd->vdev_spa;
+	ASSERTV(spa_t *spa = vd->vdev_spa);
 
 	if ((zfs_flags & ZFS_DEBUG_ZIO_FREE) == 0)
 		return;
