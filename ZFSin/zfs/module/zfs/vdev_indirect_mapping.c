@@ -25,7 +25,7 @@
 #include <sys/zfeature.h>
 #include <sys/dmu_objset.h>
 
-#ifdef DEBUG
+#ifdef DBG
 static boolean_t
 vdev_indirect_mapping_verify(vdev_indirect_mapping_t *vim)
 {

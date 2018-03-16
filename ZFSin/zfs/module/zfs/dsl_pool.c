@@ -566,7 +566,7 @@ dsl_pool_dirty_delta(dsl_pool_t *dp, int64_t delta)
 		cv_signal(&dp->dp_spaceavail_cv);
 }
 
-#ifdef DEBUG
+#ifdef DBG
 static boolean_t
 dsl_early_sync_task_verify(dsl_pool_t *dp, uint64_t txg)
 {
