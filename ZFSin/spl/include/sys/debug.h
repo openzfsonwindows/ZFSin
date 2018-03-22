@@ -105,7 +105,6 @@ do {									\
 	}								\
 } while (0)
 
-
 #define ASSERTF(cond, fmt, ...)					\
 do {									\
 	if (unlikely(!(cond)))						\
@@ -135,14 +134,16 @@ do {									\
 
 #endif /* DBG */
 
-// VERIFY macros do not change wrt DEBUG vs RELEASE
-#define VERIFY3_IMPL(LEFT, OP, RIGHT, TYPE, FMT, CAST)			\
-do {									\
-	if (!((TYPE)(LEFT) OP (TYPE)(RIGHT)))				\
-		PANIC("VERIFY3(" #LEFT " " #OP " " #RIGHT ") "		\
-		    "failed (" FMT " " #OP " " FMT ")\n",		\
-		    CAST (LEFT), CAST (RIGHT));				\
-} while (0)
+#define VERIFY3_IMPL(LEFT, OP, RIGHT, TYPE, FMT, CAST)					\
+	do {																\
+		TYPE _verify3_left = (TYPE)(LEFT);								\
+		TYPE _verify3_right = (TYPE)(RIGHT);							\
+		if (!(_verify3_left OP _verify3_right))							\
+			PANIC("VERIFY3( %s " #OP " %s ) "							\
+				"failed (" FMT " " #OP " " FMT ")\n",					\
+				#LEFT, #RIGHT,											\
+				CAST (_verify3_left), CAST (_verify3_right));			\
+	} while (0)
 
 #define VERIFY3S(x,y,z)	VERIFY3_IMPL(x, y, z, int64_t, "%lld", (long long))
 #define VERIFY3U(x,y,z)	VERIFY3_IMPL(x, y, z, uint64_t, "%llu",		\
