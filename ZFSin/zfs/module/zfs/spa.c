@@ -1282,6 +1282,9 @@ spa_deactivate(spa_t *spa)
 #ifdef __linux__
 	taskq_cancel_id(system_taskq, spa->spa_deadman_tqid);
 #endif
+#if defined (__APPLE__) && defined (_KERNEL)
+	bsd_untimeout(spa_deadman, spa);
+#endif
 
 	for (t = 0; t < ZIO_TYPES; t++) {
 		for (q = 0; q < ZIO_TASKQ_TYPES; q++) {
@@ -7754,6 +7757,10 @@ spa_sync(spa_t *spa, uint64_t txg)
 	    spa_deadman, spa, TQ_SLEEP, ddi_get_lbolt() +
 	    NSEC_TO_TICK(spa->spa_deadman_synctime));
 #endif
+#if defined (__APPLE__) && defined (_KERNEL)
+	struct timespec ts = {.tv_sec = 0,.tv_nsec = spa->spa_deadman_synctime};
+	bsd_timeout(spa_deadman, spa, &ts);
+#endif
 
 	/*
 	 * If we are upgrading to SPA_VERSION_RAIDZ_DEFLATE this txg,
@@ -7969,7 +7976,9 @@ spa_sync(spa_t *spa, uint64_t txg)
 	taskq_cancel_id(system_taskq, spa->spa_deadman_tqid);
 	spa->spa_deadman_tqid = 0;
 #endif
-
+#if defined (__APPLE__) && defined (_KERNEL)
+	bsd_untimeout(spa_deadman, spa);
+#endif
 	/*
 	 * Clear the dirty config list.
 	 */

@@ -568,9 +568,15 @@ spa_deadman(void *arg)
 	if (zfs_deadman_enabled)
 		vdev_deadman(spa->spa_root_vdev);
 
+#ifdef __linux__
 	spa->spa_deadman_tqid = taskq_dispatch_delay(system_taskq,
 	    spa_deadman, spa, TQ_SLEEP, ddi_get_lbolt() +
 	    NSEC_TO_TICK(spa->spa_deadman_synctime));
+#endif
+#if defined (__APPLE__) && defined (_KERNEL)
+	struct timespec ts = { .tv_sec = 0, .tv_nsec = spa->spa_deadman_synctime };
+	bsd_timeout(spa_deadman, spa, &ts);
+#endif
 }
 
 /*
