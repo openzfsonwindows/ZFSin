@@ -32,7 +32,7 @@ for disk in $DISKS; do
 	fi
 done
 
-log_must [ "x$(get_disklist $TESTPOOL)" = "x$REMOVEDISK" ]
+log_must [ "x$(get_disklist $TESTPOOL)" = "x${REMOVEDISK#/dev/}" ]
 
 log_mustnot zpool remove $TESTPOOL $disk
 
