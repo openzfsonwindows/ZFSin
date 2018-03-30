@@ -1191,8 +1191,10 @@ zfs_write(vnode_t *vp, uio_t *uio, int ioflag, cred_t *cr, caller_context_t *ct)
 void
 zfs_get_done(zgd_t *zgd, int error)
 {
+#ifndef __APPLE__
 	znode_t *zp = zgd->zgd_private;
 	objset_t *os = zp->z_zfsvfs->z_os;
+#endif
 
 	if (zgd->zgd_db)
 		dmu_buf_rele(zgd->zgd_db, zgd);
