@@ -5,12 +5,12 @@
 
 | Sts| Test name        | Comments            |
 | :---- |:--------------| :-------------------|
-|❌     | SetDaclSecurityTest    | Security not yet implemented |
-|❌     | SetOwnerSecurityTest   | 〃 |
-|❌     | SetGroupSecurityTest   | 〃 |
-|❌     | SetSaclSecurityTest    | 〃 |
-|❌     | AuditOwnerSecurityTest | 〃 |
-|❌     | DirectoryTraverseTest  | 〃 |
+|✅     | SetDaclSecurityTest    |  |
+|✅     | SetOwnerSecurityTest   |  |
+|✅     | SetGroupSecurityTest   |  |
+|✅     | SetSaclSecurityTest    |  |
+|❌     | AuditOwnerSecurityTest | Prints nothing? |
+|❌     | DirectoryTraverseTest  | Allows Dir create when shouldn't |
 
 
 ## OpenCreateGeneral
