@@ -803,6 +803,8 @@ int vnode_recycle(vnode_t *vp)
 		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 
 		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
+		FsRtlUninitializeFileLock(&vp->lock);
+
 		// mutex does not need releasing.
 
 		// Call sync?
@@ -852,6 +854,9 @@ void vnode_create(void *v_data, int type, int flags, struct vnode **vpp)
 	// Initialise the Windows specific data.
 	ExInitializeFastMutex(&(*vpp)->AdvancedFcbHeaderMutex);
 	FsRtlSetupAdvancedHeader(&(*vpp)->FileHeader, &(*vpp)->AdvancedFcbHeaderMutex);
+
+	FsRtlInitializeFileLock(&(*vpp)->lock, NULL, NULL);
+	ExInitializeResourceLite(&(*vpp)->resource);
 
 	// Release vnodes if needed
 	if (vnode_active >= vnode_max) {
@@ -947,3 +952,17 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 
 	return 0;
 }
+
+/*
+ * Set the Windows SecurityPolicy 
+ */
+void vnode_setsecurity(vnode_t *vp, void *sd)
+{
+	vp->security_descriptor = sd;
+}
+void *vnode_security(vnode_t *vp)
+{
+	return vp->security_descriptor;
+}
+
+

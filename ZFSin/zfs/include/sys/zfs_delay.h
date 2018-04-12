@@ -34,7 +34,7 @@
 		if (delta > 0) {					\
 LARGE_INTEGER timeout; \
 timeout.QuadPart = -(delta / 100ULL); /* negative is relative timeout */ \
-KeWaitForSingleObject(NULL, Executive, KernelMode, FALSE, &timeout); \
+KeDelayExecutionThread(KernelMode, FALSE, &timeout);  \
 		}							\
 	} while (0)
 

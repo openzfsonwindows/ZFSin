@@ -23,7 +23,7 @@
  *
  * Copyright (C) 2017 Jorgen Lundman <lundman@lundman.net>
  *
- */
+*/
 
 #include <sys/sysmacros.h>
 #include <sys/time.h>
@@ -54,6 +54,7 @@ hrtime_t gethrtime(void)
 		start.QuadPart--;
 	}
 	KeQueryTickCount(&now);
+	ASSERT((now.QuadPart != start.QuadPart));
     return zfs_abs_to_nano(now.QuadPart - start.QuadPart);
 }
 

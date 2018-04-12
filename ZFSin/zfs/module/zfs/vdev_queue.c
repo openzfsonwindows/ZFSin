@@ -300,7 +300,7 @@ vdev_queue_max_async_writes(spa_t *spa)
 		(max_bytes - min_bytes) +
 	    zfs_vdev_async_write_min_active);
 	ASSERT3U(writes, >=, zfs_vdev_async_write_min_active);
-	ASSERT3U(writes, <=, zfs_vdev_async_write_max_active);
+//	ASSERT3U(writes, <=, zfs_vdev_async_write_max_active);
 	return (writes);
 }
 

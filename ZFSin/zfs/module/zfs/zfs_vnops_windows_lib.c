@@ -679,6 +679,7 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 
 	if (status != STATUS_SUCCESS) {
 		dprintf("IoCreateDeviceSecure returned %08x\n", status);
+		return status;
 	}
 
 	mount_t *zmo_dcb = diskDeviceObject->DeviceExtension;
@@ -2518,4 +2519,192 @@ void zfs_send_notify(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG FilterM
 		FilterMatch, Action,
 		NULL); // TargetContext
 	FreeUnicodeString(&ustr);
+}
+
+
+void zfs_uid2sid(uint64_t uid, SID **sid)
+{
+	int num;
+	SID *tmp;
+
+	ASSERT(sid != NULL);
+
+	// Root?
+	num = (uid == 0) ? 1 : 2;
+
+	tmp = kmem_zalloc(offsetof(SID, SubAuthority) + (num * sizeof(ULONG)), KM_SLEEP);
+
+	tmp->Revision = 1;
+	tmp->SubAuthorityCount = num;
+	tmp->IdentifierAuthority.Value[0] = 0;
+	tmp->IdentifierAuthority.Value[1] = 0;
+	tmp->IdentifierAuthority.Value[2] = 0;
+	tmp->IdentifierAuthority.Value[3] = 0;
+	tmp->IdentifierAuthority.Value[4] = 0;
+
+	if (uid == 0) {
+		tmp->IdentifierAuthority.Value[5] = 5;
+		tmp->SubAuthority[0] = 18;
+	} else {
+		tmp->IdentifierAuthority.Value[5] = 22;
+		tmp->SubAuthority[0] = 1;
+		tmp->SubAuthority[1] = uid; // bits truncation?
+	}
+
+	*sid = tmp;
+}
+
+uint64_t zfs_sid2uid(SID *sid)
+{
+	// Root
+	if (sid->Revision == 1 && sid->SubAuthorityCount == 1 && 
+		sid->IdentifierAuthority.Value[0] == 0 && sid->IdentifierAuthority.Value[1] == 0 && sid->IdentifierAuthority.Value[2] == 0 && 
+		sid->IdentifierAuthority.Value[3] == 0 && sid->IdentifierAuthority.Value[4] == 0 && sid->IdentifierAuthority.Value[5] == 18)
+		return 0;
+
+	// Samba's SID scheme: S-1-22-1-X
+	if (sid->Revision == 1 && sid->SubAuthorityCount == 2 &&
+		sid->IdentifierAuthority.Value[0] == 0 && sid->IdentifierAuthority.Value[1] == 0 && sid->IdentifierAuthority.Value[2] == 0 &&
+		sid->IdentifierAuthority.Value[3] == 0 && sid->IdentifierAuthority.Value[4] == 0 && sid->IdentifierAuthority.Value[5] == 22 &&
+		sid->SubAuthority[0] == 1)
+		return sid->SubAuthority[1];
+	
+	return UID_NOBODY;
+}
+
+
+void zfs_gid2sid(uint64_t gid, SID **sid)
+{
+	int num = 2;
+	SID *tmp;
+
+	ASSERT(sid != NULL);
+
+	tmp = kmem_zalloc(offsetof(SID, SubAuthority) + (num * sizeof(ULONG)), KM_SLEEP);
+
+	tmp->Revision = 1;
+	tmp->SubAuthorityCount = num;
+	tmp->IdentifierAuthority.Value[0] = 0;
+	tmp->IdentifierAuthority.Value[1] = 0;
+	tmp->IdentifierAuthority.Value[2] = 0;
+	tmp->IdentifierAuthority.Value[3] = 0;
+	tmp->IdentifierAuthority.Value[4] = 0;
+
+	tmp->IdentifierAuthority.Value[5] = 22;
+	tmp->SubAuthority[0] = 2;
+	tmp->SubAuthority[1] = gid; // bits truncation?
+
+	*sid = tmp;
+}
+
+void zfs_freesid(SID *sid)
+{
+	ASSERT(sid != NULL);
+	kmem_free(sid, offsetof(SID, SubAuthority) + (sid->SubAuthorityCount * sizeof(ULONG)));
+}
+
+void zfs_set_security_root(struct vnode *vp)
+{
+	SECURITY_DESCRIPTOR sd;
+	PSID usersid = NULL, groupsid = NULL;
+	znode_t *zp = VTOZ(vp);
+	NTSTATUS Status;
+
+	Status = RtlCreateSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
+	if (Status != STATUS_SUCCESS) goto err;
+
+	zfs_uid2sid(zp->z_uid, &usersid);
+	RtlSetOwnerSecurityDescriptor(&sd, usersid, FALSE);
+
+	zfs_gid2sid(zp->z_gid, &groupsid);
+	RtlSetGroupSecurityDescriptor(&sd, groupsid, FALSE);
+
+	ULONG buflen = 0;
+	Status = RtlAbsoluteToSelfRelativeSD(&sd, NULL, &buflen);
+	if (Status != STATUS_SUCCESS &&
+		Status != STATUS_BUFFER_TOO_SMALL) goto err;
+
+	ASSERT(buflen != 0);
+
+	void *tmp = ExAllocatePoolWithTag(PagedPool, buflen, 'ZSEC');
+	if (tmp == NULL) goto err;
+
+	Status = RtlAbsoluteToSelfRelativeSD(&sd, tmp, &buflen);
+	
+	vnode_setsecurity(vp, tmp);
+
+err:
+	if (usersid != NULL)
+		zfs_freesid(usersid);
+	if (groupsid != NULL)
+		zfs_freesid(groupsid);
+}
+
+void zfs_set_security(struct vnode *vp, struct vnode *dvp)
+{
+	SECURITY_SUBJECT_CONTEXT subjcont;
+	NTSTATUS Status;
+
+	if (vp == NULL) return;
+
+	if (vp->security_descriptor != NULL) return;
+
+	znode_t *zp = VTOZ(vp);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+
+	// If we are the rootvp, we don't have a parent, so do different setup
+	if (zp->z_id == zfsvfs->z_root) {
+		return zfs_set_security_root(vp);
+	}
+
+	ZFS_ENTER(zfsvfs);
+
+	// If no parent, find it. This will take one hold on
+	// dvp, either directly or from zget().
+	znode_t *dzp = NULL;
+	if (dvp == NULL) {
+		uint64_t parent;
+		if (sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zfsvfs),
+			&parent, sizeof(parent)) != 0) {
+			goto err;
+		}
+		if (zfs_zget(zfsvfs, parent, &dzp)) {
+			dvp = NULL;
+			goto err;
+		}
+		dvp = ZTOV(dzp);
+	} else {
+		VN_HOLD(dvp);
+		dzp = VTOZ(dvp);
+	}
+
+	ASSERT(dvp != NULL);
+	ASSERT(dzp != NULL);
+	ASSERT(vnode_security(dvp) != NULL);
+
+	SeCaptureSubjectContext(&subjcont);
+	void *sd = NULL;
+	Status = SeAssignSecurityEx(vnode_security(dvp), NULL, (void**)&sd, NULL,
+		vnode_isdir(vp), SEF_DACL_AUTO_INHERIT, &subjcont, IoGetFileObjectGenericMapping(), PagedPool);
+
+	if (Status != STATUS_SUCCESS) goto err;
+
+	vnode_setsecurity(vp, sd);
+
+	PSID usersid = NULL, groupsid = NULL;
+
+	zfs_uid2sid(zp->z_uid, &usersid);
+	RtlSetOwnerSecurityDescriptor(&sd, usersid, FALSE);
+
+	zfs_gid2sid(zp->z_gid, &groupsid);
+	RtlSetGroupSecurityDescriptor(&sd, groupsid, FALSE);
+
+err:
+	if (dvp) VN_RELE(dvp);
+	ZFS_EXIT(zfsvfs);
+
+	if (usersid != NULL)
+		zfs_freesid(usersid);
+	if (groupsid != NULL)
+		zfs_freesid(groupsid);
 }

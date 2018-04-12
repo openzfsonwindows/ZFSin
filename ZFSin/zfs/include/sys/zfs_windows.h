@@ -57,6 +57,8 @@ extern int zfs_windows_unmount(zfs_cmd_t *zc);
 extern NTSTATUS zfsdev_ioctl(PDEVICE_OBJECT DeviceObject, PIRP Irp, int flag);
 extern void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject);
 extern void zfs_send_notify(zfsvfs_t *zfsvfs, char *name, int, ULONG FilterMatch, ULONG Action);
+extern void zfs_set_security(struct vnode *vp, struct vnode *dvp);
+extern uint64_t zfs_sid2uid(SID *sid);
 
 NTSTATUS zfsdev_open(dev_t dev, PIRP Irp);
 NTSTATUS zfsdev_release(dev_t dev, PIRP Irp);
