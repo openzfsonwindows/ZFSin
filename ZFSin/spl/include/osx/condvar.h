@@ -10,10 +10,17 @@ typedef enum {
         CV_DRIVER
 } kcv_type_t;
 
+enum {
+	CV_SIGNAL = 0,
+	CV_BROADCAST = 1,
+	CV_MAX_EVENTS = 2
+};
 
 struct cv {
-	KEVENT kevent; 
-	int initialised;
+	KEVENT kevent[CV_MAX_EVENTS]; // signal event, broadcast event
+	KSPIN_LOCK waiters_count_lock;
+	uint32_t waiters_count;
+	uint32_t initialised; // Just used as sanity
 };
 
 typedef struct cv  kcondvar_t;
