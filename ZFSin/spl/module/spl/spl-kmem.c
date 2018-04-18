@@ -1020,7 +1020,8 @@ kmem_error(int error, kmem_cache_t *cparg, void *bufarg)
 
 	if (kmem_panic > 0) {
 		//delay(hz);
-		IOSleep(1000000);
+		//IOSleep(1000000);
+		DbgBreakPoint();
 		panic("kernel heap corruption detected");
 	}
 
@@ -1028,7 +1029,7 @@ kmem_error(int error, kmem_cache_t *cparg, void *bufarg)
 	//		debug_enter(NULL);
 	//		Debugger("Kernel heap corruption detected");
 	//	}
-
+	DbgBreakPoint();
 
 	kmem_logging = 1;	/* resume logging */
 }

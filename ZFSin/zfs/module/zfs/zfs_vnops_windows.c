@@ -128,7 +128,7 @@ void zfs_dirlist_free(zfs_dirlist_t *zccb)
 	if (zccb->magic == ZFS_DIRLIST_MAGIC) {
 		zccb->magic = 0;
 		if (zccb->searchname.Buffer && zccb->searchname.Length)
-			kmem_free(zccb->searchname.Buffer, zccb->searchname.Length);
+			kmem_free(zccb->searchname.Buffer, zccb->searchname.MaximumLength);
 		kmem_free(zccb, sizeof(zfs_dirlist_t));
 	}
 }
@@ -2136,6 +2136,25 @@ NTSTATUS file_standard_link_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, P
 	return STATUS_SUCCESS;
 }
 
+NTSTATUS file_id_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_ID_INFORMATION *fii)
+{
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+
+	dprintf("   %s\n", __func__);
+
+	struct vnode *vp = FileObject->FsContext;
+
+	znode_t *zp = VTOZ(vp);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+
+	fii->VolumeSerialNumber = 0x19831116;
+
+	RtlCopyMemory(&fii->FileId.Identifier[0], &zp->z_id, sizeof(UINT64));
+	uint64_t guid = dmu_objset_fsid_guid(zfsvfs->z_os);
+	RtlCopyMemory(&fii->FileId.Identifier[sizeof(UINT64)], &guid, sizeof(UINT64));
+
+	return STATUS_SUCCESS;
+}
 
 //
 // If overflow, set Information to input_size and NameLength to required size.
@@ -2459,6 +2478,19 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		Irp->IoStatus.Information = sizeof(FILE_STANDARD_LINK_INFORMATION);
 		break;
 	case FileReparsePointInformation:
+		break;
+	case FileIdInformation:
+		dprintf("* %s: FileIdInformation\n", __func__);
+		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_ID_INFORMATION)) {
+			Irp->IoStatus.Information = sizeof(FILE_ID_INFORMATION);
+			Status = STATUS_BUFFER_TOO_SMALL;
+			break;
+		}
+		FILE_ID_INFORMATION *fii = Irp->AssociatedIrp.SystemBuffer;
+		if (vp) {
+			Status = file_id_information(DeviceObject, Irp, IrpSp, fii);
+			Irp->IoStatus.Information = sizeof(FILE_ID_INFORMATION);
+		}
 		break;
 	default:
 		dprintf("* %s: unknown class 0x%x NOT IMPLEMENTED\n", __func__, IrpSp->Parameters.QueryFile.FileInformationClass);
@@ -2787,15 +2819,31 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 		wcsncmp(IrpSp->Parameters.QueryDirectory.FileName->Buffer, L"*", 1) != 0) {
 		// Save the pattern in the zccb, as it is only given in the first call (citation needed)
 
+		// If exists, we should free?
+		if (zccb->searchname.Buffer != NULL)
+			kmem_free(zccb->searchname.Buffer, zccb->searchname.MaximumLength);
+
 		zccb->ContainsWildCards =
 			FsRtlDoesNameContainWildCards(IrpSp->Parameters.QueryDirectory.FileName);
-		zccb->searchname.Length = zccb->searchname.MaximumLength = IrpSp->Parameters.QueryDirectory.FileName->Length;
-		zccb->searchname.Buffer = kmem_alloc(zccb->searchname.Length, KM_SLEEP);
-		if (zccb->ContainsWildCards)
-			Status = RtlUpcaseUnicodeString(&zccb->searchname, &IrpSp->Parameters.QueryDirectory.FileName, FALSE);
-		else
+		zccb->searchname.MaximumLength = IrpSp->Parameters.QueryDirectory.FileName->Length;
+		zccb->searchname.Length = IrpSp->Parameters.QueryDirectory.FileName->Length;
+		zccb->searchname.Buffer = kmem_alloc(zccb->searchname.MaximumLength, KM_SLEEP);
+		if (zccb->ContainsWildCards) {
+			// For some reason, RtlUpcaseUnicodeString() when told not to allocate
+			// will always return error 0x80000005, so we have to ask it to allocate.
+			UNICODE_STRING tmp = { 0 };
+		
+			Status = RtlUpcaseUnicodeString(&tmp, IrpSp->Parameters.QueryDirectory.FileName, TRUE);
+			if (Status == STATUS_SUCCESS) {
+				Status = RtlCopyMemory(zccb->searchname.Buffer, tmp.Buffer, zccb->searchname.Length);
+				RtlFreeUnicodeString(&tmp);
+			} else {
+				zccb->searchname.Length = 0;
+			}
+		} else {
 			Status = RtlCopyMemory(zccb->searchname.Buffer, IrpSp->Parameters.QueryDirectory.FileName->Buffer, zccb->searchname.Length);
-		dprintf("%s: setting up search '%.*S'\n", __func__, zccb->searchname.Length / sizeof(WCHAR), zccb->searchname.Buffer);
+		}
+		dprintf("%s: setting up search '%wZ' status 0x%x\n", __func__, &zccb->searchname, Status);
 	}
 
 	VN_HOLD(dvp);
@@ -3145,7 +3193,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		if (byteOffset.QuadPart + bufferLength > zp->z_size)
 			bufferLength = zp->z_size - byteOffset.QuadPart;
 
-		ASSERT(fileObject->PrivateCacheMap != NULL);
+		//ASSERT(fileObject->PrivateCacheMap != NULL);
 	}
 
 	uio_t *uio;
