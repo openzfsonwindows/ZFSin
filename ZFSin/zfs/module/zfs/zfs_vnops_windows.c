@@ -170,9 +170,17 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 
 	fullstrlen = strlen(filename);
 
+	// Sometimes we are given a path like "\Directory\directory\" with the final 
+	// separator, we want to eat that final character.
+	if ((fullstrlen > 2) &&
+		(filename[fullstrlen - 1] == '\\'))
+		filename[--fullstrlen] = 0;
+
 	for (word = strtok_r(filename, "/\\", &brkt);
 		word;
 		word = strtok_r(NULL, "/\\", &brkt)) {
+
+		//dprintf("..'%s'..", word);
 
 		// If a component part name is too long
 		if (strlen(word) > MAXNAMELEN - 1)
@@ -240,6 +248,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		} // is dir or not
 
 	} // for word
+	//dprintf("\n");
 
 	if (dvp) {
 		// We return with dvp HELD
@@ -285,7 +294,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 {
 	int error;
 	cred_t *cr = NULL;
-	char filename[PATH_MAX];
+	char *filename = NULL;
 	char *finalname;
 	char *brkt = NULL;
 	char *word = NULL;
@@ -414,6 +423,10 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	}
 
 
+	// Allocate space to hold name, must be freed from here on
+	filename = kmem_alloc(PATH_MAX, KM_SLEEP);
+
+
 	// No name conversion with FileID
 
 	if (!FileOpenByFileId) {
@@ -424,9 +437,10 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		if (error != STATUS_SUCCESS &&
 			error != STATUS_SOME_NOT_MAPPED) {
 			dprintf("RtlUnicodeToUTF8N returned 0x%x input len %d\n", error, FileObject->FileName.Length);
+			kmem_free(filename, PATH_MAX);
 			return STATUS_OBJECT_NAME_INVALID;
 		}
-
+		ASSERT(error != STATUS_SOME_NOT_MAPPED);
 		// Output string is only null terminated if input is, so do so now.
 		filename[outlen] = 0;
 		dprintf("%s: converted name is '%s' input len bytes %d (err %d) %s %s\n", __func__, filename, FileObject->FileName.Length, error,
@@ -453,10 +467,12 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				// A valid lookup gets a ccb attached
 				IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 
+				kmem_free(filename, PATH_MAX);
 				Irp->IoStatus.Information = FILE_OPENED;
 				return STATUS_SUCCESS;
 			}
 
+			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 			return STATUS_OBJECT_PATH_NOT_FOUND;
 		} // OpenRoot
@@ -482,6 +498,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			}
 			if (error != 0) {
 				VN_RELE(ZTOV(zp));
+				kmem_free(filename, PATH_MAX);
 				return error;
 			} // failed to get parentid, or find parent
 			// Copy over the vp info for below, both are held.
@@ -504,25 +521,30 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			REPARSE_DATA_BUFFER *rpb = finalname;
 			Irp->IoStatus.Information = rpb->ReparseTag;
 			Irp->Tail.Overlay.AuxiliaryBuffer = (void*)rpb;
+			kmem_free(filename, PATH_MAX);
 			return error;
 		}
 
 		if (!dvp && error == ESRCH) {
 			dprintf("%s: failed to find dvp for '%s' \n", __func__, filename);
+			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 			return STATUS_OBJECT_PATH_NOT_FOUND;
 		}
 		if (error == STATUS_OBJECT_NAME_INVALID) {
 			dprintf("%s: filename component too long\n", __func__);
+			kmem_free(filename, PATH_MAX);
 			return error;
 		}
 		// Open dir with FILE_CREATE but it exists
 		if (error == EEXIST) {
-			dprintf("%s: filename component too long\n", __func__);
+			dprintf("%s: dir exists, wont create\n", __func__);
+			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = FILE_EXISTS;
 			return STATUS_OBJECT_NAME_COLLISION;
 		}
 		dprintf("%s: failed to find vp in dvp\n", __func__);
+		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_OBJECT_NAME_NOT_FOUND;
 	}
@@ -535,13 +557,15 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			vnode_ref(dvp); // Hold open reference, until CLOSE
 			zfs_set_security(dvp, NULL);
 			if (DeleteOnClose) vnode_setunlink(dvp);
-			ASSERT(vp == NULL);
+			//ASSERT(vp == NULL);
 			VN_RELE(dvp);
+			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = FILE_OPENED;
 			return STATUS_SUCCESS;
 		}
 		ASSERT(vp == NULL);
 		ASSERT(dvp == NULL);
+		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_OBJECT_NAME_NOT_FOUND;
 	}
@@ -591,6 +615,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if ((CreateDisposition == FILE_CREATE) && (vp != NULL)) {
 		VN_RELE(vp);
 		VN_RELE(dvp);
+		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_EXISTS;
 		return STATUS_OBJECT_NAME_COLLISION; // create file error
 	}
@@ -626,9 +651,11 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				FILE_ACTION_ADDED);
 			VN_RELE(vp);
 			VN_RELE(dvp);
+			kmem_free(filename, PATH_MAX);
 			return STATUS_SUCCESS;
 		}
 		VN_RELE(dvp);
+		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_OBJECT_PATH_NOT_FOUND;  // failed to create error?
 	}
@@ -638,6 +665,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		dprintf("%s: asked for directory but found file\n", __func__);
 		VN_RELE(vp);
 		VN_RELE(dvp);
+		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_FILE_IS_A_DIRECTORY; // wanted dir, found file error
 	}
@@ -646,6 +674,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if (NonDirectoryFile && !CreateFile && vp == NULL) {
 		dprintf("%s: asked for file but found directory\n", __func__);
 		VN_RELE(dvp);
+		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_FILE_IS_A_DIRECTORY; // wanted file, found dir error
 	}
@@ -663,6 +692,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			((zp->z_pflags&ZFS_SYSTEM) && !FlagOn(IrpSp->Parameters.Create.FileAttributes, FILE_ATTRIBUTE_SYSTEM))) {
 			VN_RELE(vp);
 			VN_RELE(dvp);
+			kmem_free(filename, PATH_MAX);
 			return STATUS_ACCESS_DENIED;
 		}
 	}
@@ -674,6 +704,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		if (zp->z_pflags&ZFS_READONLY) {
 			VN_RELE(vp);
 			VN_RELE(dvp);
+			kmem_free(filename, PATH_MAX);
 			return STATUS_ACCESS_DENIED;
 		}
 	}
@@ -683,6 +714,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		(zp->z_pflags&ZFS_READONLY)) {
 		VN_RELE(vp);
 		VN_RELE(dvp);
+		kmem_free(filename, PATH_MAX);
 		return STATUS_ACCESS_DENIED;
 	}
 
@@ -746,6 +778,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				FILE_ACTION_ADDED);
 			VN_RELE(vp);
 			VN_RELE(dvp);
+			kmem_free(filename, PATH_MAX);
 			return STATUS_SUCCESS;
 		}
 		if (error== EEXIST)
@@ -754,6 +787,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 
 		VN_RELE(dvp);
+		kmem_free(filename, PATH_MAX);
 		return STATUS_OBJECT_NAME_COLLISION; // create file error
 	}
 
@@ -798,6 +832,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		VN_RELE(dvp);
 	}
 
+	kmem_free(filename, PATH_MAX);
 	return STATUS_SUCCESS;
 }
 
@@ -1809,6 +1844,9 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		return STATUS_OBJECTID_NOT_FOUND;
 	}
 
+	// Goto out will release this
+	VN_HOLD(fvp);
+
 	// If we have a "tvp" here, then something exists where we are to rename
 	if (tvp && !ren->ReplaceIfExists) {
 		error = STATUS_OBJECT_NAME_EXISTS;
@@ -1833,7 +1871,6 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	}
 
 	fdvp = ZTOV(dzp);
-	VN_HOLD(fvp);
 	VN_HOLD(tdvp);
 	// "tvp" (if not NULL) and "tdvp" is held by zfs_find_dvp_vp
 
@@ -2057,12 +2094,12 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 		struct vnode *vp = IrpSp->FileObject->FsContext;
 		VN_HOLD(vp);
 		znode_t *zp = VTOZ(vp);
-		standard->Directory = S_ISDIR(zp->z_mode) ? TRUE : FALSE;
+		standard->Directory = vnode_isdir(vp) ? TRUE : FALSE;
 		//         sa_object_size(zp->z_sa_hdl, &blksize, &nblks);
 		uint64_t blk = zfs_blksz(zp);
 		standard->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size?zp->z_size:1, blk);  // space taken on disk, multiples of block size
 		//standard->AllocationSize.QuadPart = zp->z_size;  // space taken on disk, multiples of block size
-		standard->EndOfFile.QuadPart = zp->z_size;       // byte size of file
+		standard->EndOfFile.QuadPart = vnode_isdir(vp) ? 0 : zp->z_size;       // byte size of file
 		standard->NumberOfLinks = zp->z_links;
 		standard->DeletePending = vnode_unlink(vp) ? TRUE : FALSE;
 		VN_RELE(vp);
@@ -2106,7 +2143,7 @@ NTSTATUS file_network_open_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 		TIME_UNIX_TO_WINDOWS(crtime, netopen->CreationTime.QuadPart);
 		TIME_UNIX_TO_WINDOWS(zp->z_atime, netopen->LastAccessTime.QuadPart);
 		netopen->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
-		netopen->EndOfFile.QuadPart = zp->z_size;
+		netopen->EndOfFile.QuadPart = vnode_isdir(vp) ? 0 : zp->z_size;
 		netopen->FileAttributes = zfs_getwinflags(zp);
 		VN_RELE(vp);
 		return STATUS_SUCCESS;
@@ -2229,11 +2266,14 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	else
 		Status = STATUS_SUCCESS;
 
+
 	// Return how much of the filename we copied after the first wchar
 	// which is used with sizeof(struct) to work out how much bigger the return is.
 	if (usedspace) *usedspace = space; // Space will always be 2 or more, since struct has room for 1 wchar
 
-	dprintf("* %s: partial name of '%.*S' struct size 0x%x and FileNameLength 0x%x Usedspace 0x%x\n", __func__, name->FileNameLength / sizeof(WCHAR), name->FileName,
+	dprintf("* %s: %s name of '%.*S' struct size 0x%x and FileNameLength 0x%x Usedspace 0x%x\n", __func__, 
+		Status == STATUS_BUFFER_OVERFLOW ? "partial" : "",
+		space / 2, name->FileName,
 		sizeof(FILE_NAME_INFORMATION), name->FileNameLength, space);
 	return Status;
 }
@@ -2257,14 +2297,16 @@ NTSTATUS file_stream_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		return STATUS_BUFFER_TOO_SMALL;
 	}
 
-	struct vnode *vp = FileObject->FsContext;
-	znode_t *zp = VTOZ(vp);
-
 	UNICODE_STRING name;
 	RtlInitUnicodeString(&name, L"::$DATA");
+
+	struct vnode *vp = FileObject->FsContext;
+	VN_HOLD(vp);
+	znode_t *zp = VTOZ(vp);
 	stream->NextEntryOffset = 0;
 	stream->StreamAllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
 	stream->StreamSize.QuadPart = zp->z_size;
+	VN_RELE(vp);
 
 	int space = IrpSp->Parameters.QueryFile.Length - FIELD_OFFSET(FILE_STREAM_INFORMATION, StreamName);
 	space = MIN(space, name.Length);
@@ -2279,6 +2321,8 @@ NTSTATUS file_stream_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		Status = STATUS_BUFFER_OVERFLOW;
 	else
 		Status = STATUS_SUCCESS;
+
+	if (usedspace) *usedspace = space;
 
 	return Status;
 }
@@ -2300,7 +2344,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 	switch (IrpSp->Parameters.QueryFile.FileInformationClass) {
 			
 	case FileAllInformation: 
-		dprintf("%s: FileAllInformation\n", __func__);
+		dprintf("%s: FileAllInformation: buffer 0x%x\n", __func__, IrpSp->Parameters.QueryFile.Length);
 
 		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_ALL_INFORMATION)) {
 			Irp->IoStatus.Information = sizeof(FILE_ALL_INFORMATION);  // We should send Plus Filename here, to be nice, but this doesnt happen
@@ -2330,9 +2374,9 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 		// file_name_information sets FileNameLength, so update size to be ALL struct not NAME struct
 		// However, there is room for one char in the struct, so subtract that from total.
-		Irp->IoStatus.Information = FIELD_OFFSET(FILE_ALL_INFORMATION, NameInformation) + usedspace;
-
-		dprintf("Input size 0x%x namelen 0x%x ret size 0x%x\n",
+		//Irp->IoStatus.Information = FIELD_OFFSET(FILE_ALL_INFORMATION, NameInformation) + usedspace + sizeof(all->NameInformation.FileName);
+		//Irp->IoStatus.Information = sizeof(FILE_ALL_INFORMATION) + usedspace - 2;
+		dprintf("Struct size 0x%x FileNameLen 0x%x Information retsize 0x%x\n",
 			sizeof(FILE_ALL_INFORMATION),
 			all->NameInformation.FileNameLength,
 			Irp->IoStatus.Information);
@@ -2458,7 +2502,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 		PFILE_STREAM_INFORMATION fsi = Irp->AssociatedIrp.SystemBuffer;
 		Status = file_stream_information(DeviceObject, Irp, IrpSp, fsi, &usedspace);
-		Irp->IoStatus.Information = sizeof(FILE_STREAM_INFORMATION) + usedspace;
+		//Irp->IoStatus.Information = sizeof(FILE_STREAM_INFORMATION) + usedspace;
 		break;
 	case FileHardLinkInformation:
 		dprintf("* %s: FileHardLinkInformation NOT IMPLEMENTED\n", __func__);
@@ -2636,8 +2680,8 @@ NTSTATUS create_or_get_object_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	if (!FileObject)
 		return STATUS_INVALID_PARAMETER;
 
-	if (inlen < sizeof(FILE_OBJECTID_BUFFER)) {
-		return STATUS_INVALID_BUFFER_SIZE;
+	if (!fob || inlen < sizeof(FILE_OBJECTID_BUFFER)) {
+		return STATUS_INVALID_PARAMETER;
 	}
 
 	struct vnode *vp = IrpSp->FileObject->FsContext;
@@ -2788,6 +2832,10 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 	if (flag_restart_scan) {
 		zccb->dir_eof = 0;
 		zccb->uio_offset = 0;
+		if (zccb->searchname.Buffer != NULL)
+			kmem_free(zccb->searchname.Buffer, zccb->searchname.MaximumLength);
+		zccb->searchname.Buffer = NULL;
+		zccb->searchname.MaximumLength = 0;
 	}
 
 	// Did last call complete listing?
@@ -2809,9 +2857,10 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 
 	if (!zfsvfs) return STATUS_INTERNAL_ERROR;
 
-	dprintf("%s: starting vp %p Search pattern '%wZ' type %d\n", __func__, dvp,
+	dprintf("%s: starting vp %p Search pattern '%wZ' type %d: saved search '%wZ'\n", __func__, dvp,
 		IrpSp->Parameters.QueryDirectory.FileName,
-		IrpSp->Parameters.QueryDirectory.FileInformationClass);
+		IrpSp->Parameters.QueryDirectory.FileInformationClass,
+		&zccb->searchname);
 
 	if (IrpSp->Parameters.QueryDirectory.FileName &&
 		IrpSp->Parameters.QueryDirectory.FileName->Buffer &&
@@ -2825,25 +2874,16 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 
 		zccb->ContainsWildCards =
 			FsRtlDoesNameContainWildCards(IrpSp->Parameters.QueryDirectory.FileName);
-		zccb->searchname.MaximumLength = IrpSp->Parameters.QueryDirectory.FileName->Length;
+		zccb->searchname.MaximumLength = IrpSp->Parameters.QueryDirectory.FileName->Length + 2; // Make room for terminator, if needed
 		zccb->searchname.Length = IrpSp->Parameters.QueryDirectory.FileName->Length;
 		zccb->searchname.Buffer = kmem_alloc(zccb->searchname.MaximumLength, KM_SLEEP);
 		if (zccb->ContainsWildCards) {
-			// For some reason, RtlUpcaseUnicodeString() when told not to allocate
-			// will always return error 0x80000005, so we have to ask it to allocate.
-			UNICODE_STRING tmp = { 0 };
-		
-			Status = RtlUpcaseUnicodeString(&tmp, IrpSp->Parameters.QueryDirectory.FileName, TRUE);
-			if (Status == STATUS_SUCCESS) {
-				Status = RtlCopyMemory(zccb->searchname.Buffer, tmp.Buffer, zccb->searchname.Length);
-				RtlFreeUnicodeString(&tmp);
-			} else {
-				zccb->searchname.Length = 0;
-			}
+			Status = RtlUpcaseUnicodeString(&zccb->searchname, IrpSp->Parameters.QueryDirectory.FileName, FALSE);
 		} else {
 			Status = RtlCopyMemory(zccb->searchname.Buffer, IrpSp->Parameters.QueryDirectory.FileName->Buffer, zccb->searchname.Length);
 		}
-		dprintf("%s: setting up search '%wZ' status 0x%x\n", __func__, &zccb->searchname, Status);
+		dprintf("%s: setting up search '%wZ' (wildcards: %d) status 0x%x\n", __func__, 
+			&zccb->searchname, zccb->ContainsWildCards, Status);
 	}
 
 	VN_HOLD(dvp);
@@ -2914,6 +2954,7 @@ NTSTATUS notify_change_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 
 	dprintf("%s\n", __func__);
 	zmo = DeviceObject->DeviceExtension;
+	ASSERT(zmo != NULL);
 	if (zmo->type != MOUNT_TYPE_VCB) {
 		return STATUS_INVALID_PARAMETER;
 	}
@@ -2933,6 +2974,7 @@ NTSTATUS notify_change_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		VN_RELE(vp);
 		return STATUS_DELETE_PENDING;
 	}
+	ASSERT(zmo->NotifySync != NULL);
 
 	dprintf("%s: '%s' for %wZ\n", __func__, zp&&zp->z_name_cache?zp->z_name_cache:"", &fileObject->FileName);
 	FsRtlNotifyFullChangeDirectory(

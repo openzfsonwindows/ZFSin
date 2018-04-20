@@ -2488,6 +2488,7 @@ int zfs_build_path(znode_t *start_zp, znode_t *start_parent, char **fullpath, ui
 	*fullpath = kmem_alloc(size, KM_SLEEP);
 	memmove(*fullpath, &work[index], size);
 	kmem_free(work, MAXPATHLEN * 2);
+	dprintf("%s: set '%s' as name\n", __func__, *fullpath);
 	return 0;
 
 failed:
@@ -2508,9 +2509,13 @@ void zfs_send_notify(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG FilterM
 	zmo = zfsvfs->z_vfs;
 	UNICODE_STRING ustr;
 
-	dprintf("%s: '%s' %u %u\n", __func__, &name[nameoffset], FilterMatch, Action);
+	ASSERT(nameoffset < strlen(name));
 
 	AsciiStringToUnicodeString(name, &ustr);
+
+	dprintf("%s: '%wZ' part '%S' %u %u\n", __func__, &ustr, 
+		/*&name[nameoffset],*/ &ustr.Buffer[nameoffset],
+		FilterMatch, Action);
 
 	FsRtlNotifyFullReportChange(zmo->NotifySync, &zmo->DirNotifyList,
 		(PSTRING)&ustr, nameoffset * sizeof(WCHAR),

@@ -2792,20 +2792,20 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			if (zccb->ContainsWildCards) {
 				if (!FsRtlIsNameInExpression(&zccb->searchname,
 					&thisname,
-					TRUE,  // case sensitivity, fix me
+					!(zfsvfs->z_case == ZFS_CASE_SENSITIVE), 
 					NULL))
 					skip_this_entry = 1;
 			} else {
 				if (!FsRtlAreNamesEqual(&thisname,
 					&zccb->searchname,
-					TRUE,  // case
+					!(zfsvfs->z_case == ZFS_CASE_SENSITIVE),
 					NULL))
 					skip_this_entry = 1;
 			}
-			//dprintf("comparing names '%.*S' == '%.*S' skip %d\n",
-			//	thisname.Length / sizeof(WCHAR), thisname.Buffer,
-			//	zccb->searchname.Length / sizeof(WCHAR), zccb->searchname.Buffer,
-			//	skip_this_entry);
+			dprintf("comparing names '%.*S' == '%.*S' skip %d\n",
+				thisname.Length / sizeof(WCHAR), thisname.Buffer,
+				zccb->searchname.Length / sizeof(WCHAR), zccb->searchname.Buffer,
+				skip_this_entry);
 			}
 
 
@@ -2848,8 +2848,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 				eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 				eodp->FileIndex = offset;
-				eodp->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, zfs_blksz(tzp)); // File size in block alignment
-				eodp->EndOfFile.QuadPart = tzp->z_size; // File size in bytes
+				eodp->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp)); // File size in block alignment
+				eodp->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size; // File size in bytes
 				TIME_UNIX_TO_WINDOWS(mtime, eodp->LastWriteTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(ctime, eodp->ChangeTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(crtime, eodp->CreationTime.QuadPart);
@@ -2867,8 +2867,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 				eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 				FILE_ID_BOTH_DIR_INFORMATION *fibdi = (FILE_ID_BOTH_DIR_INFORMATION *)bufptr;
-				fibdi->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
-				fibdi->EndOfFile.QuadPart = tzp->z_size;
+				fibdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
+				fibdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size;
 				TIME_UNIX_TO_WINDOWS(mtime, fibdi->LastWriteTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(ctime, fibdi->ChangeTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(crtime, fibdi->CreationTime.QuadPart);
@@ -2889,8 +2889,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 				eodp = (FILE_BOTH_DIR_INFORMATION *)bufptr;
 				FILE_BOTH_DIR_INFORMATION *fbdi = (FILE_BOTH_DIR_INFORMATION *)bufptr;
-				fbdi->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
-				fbdi->EndOfFile.QuadPart = tzp->z_size;
+				fbdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
+				fbdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size;
 				TIME_UNIX_TO_WINDOWS(mtime, fbdi->LastWriteTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(ctime, fbdi->ChangeTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(crtime, fbdi->CreationTime.QuadPart);
@@ -2910,8 +2910,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				eodp = (FILE_DIRECTORY_INFORMATION *)bufptr;
 				//FILE_DIRECTORY_INFORMATION *fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
 				fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
-				fdi->AllocationSize.QuadPart = P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
-				fdi->EndOfFile.QuadPart = tzp->z_size;
+				fdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
+				fdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size;
 				TIME_UNIX_TO_WINDOWS(mtime, fdi->LastWriteTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(ctime, fdi->ChangeTime.QuadPart);
 				TIME_UNIX_TO_WINDOWS(crtime, fdi->CreationTime.QuadPart);
@@ -2962,8 +2962,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			ULONG namelenholder2 = 0;
 			error = RtlUTF8ToUnicodeN(nameptr, namelenholder, &namelenholder2, zap.za_name, namelen);
 			ASSERT(namelenholder == namelenholder2);
-			//dprintf("%s: '%.*S' -> '%s' (namelen %d bytes: structsize %d)\n", __func__,
-			//	namelenholder / sizeof(WCHAR), nameptr, zap.za_name, namelenholder, structsize);
+			dprintf("%s: '%.*S' -> '%s' (namelen %d bytes: structsize %d)\n", __func__,
+				namelenholder / sizeof(WCHAR), nameptr, zap.za_name, namelenholder, structsize);
 
 			// Release the zp
 			if (get_zp == 0) {
