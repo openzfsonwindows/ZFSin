@@ -726,7 +726,7 @@ void ubc_setsize(struct vnode *vp, uint64_t size)
 
 int     vnode_isinuse(vnode_t *vp, int refcnt)
 {
-	if (((vp->v_usecount + vp->v_iocount) >  refcnt))
+	if (((vp->v_usecount /*+ vp->v_iocount*/) >  refcnt)) // xnu uses usecount +kusecount, not iocount
 		return 1;
 	return 0;
 }

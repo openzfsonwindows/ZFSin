@@ -573,39 +573,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// Here we have "dvp" of the directory. 
 	// "vp" if the final part was a file.
 
-	// Check with the ShareAccess if this will be ok
-#ifdef NOTYET
-	ACCESS_MASK granted_access;
-	NTSTATUS Status;
-	if (IrpSp->Parameters.Create.SecurityContext->DesiredAccess != 0) {
-		SeLockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
-		if (!SeAccessCheck(/* (fileref->fcb->ads || fileref->fcb == Vcb->dummy_fcb) ? fileref->parent->fcb->sd : */ vp->security_descriptor,
-			&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext,
-			TRUE, IrpSp->Parameters.Create.SecurityContext->DesiredAccess, 0, NULL,
-			IoGetFileObjectGenericMapping(), IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode,
-			&granted_access, &Status)) {
-			SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
-			VN_RELE(vp);
-			VN_RELE(dvp);
-			return Status;
-		}
-		SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
-	} else {
-		granted_access = 0;
-	}
 
-	if (vnode_isinuse(vp, 1)) {  // 1 is we are the only, 2+ if already open.
-		Status = IoCheckShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, &vp->share_access, FALSE);
-		if (!NT_SUCCESS(Status)) {
-			VN_RELE(vp);
-			VN_RELE(dvp);
-			return Status;
-		}
-		IoUpdateShareAccess(FileObject, &vp->share_access);
-	} else {
-		IoSetShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, &vp->share_access);
-	}
-#endif
 
 	// Don't create if FILE_OPEN_IF (open existing)
 	if ((CreateDisposition == FILE_OPEN_IF) && (vp != NULL))
@@ -645,6 +613,11 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			zp = VTOZ(vp);
 			// Update pflags, if needed
 			zfs_setwinflags(zp, IrpSp->Parameters.Create.FileAttributes);
+
+			IoSetShareAccess(IrpSp->Parameters.Create.SecurityContext->DesiredAccess,
+				IrpSp->Parameters.Create.ShareAccess,
+				FileObject,
+				&vp->share_access);
 
 			zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
 				FILE_NOTIFY_CHANGE_DIR_NAME,
@@ -718,11 +691,50 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		return STATUS_ACCESS_DENIED;
 	}
 
+
 	// Some cases we always create the file, and sometimes only if
 	// it is not there. If the file exists and we are only to create
 	// the file if it is not there:
 	if ((CreateDisposition == FILE_OPEN_IF) && (vp != NULL))
 		CreateFile = 0;
+
+
+	if (vp || CreateFile == 0) {
+		ACCESS_MASK granted_access;
+		NTSTATUS Status;
+		if (IrpSp->Parameters.Create.SecurityContext->DesiredAccess != 0) {
+			SeLockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
+			if (!SeAccessCheck(/* (fileref->fcb->ads || fileref->fcb == Vcb->dummy_fcb) ? fileref->parent->fcb->sd : */ vnode_security(vp ? vp : dvp),
+				&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext,
+				TRUE, IrpSp->Parameters.Create.SecurityContext->DesiredAccess, 0, NULL,
+				IoGetFileObjectGenericMapping(), IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode,
+				&granted_access, &Status)) {
+				SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
+				if (vp) VN_RELE(vp);
+				VN_RELE(dvp);
+				kmem_free(filename, PATH_MAX);
+				return Status;
+			}
+			SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
+		} else {
+			granted_access = 0;
+		}
+
+		if (vnode_isinuse(vp ? vp : dvp, 0)) {  // 0 is we are the only (usecount added below), 1+ if already open.
+			Status = IoCheckShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, vp ? &vp->share_access : &dvp->share_access, FALSE);
+			if (!NT_SUCCESS(Status)) {
+				if (vp) VN_RELE(vp);
+				VN_RELE(dvp);
+				kmem_free(filename, PATH_MAX);
+				return Status;
+			}
+			IoUpdateShareAccess(FileObject, vp ? &vp->share_access : &dvp->share_access);
+		} else {
+			IoSetShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, vp ? &vp->share_access : &dvp->share_access);
+		}
+	}
+
+
 
 	if (CreateFile && finalname) {
 		vattr_t vap = { 0 };
@@ -773,6 +785,11 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				zp->z_blksz = P2ROUNDUP(allocsize, 512);
 			}
 
+			IoSetShareAccess(IrpSp->Parameters.Create.SecurityContext->DesiredAccess,
+				IrpSp->Parameters.Create.ShareAccess,
+				FileObject,
+				&vp->share_access);
+
 			zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
 				FILE_NOTIFY_CHANGE_FILE_NAME,
 				FILE_ACTION_ADDED);
@@ -800,6 +817,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		vnode_ref(dvp); // Hold open reference, until CLOSE
 		zfs_set_security(dvp, NULL);
 		if (DeleteOnClose) vnode_setunlink(dvp);
+		IoUpdateShareAccess(FileObject, &dvp->share_access);
 		VN_RELE(dvp);
 	} else {
 		// Technically, this should call zfs_open() - but it is mostly empty
@@ -828,9 +846,11 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zp->z_blksz);
 		vp->FileHeader.FileSize.QuadPart = zp->z_size;
 		vp->FileHeader.ValidDataLength.QuadPart = zp->z_size;
+		IoUpdateShareAccess(FileObject, &vp->share_access);
 		VN_RELE(vp);
 		VN_RELE(dvp);
 	}
+
 
 	kmem_free(filename, PATH_MAX);
 	return STATUS_SUCCESS;
