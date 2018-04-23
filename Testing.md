@@ -32,7 +32,7 @@
 |✅     | CaseSensitiveTest  | |
 |✅     | PreserveCaseTest  | |
 |❌     | ShortFileNameTest  | Don't handle shortnames yet |
-|❌     | ShareAccessTest  | do not have any share logic locking out opens |
+|✅     | ShareAccessTest  | |
 |✅     | AlternateStreamTest  | |
 |✅     | StreamShareTest  | |
 
