@@ -57,6 +57,10 @@ spl_cv_destroy(kcondvar_t *cvp)
 {
 	if (cvp->initialised != CONDVAR_INIT)
 		panic("%s: not initialised", __func__);
+	// We have probably already signalled the waiters, but we need to
+	// kick around long enough for them to wake.
+	while (cvp->waiters_count > 0)
+		cv_broadcast(cvp);
 	ASSERT0(cvp->waiters_count);
 	cvp->initialised = 0;
 }
