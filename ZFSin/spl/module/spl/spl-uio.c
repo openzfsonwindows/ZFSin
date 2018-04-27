@@ -306,6 +306,7 @@ int spl_uiomove(const uint8_t *c_cp, uint32_t n, struct uio *uio)
 		cp += acnt;
 		n -= acnt;
 	}
+	ASSERT0(n);
 	return (error);
 }
 

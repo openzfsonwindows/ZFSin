@@ -73,7 +73,9 @@ struct vnode {
 	uint64_t v_id;
 
 	// Other Windows entries
-	ERESOURCE resource;
+	// Must be 8byte aligned
+	ERESOURCE resource;        // Holder for FileHeader.Resource
+	ERESOURCE pageio_resource; // Holder for FileHeader.PageIoResource
 	FILE_LOCK lock;
 	SECURITY_DESCRIPTOR *security_descriptor;
 	SHARE_ACCESS share_access;
@@ -375,7 +377,7 @@ chklock(struct vnode *vp, int iomode, unsigned long long offset, ssize_t len, in
     return (0);
 }
 
-#define vn_has_cached_data(VP)  (VTOZ(VP)->z_is_mapped || vnode_isswap(VP) || win_has_cached_data(VP))
+#define vn_has_cached_data(VP)  0 /*(VTOZ(VP)->z_is_mapped || vnode_isswap(VP) || win_has_cached_data(VP))*/
 
 static inline int win_has_cached_data(struct vnode *vp)
 {
@@ -391,10 +393,17 @@ static inline int win_has_cached_data(struct vnode *vp)
 }
 
 #define vnode_pager_setsize(vp, sz)  do { \
-		PFILE_OBJECT pfo = CcGetFileObjectFromSectionPtrsRef(&vp->SectionObjectPointers); \
-        if (pfo != NULL) { \
-			CcSetFileSizes(pfo, (sz)); \
-			ObDereferenceObject(pfo); \
+		PFILE_OBJECT fileObject = CcGetFileObjectFromSectionPtrsRef(&vp->SectionObjectPointers); \
+        if (fileObject != NULL) { \
+		CC_FILE_SIZES ccfs; \
+		vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP((sz), PAGE_SIZE); \
+		vp->FileHeader.FileSize.QuadPart = (sz); \
+		vp->FileHeader.ValidDataLength.QuadPart = (sz); \
+		ccfs.AllocationSize = vp->FileHeader.AllocationSize; \
+		ccfs.FileSize = vp->FileHeader.FileSize; \
+		ccfs.ValidDataLength = vp->FileHeader.ValidDataLength; \
+		CcSetFileSizes(fileObject, &ccfs); \
+		ObDereferenceObject(fileObject); \
 		} \
 	} while(0)
 

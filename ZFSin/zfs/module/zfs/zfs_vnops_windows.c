@@ -113,6 +113,56 @@ uint64_t vnop_num_reclaims = 0;
 uint64_t vnop_num_vnodes = 0;
 #endif
 
+BOOLEAN zfs_AcquireForLazyWrite(void *Context, BOOLEAN Wait)
+{
+	struct vnode *vp = Context;
+	dprintf("%s:\n", __func__);
+	if (!ExAcquireResourceSharedLite(vp->FileHeader.PagingIoResource, Wait)) {
+		dprintf("Failed\n");
+		return FALSE;
+	}
+	VN_HOLD(vp);
+	return TRUE;
+}
+
+void zfs_ReleaseFromLazyWrite(void *Context)
+{
+	struct vnode *vp = Context;
+	dprintf("%s:\n", __func__);
+	ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
+	VN_RELE(vp);
+}
+
+BOOLEAN zfs_AcquireForReadAhead(void *Context, BOOLEAN Wait)
+{
+	struct vnode *vp = Context;
+	dprintf("%s:\n", __func__);
+	if (!ExAcquireResourceSharedLite(vp->FileHeader.Resource, Wait)) {
+		dprintf("Failed\n");
+		return FALSE;
+	}
+	VN_HOLD(vp);
+	return TRUE;
+}
+
+void zfs_ReleaseFromReadAhead(void *Context)
+{
+	struct vnode *vp = Context;
+	dprintf("%s:\n", __func__);
+	ExReleaseResourceLite(vp->FileHeader.Resource);
+	VN_RELE(vp);
+}
+
+static CACHE_MANAGER_CALLBACKS CacheManagerCallbacks =
+{
+	.AcquireForLazyWrite = zfs_AcquireForLazyWrite,
+	.ReleaseFromLazyWrite = zfs_ReleaseFromLazyWrite,
+	.AcquireForReadAhead = zfs_AcquireForReadAhead,
+	.ReleaseFromReadAhead = zfs_ReleaseFromReadAhead
+};
+
+
+
 /*
  * zfs vfs operations.
  */
@@ -430,60 +480,88 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// No name conversion with FileID
 
 	if (!FileOpenByFileId) {
-		// Convert incoming filename to utf8
-		error = RtlUnicodeToUTF8N(filename, PATH_MAX, &outlen,
-			FileObject->FileName.Buffer, FileObject->FileName.Length);
 
-		if (error != STATUS_SUCCESS &&
-			error != STATUS_SOME_NOT_MAPPED) {
-			dprintf("RtlUnicodeToUTF8N returned 0x%x input len %d\n", error, FileObject->FileName.Length);
-			kmem_free(filename, PATH_MAX);
-			return STATUS_OBJECT_NAME_INVALID;
-		}
-		ASSERT(error != STATUS_SOME_NOT_MAPPED);
-		// Output string is only null terminated if input is, so do so now.
-		filename[outlen] = 0;
-		dprintf("%s: converted name is '%s' input len bytes %d (err %d) %s %s\n", __func__, filename, FileObject->FileName.Length, error,
-			DeleteOnClose ? "DeleteOnClose" : "",
-			IrpSp->Flags&SL_CASE_SENSITIVE ? "CaseSensitive" : "CaseInsensitive");
+		if (FileObject->FileName.Buffer != NULL && FileObject->FileName.Length > 0) {
+			// Convert incoming filename to utf8
+			error = RtlUnicodeToUTF8N(filename, PATH_MAX, &outlen,
+				FileObject->FileName.Buffer, FileObject->FileName.Length);
 
-		if (Irp->Overlay.AllocationSize.QuadPart > 0)
-			dprintf("AllocationSize requested %llu\n", Irp->Overlay.AllocationSize.QuadPart);
+			if (error != STATUS_SUCCESS &&
+				error != STATUS_SOME_NOT_MAPPED) {
+				dprintf("RtlUnicodeToUTF8N returned 0x%x input len %d\n", error, FileObject->FileName.Length);
+				kmem_free(filename, PATH_MAX);
+				return STATUS_OBJECT_NAME_INVALID;
+			}
+			ASSERT(error != STATUS_SOME_NOT_MAPPED);
+			// Output string is only null terminated if input is, so do so now.
+			filename[outlen] = 0;
+			dprintf("%s: converted name is '%s' input len bytes %d (err %d) %s %s\n", __func__, filename, FileObject->FileName.Length, error,
+				DeleteOnClose ? "DeleteOnClose" : "",
+				IrpSp->Flags&SL_CASE_SENSITIVE ? "CaseSensitive" : "CaseInsensitive");
 
-		// Check if we are called as VFS_ROOT();
-		OpenRoot = (strncmp("\\", filename, PATH_MAX) == 0 || strncmp("\\*", filename, PATH_MAX) == 0);
+			if (Irp->Overlay.AllocationSize.QuadPart > 0)
+				dprintf("AllocationSize requested %llu\n", Irp->Overlay.AllocationSize.QuadPart);
 
-		if (OpenRoot) {
+			// Check if we are called as VFS_ROOT();
+			OpenRoot = (strncmp("\\", filename, PATH_MAX) == 0 || strncmp("\\*", filename, PATH_MAX) == 0);
 
-			error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
+			if (OpenRoot) {
 
-			if (error == 0) {
-				vp = ZTOV(zp);
-				FileObject->FsContext = vp;
-				vnode_ref(vp); // Hold open reference, until CLOSE
-				zfs_set_security(vp, NULL);
-				VN_RELE(vp);
+				error = zfs_zget(zfsvfs, zfsvfs->z_root, &zp);
 
-				// A valid lookup gets a ccb attached
-				IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
+				if (error == 0) {
+					vp = ZTOV(zp);
+					FileObject->FsContext = vp;
+					vnode_ref(vp); // Hold open reference, until CLOSE
+					zfs_set_security(vp, NULL);
+					VN_RELE(vp);
+
+					// A valid lookup gets a ccb attached
+					IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
+
+					kmem_free(filename, PATH_MAX);
+					Irp->IoStatus.Information = FILE_OPENED;
+					return STATUS_SUCCESS;
+				}
 
 				kmem_free(filename, PATH_MAX);
-				Irp->IoStatus.Information = FILE_OPENED;
-				return STATUS_SUCCESS;
-			}
+				Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+				return STATUS_OBJECT_PATH_NOT_FOUND;
+			} // OpenRoot
 
+		} else { // If got filename
+
+			// If no filename, we should fail, unless related is set.
+			if (FileObject->RelatedFileObject == NULL) {
+				// Fail
+				kmem_free(filename, PATH_MAX);
+				return STATUS_OBJECT_NAME_INVALID;
+			}
+			// Related set, return it as opened.
+			dvp = FileObject->RelatedFileObject->FsContext;
+			VN_HOLD(dvp);
+			vnode_ref(dvp); // Hold open reference, until CLOSE
+			FileObject->FsContext = dvp;
+			if (vnode_isdir(dvp))
+				FileObject->FsContext2 = zfs_dirlist_alloc();
+			zfs_set_security(dvp, NULL);
+			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
-			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
-			return STATUS_OBJECT_PATH_NOT_FOUND;
-		} // OpenRoot
+			Irp->IoStatus.Information = FILE_OPENED;
+			return STATUS_SUCCESS;
+		}
+
+		// We have converted the filename, continue..
 
 		if (FileObject->RelatedFileObject && FileObject->RelatedFileObject->FsContext) {
 			dvp = FileObject->RelatedFileObject->FsContext;
 			VN_HOLD(dvp);
 		}
 
+
 		// If we have dvp, it is HELD
 		error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), (CreateDisposition == FILE_CREATE), &finalname, &dvp, &vp, flags);
+
 
 	} else {  // Open By File ID
 
@@ -869,13 +947,17 @@ int zfs_vnop_reclaim(struct vnode *vp)
 
 	dprintf("  zfs_vnop_recycle: releasing zp %p and vp %p: '%s'\n", zp, vp,
 		zp->z_name_cache ? zp->z_name_cache : "");
-
+#if 0
 	SECTION_OBJECT_POINTERS *section;
 	section = vnode_sectionpointer(vp);
 	if (section->DataSectionObject != NULL) {
 		CcFlushCache(section, NULL, 0, NULL);
-		CcPurgeCacheSection(section, NULL, 0, FALSE);
+		CcPurgeCacheSection(vp->segment_object, NULL, 0, FALSE);
+
+		vnode_setsectionpointer(vp, NULL);
+		//		CcUninitializeCacheMap(FileObject, NULL, NULL);
 	}
+#endif
 	//IrpSp->FileObject->SectionObjectPointer = NULL;
 	void *sd = vnode_security(vp);
 	if (sd != NULL)
@@ -2268,7 +2350,7 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 
 	// Convert name, setting FileNameLength to how much we need
 	error = RtlUTF8ToUnicodeN(NULL, 0, &name->FileNameLength, strname, strlen(strname));
-
+	ASSERT(strlen(strname)*2 == name->FileNameLength);
 	dprintf("%s: remaining space %d str.len %d struct size %d\n", __func__, IrpSp->Parameters.QueryFile.Length,
 		name->FileNameLength, sizeof(FILE_NAME_INFORMATION));
 
@@ -2295,6 +2377,7 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		Status == STATUS_BUFFER_OVERFLOW ? "partial" : "",
 		space / 2, name->FileName,
 		sizeof(FILE_NAME_INFORMATION), name->FileNameLength, space);
+
 	return Status;
 }
 
@@ -2352,7 +2435,7 @@ NTSTATUS file_stream_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
-	ULONG usedspace;
+	ULONG usedspace = 0;
 	struct vnode *vp = NULL;
 	int normalize = 0;
 
@@ -2394,7 +2477,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 		// file_name_information sets FileNameLength, so update size to be ALL struct not NAME struct
 		// However, there is room for one char in the struct, so subtract that from total.
-		//Irp->IoStatus.Information = FIELD_OFFSET(FILE_ALL_INFORMATION, NameInformation) + usedspace + sizeof(all->NameInformation.FileName);
+		Irp->IoStatus.Information = FIELD_OFFSET(FILE_ALL_INFORMATION, NameInformation) + usedspace;
 		//Irp->IoStatus.Information = sizeof(FILE_ALL_INFORMATION) + usedspace - 2;
 		dprintf("Struct size 0x%x FileNameLen 0x%x Information retsize 0x%x\n",
 			sizeof(FILE_ALL_INFORMATION),
@@ -2865,9 +2948,9 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 	uio = uio_create(1, zccb->uio_offset, UIO_SYSSPACE, UIO_READ);	
 
 	if (Irp->MdlAddress)
-		uio_addiov(uio, MmGetSystemAddressForMdl(Irp->MdlAddress), IrpSp->Parameters.QueryDirectory.Length - 100); // FIXME, check bounds checks are valid
+		uio_addiov(uio, MmGetSystemAddressForMdl(Irp->MdlAddress), IrpSp->Parameters.QueryDirectory.Length); // FIXME, check bounds checks are valid
 	else
-		uio_addiov(uio, Irp->UserBuffer, IrpSp->Parameters.QueryDirectory.Length- 100);
+		uio_addiov(uio, Irp->UserBuffer, IrpSp->Parameters.QueryDirectory.Length);
 
 	// Grab the root zp
 	zmo = DeviceObject->DeviceExtension;
@@ -2915,7 +2998,8 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 		// Set correct buffer size returned.
 		Irp->IoStatus.Information = IrpSp->Parameters.QueryDirectory.Length - uio_resid(uio);
 
-		dprintf("dirlist information size %d\n", Irp->IoStatus.Information);
+		dprintf("dirlist information in %d out size %d\n", 
+			IrpSp->Parameters.QueryDirectory.Length, Irp->IoStatus.Information);
 
 		// Return saying there are entries in buffer, or, ]
 		// if we sent same data previously, but now EOF send NO MORE,
@@ -3126,6 +3210,9 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	LARGE_INTEGER	byteOffset;
 	NTSTATUS Status = STATUS_SUCCESS;
 	int error; 
+	int nocache = Irp->Flags & IRP_NOCACHE;
+	int pagingio = FlagOn(Irp->Flags, IRP_PAGING_IO);
+
 
 	if (FlagOn(IrpSp->MinorFunction, IRP_MN_COMPLETE)) {
 		dprintf("%s: IRP_MN_COMPLETE\n", __func__);
@@ -3142,6 +3229,13 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		FlagOn(Irp->Flags, IRP_PAGING_IO));
 #endif
 
+
+	/* File Caching is Currently Broken */
+	nocache = 1;
+
+
+
+
 	bufferLength = IrpSp->Parameters.Read.Length;
 	if (bufferLength == 0)
 		return STATUS_SUCCESS;
@@ -3150,6 +3244,7 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 
 	if (fileObject == NULL || fileObject->FsContext == NULL) {
 		dprintf("  fileObject == NULL\n");
+		ASSERT0("fileobject == NULL");
 		return STATUS_INVALID_PARAMETER;
 	}
 
@@ -3164,6 +3259,87 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		byteOffset = IrpSp->Parameters.Read.ByteOffset;
 	}
 
+	// Read is beyond file length? shorten
+	if (byteOffset.QuadPart + bufferLength > zp->z_size)
+		bufferLength -= byteOffset.QuadPart + bufferLength - zp->z_size;
+
+	// nocache transfer, make sure we flush first.
+	if (!pagingio && nocache && fileObject->SectionObjectPointer &&
+		(fileObject->SectionObjectPointer->DataSectionObject != NULL)) {
+		IO_STATUS_BLOCK IoStatus = { 0 };
+		ExAcquireResourceExclusiveLite(vp->FileHeader.PagingIoResource, TRUE);
+		CcFlushCache(fileObject->SectionObjectPointer,
+			&byteOffset,
+			bufferLength,
+			&IoStatus);
+		ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
+		VERIFY0(IoStatus.Status);
+	}
+	// Grab lock if paging
+	if (pagingio) {
+		ExAcquireResourceSharedLite(vp->FileHeader.PagingIoResource, TRUE);
+	} 
+
+	if (fileObject->SectionObjectPointer == NULL)
+		fileObject->SectionObjectPointer = vnode_sectionpointer(vp);
+
+	if (nocache) {
+
+	} else {
+		// Cached
+		if (fileObject->PrivateCacheMap == NULL) {
+			CC_FILE_SIZES ccfs;
+			vp->FileHeader.FileSize.QuadPart = zp->z_size;
+			vp->FileHeader.ValidDataLength.QuadPart = zp->z_size;
+			ccfs.AllocationSize = vp->FileHeader.AllocationSize;
+			ccfs.FileSize = vp->FileHeader.FileSize;
+			ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
+			CcInitializeCacheMap(fileObject, &ccfs, FALSE,
+				&CacheManagerCallbacks, vp);
+			dprintf("%s: CcInitializeCacheMap\n", __func__);
+		}
+
+		// DO A NORMAL CACHED READ, if the MDL bit is not set,
+		if (!FlagOn(IrpSp->MinorFunction, IRP_MN_MDL)) {
+
+			void *SystemBuffer;
+			if (!Irp->AssociatedIrp.SystemBuffer) {
+				if (!Irp->MdlAddress)
+					SystemBuffer = Irp->UserBuffer;
+				else
+					SystemBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+			} else {
+				SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+			}
+			if (!CcCopyReadEx(fileObject,
+				&byteOffset,
+				bufferLength,
+				TRUE,
+				SystemBuffer,
+				&Irp->IoStatus,
+				Irp->Tail.Overlay.Thread)) {
+				dprintf("CcCopyReadEx error\n");
+			}
+
+			Irp->IoStatus.Information = bufferLength;
+			Status = Irp->IoStatus.Status;
+			goto out;
+
+		} else {
+
+			// MDL read
+			CcMdlRead(fileObject,
+				&byteOffset,
+				bufferLength,
+				&Irp->MdlAddress,
+				&Irp->IoStatus);
+			Status = Irp->IoStatus.Status;
+			goto out;
+		} // mdl
+
+	} // !nocache
+
+
 	uio_t *uio;
 	void *address = NULL;
 
@@ -3177,7 +3353,6 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	uio_addiov(uio, address, bufferLength);
 
 	error = zfs_read(vp, uio, 0, NULL, NULL);
-	VN_RELE(vp);
 
 	// Update bytes read
 	Irp->IoStatus.Information = bufferLength - uio_resid(uio);
@@ -3185,6 +3360,11 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	if (Irp->IoStatus.Information == 0)
 		Status = STATUS_END_OF_FILE;
 
+	uio_free(uio);
+
+out:
+
+	VN_RELE(vp);
 	// Update the file offset
 	if ((Status == STATUS_SUCCESS) &&
 		(fileObject->Flags & FO_SYNCHRONOUS_IO) &&
@@ -3194,7 +3374,7 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 			byteOffset.QuadPart + Irp->IoStatus.Information;
 	}
 
-	uio_free(uio);
+	if (pagingio) ExReleaseResourceLite(vp->FileHeader.PagingIoResource, TRUE);
 
 //	dprintf("  FileName: %wZ offset 0x%llx len 0x%lx mdl %p System %p\n", &fileObject->FileName,
 	//	byteOffset.QuadPart, bufferLength, Irp->MdlAddress, Irp->AssociatedIrp.SystemBuffer);
@@ -3210,6 +3390,8 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	LARGE_INTEGER	byteOffset;
 	NTSTATUS Status = STATUS_SUCCESS;
 	int error;
+	int nocache = Irp->Flags & IRP_NOCACHE;
+	int pagingio = FlagOn(Irp->Flags, IRP_PAGING_IO);
 
 	if (FlagOn(IrpSp->MinorFunction, IRP_MN_COMPLETE)) {
 		dprintf("%s: IRP_MN_COMPLETE\n", __func__);
@@ -3218,12 +3400,19 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		Irp->MdlAddress = NULL;
 		return STATUS_SUCCESS;
 	}
-
 //	dprintf("   %s paging %d\n", __func__, FlagOn(Irp->Flags, IRP_PAGING_IO));
+#if 0
 	xprintf("   %s minor type %d flags 0x%x mdl %d System %d User %d paging %d\n", __func__, IrpSp->MinorFunction,
 		DeviceObject->Flags, (Irp->MdlAddress != 0), (Irp->AssociatedIrp.SystemBuffer != 0),
 		(Irp->UserBuffer != 0),
 		FlagOn(Irp->Flags, IRP_PAGING_IO));
+#endif
+
+
+	/* File Caching is Currently Broken */
+	nocache = 1;
+
+
 
 	bufferLength = IrpSp->Parameters.Write.Length;
 	if (bufferLength == 0)
@@ -3233,6 +3422,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 	if (fileObject == NULL || fileObject->FsContext == NULL) {
 		dprintf("  fileObject == NULL\n");
+		ASSERT0("fileObject == NULL");
 		return STATUS_INVALID_PARAMETER;
 	}
 
@@ -3258,6 +3448,137 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		//ASSERT(fileObject->PrivateCacheMap != NULL);
 	}
 
+	if (fileObject->SectionObjectPointer == NULL)
+		fileObject->SectionObjectPointer = vnode_sectionpointer(vp);
+
+
+	if (!nocache && !CcCanIWrite(fileObject, bufferLength, TRUE, FALSE))
+		return STATUS_PENDING;
+
+
+	if (nocache && !pagingio && fileObject->SectionObjectPointer &&
+		fileObject->SectionObjectPointer->DataSectionObject) {
+		IO_STATUS_BLOCK iosb;
+
+		ExAcquireResourceExclusiveLite(vp->FileHeader.PagingIoResource, TRUE);
+
+		CcFlushCache(fileObject->SectionObjectPointer, &byteOffset, bufferLength, &iosb);
+
+		if (!NT_SUCCESS(iosb.Status)) {
+			ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
+			return iosb.Status;
+		}
+
+		CcPurgeCacheSection(fileObject->SectionObjectPointer, &byteOffset, bufferLength, FALSE);
+		ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
+	}
+
+	if (!nocache) {
+
+		if (fileObject->PrivateCacheMap == NULL) {
+
+			CC_FILE_SIZES ccfs;
+			vp->FileHeader.FileSize.QuadPart = zp->z_size;
+			vp->FileHeader.ValidDataLength.QuadPart = zp->z_size;
+			ccfs.AllocationSize = vp->FileHeader.AllocationSize;
+			ccfs.FileSize = vp->FileHeader.FileSize;
+			ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
+			CcInitializeCacheMap(fileObject, &ccfs, FALSE,
+				&CacheManagerCallbacks, vp);
+			dprintf("%s: CcInitializeCacheMap\n", __func__);
+
+			//CcSetReadAheadGranularity(fileObject, READ_AHEAD_GRANULARITY);
+		}
+		
+
+		// If beyond valid data, zero between to expand (this is cachedfile, not paging io, extend ok)
+		if (byteOffset.QuadPart + bufferLength > zp->z_size) {
+#if 0
+			LARGE_INTEGER ZeroStart, BeyondZeroEnd;
+			ZeroStart.QuadPart = zp->z_size;
+			BeyondZeroEnd.QuadPart = IrpSp->Parameters.Write.ByteOffset.QuadPart + IrpSp->Parameters.Write.Length;
+			dprintf("%s: growing file\n", __func__);
+			//CACHE_MANAGER(34)
+			//	See the comment for FAT_FILE_SYSTEM(0x23)
+			if (!CcZeroData(fileObject,
+				&ZeroStart, &BeyondZeroEnd, 
+				TRUE)) {
+				dprintf("%s: CcZeroData failed\n", __func__);
+			}
+#endif
+			// We have written "Length" into the "file" by the way of cache, but the filesize
+			// need to match, so let's also extend the file in ZFS
+			dprintf("%s: growing file\n", __func__);
+			Status = zfs_freesp(zp,
+				byteOffset.QuadPart,  bufferLength,
+				FWRITE, B_TRUE);
+			ASSERT0(Status);
+		} else {
+			vnode_pager_setsize(vp, zp->z_size);
+		}
+
+		// DO A NORMAL CACHED WRITE, if the MDL bit is not set,
+		if (!FlagOn(IrpSp->MinorFunction, IRP_MN_MDL)) {
+
+			//void *SystemBuffer = Irp->MdlAddress ? MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute) :
+			//	Irp->UserBuffer;
+			void *SystemBuffer;
+			if (!Irp->AssociatedIrp.SystemBuffer) {
+				if (!Irp->MdlAddress)
+					SystemBuffer = Irp->UserBuffer;
+				else
+					SystemBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+			} else {
+				SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+			}
+
+#if 0
+			uint64_t newsize = zp->z_size;
+			if (byteOffset.QuadPart + bufferLength  > newsize)
+				newsize = byteOffset.QuadPart + bufferLength;
+			CC_FILE_SIZES ccfs;
+			vp->FileHeader.FileSize.QuadPart = newsize;
+			vp->FileHeader.ValidDataLength.QuadPart = newsize;
+			vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP(newsize, PAGE_SIZE);
+			ccfs.AllocationSize = vp->FileHeader.AllocationSize;
+			ccfs.FileSize = vp->FileHeader.FileSize;
+			ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
+			dprintf("CcSetFileSizes: alloc %llu Valid %llu FileSize %llu\n",
+				ccfs.AllocationSize.QuadPart, ccfs.ValidDataLength.QuadPart,
+				ccfs.FileSize.QuadPart);
+			CcSetFileSizes(fileObject, &ccfs);
+	// setsize is done in freesp
+#endif
+			if (!CcCopyWriteEx(fileObject,
+				&byteOffset,
+				bufferLength,
+				TRUE,
+				SystemBuffer,
+				Irp->Tail.Overlay.Thread)) {
+				dprintf("Could not wait\n");
+				ASSERT0("failed copy");
+			}
+
+			//Irp->IoStatus.Status = STATUS_SUCCESS;
+			Irp->IoStatus.Information = bufferLength;
+			Status = STATUS_SUCCESS;
+			goto out;
+		} else {
+			//  DO AN MDL WRITE
+			CcPrepareMdlWrite(fileObject,
+				&byteOffset,
+				bufferLength,
+				&Irp->MdlAddress,
+				&Irp->IoStatus);
+
+			Status = Irp->IoStatus.Status;
+			goto out;
+		}
+	}
+
+	uint64_t before_size = zp->z_size;
+
+
 	uio_t *uio;
 	uio = uio_create(1, byteOffset.QuadPart, UIO_SYSSPACE, UIO_WRITE);
 	if (Irp->MdlAddress)
@@ -3273,20 +3594,12 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	//if (error == 0)
 	//	zp->z_pflags |= ZFS_ARCHIVE;
 
-	if (error == 0) { // FIXME: If changed size only? 
-		CC_FILE_SIZES ccfs;
+	if ((error == 0) &&
+		(before_size != zp->z_size)) { // FIXME: If changed size only? Partial write etc.
 
-		vp->FileHeader.FileSize.QuadPart = zp->z_size;
-		vp->FileHeader.ValidDataLength.QuadPart = zp->z_size;
-
-		ccfs.AllocationSize = vp->FileHeader.AllocationSize;
-		ccfs.FileSize = vp->FileHeader.FileSize;
-		ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
-
-		CcSetFileSizes(fileObject, &ccfs);
+//		vnode_pager_setsize(vp, zp->z_size);
+		dprintf("New filesize set to %llu\n", zp->z_size);
 	}
-
-	VN_RELE(vp);
 
 	// EOF?
 	if ((bufferLength == uio_resid(uio)) && error == ENOSPC)
@@ -3295,11 +3608,14 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	// Update bytes read
 	Irp->IoStatus.Information = bufferLength - uio_resid(uio);
 
+	uio_free(uio);
+
+out:
+	VN_RELE(vp);
+
 	// Update the file offset
 	fileObject->CurrentByteOffset.QuadPart =
 		byteOffset.QuadPart + Irp->IoStatus.Information;
-
-	uio_free(uio);
 
 	if(!Status) {
 #if 1
@@ -4236,6 +4552,21 @@ fsDispatcher(
 			dprintf("Removing notifications for file\n");
 			FsRtlNotifyFullChangeDirectory(zmo->NotifySync, &zmo->DirNotifyList,
 				zp, NULL, FALSE, FALSE, 0, NULL, NULL, NULL);
+
+#if 1
+			SECTION_OBJECT_POINTERS *section;
+			section = vnode_sectionpointer(vp);
+			//vnode_setsectionpointer(vp, NULL);
+			if (/*(IrpSp->FileObject->Flags & FO_CACHE_SUPPORTED) &&*/ section && section->DataSectionObject) {
+				IO_STATUS_BLOCK iosb;
+				CcFlushCache(IrpSp->FileObject->SectionObjectPointer, NULL, 0, &iosb);
+
+				CcPurgeCacheSection(section, NULL, 0, FALSE);
+			}
+			if (IrpSp->FileObject->SectionObjectPointer != NULL)
+				CcUninitializeCacheMap(IrpSp->FileObject, NULL, NULL);
+#endif
+
 		}
 		Status = STATUS_SUCCESS;
 		break;
@@ -4265,7 +4596,7 @@ fsDispatcher(
 		// When they open file again, znode will have vnode ptr still if available.
 		// Or VFS has called reclaim, and znode was released.
 		IrpSp->FileObject->FsContext = NULL;
-		IrpSp->FileObject->SectionObjectPointer = NULL;
+		//IrpSp->FileObject->SectionObjectPointer = NULL;
 
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext2) {
 			zfs_dirlist_free((zfs_dirlist_t *)IrpSp->FileObject->FsContext2);
@@ -4595,11 +4926,16 @@ are any writers to this file.  Note that main is acquired, so new handles cannot
 	struct vnode *vp;
 	vp = CallbackData->FileObject->FsContext;
 
+
+	if (vp->FileHeader.Resource) {
+		ExAcquireResourceExclusiveLite(vp->FileHeader.Resource, TRUE);
+	}
+
 	if (CallbackData->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) {
 
 		return STATUS_FSFILTER_OP_COMPLETED_SUCCESSFULLY;
 
-	} else if (0/*Fcb->ShareAccess.Writers*/ == 0) {
+	} else if (vp->share_access.Writers == 0) {
 
 		return STATUS_FILE_LOCKED_WITH_ONLY_READERS;
 

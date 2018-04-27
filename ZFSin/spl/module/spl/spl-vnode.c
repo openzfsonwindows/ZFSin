@@ -856,7 +856,11 @@ void vnode_create(void *v_data, int type, int flags, struct vnode **vpp)
 	FsRtlSetupAdvancedHeader(&(*vpp)->FileHeader, &(*vpp)->AdvancedFcbHeaderMutex);
 
 	FsRtlInitializeFileLock(&(*vpp)->lock, NULL, NULL);
-	ExInitializeResourceLite(&(*vpp)->resource);
+	(*vpp)->FileHeader.Resource = &(*vpp)->resource;
+	(*vpp)->FileHeader.PagingIoResource = &(*vpp)->pageio_resource;
+	ExInitializeResourceLite((*vpp)->FileHeader.Resource);
+	ExInitializeResourceLite((*vpp)->FileHeader.PagingIoResource);
+	ASSERT0(((uint64_t)(*vpp)->FileHeader.Resource) & 7);
 
 	// Release vnodes if needed
 	if (vnode_active >= vnode_max) {
