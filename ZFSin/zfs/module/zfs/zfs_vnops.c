@@ -2643,7 +2643,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 	 */
 	bytes_wanted = uio_curriovlen(uio);
 	bufsize = (size_t)bytes_wanted;
-	outbuf = kmem_alloc(bufsize, KM_SLEEP);
+	outbuf = kmem_zalloc(bufsize, KM_SLEEP);   // ZERO?
 	bufptr = (char *)outbuf;
 
 	/*
@@ -2769,7 +2769,6 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 		/*
 		 * Do magic filename conversion for Windows here
 		 */
-		namelen = strlen(zap.za_name);
 
 		error = RtlUTF8ToUnicodeN(NULL, 0, &namelenholder, zap.za_name, namelen);
 
@@ -2844,7 +2843,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 			case FileFullDirectoryInformation:
 				structsize = FIELD_OFFSET(FILE_FULL_DIR_INFORMATION, FileName[0]);
-				if (outcount + structsize > bufsize) break;
+				if (outcount + structsize + namelenholder > bufsize) break;
 
 				eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 				eodp->FileIndex = offset;
@@ -2863,7 +2862,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 			case FileIdBothDirectoryInformation:
 				structsize = FIELD_OFFSET(FILE_ID_BOTH_DIR_INFORMATION, FileName[0]);
-				if (outcount + structsize > bufsize) break;
+				if (outcount + structsize + namelenholder > bufsize) break;
 
 				eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 				FILE_ID_BOTH_DIR_INFORMATION *fibdi = (FILE_ID_BOTH_DIR_INFORMATION *)bufptr;
@@ -2885,7 +2884,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 			case FileBothDirectoryInformation:
 				structsize = FIELD_OFFSET(FILE_BOTH_DIR_INFORMATION, FileName[0]);
-				if (outcount + structsize > bufsize) break;
+				if (outcount + structsize + namelenholder > bufsize) break;
 
 				eodp = (FILE_BOTH_DIR_INFORMATION *)bufptr;
 				FILE_BOTH_DIR_INFORMATION *fbdi = (FILE_BOTH_DIR_INFORMATION *)bufptr;
@@ -2906,7 +2905,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 			case FileDirectoryInformation:
 				structsize = FIELD_OFFSET(FILE_DIRECTORY_INFORMATION, FileName[0]);
-				if (outcount + structsize > bufsize) break;
+				if (outcount + structsize + namelenholder > bufsize) break;
 				eodp = (FILE_DIRECTORY_INFORMATION *)bufptr;
 				//FILE_DIRECTORY_INFORMATION *fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
 				fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
@@ -2927,7 +2926,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 			case FileNamesInformation:
 				structsize = FIELD_OFFSET(FILE_NAMES_INFORMATION, FileName[0]);
-				if (outcount + structsize > bufsize) break;
+				if (outcount + structsize + namelenholder > bufsize) break;
 				eodp = (FILE_NAMES_INFORMATION *)bufptr;
 				FILE_NAMES_INFORMATION *fni = (FILE_NAMES_INFORMATION *)bufptr;
 				fni = (FILE_NAMES_INFORMATION *)bufptr;
@@ -2938,15 +2937,17 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 			}
 
-			// One char fits inside struct, so adjust by removing one wchar
+			// If know we can't fit struct, just leave
+			if (outcount + structsize + namelenholder > bufsize) break;
+
 			rawsize = structsize + namelenholder;
 			reclen = DIRENT_RECLEN(rawsize);
-			last_alignment = reclen - rawsize;
 
 			/*
-			* Will this entry fit in the buffer?
-			*/
-			if (outcount + rawsize > bufsize) {
+			 * Will this entry fit in the buffer? This time with alignment
+			 */
+			if (outcount + reclen > bufsize) {
+
 				/*
 				* Did we manage to fit anything in the buffer?
 				*/
@@ -2956,6 +2957,9 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				}
 				break;
 			}
+			// If it is going to fit, compute alignment, in case
+			// this dir entry is the last one, we don't align last one.
+			last_alignment = reclen - rawsize;
 
 
 			// Convert the filename over, or as much as we can fit
@@ -5343,6 +5347,8 @@ zfs_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct)
 		 * The fs has been unmounted, or we did a
 		 * suspend/resume and this file no longer exists.
 		 */
+
+
 		rw_exit(&zfsvfs->z_teardown_inactive_lock);
 		vnode_recycle(vp);
 		return;
