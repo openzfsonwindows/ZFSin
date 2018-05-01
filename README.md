@@ -191,8 +191,7 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ✅ git clone ZFS repo on ZFS mounted fs
 
-  ❎ Compile ZFS on top of ZFS
-  *  VS loads project, compiles 1 file then screams in terror.
+  ✅ Compile ZFS on top of ZFS
 
   ❎ Scrooge McDuck style swim in cash
 
