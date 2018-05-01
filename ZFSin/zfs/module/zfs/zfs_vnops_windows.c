@@ -122,6 +122,8 @@ BOOLEAN zfs_AcquireForLazyWrite(void *Context, BOOLEAN Wait)
 		return FALSE;
 	}
 	VN_HOLD(vp);
+	vnode_ref(vp);
+	VN_RELE(vp);
 	return TRUE;
 }
 
@@ -130,6 +132,8 @@ void zfs_ReleaseFromLazyWrite(void *Context)
 	struct vnode *vp = Context;
 	dprintf("%s:\n", __func__);
 	ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
+	VN_HOLD(vp);
+	vnode_rele(vp);
 	VN_RELE(vp);
 }
 
@@ -3230,12 +3234,6 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 #endif
 
 
-	/* File Caching is Currently Broken */
-	nocache = 1;
-
-
-
-
 	bufferLength = IrpSp->Parameters.Read.Length;
 	if (bufferLength == 0)
 		return STATUS_SUCCESS;
@@ -3260,8 +3258,15 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	}
 
 	// Read is beyond file length? shorten
-	if (byteOffset.QuadPart + bufferLength > zp->z_size)
-		bufferLength -= byteOffset.QuadPart + bufferLength - zp->z_size;
+	uint64_t filesize = zp->z_size;
+
+	if (byteOffset.QuadPart >= filesize) {
+		Status = STATUS_END_OF_FILE;
+		goto out;
+	}
+
+	if (byteOffset.QuadPart + bufferLength > filesize)
+		bufferLength = filesize - byteOffset.QuadPart;
 
 	// nocache transfer, make sure we flush first.
 	if (!pagingio && nocache && fileObject->SectionObjectPointer &&
@@ -3408,12 +3413,6 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		FlagOn(Irp->Flags, IRP_PAGING_IO));
 #endif
 
-
-	/* File Caching is Currently Broken */
-	nocache = 1;
-
-
-
 	bufferLength = IrpSp->Parameters.Write.Length;
 	if (bufferLength == 0)
 		return STATUS_SUCCESS;
@@ -3532,23 +3531,6 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 				SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
 			}
 
-#if 0
-			uint64_t newsize = zp->z_size;
-			if (byteOffset.QuadPart + bufferLength  > newsize)
-				newsize = byteOffset.QuadPart + bufferLength;
-			CC_FILE_SIZES ccfs;
-			vp->FileHeader.FileSize.QuadPart = newsize;
-			vp->FileHeader.ValidDataLength.QuadPart = newsize;
-			vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP(newsize, PAGE_SIZE);
-			ccfs.AllocationSize = vp->FileHeader.AllocationSize;
-			ccfs.FileSize = vp->FileHeader.FileSize;
-			ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
-			dprintf("CcSetFileSizes: alloc %llu Valid %llu FileSize %llu\n",
-				ccfs.AllocationSize.QuadPart, ccfs.ValidDataLength.QuadPart,
-				ccfs.FileSize.QuadPart);
-			CcSetFileSizes(fileObject, &ccfs);
-	// setsize is done in freesp
-#endif
 			if (!CcCopyWriteEx(fileObject,
 				&byteOffset,
 				bufferLength,
@@ -3616,20 +3598,6 @@ out:
 	// Update the file offset
 	fileObject->CurrentByteOffset.QuadPart =
 		byteOffset.QuadPart + Irp->IoStatus.Information;
-
-	if(!Status) {
-#if 1
-		IO_STATUS_BLOCK IoStatus = { 0 };
-		// For memory mapped files: flush out page cache of written section
-		CcCoherencyFlushAndPurgeCache(
-			fileObject->SectionObjectPointer,
-			&byteOffset,
-			bufferLength,
-			&IoStatus,
-			0);
-		Status = IoStatus.Status;		
-#endif
-	}
 
 //	dprintf("  FileName: %wZ offset 0x%llx len 0x%lx mdl %p System %p\n", &fileObject->FileName,
 //		byteOffset.QuadPart, bufferLength, Irp->MdlAddress, Irp->AssociatedIrp.SystemBuffer);

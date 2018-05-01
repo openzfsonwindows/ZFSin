@@ -942,7 +942,7 @@ vnode_rele(vnode_t *vp)
 	ASSERT(vp->v_usecount > 0);
 	atomic_dec_32(&vp->v_usecount);
 	// If we were the last usecount, we set NEEDINACTIVE
-	if (vp->v_usecount == 0)
+	if (vp->v_usecount == 0 && vnode_isdir(vp))
 		vp->v_flags |= VNODE_NEEDINACTIVE;
 }
 
