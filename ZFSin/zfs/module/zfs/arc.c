@@ -5713,11 +5713,6 @@ arc_access(arc_buf_hdr_t *hdr, kmutex_t *hash_lock)
 		 * If it was a prefetch, we will explicitly move it to
 		 * the head of the list now.
 		 */
-		if ((HDR_PREFETCH(hdr)) != 0) {
-			ASSERT(refcount_is_zero(&hdr->b_l1hdr.b_refcnt));
-			/* link protected by hash_lock */
-			ASSERT(multilist_link_active(&hdr->b_l1hdr.b_arc_node));
-		}
 		ARCSTAT_BUMP(arcstat_mfu_hits);
 		hdr->b_l1hdr.b_arc_access = ddi_get_lbolt();
 	} else if (hdr->b_l1hdr.b_state == arc_mfu_ghost) {
@@ -5733,7 +5728,6 @@ arc_access(arc_buf_hdr_t *hdr, kmutex_t *hash_lock)
 			 * This is a prefetch access...
 			 * move this block back to the MRU state.
 			 */
-			ASSERT0(refcount_count(&hdr->b_l1hdr.b_refcnt));
 			new_state = arc_mru;
 		}
 
@@ -5760,6 +5754,7 @@ arc_access(arc_buf_hdr_t *hdr, kmutex_t *hash_lock)
 void
 arc_bcopy_func(zio_t *zio, int error, arc_buf_t *buf, void *arg)
 {
+	if (buf == NULL) return;
 	if (error == 0)
 		bcopy(buf->b_data, arg, arc_buf_size(buf));
 	arc_buf_destroy(buf, arg);
@@ -5770,8 +5765,7 @@ void
 arc_getbuf_func(zio_t *zio, int error, arc_buf_t *buf, void *arg)
 {
 	arc_buf_t **bufp = arg;
-	if (error != 0) {
-		arc_buf_destroy(buf, arg);
+	if (buf == NULL) {
 		*bufp = NULL;
 	} else {
 		*bufp = buf;
@@ -6741,7 +6735,7 @@ arc_write_ready(zio_t *zio)
 	arc_buf_t *buf = callback->awcb_buf;
 	arc_buf_hdr_t *hdr = buf->b_hdr;
 	blkptr_t *bp = zio->io_bp;
-	uint64_t psize = BP_IS_HOLE(zio->io_bp) ? 0 : BP_GET_PSIZE(zio->io_bp);
+	uint64_t psize = BP_IS_HOLE(bp) ? 0 : BP_GET_PSIZE(bp);
 	enum zio_compress compress;
 
 	ASSERT(HDR_HAS_L1HDR(hdr));
@@ -6787,6 +6781,17 @@ arc_write_ready(zio_t *zio)
  		ASSERT3U(BP_GET_TYPE(bp), !=, DMU_OT_INTENT_LOG);
 		ASSERT(HDR_PROTECTED(hdr));
 
+		if (BP_SHOULD_BYTESWAP(bp)) {
+			if (BP_GET_LEVEL(bp) > 0) {
+				hdr->b_l1hdr.b_byteswap = DMU_BSWAP_UINT64;
+			} else {
+				hdr->b_l1hdr.b_byteswap =
+				    DMU_OT_BYTESWAP(BP_GET_TYPE(bp));
+			}
+		} else {
+			hdr->b_l1hdr.b_byteswap = DMU_BSWAP_NUMFUNCS;
+		}
+
  		hdr->b_crypt_hdr.b_ot = BP_GET_TYPE(bp);
 		hdr->b_crypt_hdr.b_dsobj = zio->io_bookmark.zb_objset;
 		zio_crypt_decode_params_bp(bp, hdr->b_crypt_hdr.b_salt,
@@ -6803,12 +6808,15 @@ arc_write_ready(zio_t *zio)
 		buf->b_flags &= ~ARC_BUF_FLAG_ENCRYPTED;
 		if (BP_GET_COMPRESS(bp) == ZIO_COMPRESS_OFF)
 			buf->b_flags &= ~ARC_BUF_FLAG_COMPRESSED;
+	} else if (BP_IS_HOLE(bp) && ARC_BUF_ENCRYPTED(buf)) {
+		buf->b_flags &= ~ARC_BUF_FLAG_ENCRYPTED;
+		buf->b_flags &= ~ARC_BUF_FLAG_COMPRESSED;
 	}
 
 	/* this must be done after the buffer flags are adjusted */
 	arc_cksum_compute(buf);
 
-	if (BP_IS_HOLE(zio->io_bp) || BP_IS_EMBEDDED(zio->io_bp)) {
+	if (BP_IS_HOLE(bp) || BP_IS_EMBEDDED(bp)) {
 		compress = ZIO_COMPRESS_OFF;
 	} else {
 		ASSERT3U(HDR_GET_LSIZE(hdr), ==, BP_GET_LSIZE(zio->io_bp));
@@ -6871,7 +6879,7 @@ arc_write_ready(zio_t *zio)
 	}
 
   out:
-	arc_hdr_verify(hdr, zio->io_bp);
+	arc_hdr_verify(hdr, bp);
 }
 
 static void
