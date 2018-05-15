@@ -481,6 +481,10 @@ zio_decrypt(zio_t *zio, abd_t *data, uint64_t size)
 		}
 		abd_copy(data, zio->io_abd, size);
 
+		if (zio_injection_enabled && ot != DMU_OT_DNODE && ret == 0) {
+			ret = zio_handle_decrypt_injection(spa,
+			    &zio->io_bookmark, ot, ECKSUM);
+		}
 		if (ret != 0)
 			goto error;
 
@@ -500,6 +504,10 @@ zio_decrypt(zio_t *zio, abd_t *data, uint64_t size)
 			zio_crypt_decode_mac_bp(bp, mac);
 			ret = spa_do_crypt_mac_abd(B_FALSE, spa, dsobj,
 			    zio->io_abd, size, mac);
+			if (zio_injection_enabled && ret == 0) {
+				ret = zio_handle_decrypt_injection(spa,
+				    &zio->io_bookmark, ot, ECKSUM);
+			}
 		}
 		abd_copy(data, zio->io_abd, size);
 
@@ -519,8 +527,9 @@ zio_decrypt(zio_t *zio, abd_t *data, uint64_t size)
 		zio_crypt_decode_mac_bp(bp, mac);
 	}
 
-	ret = spa_do_crypt_abd(B_FALSE, spa, dsobj, bp, bp->blk_birth,
-	    size, data, zio->io_abd, iv, mac, salt, &no_crypt);
+	ret = spa_do_crypt_abd(B_FALSE, spa, &zio->io_bookmark, BP_GET_TYPE(bp),
+	    BP_GET_DEDUP(bp), BP_SHOULD_BYTESWAP(bp), salt, iv, mac, size, data,
+	    zio->io_abd, &no_crypt);
 	if (no_crypt)
 		abd_copy(data, zio->io_abd, size);
 
@@ -531,7 +540,7 @@ zio_decrypt(zio_t *zio, abd_t *data, uint64_t size)
 
 error:
 	/* assert that the key was found unless this was speculative */
-	ASSERT(ret != ENOENT || (zio->io_flags & ZIO_FLAG_SPECULATIVE));
+	ASSERT(ret != EACCES || (zio->io_flags & ZIO_FLAG_SPECULATIVE));
 
 	/*
 	 * If there was a decryption / authentication error return EIO as
@@ -540,6 +549,7 @@ error:
 	if (ret == ECKSUM) {
 		zio->io_error = SET_ERROR(EIO);
 		if ((zio->io_flags & ZIO_FLAG_SPECULATIVE) == 0) {
+			spa_log_error(spa, &zio->io_bookmark);
 			zfs_ereport_post(FM_EREPORT_ZFS_AUTHENTICATION,
 			    spa, NULL, &zio->io_bookmark, zio, 0, 0);
 		}
@@ -3850,8 +3860,9 @@ zio_encrypt(zio_t *zio)
 	}
 
 	/* Perform the encryption. This should not fail */
-	VERIFY0(spa_do_crypt_abd(B_TRUE, spa, dsobj, bp, zio->io_txg,
-	    psize, zio->io_abd, eabd, iv, mac, salt, &no_crypt));
+	VERIFY0(spa_do_crypt_abd(B_TRUE, spa, &zio->io_bookmark,
+	    BP_GET_TYPE(bp), BP_GET_DEDUP(bp), BP_SHOULD_BYTESWAP(bp),
+	    salt, iv, mac, psize, zio->io_abd, eabd, &no_crypt));
 
 	/* encode encryption metadata into the bp */
 	if (ot == DMU_OT_INTENT_LOG) {

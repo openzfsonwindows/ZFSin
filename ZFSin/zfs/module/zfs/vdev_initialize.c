@@ -282,7 +282,7 @@ vdev_xlate(vdev_t *vd, const range_seg_t *logical_rs, range_seg_t *physical_rs)
 	 * range into its physical components by calling the
 	 * vdev specific translate function.
 	 */
-	range_seg_t intermediate = { 0 };
+	range_seg_t intermediate = { { { 0 } } };
 	pvd->vdev_ops->vdev_op_xlate(vd, physical_rs, &intermediate);
 
 	physical_rs->rs_start = intermediate.rs_start;
