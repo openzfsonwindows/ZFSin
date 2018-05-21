@@ -753,7 +753,7 @@ static int pthread_setcanceltype(int type, int *oldtype)
 	return 0;
 }
 
-static int pthread_create_wrapper(void *args)
+static int __stdcall pthread_create_wrapper(void *args)
 {
 	struct _pthread_v *tv = args;
 	int i, j;

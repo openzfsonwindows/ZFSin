@@ -257,8 +257,10 @@ xdrmem_ops(void)
 		ops.x_inline = xdrmem_inline;
 		ops.x_destroy = xdrmem_destroy;
 		ops.x_control = xdrmem_control;
+#if defined(_LP64)
 		ops.x_getint32 = xdrmem_getint32;
 		ops.x_putint32 = xdrmem_putint32;
+#endif
 	}
 //	(void) mutex_unlock(&ops_lock);
 	return (&ops);

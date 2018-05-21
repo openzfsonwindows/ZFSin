@@ -148,6 +148,9 @@
     <ProjectReference Include="..\..\libuutil\libuutil\libuutil.vcxproj">
       <Project>{46508747-2a2d-4f92-95ef-aaad820bc29b}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\..\zlib-1.2.3\contrib\vstudio\vc8\zlibstat.vcxproj">
+      <Project>{745dec58-ebb3-47a9-a9b8-4c6627c01bf8}</Project>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{6352BFDB-D45E-47FD-BDE8-F9320CAECF9B}</ProjectGuid>
@@ -164,13 +167,13 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <TargetVersion>Windows10</TargetVersion>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <ConfigurationType>StaticLibrary</ConfigurationType>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <TargetVersion>Windows10</TargetVersion>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <ConfigurationType>StaticLibrary</ConfigurationType>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -231,6 +234,34 @@
       <RuntimeLibrary>
       </RuntimeLibrary>
     </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;__x86_32__;__i386;__i386__;</PreprocessorDefinitions>
+      <RuntimeLibrary />
+    </ClCompile>
+    <Lib>
+      <AdditionalDependencies>
+      </AdditionalDependencies>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
+      <TargetMachine>MachineX86</TargetMachine>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;__x86_32__;__i386;__i386__;</PreprocessorDefinitions>
+      <RuntimeLibrary />
+    </ClCompile>
+    <Lib>
+      <AdditionalDependencies>
+      </AdditionalDependencies>
+      <TargetMachine>MachineX86</TargetMachine>
+      <AdditionalLibraryDirectories>
+      </AdditionalLibraryDirectories>
+    </Lib>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

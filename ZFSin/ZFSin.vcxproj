@@ -173,6 +173,28 @@
       <AdditionalDependencies>wdmsec.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WarningLevel>Level3</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <PreprocessorDefinitions>_KERNEL;__x86_32__;__i386;__i386__;_LP32;Z_PREFIX;MY_ZCALLOC;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>wdmsec.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib;$(KMDF_LIB_PATH)$(KMDF_VER_PATH)\WdfLdr.lib;$(KMDF_LIB_PATH)$(KMDF_VER_PATH)\WdfDriverEntry.lib</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WarningLevel>Level3</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <PreprocessorDefinitions>_KERNEL;__x86_32__;__i386;__i386__;_LP32;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>wdmsec.lib;%(AdditionalDependencies);$(KernelBufferOverflowLib);$(DDK_LIB_PATH)ntoskrnl.lib;$(DDK_LIB_PATH)hal.lib;$(DDK_LIB_PATH)wmilib.lib;$(KMDF_LIB_PATH)$(KMDF_VER_PATH)\WdfLdr.lib;$(KMDF_LIB_PATH)$(KMDF_VER_PATH)\WdfDriverEntry.lib</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <Inf Include="ZFSin.inf" />
   </ItemGroup>

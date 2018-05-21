@@ -39,8 +39,8 @@ extern "C" {
 
 #ifdef _WIN32
 #ifndef _KERNEL
+#include <winsock2.h>
 #pragma comment(lib, "Ws2_32.lib")
-#include <WinSock2.h>
 #endif
 #endif
 

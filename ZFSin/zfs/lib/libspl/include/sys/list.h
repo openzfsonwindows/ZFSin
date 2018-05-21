@@ -26,6 +26,7 @@
 #ifndef	_SYS_LIST_H
 #define	_SYS_LIST_H
 
+#include <sys/w32_types.h>
 #include <sys/list_impl.h>
 
 #ifdef	__cplusplus

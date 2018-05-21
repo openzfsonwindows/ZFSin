@@ -215,6 +215,8 @@
     * define ZLIB_WINAPI.
     * Caution: the standard ZLIB1.DLL is NOT compiled using ZLIB_WINAPI.
     */
+#undef ZLIB_WINAPI
+
 #  ifdef ZLIB_WINAPI
 #    ifdef FAR
 #      undef FAR

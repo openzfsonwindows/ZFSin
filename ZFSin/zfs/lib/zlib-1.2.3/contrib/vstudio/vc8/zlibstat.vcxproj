@@ -87,8 +87,8 @@
     <_ProjectFileVersion>14.0.25431.1</_ProjectFileVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>x86\ZlibStat$(Configuration)\</OutDir>
-    <IntDir>x86\ZlibStat$(Configuration)\Tmp\</IntDir>
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\</IntDir>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
     <CodeAnalysisRules />
     <CodeAnalysisRuleAssemblies />
@@ -101,8 +101,8 @@
     <CodeAnalysisRuleAssemblies />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>x86\ZlibStat$(Configuration)\</OutDir>
-    <IntDir>x86\ZlibStat$(Configuration)\Tmp\</IntDir>
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\</IntDir>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
     <CodeAnalysisRules />
     <CodeAnalysisRuleAssemblies />
@@ -115,8 +115,8 @@
     <CodeAnalysisRuleAssemblies />
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseWithoutAsm|Win32'">
-    <OutDir>x86\ZlibStat$(Configuration)\</OutDir>
-    <IntDir>x86\ZlibStat$(Configuration)\Tmp\</IntDir>
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\</IntDir>
     <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
     <CodeAnalysisRules />
     <CodeAnalysisRuleAssemblies />
@@ -132,9 +132,10 @@
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>..\..\..;..\..\masmx86;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;ZLIB_WINAPI;_CRT_NONSTDC_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ZLIB_WINAPI;_CRT_NONSTDC_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE</PreprocessorDefinitions>
       <ExceptionHandling />
-      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <RuntimeLibrary>
+      </RuntimeLibrary>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <PrecompiledHeaderOutputFile>$(IntDir)zlibstat.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
@@ -162,8 +163,7 @@
       <AdditionalIncludeDirectories>..\..\..;..\..\masmx86;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>ZLIB_WINAPI;_CRT_NONSTDC_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE</PreprocessorDefinitions>
       <ExceptionHandling />
-      <RuntimeLibrary>
-      </RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <PrecompiledHeaderOutputFile>$(IntDir)zlibstat.pch</PrecompiledHeaderOutputFile>
       <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
@@ -186,10 +186,11 @@
     <ClCompile>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <AdditionalIncludeDirectories>..\..\..;..\..\masmx86;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;ZLIB_WINAPI;_CRT_NONSTDC_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE;ASMV;ASMINF;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ZLIB_WINAPI;_CRT_NONSTDC_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <ExceptionHandling />
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>
+      </RuntimeLibrary>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <PrecompiledHeaderOutputFile>$(IntDir)zlibstat.pch</PrecompiledHeaderOutputFile>
@@ -219,8 +220,7 @@
       <PreprocessorDefinitions>ZLIB_WINAPI;_CRT_NONSTDC_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <ExceptionHandling />
-      <RuntimeLibrary>
-      </RuntimeLibrary>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <PrecompiledHeaderOutputFile>$(IntDir)zlibstat.pch</PrecompiledHeaderOutputFile>
@@ -244,10 +244,11 @@
     <ClCompile>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
       <AdditionalIncludeDirectories>..\..\..;..\..\masmx86;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WIN32;ZLIB_WINAPI;_CRT_NONSTDC_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ZLIB_WINAPI;_CRT_NONSTDC_NO_DEPRECATE;_CRT_SECURE_NO_DEPRECATE</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <ExceptionHandling />
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>
+      </RuntimeLibrary>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <PrecompiledHeaderOutputFile>$(IntDir)zlibstat.pch</PrecompiledHeaderOutputFile>

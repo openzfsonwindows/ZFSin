@@ -159,11 +159,11 @@ void uio_update(uio_t *uio, user_size_t count)
 
 	if (count) {
 		if (count > uio->uio_iov->iov_len) {
-			(uint64_t)uio->uio_iov[ind].iov_base += uio->uio_iov[ind].iov_len;
+			(uintptr_t)uio->uio_iov[ind].iov_base += uio->uio_iov[ind].iov_len;
 			uio->uio_iov[ind].iov_len = 0;
 		}
 		else {
-			(uint64_t)uio->uio_iov[ind].iov_base += count;
+			(uintptr_t)uio->uio_iov[ind].iov_base += count;
 			uio->uio_iov[ind].iov_len -= count;
 		}
 		if (count > (user_size_t)uio->uio_resid) {

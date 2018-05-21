@@ -42,6 +42,9 @@
     <ProjectReference Include="..\..\..\lib\libzpool\libzpool\libzpool.vcxproj">
       <Project>{6352bfdb-d45e-47fd-bde8-f9320caecf9b}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\..\..\lib\zlib-1.2.3\contrib\vstudio\vc8\zlibstat.vcxproj">
+      <Project>{745dec58-ebb3-47a9-a9b8-4c6627c01bf8}</Project>
+    </ProjectReference>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{D923B8A4-5161-4E28-9E69-D3193114DAC4}</ProjectGuid>
@@ -108,15 +111,18 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
-      <PrecompiledHeader>
-      </PrecompiledHeader>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;__x86_32__;__i386;__i386__;_LP32_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <SDLCheck>false</SDLCheck>
+      <RuntimeLibrary />
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -133,17 +139,20 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <UACExecutionLevel>HighestAvailable</UACExecutionLevel>
+      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
-      <PrecompiledHeader>
-      </PrecompiledHeader>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;__x86_32__;__i386;__i386__;_LP32NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <SDLCheck>false</SDLCheck>
+      <RuntimeLibrary />
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

@@ -57,13 +57,13 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <TargetVersion>Windows10</TargetVersion>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <ConfigurationType>StaticLibrary</ConfigurationType>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <TargetVersion>Windows10</TargetVersion>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
     <ConfigurationType>StaticLibrary</ConfigurationType>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -123,6 +123,20 @@
       <PreprocessorDefinitions>__x86_64</PreprocessorDefinitions>
       <RuntimeLibrary>
       </RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;__x86_32__;i386;__i386;__i386__;</PreprocessorDefinitions>
+      <RuntimeLibrary />
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;__x86_32__;i386;__i386;__i386__;</PreprocessorDefinitions>
+      <RuntimeLibrary />
     </ClCompile>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

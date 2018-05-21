@@ -37,10 +37,10 @@
 #include <sys/types.h>
 #include <sys/w32_types.h>
 #include <sys/types32.h>
-
+#include <winsock2.h>
 #pragma comment(lib, "Ws2_32.lib")
 
-/*
+ /*
  * XDR provides a conventional way for converting between C data
  * types and an external bit-string representation.  Library supplied
  * routines provide for the conversion on built-in C data types.  These

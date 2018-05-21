@@ -437,7 +437,7 @@ overflow:
 	return (ERANGE);
 }
 
-char *
+char * __cdecl
 strpbrk(const char *s, const char *b)
 {
 	const char *p;
@@ -450,7 +450,6 @@ strpbrk(const char *s, const char *b)
 	} while (*s++);
 	return (NULL);
 }
-
 
 int
 ddi_strtoul(const char *str, char **nptr, int base, unsigned long *result)

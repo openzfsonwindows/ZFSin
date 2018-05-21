@@ -46,14 +46,12 @@ typedef uint32_t zlen_t;
 typedef uLongf zlen_t;
 #define	compress_func	compress2
 #define	uncompress_func	uncompress
-
 #endif
 
 size_t
 gzip_compress(void *s_start, void *d_start, size_t s_len, size_t d_len, int n)
 {
 	zlen_t dstlen = d_len;
-
 	ASSERT(d_len <= s_len);
 
 	if (compress_func(d_start, &dstlen, s_start, s_len, n) != Z_OK) {

@@ -31,6 +31,9 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libzfs_core", "ZFSin\zfs\lib\libzfs_core\libzfs_core\libzfs_core.vcxproj", "{9BDD4E3E-9874-46B9-A6A1-B328FFB3E94F}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libzfs", "ZFSin\zfs\lib\libzfs\libzfs\libzfs.vcxproj", "{93BBE582-95D6-4CB4-9C3C-9825B6607453}"
+	ProjectSection(ProjectDependencies) = postProject
+		{745DEC58-EBB3-47A9-A9B8-4C6627C01BF8} = {745DEC58-EBB3-47A9-A9B8-4C6627C01BF8}
+	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "cmd", "cmd", "{512F5D40-6654-4669-AEB0-189E6B549D31}"
 EndProject
@@ -53,6 +56,7 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libunicode", "ZFSin\zfs\lib
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zfs", "ZFSin\zfs\cmd\zfs\zfs\zfs.vcxproj", "{D923B8A4-5161-4E28-9E69-D3193114DAC4}"
 	ProjectSection(ProjectDependencies) = postProject
+		{745DEC58-EBB3-47A9-A9B8-4C6627C01BF8} = {745DEC58-EBB3-47A9-A9B8-4C6627C01BF8}
 		{5514A992-229B-47B4-9E37-8299A4C1263A} = {5514A992-229B-47B4-9E37-8299A4C1263A}
 		{1696DCFF-4F3A-4199-A677-27A578AE2DE1} = {1696DCFF-4F3A-4199-A677-27A578AE2DE1}
 	EndProjectSection

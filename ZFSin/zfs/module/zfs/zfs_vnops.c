@@ -2822,7 +2822,11 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			else
 				get_zp = zfs_zget_ext(zfsvfs,
 					offset == 1 ? parent : objnum, &tzp,  // objnum is adjusted above
-					ZGET_FLAG_WITHOUT_VNODE);
+#if 1
+					0);
+#else
+					ZGET_FLAG_WITHOUT_VNODE );
+#endif
 			// Is it worth warning about failing stat here?
 
 			// We need to fill in more fields.
@@ -2970,6 +2974,11 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				namelenholder / sizeof(WCHAR), nameptr, zap.za_name, namelenholder, structsize);
 
 			// Release the zp
+#if 1
+			if (get_zp == 0) {
+				VN_RELE(ZTOV(tzp));
+			}
+#else
 			if (get_zp == 0) {
 				if (ZTOV(tzp) == NULL) {
 					zfs_zinactive(tzp);
@@ -2977,7 +2986,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					VN_RELE(ZTOV(tzp));
 				}
 			}
-
+#endif
 
 			// If we aren't to skip, advance all pointers
 			eodp->NextEntryOffset = reclen;

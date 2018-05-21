@@ -59,6 +59,14 @@
 #define	HAVE_HTONL
 #endif
 
+#ifdef _WIN32
+#ifndef _KERNEL
+#include <winsock2.h>
+#pragma comment(lib, "Ws2_32.lib")
+#endif
+#endif
+
+
 #ifdef	_BOOT
 #define	bcopy(_s, _d, _l)	((void) memcpy((_d), (_s), (_l)))
 #define	bzero(_m, _l)		((void) memset((_m), 0, (_l)))
