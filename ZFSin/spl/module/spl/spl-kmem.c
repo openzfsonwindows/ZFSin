@@ -4766,9 +4766,10 @@ spl_free_thread()
 
 			// memory footprint has gotten really big, decrease spl_free substantially
 			int64_t total_mem_used = (int64_t) segkmem_total_mem_allocated;
-			if ((segkmem_total_mem_allocated * 100LL / real_total_memory) > 70) {
+			int64_t mem_used_perc = (int64_t)(segkmem_total_mem_allocated * 100LL / real_total_memory);
+			if (mem_used_perc > 70 && mem_used_perc <= 75) {
 				new_spl_free -= total_mem_used / 64;
-			} else if ((segkmem_total_mem_allocated * 100LL / real_total_memory) > 75) {
+			} else if (mem_used_perc > 75) {
 				new_spl_free -= total_mem_used / 32;
 				lowmem = TRUE;
 			}
