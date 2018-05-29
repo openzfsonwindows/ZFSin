@@ -759,6 +759,7 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 		DWORD retcount = 0;
 		int err;
 		char buf[1024];
+		int isdisk = 0;
 #define IOCTL_MOUNTDEV_QUERY_DEVICE_NAME 0x004d0008
 		err = DeviceIoControl(h,
 			IOCTL_MOUNTDEV_QUERY_DEVICE_NAME,
@@ -768,6 +769,7 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 			sizeof(buf),
 			&retcount,
 			(LPOVERLAPPED)NULL);
+		if (err) isdisk++;
 		fprintf(stderr, "DeviceName said %s with '%S'\n\n", err?"OK":"NG", buf);
 		DISK_GEOMETRY_EX *p = buf;
 		err = DeviceIoControl(h,
@@ -778,6 +780,7 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 			sizeof(buf),
 			&retcount,
 			(LPOVERLAPPED)NULL);
+		if (err) isdisk++;
 		fprintf(stderr, "DriveGeometry said %s\n", err ? "OK" : "NG");
 		DRIVE_LAYOUT_INFORMATION_EX *x = buf;
 		err = DeviceIoControl(h,
@@ -788,6 +791,7 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 			sizeof(buf),
 			&retcount,
 			(LPOVERLAPPED)NULL);
+		if (err) isdisk++;
 		fprintf(stderr, "LayoutInfo said %s\n", err ? "OK" : "NG");
 		VOLUME_DISK_EXTENTS  *e = buf;
 		err = DeviceIoControl(h,
@@ -799,9 +803,10 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 			&retcount,
 			(LPOVERLAPPED)NULL);
 		fprintf(stderr, "DiskExtents said %s\n", err ? "OK" : "NG");
+		if (err) isdisk++;
 
 		// If no extents, full disk?
-		if (!err)
+		if (isdisk)
 			wholedisk = 1;
 		else
 			wholedisk = 0;
@@ -850,13 +855,16 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 	 * Determine whether this is a device or a file.
 	 */
 #ifdef _WIN32
-	if (wholedisk || GetFileType(h) == FILE_TYPE_DISK) {
+//	if (wholedisk || GetFileType(h) == FILE_TYPE_DISK) {
+	if (wholedisk || GetFileAttributes(path) == FILE_TYPE_DISK) {
 #else
 	if (wholedisk || S_ISBLK(statbuf.st_mode)) {
 #endif
 			type = VDEV_TYPE_DISK;
 #ifdef _WIN32
-	} else if (GetFileAttributes(h) == FILE_ATTRIBUTE_NORMAL) {
+			// is this the best way?
+	} else if (GetFileAttributes(path) == FILE_ATTRIBUTE_NORMAL ||
+		GetFileAttributes(path) == FILE_ATTRIBUTE_ARCHIVE) {
 #else
 	} else if (S_ISREG(statbuf.st_mode)) {
 #endif
