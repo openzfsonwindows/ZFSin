@@ -1037,13 +1037,6 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 		zmo = zfsvfs->z_vfs;
 		ASSERT(zmo->type == MOUNT_TYPE_VCB);
 
-		// Purge all znodes. Find a Windowsy way to do this, in vflush()
-		while ((zp = list_head(&zfsvfs->z_all_znodes)) != NULL) {
-
-			// Recycling the node will remove it from the list
-			vnode_recycle(ZTOV(zp));
-		}
-
 		// Flush volume
 		//rdonly = !spa_writeable(dmu_objset_spa(zfsvfs->z_os));
 

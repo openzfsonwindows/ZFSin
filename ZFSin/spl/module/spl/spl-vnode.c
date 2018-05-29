@@ -775,7 +775,7 @@ int vnode_put(vnode_t *vp)
 
 	// Was it marked TERM, but we were waiting for last ref to leave.
 	if ((vp->v_flags & VNODE_MARKTERM)) {
-		vnode_recycle(vp);
+		vnode_recycle(vp, 0);
 	}
 
 	return 0;
@@ -783,7 +783,7 @@ int vnode_put(vnode_t *vp)
 
 extern int zfs_vnop_reclaim(struct vnode *);
 
-int vnode_recycle(vnode_t *vp)
+int vnode_recycle_int(vnode_t *vp, int flags)
 {
 	KIRQL OldIrql;
 	ASSERT((vp->v_flags & VNODE_DEAD) == 0);
@@ -792,9 +792,11 @@ int vnode_recycle(vnode_t *vp)
 	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 
 	// We will only reclaim idle nodes, and not mountpoints(ROOT)
-	if ((vp->v_usecount == 0) &&
+	if ((flags & FORCECLOSE) ||
+
+		((vp->v_usecount == 0) &&
 		(vp->v_iocount == 0) &&
-		((vp->v_flags&VNODE_MARKROOT) == 0)) {
+			((vp->v_flags&VNODE_MARKROOT) == 0))) {
 
 		// Call inactive?
 		ASSERT(!(vp->v_flags & VNODE_NEEDINACTIVE));
@@ -811,10 +813,10 @@ int vnode_recycle(vnode_t *vp)
 		//zfs_fsync(vp, 0, NULL, NULL);
 
 		// Tell FS to release node.
-		if (zfs_vnop_reclaim(vp))
-			panic("vnode_recycle: cannot reclaim\n"); // My fav panic from OSX
+		if ((vp->v_flags&VNODE_MARKROOT) == 0) 
+			if (zfs_vnop_reclaim(vp))
+				panic("vnode_recycle: cannot reclaim\n"); // My fav panic from OSX
 
-		// Remove from list
 		mutex_enter(&vnode_all_list_lock);
 		list_remove(&vnode_all_list, vp);
 		mutex_exit(&vnode_all_list_lock);
@@ -833,6 +835,12 @@ int vnode_recycle(vnode_t *vp)
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 
 	return 0;
+}
+
+
+int vnode_recycle(vnode_t *vp)
+{
+	return vnode_recycle_int(vp, 0);
 }
 
 void vnode_create(void *v_data, int type, int flags, struct vnode **vpp)
@@ -880,7 +888,7 @@ void vnode_create(void *v_data, int type, int flags, struct vnode **vpp)
 					rvp->v_usecount == 0) {
 					reclaims++;
 					mutex_exit(&vnode_all_list_lock);
-					vnode_recycle(rvp);
+					vnode_recycle_int(rvp, 0);
 					mutex_enter(&vnode_all_list_lock);
 					break; // must restart loop
 				}
@@ -952,7 +960,41 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 	// flags:
 	//   SKIPROOT : dont release root nodes (mountpoints)
 	// SKIPSYSTEM : dont release vnodes marked as system
-	//      FORCE : release everything, force unmount
+	// FORCECLOSE : release everything, force unmount
+
+	// Purge all znodes. Find a Windowsy way to do this, in vflush()
+#if 0
+	// this loops forver, as MARKROOT will not be released, so the list is
+	// never empty. Implement VFLUSH with optional FORCE so we are like
+	// upstream implementations.
+	while ((zp = list_head(&zfsvfs->z_all_znodes)) != NULL) {
+
+		// Recycling the node will remove it from the list
+		vnode_recycle(ZTOV(zp));
+	}
+#endif
+
+	// FIXME: FORCE currently breaks badly
+	flags = 0;
+
+	struct vnode *rvp;
+	mutex_enter(&vnode_all_list_lock);
+	for (rvp = list_head(&vnode_all_list);
+		rvp;
+		rvp = list_next(&vnode_all_list, rvp)) {
+		// If we aren't FORCE and asked to SKIPROOT, and node 
+		// is MARKROOT, then go to next.
+		if (!(flags & FORCECLOSE))
+			if ((flags & SKIPROOT))
+				if (rvp->v_flags & VNODE_MARKROOT)
+					continue;
+		// We are to remove this node, even if ROOT - unmark it.
+		mutex_exit(&vnode_all_list_lock);
+		vnode_recycle_int(rvp, flags & FORCECLOSE);
+		mutex_enter(&vnode_all_list_lock);
+		break; // must restart loop
+	}
+	mutex_exit(&vnode_all_list_lock);
 
 	return 0;
 }
