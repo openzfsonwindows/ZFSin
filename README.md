@@ -276,6 +276,8 @@ Success would be:
 No pools available
 ```
 
+![InstallGuide](https://raw.githubusercontent.com/OpenZFSonWindows/ZFSin/master/ZFSin_InstallGuide.png)
+
 ---
 
 # Creating your first pool.
