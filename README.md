@@ -261,8 +261,8 @@ Enable unsigned drivers:
 Then **reboot**. After restart it should have _Test Mode_ bottom right
 corner of the screen.
 
-* Start a CMDline as Administrator
-* Run ZFSinstall.bat
+* Right click on ZFSin.INF file
+* Select "Install"
 * Click "Install anyway" in the "unknown developer" popup
 * Run "zpool.exe status" to confirm it can talk to the kernel
 

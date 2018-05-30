@@ -1,89 +1,118 @@
-;
-; ZFSin.inf
-;
+;;;
+;;; OpenZFS
+;;;
+;;;
+;;; Copyright (c) Jorgen Lundman
+;;;
 
 [Version]
-Signature="$WINDOWS NT$"
-Class=Sample ; TODO: edit Class
-ClassGuid={78A1C341-4539-11d3-B88D-00C04FAD5171} ; TODO: edit ClassGuid
-Provider=%ManufacturerName%
-CatalogFile=ZFSin.cat
-DriverVer= ; TODO: set DriverVer in stampinf property pages
-DriverPackageType = FileSystem
-
-; ================= Class section =====================
-
-[ClassInstall32]
-Addreg=SampleClassReg
-
-[SampleClassReg]
-HKR,,,0,%ClassName%
-HKR,,Icon,,-5
-HKR,,DeviceType,0x10001,0x11 
-
-[SourceDisksNames]
-1 = %DiskName%,,,""
-
-;*****************************************
-; Install Section
-;*****************************************
-
-[Manufacturer]
-%ManufacturerName%=Standard,NT$ARCH$
-
-[Standard.NT$ARCH$]
-%ZFSin.DeviceDesc%=ZFSin_Device, Root\ZFSin ; TODO: edit hw-id
-
-[ZFSin_Device.NT]
-CopyFiles=Drivers_Dir
-
-[Drivers_Dir]
-ZFSin.sys
-
-;-------------- Service installation
-[ZFSin_Device.NT.Services]
-AddService = ZFSin,%SPSVCINST_ASSOCSERVICE%, ZFSin_Service_Inst
-
-; -------------- ZFSin driver install sections
-[ZFSin_Service_Inst]
-DisplayName    = %ZFSin.SVCDESC%
-ServiceType    = 2               ; SERVICE_KERNEL_DRIVER
-StartType      = 3               ; SERVICE_DEMAND_START
-ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
-ServiceBinary  = %12%\ZFSin.sys
-LoadOrderGroup = "File System"
-
-;
-;--- ZFSin_Device Coinstaller installation ------
-;
+Signature   = "$Windows NT$"
+Class       = Volume
+ClassGuid   = {71a27cdd-812a-11d0-bec7-08002be2092f}
+Provider    = %Me%
+DriverVer   = 05/19/2018,1.0.2.0
+CatalogFile = ZFSin.cat
 
 [DestinationDirs]
-DefaultDestDir = 12
-ZFSin_Device_CoInstaller_CopyFiles = 11
+DefaultDestDir          = 12
+ZFSin.DriverFiles       = 12            ;%windir%\system32\drivers
+ZFSin.DllFiles          = 11            ;%windir%\system32
 
-[ZFSin_Device.NT.CoInstallers]
-AddReg=ZFSin_Device_CoInstaller_AddReg
-CopyFiles=ZFSin_Device_CoInstaller_CopyFiles
+;;
+;; Default install sections
+;;
 
-[ZFSin_Device_CoInstaller_AddReg]
-HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfCoInstaller"
+[DefaultInstall]
+OptionDesc  = %ServiceDescription%
+CopyFiles   = ZFSin.DriverFiles
+;;,ZFSin.DllFiles
+RegisterDlls = shellzfsin
+CopyINF     = ZFSin.inf
 
-[ZFSin_Device_CoInstaller_CopyFiles]
-WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
+[DefaultInstall.Services]
+AddService  = %ServiceName%,0x802,ZFSin.Service
+
+[Manufacturer]
+%Me%=Standard,NTamd64,NTx86
+
+[Standard.NTamd64]
+%VolumeName% = ZFSin_Install, ZFSinVolume
+%ControllerName% = ZFSin_Install, ROOT\ZFSin
+
+[Standard.NTx86]
+%VolumeName% = ZFSin_Install, ZFSinVolume
+%ControllerName% = ZFSin_Install, ROOT\ZFSin
+
+[ZFSin_Install]
+OptionDesc   = %ServiceDescription%
+CopyFiles    = ZFSin.DriverFiles
+;;,ZFSin.DllFiles
+;;RegisterDlls = shellzfsin
+
+[ZFSin_Install.Services]
+AddService  = %ServiceName%,2,ZFSin.Service
+
+;;
+;; Default uninstall sections
+;;
+
+[DefaultUninstall]
+UnregisterDlls = shellzfsin
+DelFiles   = ZFSin.DriverFiles
+;;,ZFSin.DllFiles
+
+[DefaultUninstall.Services]
+DelService = %ServiceName%,0x200      ;Ensure service is stopped before deleting
+
+;
+; Services Section
+;
+
+[ZFSin.Service]
+DisplayName      = %ServiceName%
+Description      = %ServiceDescription%
+ServiceBinary    = %12%\%DriverName%.sys    ;%windir%\system32\drivers\
+ServiceType      = 1
+StartType        = 1                        ;SERVICE_SYSTEM_START
+ErrorControl     = 1
+LoadOrderGroup   = "File System"
+
+;;[shellzfsin]
+;;11,,shellzfsin.dll,1
+
+;
+; Copy Files
+;
+
+[ZFSin.DriverFiles]
+%DriverName%.sys
+
+[ZFSin.DllFiles]
+;;zpool.exe
+;;zfs.exe
 
 [SourceDisksFiles]
-WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with SourceDisksNames
-ZFSin.sys  = 1,,
+ZFSin.sys = 1,,
+;;zpool.exe = 1,,
+;;zfs.exe = 1,,
 
-[ZFSin_Device.NT.Wdf]
-KmdfService =  ZFSin, ZFSin_wdfsect
-[ZFSin_wdfsect]
-KmdfLibraryVersion = $KMDFVERSION$
+[SourceDisksNames.x86]
+1 = %DiskId1%,,
+;;,\x86
+
+[SourceDisksNames.amd64]
+1 = %DiskId1%,,
+;;,\x64
+
+;;
+;; String Section
+;;
 
 [Strings]
-SPSVCINST_ASSOCSERVICE= 0x00000002
-ManufacturerName="lundman.net" ;TODO: Replace with your manufacturer name
-ClassName="Samples" ; TODO: edit ClassName
-DiskName = "ZFSin Installation Disk"
-ZFSin.DeviceDesc = "ZFSin Device"
-ZFSin.SVCDESC = "ZFSin Service"
+Me                      = "Jorgen Lundman"
+ServiceDescription      = "OpenZFS driver"
+ServiceName             = "ZFSin"
+DriverName              = "ZFSin"
+DiskId1                 = "ZFSin Device Installation Disk"
+VolumeName              = "ZFSin volume"
+ControllerName = "ZFSin controller" 
