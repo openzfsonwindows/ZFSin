@@ -127,7 +127,8 @@ static struct uuid_to_ptag {
 	{ EFI_DELL_LVM },
 	{ EFI_DELL_RESV },
 	{ EFI_AAPL_HFS },
-	{ EFI_AAPL_UFS }
+	{ EFI_AAPL_UFS },
+	{ EFI_FREEBSD_ZFS }
 };
 
 /*
@@ -966,6 +967,9 @@ efi_read(HANDLE fd, struct dk_gpt *vtoc)
 			    &conversion_array[j].uuid,
 			    sizeof (struct uuid)) == 0) {
 				vtoc->efi_parts[i].p_tag = j;
+				if (j == 0x18) {
+					j = 0x02;
+				}
 				break;
 			}
 		}
