@@ -463,7 +463,7 @@ LONGLONG GetMemResources(char *pData)
 	if (*(pData + 0x14) == *(pData + 0x24)) nRLen = 16;
 	if (*(pData + 0x14) == *(pData + 0x28)) nRLen = 20;
 	PMEMORY pMem;
-	for (DWORD nIdx = 0; nRLen, nIdx < nCnt; nIdx++) {
+	for (DWORD nIdx = 0; nRLen && nIdx < nCnt; nIdx++) {
 		pMem = (PMEMORY)(pPtr + nRLen * nIdx);
 		if (pMem->Type == 3) llMem += pMem->Length;
 		if (pMem->Type == 7 && pMem->Flags == 0x200) llMem += ((LONGLONG)pMem->Length) << 8;
