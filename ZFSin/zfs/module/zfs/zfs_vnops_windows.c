@@ -258,6 +258,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 			dvp = NULL;
 			break;
 		}
+		zfs_set_security(vp, dvp);
 		// If last lookup hit a non-directory type, we stop
 		zp = VTOZ(vp);
 		ASSERT(zp != NULL);
@@ -748,6 +749,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			VN_RELE(vp);
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
+			dprintf("%s: denied due to hidden+system combo\n", __func__);
 			return STATUS_ACCESS_DENIED;
 		}
 	}
@@ -760,6 +762,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			VN_RELE(vp);
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
+			dprintf("%s: denied due to ZFS_READONLY + OVERWRITE\n", __func__);
 			return STATUS_ACCESS_DENIED;
 		}
 	}
@@ -770,6 +773,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		VN_RELE(vp);
 		VN_RELE(dvp);
 		kmem_free(filename, PATH_MAX);
+		dprintf("%s: denied due to ZFS_READONLY + WRITE_DATA\n", __func__);
 		return STATUS_ACCESS_DENIED;
 	}
 
@@ -795,6 +799,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				if (vp) VN_RELE(vp);
 				VN_RELE(dvp);
 				kmem_free(filename, PATH_MAX);
+				dprintf("%s: denied due to SeAccessCheck()\n", __func__);
 				return Status;
 			}
 			SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
@@ -808,6 +813,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				if (vp) VN_RELE(vp);
 				VN_RELE(dvp);
 				kmem_free(filename, PATH_MAX);
+				dprintf("%s: denied due to IoCheckShareAccess\n", __func__);
 				return Status;
 			}
 			IoUpdateShareAccess(FileObject, vp ? &vp->share_access : &dvp->share_access);
@@ -1747,7 +1753,7 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		}
 
 		FILE_FS_ATTRIBUTE_INFORMATION *ffai = Irp->AssociatedIrp.SystemBuffer;
-		ffai->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_NAMED_STREAMS |
+		ffai->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES /*| FILE_NAMED_STREAMS*/ |
 			FILE_PERSISTENT_ACLS | FILE_SUPPORTS_OBJECT_IDS | FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS |
 			FILE_SUPPORTS_REPARSE_POINTS | FILE_UNICODE_ON_DISK | FILE_SUPPORTS_HARD_LINKS | FILE_SUPPORTS_OPEN_BY_FILE_ID /* |
 			FILE_SUPPORTS_EXTENDED_ATTRIBUTES*/;
