@@ -318,10 +318,8 @@ feature_sync(spa_t *spa, zfeature_info_t *feature, uint64_t refcount,
 		uint64_t *refcount_cache =
 		    &spa->spa_feat_refcount_cache[feature->fi_feature];
 
-#ifndef _WIN32   // Figure out why this triggers, even though it is "(7 == 7)"
 			VERIFY3U((*refcount_cache), ==,
 		    (atomic_swap_64(refcount_cache, refcount)));
-#endif
 	}
 
 	if (refcount == 0)
