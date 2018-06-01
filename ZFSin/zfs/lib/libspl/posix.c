@@ -793,7 +793,7 @@ int win_isatty(HANDLE h)
 { 
 	DWORD mode;
 	int ret;
-
+#if 0
 	const unsigned long bufSize = sizeof(DWORD) + MAX_PATH * sizeof(WCHAR);
 	BYTE buf[sizeof(DWORD) + MAX_PATH * sizeof(WCHAR)];
 	PFILE_NAME_INFO pfni = (PFILE_NAME_INFO)buf;
@@ -809,6 +809,14 @@ int win_isatty(HANDLE h)
 		wcsstr(fn, L"-pty") && wcsstr(fn, L"-master"));
 
 	//printf("ret %d Got name as '%S'\n", ret, fn); fflush(stdout);
+	return ret;
+#else
+
+	ret = ((GetFileType(h) & ~FILE_TYPE_REMOTE) == FILE_TYPE_CHAR);
+
+#endif
+	fprintf(stderr, "%s: return %d\r\n", __func__, ret);
+	fflush(stderr);
 	return ret;
 }
 
