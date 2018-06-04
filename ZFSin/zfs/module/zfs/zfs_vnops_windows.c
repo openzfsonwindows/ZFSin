@@ -735,8 +735,12 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		return STATUS_FILE_IS_A_DIRECTORY; // wanted file, found dir error
 	}
 
-	if (vp)
+	if (vp) {
 		zp = VTOZ(vp);
+		// vnode_setsize is greatly helped by having access
+		// to the fileobject, so store that in vp for files.
+		vnode_setfileobject(vp, FileObject);
+	}
 
 	// If HIDDEN and SYSTEM are set, then the open of file must also have
 	// HIDDEN and SYSTEM set.
@@ -3322,6 +3326,7 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 			} else {
 				SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
 			}
+#if (NTDDI_VERSION >= NTDDI_WIN8)
 			if (!CcCopyReadEx(fileObject,
 				&byteOffset,
 				bufferLength,
@@ -3329,6 +3334,14 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 				SystemBuffer,
 				&Irp->IoStatus,
 				Irp->Tail.Overlay.Thread)) {
+#else
+			if (!CcCopyRead(fileObject,
+				&byteOffset,
+				bufferLength,
+				TRUE,
+				SystemBuffer,
+				&Irp->IoStatus)) {
+#endif
 				dprintf("CcCopyReadEx error\n");
 			}
 
@@ -3537,12 +3550,20 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 				SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
 			}
 
+#if (NTDDI_VERSION >= NTDDI_WIN8)
 			if (!CcCopyWriteEx(fileObject,
 				&byteOffset,
 				bufferLength,
 				TRUE,
 				SystemBuffer,
 				Irp->Tail.Overlay.Thread)) {
+#else
+			if (!CcCopyWrite(fileObject,
+				&byteOffset,
+				bufferLength,
+				TRUE,
+				SystemBuffer)) {
+#endif
 				dprintf("Could not wait\n");
 				ASSERT0("failed copy");
 			}

@@ -807,6 +807,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
 		FsRtlUninitializeFileLock(&vp->lock);
 
+		vp->fileobject = NULL;
 		// mutex does not need releasing.
 
 		// Call sync?
@@ -1011,4 +1012,14 @@ void *vnode_security(vnode_t *vp)
 	return vp->security_descriptor;
 }
 
+void vnode_setfileobject(vnode_t *vp, FILE_OBJECT *fileobject)
+{
+	if (vp) 
+		vp->fileobject = fileobject;
+}
 
+FILE_OBJECT *vnode_fileobject(vnode_t *vp)
+{
+	if (vp) return vp->fileobject;
+	return NULL;
+}

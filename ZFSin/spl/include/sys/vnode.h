@@ -79,6 +79,7 @@ struct vnode {
 	FILE_LOCK lock;
 	SECURITY_DESCRIPTOR *security_descriptor;
 	SHARE_ACCESS share_access;
+	FILE_OBJECT *fileobject;
 
 	list_node_t v_list; // vnode_all_list member node.
 };
@@ -392,6 +393,8 @@ static inline int win_has_cached_data(struct vnode *vp)
 	return ret;
 }
 
+#if 0
+// Since CcGetFileObjectFromSectionPtrsRef is vista and up, we store FileObject in vp now.
 #define vnode_pager_setsize(vp, sz)  do { \
 		PFILE_OBJECT fileObject = CcGetFileObjectFromSectionPtrsRef(&vp->SectionObjectPointers); \
         if (fileObject != NULL) { \
@@ -406,6 +409,23 @@ static inline int win_has_cached_data(struct vnode *vp)
 		ObDereferenceObject(fileObject); \
 		} \
 	} while(0)
+#else
+#define vnode_pager_setsize(vp, sz)  do { \
+		PFILE_OBJECT fileObject = vnode_fileobject(vp); \
+        if (fileObject != NULL) { \
+			ObReferenceObject(fileObject); /* Is this safe?*/ \
+			CC_FILE_SIZES ccfs; \
+			vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP((sz), PAGE_SIZE); \
+			vp->FileHeader.FileSize.QuadPart = (sz); \
+			vp->FileHeader.ValidDataLength.QuadPart = (sz); \
+			ccfs.AllocationSize = vp->FileHeader.AllocationSize; \
+			ccfs.FileSize = vp->FileHeader.FileSize; \
+			ccfs.ValidDataLength = vp->FileHeader.ValidDataLength; \
+			CcSetFileSizes(fileObject, &ccfs); \
+			ObDereferenceObject(fileObject); \
+		} \
+	} while(0)
+#endif
 
 #define vn_ismntpt(vp)   (vnode_mountedhere(vp) != NULL)
 
@@ -482,6 +502,8 @@ void vnode_rele(vnode_t *vp);
 void *vnode_sectionpointer(vnode_t *vp);
 void *vnode_security(vnode_t *vp);
 void vnode_setsecurity(vnode_t *vp, void *sd);
+void vnode_setfileobject(vnode_t *vp, FILE_OBJECT *fileobject);
+FILE_OBJECT *vnode_fileobject(vnode_t *vp);
 
 #define VNODE_READDIR_EXTENDED 1
 

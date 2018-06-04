@@ -1045,7 +1045,9 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 		if (error) goto out_unlock;
 
 		// Release any notifications
+#if (NTDDI_VERSION >= NTDDI_VISTA)
 		FsRtlNotifyCleanupAll(zmo->NotifySync, &zmo->DirNotifyList);
+#endif
 
 		// Release devices
 		IoDeleteSymbolicLink(&zmo->symlink_name);
