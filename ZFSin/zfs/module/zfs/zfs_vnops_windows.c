@@ -982,6 +982,13 @@ int zfs_vnop_reclaim(struct vnode *vp)
 	ZTOV(zp) = NULL;
 	vnode_clearfsnode(vp); /* vp->v_data = NULL */
 	//vnode_removefsref(vp); /* ADDREF from vnode_create */
+
+	if (&vp->resource)
+		ExDeleteResourceLite(&vp->resource);
+
+	if (&vp->pageio_resource)
+		ExDeleteResourceLite(&vp->pageio_resource);
+
 	vp = NULL;
 
 	if (zp->z_name_cache != NULL)
@@ -2962,7 +2969,7 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 	uio = uio_create(1, zccb->uio_offset, UIO_SYSSPACE, UIO_READ);	
 
 	if (Irp->MdlAddress)
-		uio_addiov(uio, MmGetSystemAddressForMdl(Irp->MdlAddress), IrpSp->Parameters.QueryDirectory.Length); // FIXME, check bounds checks are valid
+		uio_addiov(uio, MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority), IrpSp->Parameters.QueryDirectory.Length); // FIXME, check bounds checks are valid
 	else
 		uio_addiov(uio, Irp->UserBuffer, IrpSp->Parameters.QueryDirectory.Length);
 
