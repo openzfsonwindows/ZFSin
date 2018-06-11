@@ -1785,11 +1785,8 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		RtlCopyMemory(ffai->FileSystemName, name.Buffer, space);
 		Irp->IoStatus.Information = FIELD_OFFSET(FILE_FS_ATTRIBUTE_INFORMATION, FileSystemName) + space;
 			
+		Status = STATUS_SUCCESS;
 
-		if (space < zmo->name.Length)
-			Status = STATUS_BUFFER_OVERFLOW;
-		else
-			Status = STATUS_SUCCESS;
 		ASSERT(Irp->IoStatus.Information <= IrpSp->Parameters.QueryVolume.Length);
 		break;
 	case FileFsControlInformation:
