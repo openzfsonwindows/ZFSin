@@ -6465,7 +6465,30 @@ kmem_asprintf(const char *fmt, ...)
 	return (buf);
 }
 
+/* Copyright (C) 2014 insane coder (http://insanecoding.blogspot.com/, http://asprintf.insanecoding.org/) */
+char *
+kmem_vasprintf(const char *fmt, va_list ap)
+{
+	char *ptr;
+	int size;
+	int r = -1;
 
+	size = vsnprintf(NULL, 0, fmt, ap); 
+		if ((size >= 0) && (size < INT_MAX)) {
+		ptr = (char *)kmem_alloc(size + 1, KM_SLEEP); //+1 for null
+		if (ptr) {
+			r = vsnprintf(ptr, size + 1, fmt, ap);  //+1 for null
+			if ((r < 0) || (r > size)) {
+				kmem_free(ptr, size);
+				r = -1;
+			}
+		}
+	} else { 
+		ptr = 0; 
+	}
+
+	return(ptr);
+}
 
 char *
 kmem_strstr(const char *in, const char *str)

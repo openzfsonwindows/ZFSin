@@ -154,6 +154,7 @@ zfs_dbgmsg(const char *fmt, ...)
 	va_end(adx);
 
 	DTRACE_PROBE1(zfs__dbgmsg, char *, zdm->zdm_msg);
+	dprintf("%s: %s\n", __func__, zdm->zdm_msg);
 
 	mutex_enter(&zfs_dbgmsgs_lock);
 	list_insert_tail(&zfs_dbgmsgs, zdm);

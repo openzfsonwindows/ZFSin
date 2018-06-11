@@ -74,10 +74,9 @@ gethrestime(struct timespec *ts)
 time_t
 gethrestime_sec(void)
 {
- //   struct timeval tv;
-
-  //  microtime(&tv);
-  //  return (tv.tv_sec);
+	struct timespec tv;
+	gethrestime(&tv);
+	return (tv.tv_sec);
 }
 
 #if 0
