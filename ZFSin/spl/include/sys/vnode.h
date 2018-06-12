@@ -418,10 +418,12 @@ static inline int win_has_cached_data(struct vnode *vp)
 			vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP((sz), PAGE_SIZE); \
 			vp->FileHeader.FileSize.QuadPart = (sz); \
 			vp->FileHeader.ValidDataLength.QuadPart = (sz); \
-			ccfs.AllocationSize = vp->FileHeader.AllocationSize; \
-			ccfs.FileSize = vp->FileHeader.FileSize; \
-			ccfs.ValidDataLength = vp->FileHeader.ValidDataLength; \
-			CcSetFileSizes(fileObject, &ccfs); \
+			if (CcIsFileCached(fileObject)) { \
+				ccfs.AllocationSize = vp->FileHeader.AllocationSize; \
+				ccfs.FileSize = vp->FileHeader.FileSize; \
+				ccfs.ValidDataLength = vp->FileHeader.ValidDataLength; \
+				CcSetFileSizes(fileObject, &ccfs); \
+			} \
 			ObDereferenceObject(fileObject); \
 		} \
 	} while(0)
