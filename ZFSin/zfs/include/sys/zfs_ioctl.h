@@ -109,6 +109,7 @@ typedef enum drr_headertype {
 #define	DMU_BACKUP_FEATURE_COMPRESSED		(1 << 22)
 /* flag #23 is reserved for the large dnode feature */
 #define	DMU_BACKUP_FEATURE_RAW			(1 << 24)
+/* flag #25 is reserved for the ZSTD compression feature */
 
     /* Unsure what Oracle called this bit */
 #define	DMU_BACKUP_FEATURE_SPILLBLOCKS	(0x20)
