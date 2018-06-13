@@ -4028,7 +4028,7 @@ static void
 dbuf_remap(dnode_t *dn, dmu_buf_impl_t *db, dmu_tx_t *tx)
 {
 	spa_t *spa = dmu_objset_spa(db->db_objset);
-	ASSERT(dsl_pool_sync_context(spa_get_dsl(spa)));
+	//ASSERT(dsl_pool_sync_context(spa_get_dsl(spa)));
 
 	if (!spa_feature_is_active(spa, SPA_FEATURE_DEVICE_REMOVAL))
 		return;

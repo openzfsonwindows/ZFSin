@@ -104,4 +104,8 @@ extern void hrt2ts(hrtime_t hrt, struct timespec *tsp);
 	(WT) = ((UT)[1]) + ((UT)[0] * 10000000ULL) + 116444736000000000ULL; \
 	} while(0)
 
+#define TIME_UNIX_TO_WINDOWS_EX(SEC, USEC, WT) do { \
+	(WT) = (SEC) + ((USEC) * 10000000ULL) + 116444736000000000ULL; \
+	} while(0)
+
 #endif  /* _SPL_TIME_H */

@@ -234,12 +234,13 @@ cv_timedwait_hires(kcondvar_t *cvp, kmutex_t *mp, hrtime_t tim,
         tim = (tim / res) * res;
     }
 
-	/*
-	  if (!(flag & CALLOUT_FLAG_ABSOLUTE))
-	  tim += gethrtime();
-	*/
-
-	timeout.QuadPart = -tim / 100;
+	if (flag & CALLOUT_FLAG_ABSOLUTE) {
+		// 'tim' here is absolute UNIX time (from gethrtime()) so convert it to
+		// absolute Windows time
+		TIME_UNIX_TO_WINDOWS_EX(tim, 0, timeout.QuadPart);
+	} else {
+		timeout.QuadPart = -tim / 100;
+	}
 
 #ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, 0);
