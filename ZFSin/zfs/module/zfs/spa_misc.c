@@ -609,6 +609,7 @@ spa_add(const char *name, nvlist_t *config, const char *altroot)
 	mutex_init(&spa->spa_cksum_tmpls_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&spa->spa_scrub_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&spa->spa_suspend_lock, NULL, MUTEX_DEFAULT, NULL);
+	mutex_init(&spa->spa_feat_stats_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&spa->spa_vdev_top_lock, NULL, MUTEX_DEFAULT, NULL);
 
 	cv_init(&spa->spa_async_cv, NULL, CV_DEFAULT, NULL);
