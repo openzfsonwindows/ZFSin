@@ -235,6 +235,7 @@ metaslab_class_create(spa_t *spa, metaslab_ops_t *ops)
 	for (int i = 0; i < spa->spa_alloc_count; i++)
 		refcount_create_tracked(&mc->mc_alloc_slots[i]);
 	mutex_init(&mc->mc_fastwrite_lock, NULL, MUTEX_DEFAULT, NULL);
+
 	return (mc);
 }
 
