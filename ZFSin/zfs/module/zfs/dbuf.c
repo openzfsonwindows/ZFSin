@@ -637,6 +637,13 @@ dbuf_evict_thread(void *unused)
  * If the dbuf cache is at its high water mark, then evict a dbuf from the
  * dbuf cache using the callers context.
  */
+
+#if defined(__APPLE__) && defined(_KERNEL)
+static _Atomic int16_t dbuf_directly_evicting_threads = 0;
+extern void IOSleep(unsigned milliseconds);
+extern void IODelay(unsigned microseconds);
+#endif
+
 static void
 dbuf_evict_notify(void)
 {
@@ -670,8 +677,43 @@ dbuf_evict_notify(void)
 	 */
 	if (refcount_count(&dbuf_caches[DB_DBUF_CACHE].size) >
 	    dbuf_cache_max_bytes) {
+#if defined(__APPLE__) && defined(_KERNEL)
+		/*
+		 * On macOS, we will contend over an atomic count of directly evicting threads, which
+		 * drives the decision on whether or not to yield to the other hyperthread
+		 * on this CPU (if there are other threads directly evicting but fewer than
+		 * half max_ncpus) or to deschedule this thread for a millisecond (if there
+		 * are more direct evictors than that).    The latter can happen given
+		 * a large number of concurrent zfs list operations, for example.  This
+		 * thread should not contribute to stealing all the CPU resources from userland
+		 * and other lower priority kernel threads.
+		 */
+		if (dbuf_cache_above_hiwater()) {
+			if (dbuf_directly_evicting_threads++ > (max_ncpus / 2)) {
+				IOSleep(1);
+				/*
+				 * we could in principle recheck here, at the cost
+				 * of further contention of the dbuf size variable;
+				 * kstat instrumentation would be useful in that
+				 * case.   Just evicting anyway is a reasonable-seeming
+				 * tradeoff.
+				 */
+			} else if (dbuf_directly_evicting_threads > 1) {
+				IODelay(1);
+				/*
+				 * With this small a wait, rechecking is probably
+				 * not useful; at worst we evict one buffer we would
+				 * not have had to evict.
+				 */
+			}
+			dbuf_evict_one();
+			dbuf_directly_evicting_threads--;
+			ASSERT3S(dbuf_directly_evicting_threads, >=, 0);
+		}
+#else
 		if (dbuf_cache_above_hiwater())
 			dbuf_evict_one();
+#endif
 		cv_signal(&dbuf_evict_cv);
 	}
 }
