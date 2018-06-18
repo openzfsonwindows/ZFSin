@@ -364,8 +364,41 @@ tests = ['zpool_import_001_pos',
     'zpool_import_features_001_pos', 'zpool_import_features_002_neg',
     'zpool_import_features_003_pos','zpool_import_missing_001_pos',
     'zpool_import_missing_002_pos', 'zpool_import_missing_003_pos',
-    'zpool_import_rename_001_pos', 'zpool_import_encrypted',
-    'zpool_import_encrypted_load']
+    'zpool_import_rename_001_pos', 'zpool_import_all_001_pos',
+    'zpool_import_encrypted', 'zpool_import_encrypted_load',
+    'zpool_import_errata3', 'zpool_import_errata4',
+    'import_cachefile_device_added',
+    'import_cachefile_device_removed',
+    'import_cachefile_device_replaced',
+    'import_cachefile_mirror_attached',
+    'import_cachefile_mirror_detached',
+    'import_cachefile_shared_device',
+    'import_devices_missing',
+    'import_paths_changed',
+    'import_rewind_config_changed',
+    'import_rewind_device_replaced']
+tags = ['functional', 'cli_root', 'zpool_import']
+
+[tests/functional/cli_root/zpool_labelclear]
+tests = ['zpool_labelclear_active', 'zpool_labelclear_exported']
+pre =
+post =
+tags = ['functional', 'cli_root', 'zpool_labelclear']
+
+[tests/functional/cli_root/zpool_initialize]
+tests = ['zpool_initialize_attach_detach_add_remove',
+    'zpool_initialize_import_export',
+    'zpool_initialize_offline_export_import_online',
+    'zpool_initialize_online_offline',
+    'zpool_initialize_split',
+    'zpool_initialize_start_and_cancel_neg',
+    'zpool_initialize_start_and_cancel_pos',
+    'zpool_initialize_suspend_resume',
+    'zpool_initialize_unsupported_vdevs',
+    'zpool_initialize_verify_checksums',
+    'zpool_initialize_verify_initialized']
+pre =
+tags = ['functional', 'cli_root', 'zpool_initialize']
 
 [tests/functional/cli_root/zpool_offline]
 tests = ['zpool_offline_001_pos', 'zpool_offline_002_neg']
@@ -657,7 +690,8 @@ tests = ['rsend_001_pos', 'rsend_002_pos', 'rsend_003_pos', 'rsend_004_pos',
     'send-c_embedded_blocks', 'send-c_resume', 'send-cpL_varied_recsize',
     'send-c_recv_dedup', 'send_encrypted_files', 'send_encrypted_heirarchy',
     'send_encrypted_props', 'send_freeobjects', 'send_realloc_dnode_size',
-    'send_hole_birth', 'send-wDR_encrypted_zvol']
+    'send_holds', 'send_hole_birth', 'send_mixed_raw',
+    'send-wDR_encrypted_zvol']
 tags = ['functional', 'rsend']
 
 [tests/functional/scrub_mirror]

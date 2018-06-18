@@ -62,7 +62,12 @@ log_assert "Verify that Errata 3 is properly handled"
 
 uncompress_pool
 log_must zpool import -d /$TESTPOOL/ $POOL_NAME
+<<<<<<< HEAD
 log_must eval "zpool status | grep -q Errata"
+=======
+log_must eval "zpool status $POOL_NAME | grep -q Errata" # also detects 'Errata #4'
+log_must eval "zpool status $POOL_NAME | grep -q ZFS-8000-ER"
+>>>>>>> f00ab3f22c... Detect and prevent mixed raw and non-raw sends
 log_must eval "echo 'password' | zfs load-key $POOL_NAME/testfs"
 log_must eval "echo 'password' | zfs load-key $POOL_NAME/testvol"
 
@@ -95,5 +100,9 @@ log_must zfs destroy -r $POOL_NAME/testvol
 
 log_must zpool export $POOL_NAME
 log_must zpool import -d /$TESTPOOL/ $POOL_NAME
+<<<<<<< HEAD
 log_mustnot eval "zpool status | grep -q Errata"
+=======
+log_mustnot eval "zpool status $POOL_NAME | grep -q 'Errata #3'"
+>>>>>>> f00ab3f22c... Detect and prevent mixed raw and non-raw sends
 log_pass "Errata 3 is properly handled"

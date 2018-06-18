@@ -3385,6 +3385,16 @@ spa_ld_check_features(spa_t *spa, boolean_t *missing_feat_writep)
 			return (spa_vdev_err(rvd, VDEV_AUX_CORRUPT_DATA, EIO));
 	}
 
+	/*
+	 * Encryption was added before bookmark_v2, even though bookmark_v2
+	 * is now a dependency. If this pool has encryption enabled without
+	 * bookmark_v2, trigger an errata message.
+	 */
+	if (spa_feature_is_enabled(spa, SPA_FEATURE_ENCRYPTION) &&
+	    !spa_feature_is_enabled(spa, SPA_FEATURE_BOOKMARK_V2)) {
+		spa->spa_errata = ZPOOL_ERRATA_ZOL_8308_ENCRYPTION;
+	}
+
 	return (0);
 }
 
@@ -5035,7 +5045,7 @@ spa_create_check_encryption_params(dsl_crypto_params_t *dcp,
 	    !has_encryption)
 		return (SET_ERROR(ENOTSUP));
 
-	return (dmu_objset_create_crypt_check(NULL, dcp));
+	return (dmu_objset_create_crypt_check(NULL, dcp, NULL));
 }
 
 /*

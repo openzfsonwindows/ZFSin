@@ -71,6 +71,13 @@
  * object is also refcounted.
  */
 
+/*
+ * This tunable allows datasets to be raw received even if the stream does
+ * not include IVset guids or if the guids don't match. This is used as part
+ * of the resolution for ZPOOL_ERRATA_ZOL_8308_ENCRYPTION.
+ */
+int zfs_disable_ivset_guid_check = 0;
+
 static void
 dsl_wrapping_key_hold(dsl_wrapping_key_t *wkey, void *tag)
 {
@@ -1753,10 +1760,18 @@ dmu_objset_clone_crypt_check(dsl_dir_t *parentdd, dsl_dir_t *origindd)
 
 
 int
-dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_crypto_params_t *dcp)
+dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_crypto_params_t *dcp,
+    boolean_t *will_encrypt)
 {
 	int ret;
 	uint64_t pcrypt, crypt;
+	dsl_crypto_params_t dummy_dcp = { 0 };
+
+	if (will_encrypt != NULL)
+		*will_encrypt = B_FALSE;
+
+	if (dcp == NULL)
+		dcp = &dummy_dcp;
 
 	if (dcp->cp_cmd != DCP_CMD_NONE)
 		return (SET_ERROR(EINVAL));
@@ -1792,10 +1807,13 @@ dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_crypto_params_t *dcp)
 		return (0);
 	}
 
+	if (will_encrypt != NULL)
+		*will_encrypt = B_TRUE;
+
 	/*
 	 * We will now definitely be encrypting. Check the feature flag. When
 	 * creating the pool the caller will check this for us since we won't
-	 * technically have the fetaure activated yet.
+	 * technically have the feature activated yet.
 	 */
 	if (parentdd != NULL &&
 	    !spa_feature_is_enabled(parentdd->dd_pool->dp_spa,
@@ -1935,21 +1953,23 @@ dsl_dataset_create_crypt_sync(uint64_t dsobj, dsl_dir_t *dd,
 
 typedef struct dsl_crypto_recv_key_arg {
 	uint64_t dcrka_dsobj;
+	uint64_t dcrka_fromobj;
 	dmu_objset_type_t dcrka_ostype;
 	nvlist_t *dcrka_nvl;
 	boolean_t dcrka_do_key;
 } dsl_crypto_recv_key_arg_t;
 
 static int
-dsl_crypto_recv_raw_objset_check(dsl_dataset_t *ds, dmu_objset_type_t ostype,
-    nvlist_t *nvl, dmu_tx_t *tx)
+dsl_crypto_recv_raw_objset_check(dsl_dataset_t *ds, dsl_dataset_t *fromds,
+    dmu_objset_type_t ostype, nvlist_t *nvl, dmu_tx_t *tx)
 {
 	int ret;
 	objset_t *os;
 	dnode_t *mdn;
 	uint8_t *buf = NULL;
 	uint_t len;
-	uint64_t intval, nlevels, blksz, ibs, nblkptr, maxblkid;
+	uint64_t intval, nlevels, blksz, ibs;
+	uint64_t nblkptr, maxblkid;
 
 	if (ostype != DMU_OST_ZFS && ostype != DMU_OST_ZVOL)
 		return (SET_ERROR(EINVAL));
@@ -2015,6 +2035,30 @@ dsl_crypto_recv_raw_objset_check(dsl_dataset_t *ds, dmu_objset_type_t ostype,
 	}
 	rrw_exit(&ds->ds_bp_rwlock, FTAG);
 
+	/*
+	 * Check that the ivset guid of the fromds matches the one from the
+	 * send stream. Older versions of the encryption code did not have
+	 * an ivset guid on the from dataset and did not send one in the
+	 * stream. For these streams we provide the
+	 * zfs_disable_ivset_guid_check tunable to allow these datasets to
+	 * be received with a generated ivset guid.
+	 */
+	if (fromds != NULL && !zfs_disable_ivset_guid_check) {
+		uint64_t from_ivset_guid = 0;
+		intval = 0;
+
+		(void) nvlist_lookup_uint64(nvl, "from_ivset_guid", &intval);
+		(void) zap_lookup(tx->tx_pool->dp_meta_objset,
+		    fromds->ds_object, DS_FIELD_IVSET_GUID,
+		    sizeof (from_ivset_guid), 1, &from_ivset_guid);
+
+		if (intval == 0 || from_ivset_guid == 0)
+			return (SET_ERROR(ZFS_ERR_FROM_IVSET_GUID_MISSING));
+
+		if (intval != from_ivset_guid)
+			return (SET_ERROR(ZFS_ERR_FROM_IVSET_GUID_MISMATCH));
+	}
+
 	return (0);
 }
 
@@ -2034,7 +2078,11 @@ dsl_crypto_recv_raw_objset_sync(dsl_dataset_t *ds, dmu_objset_type_t ostype,
 	VERIFY0(dmu_objset_from_ds(ds, &os));
 	mdn = DMU_META_DNODE(os);
 
-	/* fetch the values we need from the nvlist */
+	/*
+	 * Fetch the values we need from the nvlist. "to_ivset_guid" must
+	 * be set on the snapshot, which doesn't exist yet. The receive
+	 * code will take care of this for us later.
+	 */
 	compress = fnvlist_lookup_uint64(nvl, "mdn_compress");
 	checksum = fnvlist_lookup_uint64(nvl, "mdn_checksum");
 	nlevels = fnvlist_lookup_uint64(nvl, "mdn_nlevels");
@@ -2098,7 +2146,7 @@ dsl_crypto_recv_raw_key_check(dsl_dataset_t *ds, nvlist_t *nvl, dmu_tx_t *tx)
 	objset_t *mos = tx->tx_pool->dp_meta_objset;
 	uint8_t *buf = NULL;
 	uint_t len;
-	uint64_t intval, guid, version;
+	uint64_t intval, key_guid, version;
 	boolean_t is_passphrase = B_FALSE;
 
 	ASSERT(dsl_dataset_phys(ds)->ds_flags & DS_FLAG_INCONSISTENT);
@@ -2123,10 +2171,10 @@ dsl_crypto_recv_raw_key_check(dsl_dataset_t *ds, nvlist_t *nvl, dmu_tx_t *tx)
 	 */
 	if (ds->ds_dir->dd_crypto_obj != 0) {
 		ret = zap_lookup(mos, ds->ds_dir->dd_crypto_obj,
-		    DSL_CRYPTO_KEY_GUID, 8, 1, &guid);
+		    DSL_CRYPTO_KEY_GUID, 8, 1, &key_guid);
 		if (ret != 0)
 			return (ret);
-		if (intval != guid)
+		if (intval != key_guid)
 			return (SET_ERROR(EACCES));
 	}
 
@@ -2192,13 +2240,13 @@ dsl_crypto_recv_raw_key_sync(dsl_dataset_t *ds, nvlist_t *nvl, dmu_tx_t *tx)
 	uint_t len;
 	uint64_t rddobj, one = 1;
 	uint8_t *keydata, *hmac_keydata, *iv, *mac;
-	uint64_t crypt, guid, keyformat, iters, salt;
+	uint64_t crypt, key_guid, keyformat, iters, salt;
 	uint64_t version = ZIO_CRYPT_KEY_CURRENT_VERSION;
 	char *keylocation = "prompt";
 
 	/* lookup the values we need to create the DSL Crypto Key */
 	crypt = fnvlist_lookup_uint64(nvl, DSL_CRYPTO_KEY_CRYPTO_SUITE);
-	guid = fnvlist_lookup_uint64(nvl, DSL_CRYPTO_KEY_GUID);
+	key_guid = fnvlist_lookup_uint64(nvl, DSL_CRYPTO_KEY_GUID);
 	keyformat = fnvlist_lookup_uint64(nvl,
 	    zfs_prop_to_name(ZFS_PROP_KEYFORMAT));
 	iters = fnvlist_lookup_uint64(nvl,
@@ -2253,7 +2301,7 @@ dsl_crypto_recv_raw_key_sync(dsl_dataset_t *ds, nvlist_t *nvl, dmu_tx_t *tx)
 
 	/* sync the key data to the ZAP object on disk */
 	dsl_crypto_key_sync_impl(mos, dd->dd_crypto_obj, crypt,
-	    rddobj, guid, iv, mac, keydata, hmac_keydata, keyformat, salt,
+	    rddobj, key_guid, iv, mac, keydata, hmac_keydata, keyformat, salt,
 	    iters, tx);
 }
 
@@ -2262,17 +2310,24 @@ dsl_crypto_recv_key_check(void *arg, dmu_tx_t *tx)
 {
 	int ret;
 	dsl_crypto_recv_key_arg_t *dcrka = arg;
-	dsl_dataset_t *ds = NULL;
+	dsl_dataset_t *ds = NULL, *fromds = NULL;
 
 	ret = dsl_dataset_hold_obj(tx->tx_pool, dcrka->dcrka_dsobj,
 	    FTAG, &ds);
 	if (ret != 0)
-		goto error;
+		goto out;
 
-	ret = dsl_crypto_recv_raw_objset_check(ds,
+	if (dcrka->dcrka_fromobj != 0) {
+		ret = dsl_dataset_hold_obj(tx->tx_pool, dcrka->dcrka_fromobj,
+		    FTAG, &fromds);
+		if (ret != 0)
+			goto out;
+	}
+
+	ret = dsl_crypto_recv_raw_objset_check(ds, fromds,
 	    dcrka->dcrka_ostype, dcrka->dcrka_nvl, tx);
 	if (ret != 0)
-		goto error;
+		goto out;
 
 	/*
 	 * We run this check even if we won't be doing this part of
@@ -2281,14 +2336,13 @@ dsl_crypto_recv_key_check(void *arg, dmu_tx_t *tx)
 	 */
 	ret = dsl_crypto_recv_raw_key_check(ds, dcrka->dcrka_nvl, tx);
 	if (ret != 0)
-		goto error;
+		goto out;
 
-	dsl_dataset_rele(ds, FTAG);
-	return (0);
-
-error:
+out:
 	if (ds != NULL)
 		dsl_dataset_rele(ds, FTAG);
+	if (fromds != NULL)
+		dsl_dataset_rele(fromds, FTAG);
 	return (ret);
 }
 
@@ -2313,12 +2367,13 @@ dsl_crypto_recv_key_sync(void *arg, dmu_tx_t *tx)
  * without wrapping it.
  */
 int
-dsl_crypto_recv_raw(const char *poolname, uint64_t dsobj,
+dsl_crypto_recv_raw(const char *poolname, uint64_t dsobj, uint64_t fromobj,
     dmu_objset_type_t ostype, nvlist_t *nvl, boolean_t do_key)
 {
 	dsl_crypto_recv_key_arg_t dcrka;
 
 	dcrka.dcrka_dsobj = dsobj;
+	dcrka.dcrka_fromobj = fromobj;
 	dcrka.dcrka_ostype = ostype;
 	dcrka.dcrka_nvl = nvl;
 	dcrka.dcrka_do_key = do_key;
@@ -2328,7 +2383,8 @@ dsl_crypto_recv_raw(const char *poolname, uint64_t dsobj,
 }
 
 int
-dsl_crypto_populate_key_nvlist(dsl_dataset_t *ds, nvlist_t **nvl_out)
+dsl_crypto_populate_key_nvlist(dsl_dataset_t *ds, uint64_t from_ivset_guid,
+    nvlist_t **nvl_out)
 {
 	int ret;
 	objset_t *os;
@@ -2339,8 +2395,9 @@ dsl_crypto_populate_key_nvlist(dsl_dataset_t *ds, nvlist_t **nvl_out)
 	dsl_dir_t *rdd = NULL;
 	dsl_pool_t *dp = ds->ds_dir->dd_pool;
 	objset_t *mos = dp->dp_meta_objset;
-	uint64_t crypt = 0, guid = 0, format = 0;
+	uint64_t crypt = 0, key_guid = 0, format = 0;
 	uint64_t iters = 0, salt = 0, version = 0;
+	uint64_t to_ivset_guid = 0;
 	uint8_t raw_keydata[MASTER_KEY_MAX_LEN];
 	uint8_t raw_hmac_keydata[SHA512_HMAC_KEYLEN];
 	uint8_t iv[WRAPPING_IV_LEN];
@@ -2361,7 +2418,7 @@ dsl_crypto_populate_key_nvlist(dsl_dataset_t *ds, nvlist_t **nvl_out)
 	if (ret != 0)
 		goto error;
 
-	ret = zap_lookup(mos, dckobj, DSL_CRYPTO_KEY_GUID, 8, 1, &guid);
+	ret = zap_lookup(mos, dckobj, DSL_CRYPTO_KEY_GUID, 8, 1, &key_guid);
 	if (ret != 0)
 		goto error;
 
@@ -2384,6 +2441,12 @@ dsl_crypto_populate_key_nvlist(dsl_dataset_t *ds, nvlist_t **nvl_out)
 	    mac);
 	if (ret != 0)
 		goto error;
+
+	/* see zfs_disable_ivset_guid_check tunable for errata info */
+	ret = zap_lookup(mos, ds->ds_object, DS_FIELD_IVSET_GUID, 8, 1,
+	    &to_ivset_guid);
+	if (ret != 0)
+		ASSERT3U(dp->dp_spa->spa_errata, !=, 0);
 
 	/*
 	 * We don't support raw sends of legacy on-disk formats. See the
@@ -2434,7 +2497,7 @@ dsl_crypto_populate_key_nvlist(dsl_dataset_t *ds, nvlist_t **nvl_out)
 	dsl_pool_config_exit(dp, FTAG);
 
 	fnvlist_add_uint64(nvl, DSL_CRYPTO_KEY_CRYPTO_SUITE, crypt);
-	fnvlist_add_uint64(nvl, DSL_CRYPTO_KEY_GUID, guid);
+	fnvlist_add_uint64(nvl, DSL_CRYPTO_KEY_GUID, key_guid);
 	fnvlist_add_uint64(nvl, DSL_CRYPTO_KEY_VERSION, version);
 	VERIFY0(nvlist_add_uint8_array(nvl, DSL_CRYPTO_KEY_MASTER_KEY,
 	    raw_keydata, MASTER_KEY_MAX_LEN));
@@ -2456,6 +2519,8 @@ dsl_crypto_populate_key_nvlist(dsl_dataset_t *ds, nvlist_t **nvl_out)
 	fnvlist_add_uint64(nvl, "mdn_indblkshift", mdn->dn_indblkshift);
 	fnvlist_add_uint64(nvl, "mdn_nblkptr", mdn->dn_nblkptr);
 	fnvlist_add_uint64(nvl, "mdn_maxblkid", mdn->dn_maxblkid);
+	fnvlist_add_uint64(nvl, "to_ivset_guid", to_ivset_guid);
+	fnvlist_add_uint64(nvl, "from_ivset_guid", from_ivset_guid);
 
 	*nvl_out = nvl;
 	return (0);
@@ -2565,6 +2630,10 @@ dsl_dataset_crypt_stats(dsl_dataset_t *ds, nvlist_t *nv)
 	if (zap_lookup(dd->dd_pool->dp_meta_objset, dd->dd_crypto_obj,
 	    zfs_prop_to_name(ZFS_PROP_PBKDF2_ITERS), 8, 1, &intval) == 0) {
 		dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_PBKDF2_ITERS, intval);
+	}
+	if (zap_lookup(dd->dd_pool->dp_meta_objset, ds->ds_object,
+	    DS_FIELD_IVSET_GUID, 8, 1, &intval) == 0) {
+		dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_IVSET_GUID, intval);
 	}
 
 	if (dsl_dir_get_encryption_root_ddobj(dd, &intval) == 0) {
@@ -2800,3 +2869,9 @@ error:
 
 	return (ret);
 }
+
+#if defined(_KERNEL)
+module_param(zfs_disable_ivset_guid_check, int, 0644);
+MODULE_PARM_DESC(zfs_disable_ivset_guid_check,
+	"Set to allow raw receives without IVset guids");
+#endif

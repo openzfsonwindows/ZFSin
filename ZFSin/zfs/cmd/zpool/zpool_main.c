@@ -2213,6 +2213,17 @@ show_import(nvlist_t *config)
 				    "old ones.\n"));
 				break;
 
+			case ZPOOL_ERRATA_ZOL_8308_ENCRYPTION:
+				(void) printf(gettext(" action: Existing "
+				    "encrypted datasets contain an on-disk "
+				    "incompatibility which\n\tmay cause "
+				    "on-disk corruption with 'zfs recv' and "
+				    "which needs to be\n\tcorrected. Enable "
+				    "the bookmark_v2 feature and backup "
+				    "these datasets to new encrypted "
+				    "datasets and\n\tdestroy the "
+				    "old ones.\n"));
+				break;
 			default:
 				/*
 				 * All errata must contain an action message.
@@ -6897,6 +6908,17 @@ status_callback(zpool_handle_t *zhp, void *data)
 			(void) printf(gettext("action: To correct the issue "
 			    "backup existing encrypted datasets to new\n\t"
 			    "encrypted datasets and destroy the old ones.\n"));
+			break;
+
+		case ZPOOL_ERRATA_ZOL_8308_ENCRYPTION:
+			(void) printf(gettext("\tExisting encrypted datasets "
+			    "contain an on-disk incompatibility\n\twhich "
+			    "needs to be corrected.\n"));
+			(void) printf(gettext("action: To correct the issue "
+			    "enable the bookmark_v2 feature and "
+			    "backup\n\texisting encrypted datasets to new "
+			    "encrypted datasets and\n\tdestroy the old "
+			    "ones.\n"));
 			break;
 
 		default:

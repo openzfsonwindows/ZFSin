@@ -71,7 +71,6 @@ typedef struct dmu_recv_begin_arg {
 	dmu_recv_cookie_t *drba_cookie;
 	cred_t *drba_cred;
 	dsl_crypto_params_t *drba_dcp;
-	uint64_t drba_snapobj;
 } dmu_recv_begin_arg_t;
 
 static int
@@ -85,6 +84,7 @@ recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
 	uint64_t featureflags = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo);
 	boolean_t encrypted = ds->ds_dir->dd_crypto_obj != 0;
 	boolean_t raw = (featureflags & DMU_BACKUP_FEATURE_RAW) != 0;
+	boolean_t embed = (featureflags & DMU_BACKUP_FEATURE_EMBED_DATA) != 0;
 
 	/* temporary clone name must not exist */
 	error = zap_lookup(dp->dp_meta_objset,
@@ -118,8 +118,12 @@ recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
 		dsl_dataset_t *snap;
 		uint64_t obj = dsl_dataset_phys(ds)->ds_prev_snap_obj;
 
-		/* Can't perform a raw receive on top of a non-raw receive */
+		/* Can't raw receive on top of an unencrypted dataset */
 		if (!encrypted && raw)
+			return (SET_ERROR(EINVAL));
+
+		/* Encryption is incompatible with embedded data */
+		if (encrypted && embed)
 			return (SET_ERROR(EINVAL));
 
 		/* Find snapshot in this dir that matches fromguid. */
@@ -141,7 +145,7 @@ recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
 			return (SET_ERROR(ENODEV));
 
 		if (drba->drba_cookie->drc_force) {
-			drba->drba_snapobj = obj;
+			drba->drba_cookie->drc_fromsnapobj = obj;
 		} else {
 			/*
 			 * If we are not forcing, there must be no
@@ -151,7 +155,8 @@ recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
 				dsl_dataset_rele(snap, FTAG);
 				return (SET_ERROR(ETXTBSY));
 			}
-			drba->drba_snapobj = ds->ds_prev->ds_object;
+			drba->drba_cookie->drc_fromsnapobj =
+			    ds->ds_prev->ds_object;
 		}
 
 		dsl_dataset_rele(snap, FTAG);
@@ -169,7 +174,24 @@ recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
 		if ((!encrypted && raw) || encrypted)
 			return (SET_ERROR(EINVAL));
 
-		drba->drba_snapobj = 0;
+		/*
+		 * Perform the same encryption checks we would if
+		 * we were creating a new dataset from scratch.
+		 */
+		if (!raw) {
+			boolean_t will_encrypt;
+
+			error = dmu_objset_create_crypt_check(
+			    ds->ds_dir->dd_parent, drba->drba_dcp,
+			    &will_encrypt);
+			if (error != 0)
+				return (error);
+
+			if (will_encrypt && embed)
+				return (SET_ERROR(EINVAL));
+		}
+
+		drba->drba_cookie->drc_fromsnapobj = 0;
 	}
 
 	return (0);
@@ -239,6 +261,10 @@ dmu_recv_begin_check(void *arg, dmu_tx_t *tx)
 		/* raw receives require the encryption feature */
 		if (!spa_feature_is_enabled(dp->dp_spa, SPA_FEATURE_ENCRYPTION))
 			return (SET_ERROR(ENOTSUP));
+
+		/* embedded data is incompatible with encryption and raw recv */
+		if (featureflags & DMU_BACKUP_FEATURE_EMBED_DATA)
+			return (SET_ERROR(EINVAL));
 	} else {
 		dsflags |= DS_HOLD_FLAG_DECRYPT;
 	}
@@ -283,6 +309,31 @@ dmu_recv_begin_check(void *arg, dmu_tx_t *tx)
 		if (error != 0)
 			return (error);
 
+		if ((featureflags & DMU_BACKUP_FEATURE_RAW) == 0 &&
+		    drba->drba_origin == NULL) {
+			boolean_t will_encrypt;
+
+			/*
+			 * Check that we aren't breaking any encryption rules
+			 * and that we have all the parameters we need to
+			 * create an encrypted dataset if necessary. If we are
+			 * making an encrypted dataset the stream can't have
+			 * embedded data.
+			 */
+			error = dmu_objset_create_crypt_check(ds->ds_dir,
+			    drba->drba_dcp, &will_encrypt);
+			if (error != 0) {
+				dsl_dataset_rele_flags(ds, dsflags, FTAG);
+				return (error);
+			}
+
+			if (will_encrypt &&
+			    (featureflags & DMU_BACKUP_FEATURE_EMBED_DATA)) {
+				dsl_dataset_rele_flags(ds, dsflags, FTAG);
+				return (SET_ERROR(EINVAL));
+			}
+		}
+
 		/*
 		 * Check filesystem and snapshot limits before receiving. We'll
 		 * recheck snapshot limits again at the end (we create the
@@ -322,6 +373,12 @@ dmu_recv_begin_check(void *arg, dmu_tx_t *tx)
 				dsl_dataset_rele_flags(ds, dsflags, FTAG);
 				return (SET_ERROR(ENODEV));
 			}
+			if (origin->ds_dir->dd_crypto_obj != 0 &&
+			    (featureflags & DMU_BACKUP_FEATURE_EMBED_DATA)) {
+				dsl_dataset_rele_flags(origin, dsflags, FTAG);
+				dsl_dataset_rele_flags(ds, dsflags, FTAG);
+				return (SET_ERROR(EINVAL));
+			}
 			dsl_dataset_rele_flags(origin,
 			    dsflags, FTAG);
 		}
@@ -346,15 +403,26 @@ dmu_recv_begin_sync(void *arg, dmu_tx_t *tx)
 	ds_hold_flags_t dsflags = 0;
 	int error;
 	uint64_t crflags = 0;
-	dsl_crypto_params_t *dcpp = NULL;
-	dsl_crypto_params_t dcp = { 0 };
+	dsl_crypto_params_t dummy_dcp = { 0 };
+	dsl_crypto_params_t *dcp = drba->drba_dcp;
 
 	if (drrb->drr_flags & DRR_FLAG_CI_DATA)
 		crflags |= DS_FLAG_CI_DATASET;
-	if ((featureflags & DMU_BACKUP_FEATURE_RAW) == 0) {
+	if ((featureflags & DMU_BACKUP_FEATURE_RAW) == 0)
 		dsflags |= DS_HOLD_FLAG_DECRYPT;
-	} else {
-		dcp.cp_cmd = DCP_CMD_RAW_RECV;
+
+	/*
+	 * Raw, non-incremental recvs always use a dummy dcp with
+	 * the raw cmd set. Raw incremental recvs do not use a dcp
+	 * since the encryption parameters are already set in stone.
+	 */
+	if (dcp == NULL && drba->drba_cookie->drc_fromsnapobj == 0 &&
+	    drba->drba_origin == NULL) {
+		ASSERT3P(dcp, ==, NULL);
+		dcp = &dummy_dcp;
+
+		if (featureflags & DMU_BACKUP_FEATURE_RAW)
+			dcp->cp_cmd = DCP_CMD_RAW_RECV;
 	}
 
 	error = dsl_dataset_hold_flags(dp, tofs, dsflags, FTAG, &ds);
@@ -362,17 +430,15 @@ dmu_recv_begin_sync(void *arg, dmu_tx_t *tx)
 		/* create temporary clone */
 		dsl_dataset_t *snap = NULL;
 
-		if (drba->drba_snapobj != 0) {
+		if (drba->drba_cookie->drc_fromsnapobj != 0) {
 			VERIFY0(dsl_dataset_hold_obj(dp,
-			    drba->drba_snapobj, FTAG, &snap));
-		} else {
-			/* we use the dcp whenever we are not making a clone */
-			dcpp = &dcp;
+			    drba->drba_cookie->drc_fromsnapobj, FTAG, &snap));
+			ASSERT3P(dcp, ==, NULL);
 		}
 
 		dsobj = dsl_dataset_create_sync(ds->ds_dir, recv_clone_name,
-		    snap, crflags, drba->drba_cred, dcpp, tx);
-		if (drba->drba_snapobj != 0)
+		    snap, crflags, drba->drba_cred, dcp, tx);
+		if (drba->drba_cookie->drc_fromsnapobj != 0)
 			dsl_dataset_rele(snap, FTAG);
 		dsl_dataset_rele_flags(ds, dsflags, FTAG);
 	} else {
@@ -385,14 +451,11 @@ dmu_recv_begin_sync(void *arg, dmu_tx_t *tx)
 		if (drba->drba_origin != NULL) {
 			VERIFY0(dsl_dataset_hold(dp, drba->drba_origin,
 			    FTAG, &origin));
-		} else {
-			/* we use the dcp whenever we are not making a clone */
-			dcpp = &dcp;
 		}
 
 		/* Create new dataset. */
 		dsobj = dsl_dataset_create_sync(dd, strrchr(tofs, '/') + 1,
-		    origin, crflags, drba->drba_cred, dcpp, tx);
+		    origin, crflags, drba->drba_cred, dcp, tx);
 		if (origin != NULL)
 			dsl_dataset_rele(origin, FTAG);
 		dsl_dir_rele(dd, FTAG);
@@ -2306,10 +2369,15 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 		 * the keynvl away until then.
 		 */
 		err = dsl_crypto_recv_raw(spa_name(ra.os->os_spa),
-		    drc->drc_ds->ds_object, drc->drc_drrb->drr_type,
-		    keynvl, drc->drc_newfs);
+		    drc->drc_ds->ds_object, drc->drc_fromsnapobj,
+		    drc->drc_drrb->drr_type, keynvl, drc->drc_newfs);
 		if (err != 0)
 			goto out;
+
+		/* see comment in dmu_recv_end_sync() */
+		drc->drc_ivset_guid = 0;
+		(void) nvlist_lookup_uint64(keynvl, "to_ivset_guid",
+		    &drc->drc_ivset_guid);
 
 		if (!drc->drc_newfs)
 			drc->drc_keynvl = fnvlist_dup(keynvl);
@@ -2370,10 +2438,10 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 		    sizeof (struct receive_record_arg) + ra.rrd->payload_size);
 		ra.rrd = NULL;
 	}
-	if (ra.next_rrd == NULL)
-		ra.next_rrd = kmem_zalloc(sizeof (*ra.next_rrd), KM_SLEEP);
-	ra.next_rrd->eos_marker = B_TRUE;
-	bqueue_enqueue(&rwa.q, ra.next_rrd, 1);
+	ASSERT3P(ra.rrd, ==, NULL);
+	ra.rrd = kmem_zalloc(sizeof (*ra.rrd), KM_SLEEP);
+	ra.rrd->eos_marker = B_TRUE;
+	bqueue_enqueue(&rwa.q, ra.rrd, 1);
 
 	mutex_enter(&rwa.mutex);
 	while (!rwa.done) {
@@ -2423,6 +2491,14 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 		err = rwa.err;
 
 out:
+	/*
+	 * If we hit an error before we started the receive_writer_thread
+	 * we need to clean up the next_rrd we create by processing the
+	 * DRR_BEGIN record.
+	 */
+	if (ra.next_rrd != NULL)
+		kmem_free(ra.next_rrd, sizeof (*ra.next_rrd));
+
 	nvlist_free(begin_nvl);
 	if ((featureflags & DMU_BACKUP_FEATURE_DEDUP) && (cleanup_fd != -1))
 		zfs_onexit_fd_rele(cleanup_fd);
@@ -2624,6 +2700,25 @@ dmu_recv_end_sync(void *arg, dmu_tx_t *tx)
 		drc->drc_newsnapobj =
 		    dsl_dataset_phys(drc->drc_ds)->ds_prev_snap_obj;
 	}
+
+	/*
+	 * If this is a raw receive, the crypt_keydata nvlist will include
+	 * a to_ivset_guid for us to set on the new snapshot. This value
+	 * will override the value generated by the snapshot code. However,
+	 * this value may not be present, because older implementations of
+	 * the raw send code did not include this value, and we are still
+	 * allowed to receive them if the zfs_disable_ivset_guid_check
+	 * tunable is set, in which case we will leave the newly-generated
+	 * value.
+	 */
+	if (drc->drc_raw && drc->drc_ivset_guid != 0) {
+		dmu_object_zapify(dp->dp_meta_objset, drc->drc_newsnapobj,
+		    DMU_OT_DSL_DATASET, tx);
+		VERIFY0(zap_update(dp->dp_meta_objset, drc->drc_newsnapobj,
+		    DS_FIELD_IVSET_GUID, sizeof (uint64_t), 1,
+		    &drc->drc_ivset_guid, tx));
+	}
+
 	zvol_create_minors(dp->dp_spa, drc->drc_tofs, B_TRUE);
 
 	/*
