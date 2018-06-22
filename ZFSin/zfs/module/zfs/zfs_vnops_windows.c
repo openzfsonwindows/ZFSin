@@ -377,6 +377,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	ULONG CreateDisposition;
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
 	int flags = 0;
+	NTSTATUS Status;
 
 	if (zfsvfs == NULL) return STATUS_OBJECT_PATH_NOT_FOUND;
 
@@ -641,10 +642,18 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			zfs_set_security(dvp, NULL);
 			if (DeleteOnClose) vnode_setunlink(dvp);
 			//ASSERT(vp == NULL);
+			
+			if (DeleteOnClose && dvp->v_unlink == 0) {
+				//v_unlink failed
+				Status = STATUS_ACCESS_DENIED;
+			}
+			else {
+				Status = STATUS_SUCCESS;
+				Irp->IoStatus.Information = FILE_OPENED;
+			}
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
-			Irp->IoStatus.Information = FILE_OPENED;
-			return STATUS_SUCCESS;
+			return Status;
 		}
 		ASSERT(vp == NULL);
 		ASSERT(dvp == NULL);
@@ -692,23 +701,33 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			vnode_ref(vp); // Hold open reference, until CLOSE
 			zfs_set_security(vp, dvp);
 			if (DeleteOnClose) vnode_setunlink(vp);
-			Irp->IoStatus.Information = FILE_CREATED;
-			zp = VTOZ(vp);
-			// Update pflags, if needed
-			zfs_setwinflags(zp, IrpSp->Parameters.Create.FileAttributes);
 
-			IoSetShareAccess(IrpSp->Parameters.Create.SecurityContext->DesiredAccess,
-				IrpSp->Parameters.Create.ShareAccess,
-				FileObject,
-				&vp->share_access);
+			if (DeleteOnClose && vp->v_unlink == 0)
+			{
+				//vnode_setunlink failed
+				Status = STATUS_ACCESS_DENIED;
+			}
+			else
+			{
+				Irp->IoStatus.Information = FILE_CREATED;
+				zp = VTOZ(vp);
+				// Update pflags, if needed
+				zfs_setwinflags(zp, IrpSp->Parameters.Create.FileAttributes);
 
-			zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
-				FILE_NOTIFY_CHANGE_DIR_NAME,
-				FILE_ACTION_ADDED);
+				IoSetShareAccess(IrpSp->Parameters.Create.SecurityContext->DesiredAccess,
+					IrpSp->Parameters.Create.ShareAccess,
+					FileObject,
+					&vp->share_access);
+
+				zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+					FILE_NOTIFY_CHANGE_DIR_NAME,
+					FILE_ACTION_ADDED);
+				Status = STATUS_SUCCESS;
+			}
 			VN_RELE(vp);
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
-			return STATUS_SUCCESS;
+			return Status;
 		}
 		VN_RELE(dvp);
 		kmem_free(filename, PATH_MAX);
@@ -781,6 +800,14 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		return STATUS_ACCESS_DENIED;
 	}
 
+	if (DeleteOnClose && (zp->z_pflags & (ZFS_IMMUTABLE | ZFS_NOUNLINK)))
+	{
+		VN_RELE(vp);
+		VN_RELE(dvp);
+		kmem_free(filename, PATH_MAX);
+		dprintf("%s: denied due to ZFS_IMMUTABLE + ZFS_NOUNLINK\n", __func__);
+		return STATUS_ACCESS_DENIED;
+	}
 
 	// Some cases we always create the file, and sometimes only if
 	// it is not there. If the file exists and we are only to create
@@ -861,34 +888,44 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			zfs_set_security(vp, dvp);
 
 			if (DeleteOnClose) vnode_setunlink(vp);
-			FileObject->SectionObjectPointer = vnode_sectionpointer(vp);
 
-			Irp->IoStatus.Information = replacing ? CreateDisposition == FILE_SUPERSEDE ?
-				FILE_SUPERSEDED : FILE_OVERWRITTEN : FILE_CREATED;
-
-			zp = VTOZ(vp);
-
-			// Update pflags, if needed
-			zfs_setwinflags(zp, IrpSp->Parameters.Create.FileAttributes | FILE_ATTRIBUTE_ARCHIVE);
-
-			// Did they ask for an AllocationSize
-			if (Irp->Overlay.AllocationSize.QuadPart > 0) {
-				uint64_t allocsize = Irp->Overlay.AllocationSize.QuadPart;
-				zp->z_blksz = P2ROUNDUP(allocsize, 512);
+			if (DeleteOnClose && vp->v_unlink == 0) {
+				//vnode_setunlink failed
+				Status = STATUS_ACCESS_DENIED;
 			}
+			else {
 
-			IoSetShareAccess(IrpSp->Parameters.Create.SecurityContext->DesiredAccess,
-				IrpSp->Parameters.Create.ShareAccess,
-				FileObject,
-				&vp->share_access);
+				FileObject->SectionObjectPointer = vnode_sectionpointer(vp);
 
-			zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
-				FILE_NOTIFY_CHANGE_FILE_NAME,
-				FILE_ACTION_ADDED);
+				Irp->IoStatus.Information = replacing ? CreateDisposition == FILE_SUPERSEDE ?
+					FILE_SUPERSEDED : FILE_OVERWRITTEN : FILE_CREATED;
+
+				zp = VTOZ(vp);
+
+				// Update pflags, if needed
+				zfs_setwinflags(zp, IrpSp->Parameters.Create.FileAttributes | FILE_ATTRIBUTE_ARCHIVE);
+
+				// Did they ask for an AllocationSize
+				if (Irp->Overlay.AllocationSize.QuadPart > 0) {
+					uint64_t allocsize = Irp->Overlay.AllocationSize.QuadPart;
+					zp->z_blksz = P2ROUNDUP(allocsize, 512);
+				}
+
+				IoSetShareAccess(IrpSp->Parameters.Create.SecurityContext->DesiredAccess,
+					IrpSp->Parameters.Create.ShareAccess,
+					FileObject,
+					&vp->share_access);
+
+				zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+					FILE_NOTIFY_CHANGE_FILE_NAME,
+					FILE_ACTION_ADDED);
+
+				Status = STATUS_SUCCESS;
+			}
 			VN_RELE(vp);
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
-			return STATUS_SUCCESS;
+			return Status;
 		}
 		if (error== EEXIST)
 			Irp->IoStatus.Information = FILE_EXISTS;
@@ -909,7 +946,14 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		vnode_ref(dvp); // Hold open reference, until CLOSE
 		zfs_set_security(dvp, NULL);
 		if (DeleteOnClose) vnode_setunlink(dvp);
-		IoUpdateShareAccess(FileObject, &dvp->share_access);
+		if (DeleteOnClose && dvp->v_unlink == 0) {
+			//vnode_setunlink failed
+			Status = STATUS_ACCESS_DENIED;
+		}
+		else {
+			IoUpdateShareAccess(FileObject, &dvp->share_access);
+			Status = STATUS_SUCCESS;
+		}
 		VN_RELE(dvp);
 	} else {
 		// Technically, this should call zfs_open() - but it is mostly empty
@@ -917,35 +961,44 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		vnode_ref(vp); // Hold open reference, until CLOSE
 		zfs_set_security(vp, dvp);
 		if (DeleteOnClose) vnode_setunlink(vp);
-		FileObject->SectionObjectPointer = vnode_sectionpointer(vp);
-
-		Irp->IoStatus.Information = FILE_OPENED;
-		// Did they set the open flags (clearing archive?)
-		if (IrpSp->Parameters.Create.FileAttributes)
-			zfs_setwinflags(zp, IrpSp->Parameters.Create.FileAttributes);
-		// If we are to truncate the file:
-		if (CreateDisposition == FILE_OVERWRITE) {
-			Irp->IoStatus.Information = FILE_OVERWRITTEN;
-			zp->z_pflags |= ZFS_ARCHIVE;
-			zfs_freesp(zp, 0, 0, FWRITE, B_TRUE);
-			// Did they ask for an AllocationSize
-			if (Irp->Overlay.AllocationSize.QuadPart > 0) {
-				uint64_t allocsize = Irp->Overlay.AllocationSize.QuadPart;
-				zp->z_blksz = P2ROUNDUP(allocsize, 512);
-			}
+		if (DeleteOnClose && vp->v_unlink == 0)
+		{
+			//vnode_setunlink failed
+			Status = STATUS_ACCESS_DENIED;
 		}
-		// Update sizes in header.
-		vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zp->z_blksz);
-		vp->FileHeader.FileSize.QuadPart = zp->z_size;
-		vp->FileHeader.ValidDataLength.QuadPart = zp->z_size;
-		IoUpdateShareAccess(FileObject, &vp->share_access);
+		else {
+
+			FileObject->SectionObjectPointer = vnode_sectionpointer(vp);
+
+			Irp->IoStatus.Information = FILE_OPENED;
+			// Did they set the open flags (clearing archive?)
+			if (IrpSp->Parameters.Create.FileAttributes)
+				zfs_setwinflags(zp, IrpSp->Parameters.Create.FileAttributes);
+			// If we are to truncate the file:
+			if (CreateDisposition == FILE_OVERWRITE) {
+				Irp->IoStatus.Information = FILE_OVERWRITTEN;
+				zp->z_pflags |= ZFS_ARCHIVE;
+				zfs_freesp(zp, 0, 0, FWRITE, B_TRUE);
+				// Did they ask for an AllocationSize
+				if (Irp->Overlay.AllocationSize.QuadPart > 0) {
+					uint64_t allocsize = Irp->Overlay.AllocationSize.QuadPart;
+					zp->z_blksz = P2ROUNDUP(allocsize, 512);
+				}
+			}
+			// Update sizes in header.
+			vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zp->z_blksz);
+			vp->FileHeader.FileSize.QuadPart = zp->z_size;
+			vp->FileHeader.ValidDataLength.QuadPart = zp->z_size;
+			IoUpdateShareAccess(FileObject, &vp->share_access);
+			Status = STATUS_SUCCESS;
+		}
 		VN_RELE(vp);
 		VN_RELE(dvp);
 	}
 
 
 	kmem_free(filename, PATH_MAX);
-	return STATUS_SUCCESS;
+	return Status;
 }
 
 /*
@@ -3178,9 +3231,17 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 
 				mount_t *zmo = DeviceObject->DeviceExtension;
 				// Dirs marked for Deletion should release all pending Notify events
-				FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, VTOZ(vp));
+
+				if (vp->v_unlink == 0) {
+					//vnode_setunlink failed, access denied is the only possible reason (currently)
+					Status = STATUS_ACCESS_DENIED;
+				}
+				else {
+					FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, VTOZ(vp));
+					Status = STATUS_SUCCESS;
+				}
 				VN_RELE(vp);
-				Status = STATUS_SUCCESS;
+
 			}
 		}
 		break;
