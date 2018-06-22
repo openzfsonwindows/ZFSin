@@ -33,6 +33,7 @@
 //#include <IOKit/IOLib.h>
 
 #include <sys/taskq.h>
+#include <sys/zfs_znode.h>
 
 /* Counter for unique vnode ID */
 static uint64_t vnode_vid_counter = 0;
@@ -925,8 +926,14 @@ int   vnode_unlink(vnode_t *vp)
 
 void   vnode_setunlink(vnode_t *vp)
 {
+	if (vp && VTOZ(vp) && VTOZ(vp)->z_pflags & (ZFS_IMMUTABLE | ZFS_NOUNLINK)) {
+		dprintf("vnode_setunlink: access denied");
+		return STATUS_ACCESS_DENIED;
+	}	
 	dprintf("%s: \n", __func__);
+
 	vp->v_unlink = 1;
+	return STATUS_SUCCESS;
 }
 
 void *vnode_sectionpointer(vnode_t *vp)
