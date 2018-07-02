@@ -481,7 +481,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if (FileOpenByFileId && FileObject->FileName.Length != sizeof(ULONGLONG))
 		return STATUS_INVALID_PARAMETER;
 
-	ASSERT(NoIntermediateBuffering == FALSE);
 
 	TemporaryFile = BooleanFlagOn(IrpSp->Parameters.Create.FileAttributes,
 		FILE_ATTRIBUTE_TEMPORARY);
@@ -3397,11 +3396,7 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		(Irp->UserBuffer != 0),
 		FlagOn(Irp->Flags, IRP_PAGING_IO));
 #endif
-
-#define ZFS_NOFILECACHE
-#ifdef ZFS_NOFILECACHE
 	nocache = 1;
-#endif
 
 	bufferLength = IrpSp->Parameters.Read.Length;
 	if (bufferLength == 0)
@@ -3457,87 +3452,68 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	if (fileObject->SectionObjectPointer == NULL)
 		fileObject->SectionObjectPointer = vnode_sectionpointer(vp);
 
-	ASSERT(fileObject->SectionObjectPointer != NULL);
-
 	if (nocache) {
 
-		/* Do nothing but carry on to zfs_read below */
-
 	} else {
+		// Cached
+		if (fileObject->PrivateCacheMap == NULL) {
+			CC_FILE_SIZES ccfs;
+			vp->FileHeader.FileSize.QuadPart = zp->z_size;
+			vp->FileHeader.ValidDataLength.QuadPart = zp->z_size;
+			ccfs.AllocationSize = vp->FileHeader.AllocationSize;
+			ccfs.FileSize = vp->FileHeader.FileSize;
+			ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
+			CcInitializeCacheMap(fileObject, &ccfs, FALSE,
+				&CacheManagerCallbacks, vp);
+			dprintf("%s: CcInitializeCacheMap\n", __func__);
+		}
 
+		// DO A NORMAL CACHED READ, if the MDL bit is not set,
+		if (!FlagOn(IrpSp->MinorFunction, IRP_MN_MDL)) {
 
-		try {  // calling CcCopyRead
-
-			// Cached
-			if (fileObject->PrivateCacheMap == NULL) {
-				CC_FILE_SIZES ccfs;
-				//vp->FileHeader.FileSize.QuadPart = zp->z_size;
-				//vp->FileHeader.ValidDataLength.QuadPart = P2ROUNDUP(zp->z_size, 512);
-				ccfs.AllocationSize.QuadPart = 0;// vp->FileHeader.AllocationSize;
-				ccfs.FileSize = vp->FileHeader.FileSize;
-				ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
-				CcInitializeCacheMap(fileObject, &ccfs, FALSE,
-					&CacheManagerCallbacks, vp);
-				dprintf("%s: CcInitializeCacheMap of %lld bytes\n", __func__, ccfs.FileSize);
-				// default ia PAGE_SIZE, make it recordsize?
-				CcSetReadAheadGranularity(fileObject, 512);
+			void *SystemBuffer;
+			if (!Irp->AssociatedIrp.SystemBuffer) {
+				if (!Irp->MdlAddress)
+					SystemBuffer = Irp->UserBuffer;
+				else
+					SystemBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+			} else {
+				SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
+			}
+#if (NTDDI_VERSION >= NTDDI_WIN8)
+			if (!CcCopyReadEx(fileObject,
+				&byteOffset,
+				bufferLength,
+				TRUE,
+				SystemBuffer,
+				&Irp->IoStatus,
+				Irp->Tail.Overlay.Thread)) {
+#else
+			if (!CcCopyRead(fileObject,
+				&byteOffset,
+				bufferLength,
+				TRUE,
+				SystemBuffer,
+				&Irp->IoStatus)) {
+#endif
+				dprintf("CcCopyReadEx error\n");
 			}
 
-			// DO A NORMAL CACHED READ, if the MDL bit is not set,
-			if (!FlagOn(IrpSp->MinorFunction, IRP_MN_MDL)) {
+			Irp->IoStatus.Information = bufferLength;
+			Status = Irp->IoStatus.Status;
+			goto out;
 
-				void *SystemBuffer;
-				if (!Irp->AssociatedIrp.SystemBuffer) {
-					if (!Irp->MdlAddress)
-						SystemBuffer = Irp->UserBuffer;
-					else
-						SystemBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
-				} else {
-					SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
-				}
-#if (NTDDI_VERSION >= NTDDI_WIN8)
-				dprintf("Aboot to call CcCopyRead baby: %ld\n", bufferLength);
-				if (!CcCopyReadEx(fileObject,
-					&byteOffset,
-					bufferLength,
-					TRUE,
-					SystemBuffer,
-					&Irp->IoStatus,
-					Irp->Tail.Overlay.Thread)) {
-#else
-				if (!CcCopyRead(fileObject,
-					&byteOffset,
-					bufferLength,
-					TRUE,
-					SystemBuffer,
-					&Irp->IoStatus)) {
-#endif
-					dprintf("CcCopyReadEx error\n");
-					IoMarkIrpPending(Irp);
-					Status = STATUS_PENDING;
-					goto out;
-				}
+		} else {
 
-				Irp->IoStatus.Information = bufferLength;
-				Status = Irp->IoStatus.Status;
-				goto out;
-
-			} else { // else MDL
-
-				dprintf("MDL read baby\n");
-				// MDL read
-				CcMdlRead(fileObject,
-					&byteOffset,
-					bufferLength,
-					&Irp->MdlAddress,
-					&Irp->IoStatus);
-				Status = Irp->IoStatus.Status;
-				goto out;
-			} // mdl
-
-		} except(EXCEPTION_EXECUTE_HANDLER) {
-			Status = GetExceptionCode();
-		}
+			// MDL read
+			CcMdlRead(fileObject,
+				&byteOffset,
+				bufferLength,
+				&Irp->MdlAddress,
+				&Irp->IoStatus);
+			Status = Irp->IoStatus.Status;
+			goto out;
+		} // mdl
 
 	} // !nocache
 
@@ -3554,7 +3530,6 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	ASSERT(address != NULL);
 	uio_addiov(uio, address, bufferLength);
 
-	dprintf("Old boring read baby\n");
 	error = zfs_read(vp, uio, 0, NULL, NULL);
 
 	// Update bytes read
@@ -3572,7 +3547,7 @@ out:
 	if ((Status == STATUS_SUCCESS) &&
 		(fileObject->Flags & FO_SYNCHRONOUS_IO) &&
 		!(Irp->Flags & IRP_PAGING_IO)) {
-		// update current byte offset only when synchronous IO and not paging IO
+		// update current byte offset only when synchronous IO and not pagind IO
 		fileObject->CurrentByteOffset.QuadPart =
 			byteOffset.QuadPart + Irp->IoStatus.Information;
 	}
@@ -3596,9 +3571,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	int nocache = Irp->Flags & IRP_NOCACHE;
 	int pagingio = FlagOn(Irp->Flags, IRP_PAGING_IO);
 
-#ifdef ZFS_NOFILECACHE
 	nocache = 1;
-#endif
 
 	if (FlagOn(IrpSp->MinorFunction, IRP_MN_COMPLETE)) {
 		dprintf("%s: IRP_MN_COMPLETE\n", __func__);
@@ -3608,7 +3581,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		return STATUS_SUCCESS;
 	}
 //	dprintf("   %s paging %d\n", __func__, FlagOn(Irp->Flags, IRP_PAGING_IO));
-#if 1
+#if 0
 	xprintf("   %s minor type %d flags 0x%x mdl %d System %d User %d paging %d\n", __func__, IrpSp->MinorFunction,
 		DeviceObject->Flags, (Irp->MdlAddress != 0), (Irp->AssociatedIrp.SystemBuffer != 0),
 		(Irp->UserBuffer != 0),
@@ -3674,14 +3647,12 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
 	}
 
-	uint64_t newlength = byteOffset.QuadPart + bufferLength;
-
 	if (!nocache) {
 
 		if (fileObject->PrivateCacheMap == NULL) {
 
 			CC_FILE_SIZES ccfs;
-			vp->FileHeader.FileSize.QuadPart = zp->z_size ;
+			vp->FileHeader.FileSize.QuadPart = zp->z_size;
 			vp->FileHeader.ValidDataLength.QuadPart = zp->z_size;
 			ccfs.AllocationSize = vp->FileHeader.AllocationSize;
 			ccfs.FileSize = vp->FileHeader.FileSize;
@@ -3690,13 +3661,12 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 				&CacheManagerCallbacks, vp);
 			dprintf("%s: CcInitializeCacheMap\n", __func__);
 
-			// default ia PAGE_SIZE, make it recordsize?
 			//CcSetReadAheadGranularity(fileObject, READ_AHEAD_GRANULARITY);
 		}
 		
 
 		// If beyond valid data, zero between to expand (this is cachedfile, not paging io, extend ok)
-		if (byteOffset.QuadPart + bufferLength > vp->FileHeader.AllocationSize.QuadPart) {
+		if (byteOffset.QuadPart + bufferLength > zp->z_size) {
 #if 0
 			LARGE_INTEGER ZeroStart, BeyondZeroEnd;
 			ZeroStart.QuadPart = zp->z_size;
@@ -3718,7 +3688,6 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 				FWRITE, B_TRUE);
 			ASSERT0(Status);
 		} else {
-			dprintf("%s:@ setting size %lld\n", zp->z_size);
 			vnode_pager_setsize(vp, zp->z_size);
 		}
 
@@ -3736,7 +3705,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 			} else {
 				SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
 			}
-			dprintf("calling CcCopyWrite baby: %lld\n", bufferLength);
+
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 			if (!CcCopyWriteEx(fileObject,
 				&byteOffset,
@@ -3793,7 +3762,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	if ((error == 0) &&
 		(before_size != zp->z_size)) { // FIXME: If changed size only? Partial write etc.
 
-		vnode_pager_setsize(vp, zp->z_size);
+//		vnode_pager_setsize(vp, zp->z_size);
 		dprintf("New filesize set to %llu\n", zp->z_size);
 	}
 
@@ -4753,10 +4722,8 @@ fsDispatcher(
 
 				CcPurgeCacheSection(section, NULL, 0, FALSE);
 			}
-			if (IrpSp->FileObject->SectionObjectPointer != NULL) {
+			if (IrpSp->FileObject->SectionObjectPointer != NULL)
 				CcUninitializeCacheMap(IrpSp->FileObject, NULL, NULL);
-				dprintf("Releasing CcUninitializeCacheMap\n");
-			}
 #endif
 
 		}
