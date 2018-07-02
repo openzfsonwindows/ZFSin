@@ -1470,7 +1470,43 @@ IOCTL_DISK_GET_LENGTH_INFO	0x7405c
 9023c
 
 #endif
-  
+
+NTSTATUS ioctl_disk_get_drive_geometry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	dprintf("%s: \n", __func__);
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(DISK_GEOMETRY)) {
+		Irp->IoStatus.Information = sizeof(DISK_GEOMETRY);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	mount_t *zmo = DeviceObject->DeviceExtension;
+	if (!zmo ||
+		(zmo->type != MOUNT_TYPE_VCB &&
+			zmo->type != MOUNT_TYPE_DCB)) {
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+
+	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
+
+	uint64_t refdbytes, availbytes, usedobjs, availobjs;
+	dmu_objset_space(zfsvfs->z_os,
+		&refdbytes, &availbytes, &usedobjs, &availobjs);
+
+	DISK_GEOMETRY *geom = Irp->AssociatedIrp.SystemBuffer;
+
+	geom->BytesPerSector = 512;
+	geom->SectorsPerTrack = 1;
+	geom->TracksPerCylinder = 1;
+	geom->Cylinders.QuadPart = (availbytes + refdbytes) / 512;
+	geom->MediaType = FixedMedia;
+	ZFS_EXIT(zfsvfs);
+
+	Irp->IoStatus.Information = sizeof(DISK_GEOMETRY);
+	return STATUS_SUCCESS;
+}
+
 // This is how Windows Samples handle it
 typedef struct _DISK_GEOMETRY_EX_INTERNAL {
 		DISK_GEOMETRY Geometry;
@@ -4509,6 +4545,14 @@ diskDispatcher(
 			dprintf("IOCTL_MOUNTDEV_LINK_DELETED v2\n");
 			Status = STATUS_SUCCESS;
 			break;
+		case IOCTL_DISK_GET_PARTITION_INFO_EX:
+			dprintf("IOCTL_DISK_GET_PARTITION_INFO_EX\n");
+			Status = ioctl_disk_get_partition_info_ex(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_DISK_GET_DRIVE_GEOMETRY:
+			dprintf("IOCTL_DISK_GET_DRIVE_GEOMETRY\n");
+			Status = ioctl_disk_get_drive_geometry(DeviceObject, Irp, IrpSp);
+			break;
 		default:
 			dprintf("**** unknown disk Windows IOCTL: 0x%lx\n", cmd);
 		}
@@ -4801,6 +4845,10 @@ fsDispatcher(
 		case IOCTL_STORAGE_CHECK_VERIFY:
 			dprintf("IOCTL_STORAGE_CHECK_VERIFY\n");
 			Status = STATUS_SUCCESS;
+			break;
+		case IOCTL_DISK_GET_DRIVE_GEOMETRY:
+			dprintf("IOCTL_DISK_GET_DRIVE_GEOMETRY\n");
+			Status = ioctl_disk_get_drive_geometry(DeviceObject, Irp, IrpSp);
 			break;
 		case IOCTL_DISK_GET_DRIVE_GEOMETRY_EX:
 			dprintf("IOCTL_DISK_GET_DRIVE_GEOMETRY_EX\n");

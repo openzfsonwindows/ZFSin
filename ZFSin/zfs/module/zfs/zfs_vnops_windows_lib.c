@@ -681,12 +681,11 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 		dprintf("IoCreateDeviceSecure returned %08x\n", status);
 		return status;
 	}
-
 	mount_t *zmo_dcb = diskDeviceObject->DeviceExtension;
 	zmo_dcb->type = MOUNT_TYPE_DCB;
 	zmo_dcb->size = sizeof(mount_t);
 	vfs_setfsprivate(zmo_dcb, NULL);
-
+	dprintf("%s: created dcb at %p asked for size %d\n", __func__, zmo_dcb, sizeof(mount_t));
 	AsciiStringToUnicodeString(uuid_a, &zmo_dcb->uuid);
 	// Should we keep the name with slashes like "BOOM/lower" or just "lower".
 	// Turns out the name in Explorer only works for 4 chars or lower. Why?
@@ -843,20 +842,71 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	PDEVICE_OBJECT volDeviceObject;
 	NTSTATUS status;
 	PDEVICE_OBJECT DeviceToMount;
+#if 0
 	DeviceToMount = IrpSp->Parameters.MountVolume.DeviceObject;
 
 	dprintf("*** mount request for %p : minor\n", DeviceToMount);
+	delay(hz << 1);
+	PDEVICE_OBJECT pdo = DeviceToMount;
 
+	MOUNTDEV_NAME *mdn2;
+	mdn2 = kmem_alloc(256, KM_SLEEP);
+	status = dev_ioctl(pdo, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, mdn2, 256, TRUE, NULL);
+	if (NT_SUCCESS(status)) {
+		dprintf("%s: given deviceName '%.*S'\n", __func__,
+			mdn2->NameLength / sizeof(WCHAR), mdn2->Name);
+		delay(hz << 1);
+	}
+
+	while (IoGetLowerDeviceObject(pdo)) {
+		pdo = IoGetLowerDeviceObject(pdo);
+		dprintf(".. going deeper %p\n", pdo);
+		status = dev_ioctl(pdo, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, mdn2, 256, TRUE, NULL);
+		if (NT_SUCCESS(status)) {
+			dprintf("%s: given deviceName '%.*S'\n", __func__,
+				mdn2->NameLength / sizeof(WCHAR), mdn2->Name);
+			delay(hz << 1);
+		}
+	}
+	kmem_free(mdn2, 256);
+	dprintf("done dumping device names\n");
+#else
+	if (IrpSp->Parameters.MountVolume.DeviceObject == NULL) {
+		dprintf("%s: MountVolume is NULL\n", __func__);
+		return STATUS_UNRECOGNIZED_VOLUME;
+	}
+
+	DeviceToMount = IoGetDeviceAttachmentBaseRef(IrpSp->Parameters.MountVolume.DeviceObject);
+	dprintf("*** mount request for %p : minor\n", DeviceToMount);
+
+	if (DeviceToMount == NULL) {
+		dprintf("%s: DeviceToMount is NULL\n", __func__);
+		return STATUS_UNRECOGNIZED_VOLUME;
+	}
+
+	if (DeviceToMount->DriverObject == WIN_DriverObject) {
+		dprintf("*** The device belong to us\n");
+	} else {
+		dprintf("*** The device does NOT belong to us\n");
+		return STATUS_UNRECOGNIZED_VOLUME;
+	}
+#endif
 	mount_t *dcb = DeviceToMount->DeviceExtension;
-	if ((dcb == NULL) ||
-		(dcb->type != MOUNT_TYPE_DCB) ||
-		(dcb->size != sizeof(mount_t))) {
+	if (dcb == NULL) {
 		dprintf("%s: Not a ZFS dataset -- ignoring\n", __func__);
+		return STATUS_UNRECOGNIZED_VOLUME;
+	}
+		
+	if ((dcb->type != MOUNT_TYPE_DCB) ||
+		(dcb->size != sizeof(mount_t))) {
+		dprintf("%s: Not a ZFS dataset -- dcb %p ignoring: type 0x%x != 0x%x, size %d != %d\n", 
+			__func__, dcb,
+			dcb->type, MOUNT_TYPE_DCB, dcb->size, sizeof(mount_t));
 		return STATUS_UNRECOGNIZED_VOLUME;
 	}
 
 	// ZFS Dataset being mounted:
-	dprintf("%s: mounting '%wZ'\n", __func__, dcb->name);
+	//dprintf("%s: mounting '%wZ'\n", __func__, dcb->name);
 
 	// We created a DISK before, now we create a VOLUME
 	ULONG				deviceCharacteristics;
@@ -885,7 +935,7 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	if (vfs_fsprivate(dcb) == NULL) delay(hz);
 
 	// Move the fsprivate ptr from dcb to vcb
-	vfs_setfsprivate(vcb, vfs_fsprivate(dcb));
+	vfs_setfsprivate(vcb, vfs_fsprivate(dcb)); // HACK
 	vfs_setfsprivate(dcb, NULL);
 	zfsvfs_t *zfsvfs = vfs_fsprivate(vcb);
 	if (zfsvfs == NULL) return STATUS_MOUNT_POINT_NOT_RESOLVED;
@@ -900,7 +950,6 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	RtlDuplicateUnicodeString(0, &dcb->device_name, &vcb->device_name);
 	RtlDuplicateUnicodeString(0, &dcb->symlink_name, &vcb->symlink_name);
 	RtlDuplicateUnicodeString(0, &dcb->uuid, &vcb->uuid);
-
 
 	//InitializeListHead(&vcb->DirNotifyList);
 	//FsRtlNotifyInitializeSync(&vcb->NotifySync);
@@ -1011,6 +1060,9 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		RtlUTF8ToUnicodeN(volStr.Buffer, ZFS_MAX_DATASET_NAME_LEN, &volStr.Length, namex, strlen(namex));
 		SendVolumeDeletePoints(&volStr, &dcb->device_name);
 	}
+
+	// match IoGetDeviceAttachmentBaseRef()
+	ObDereferenceObject(DeviceToMount);
 
 	return STATUS_SUCCESS;
 }
