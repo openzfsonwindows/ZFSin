@@ -814,9 +814,8 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		//zfs_fsync(vp, 0, NULL, NULL);
 
 		// Tell FS to release node.
-		if ((vp->v_flags&VNODE_MARKROOT) == 0) 
-			if (zfs_vnop_reclaim(vp))
-				panic("vnode_recycle: cannot reclaim\n"); // My fav panic from OSX
+		if (zfs_vnop_reclaim(vp))
+			panic("vnode_recycle: cannot reclaim\n"); // My fav panic from OSX
 
 		mutex_enter(&vnode_all_list_lock);
 		list_remove(&vnode_all_list, vp);
@@ -835,7 +834,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 	}
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 
-	return 0;
+	return -1;
 }
 
 
@@ -874,6 +873,7 @@ void vnode_create(void *v_data, int type, int flags, struct vnode **vpp)
 	// Release vnodes if needed
 	if (vnode_active >= vnode_max) {
 		uint64_t reclaims = 0;
+		int isbusy = 0;
 
 		dprintf("%s: vnode_max reclaim processing\n", __func__);
 
@@ -889,9 +889,10 @@ void vnode_create(void *v_data, int type, int flags, struct vnode **vpp)
 					rvp->v_usecount == 0) {
 					reclaims++;
 					mutex_exit(&vnode_all_list_lock);
-					vnode_recycle_int(rvp, 0);
+					isbusy = vnode_recycle_int(rvp, 0);
 					mutex_enter(&vnode_all_list_lock);
-					break; // must restart loop
+					if (!isbusy)
+						break; // must restart loop if we unlinked node
 				}
 			}
 			mutex_exit(&vnode_all_list_lock);
@@ -976,24 +977,30 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 #endif
 
 	// FIXME: FORCE currently breaks badly
-	flags = 0;
+//	flags = 0;
+	int isbusy = 0;
 
 	struct vnode *rvp;
 	mutex_enter(&vnode_all_list_lock);
-	for (rvp = list_head(&vnode_all_list);
-		rvp;
-		rvp = list_next(&vnode_all_list, rvp)) {
-		// If we aren't FORCE and asked to SKIPROOT, and node 
-		// is MARKROOT, then go to next.
-		if (!(flags & FORCECLOSE))
-			if ((flags & SKIPROOT))
-				if (rvp->v_flags & VNODE_MARKROOT)
-					continue;
-		// We are to remove this node, even if ROOT - unmark it.
-		mutex_exit(&vnode_all_list_lock);
-		vnode_recycle_int(rvp, flags & FORCECLOSE);
-		mutex_enter(&vnode_all_list_lock);
-		break; // must restart loop
+	while (1) {
+		for (rvp = list_head(&vnode_all_list);
+			rvp;
+			rvp = list_next(&vnode_all_list, rvp)) {
+			// If we aren't FORCE and asked to SKIPROOT, and node 
+			// is MARKROOT, then go to next.
+			if (!(flags & FORCECLOSE))
+				if ((flags & SKIPROOT))
+					if (rvp->v_flags & VNODE_MARKROOT)
+						continue;
+			// We are to remove this node, even if ROOT - unmark it.
+			mutex_exit(&vnode_all_list_lock);
+			isbusy = vnode_recycle_int(rvp, flags & FORCECLOSE);
+			mutex_enter(&vnode_all_list_lock);
+			if (!isbusy)
+				break; // must restart loop if unlinked node
+		}
+		// If the end of the list was reached, stop entirely
+		if (!rvp) break;
 	}
 	mutex_exit(&vnode_all_list_lock);
 

@@ -166,7 +166,7 @@
 void
 zthr_exit(zthr_t *t, int rc)
 {
-	ASSERT3P(t->zthr_thread, ==, curthread);
+	//ASSERT3P(t->zthr_thread, ==, curthread);
 	mutex_enter(&t->zthr_lock);
 	t->zthr_thread = NULL;
 	t->zthr_rc = rc;
