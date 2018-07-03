@@ -64,6 +64,7 @@ struct vnode {
 	// Our implementation data fields
 	KSPIN_LOCK v_spinlock;
 
+	mount_t *v_mount;
 	uint32_t v_flags;
 	void *v_data;
 	uint16_t v_type;
@@ -498,7 +499,7 @@ mount_t *vnode_mount(vnode_t *vp);
 void    vnode_clearfsnode(vnode_t *vp);
 int   vnode_unlink(vnode_t *vp);
 void   vnode_setunlink(vnode_t *vp);
-void vnode_create(void *v_data, int type, int flags, struct vnode **vpp);
+void vnode_create(mount_t *, void *v_data, int type, int flags, struct vnode **vpp);
 int vnode_ref(vnode_t *vp);
 void vnode_rele(vnode_t *vp);
 void *vnode_sectionpointer(vnode_t *vp);

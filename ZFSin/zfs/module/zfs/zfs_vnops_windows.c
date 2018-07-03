@@ -1171,7 +1171,7 @@ zfs_znode_getvnode(znode_t *zp, zfsvfs_t *zfsvfs)
 	 * vnode_create() has a habit of calling both vnop_reclaim() and
 	 * vnop_fsync(), which can create havok as we are already holding locks.
 	 */
-	vnode_create(zp, IFTOVT((mode_t)zp->z_mode), flags, &vp);
+	vnode_create(zfsvfs->z_vfs, zp, IFTOVT((mode_t)zp->z_mode), flags, &vp);
 
 	atomic_inc_64(&vnop_num_vnodes);
 

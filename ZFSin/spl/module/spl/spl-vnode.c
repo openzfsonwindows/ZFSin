@@ -824,7 +824,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		// There is no spinlock destroy call
 		// vp->v_spinlock
 
-		dprintf("Actually releasing vp %p\n");
+		vp->v_mount = NULL;
 
 		// Free vp memory
 		kmem_free(vp, sizeof(*vp));
@@ -843,9 +843,10 @@ int vnode_recycle(vnode_t *vp)
 	return vnode_recycle_int(vp, 0);
 }
 
-void vnode_create(void *v_data, int type, int flags, struct vnode **vpp)
+void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode **vpp)
 {
 	*vpp = kmem_zalloc(sizeof(**vpp), KM_SLEEP);  // FIXME Change me to kmem_cache
+	(*vpp)->v_mount = mp;
 	(*vpp)->v_data = v_data;
 	(*vpp)->v_type = type;
 	(*vpp)->v_id = atomic_inc_64_nv(&(vnode_vid_counter));
@@ -877,29 +878,7 @@ void vnode_create(void *v_data, int type, int flags, struct vnode **vpp)
 
 		dprintf("%s: vnode_max reclaim processing\n", __func__);
 
-		while (vnode_active >= vnode_max_watermark) {
-			struct vnode *rvp;
-
-			/* Find free vnode, call recycle */
-			mutex_enter(&vnode_all_list_lock);
-			for (rvp = list_head(&vnode_all_list);
-				rvp;
-				rvp = list_next(&vnode_all_list, rvp)) {
-				if (rvp->v_iocount == 0 &&
-					rvp->v_usecount == 0) {
-					reclaims++;
-					mutex_exit(&vnode_all_list_lock);
-					isbusy = vnode_recycle_int(rvp, 0);
-					mutex_enter(&vnode_all_list_lock);
-					if (!isbusy)
-						break; // must restart loop if we unlinked node
-				}
-			}
-			mutex_exit(&vnode_all_list_lock);
-			break; // Stop after one loop only
-		} // while active >= max
-
-		dprintf("%s: %llu reclaims processed.\n", __func__, reclaims);
+		vflush(NULL, NULL, SKIPROOT|SKIPSYSTEM);
 	}
 }
 
@@ -964,21 +943,10 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 	// SKIPSYSTEM : dont release vnodes marked as system
 	// FORCECLOSE : release everything, force unmount
 
-	// Purge all znodes. Find a Windowsy way to do this, in vflush()
-#if 0
-	// this loops forver, as MARKROOT will not be released, so the list is
-	// never empty. Implement VFLUSH with optional FORCE so we are like
-	// upstream implementations.
-	while ((zp = list_head(&zfsvfs->z_all_znodes)) != NULL) {
+	// if mp is NULL, we are reclaiming nodes, until threshold
 
-		// Recycling the node will remove it from the list
-		vnode_recycle(ZTOV(zp));
-	}
-#endif
-
-	// FIXME: FORCE currently breaks badly
-//	flags = 0;
 	int isbusy = 0;
+	int reclaims = 0;
 
 	struct vnode *rvp;
 	mutex_enter(&vnode_all_list_lock);
@@ -986,6 +954,11 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 		for (rvp = list_head(&vnode_all_list);
 			rvp;
 			rvp = list_next(&vnode_all_list, rvp)) {
+
+			// skip vnodes not belonging to this mount
+			if (mp && rvp->v_mount != mp)
+				continue;
+
 			// If we aren't FORCE and asked to SKIPROOT, and node 
 			// is MARKROOT, then go to next.
 			if (!(flags & FORCECLOSE))
@@ -996,12 +969,23 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 			mutex_exit(&vnode_all_list_lock);
 			isbusy = vnode_recycle_int(rvp, flags & FORCECLOSE);
 			mutex_enter(&vnode_all_list_lock);
-			if (!isbusy)
+			if (!isbusy) {
+				reclaims++;
 				break; // must restart loop if unlinked node
+			}
 		}
 		// If the end of the list was reached, stop entirely
 		if (!rvp) break;
+
+		// If reclaiming (mp is NULL) stop at low watermark
+		if (mp == NULL && vnode_active <= vnode_max_watermark) 
+			break;
 	}
+
+	if (mp == NULL && reclaims > 0) {
+		dprintf("%s: %llu reclaims processed.\n", __func__, reclaims);
+	}
+
 	mutex_exit(&vnode_all_list_lock);
 
 	return 0;
