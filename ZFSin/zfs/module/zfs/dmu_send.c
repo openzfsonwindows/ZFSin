@@ -2107,6 +2107,7 @@ struct receive_writer_arg {
 	uint64_t bytes_read; /* bytes read when current record created */
 
 	/* Encryption parameters for the last received DRR_OBJECT_RANGE */
+	boolean_t or_crypt_params_present;
 	uint64_t or_firstobj;
 	uint64_t or_numslots;
 	uint8_t or_salt[ZIO_DATA_SALT_LEN];
@@ -2445,19 +2446,13 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 		if (rwa->raw && nblkptr != drro->drr_nblkptr)
 			return (SET_ERROR(EINVAL));
 
-		if (rwa->raw &&
-		    (drro->drr_blksz != doi.doi_data_block_size ||
+		if (drro->drr_blksz != doi.doi_data_block_size ||
 			nblkptr < doi.doi_nblkptr ||
-			indblksz != doi.doi_metadata_block_size ||
-			drro->drr_nlevels < doi.doi_indirection)) {
-			err = dmu_free_long_range_raw(rwa->os,
+		    (rwa->raw &&
+		    (indblksz != doi.doi_metadata_block_size ||
+		    drro->drr_nlevels < doi.doi_indirection))) {
+			err = dmu_free_long_range(rwa->os,
 				drro->drr_object, 0, DMU_OBJECT_END);
-			if (err != 0)
-				return (SET_ERROR(EINVAL));
-		} else if (drro->drr_blksz != doi.doi_data_block_size ||
-		    nblkptr < doi.doi_nblkptr) {
-			err = dmu_free_long_range(rwa->os, drro->drr_object,
-			    0, DMU_OBJECT_END);
 			if (err != 0)
 				return (SET_ERROR(EINVAL));
 		}
@@ -2473,13 +2468,7 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 		 * instead.
 		 */
 		if ((rwa->raw && drro->drr_nlevels < doi.doi_indirection)) {
-			if (rwa->raw) {
-				err = dmu_free_long_object_raw(rwa->os,
-				    drro->drr_object);
-			} else {
-				err = dmu_free_long_object(rwa->os,
-				    drro->drr_object);
-			}
+			err = dmu_free_long_object(rwa->os, drro->drr_object);
 			if (err != 0)
 				return (SET_ERROR(EINVAL));
 
@@ -2519,26 +2508,38 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 		return (SET_ERROR(EINVAL));
 	}
 
-	if (rwa->raw) {
+	if (rwa->or_crypt_params_present) {
 		/*
-		 * Convert the buffer associated with this range of dnodes
-		 * to a raw buffer. This ensures that it will be written out
-		 * as a raw buffer when we fill in the dnode object. Since we
-		 * are committing this tx now, it is possible for the dnode
-		 * block to end up on-disk with the incorrect MAC. Despite
-		 * this, the dataset is marked as inconsistent so no other
-		 * code paths (apart from scrubs) will attempt to read this
-		 * data. Scrubs will not be effected by this either since
-		 * scrubs only read raw data and do not attempt to check
-		 * the MAC.
+		 * Set the crypt params for the buffer associated with this
+		 * range of dnodes.  This causes the blkptr_t to have the
+		 * same crypt params (byteorder, salt, iv, mac) as on the
+		 * sending side.
+		 *
+		 * Since we are committing this tx now, it is possible for
+		 * the dnode block to end up on-disk with the incorrect MAC,
+		 * if subsequent objects in this block are received in a
+		 * different txg.  However, since the dataset is marked as
+		 * inconsistent, no code paths will do a non-raw read (or
+		 * decrypt the block / verify the MAC). The receive code and
+		 * scrub code can safely do raw reads and verify the
+		 * checksum.  They don't need to verify the MAC.
 		 */
-		err = dmu_convert_mdn_block_to_raw(rwa->os, rwa->or_firstobj,
-		    rwa->or_byteorder, rwa->or_salt, rwa->or_iv, rwa->or_mac,
-		    tx);
+		dmu_buf_t *db = NULL;
+		uint64_t offset = rwa->or_firstobj * 512 /*DNODE_MIN_SIZE*/;
+
+		err = dmu_buf_hold_by_dnode(DMU_META_DNODE(rwa->os),
+		    offset, FTAG, &db, DMU_READ_PREFETCH | DMU_READ_NO_DECRYPT);
 		if (err != 0) {
 			dmu_tx_commit(tx);
 			return (SET_ERROR(EINVAL));
 		}
+
+		dmu_buf_set_crypt_params(db, rwa->or_byteorder,
+		    rwa->or_salt, rwa->or_iv, rwa->or_mac, tx);
+
+		dmu_buf_rele(db, FTAG);
+
+		rwa->or_crypt_params_present = B_FALSE;
 	}
 
 	dmu_object_set_checksum(rwa->os, drro->drr_object,
@@ -2611,10 +2612,7 @@ receive_freeobjects(struct receive_writer_arg *rwa,
 		if (dmu_object_info(rwa->os, obj, NULL) != 0)
 			continue;
 
-		if (rwa->raw)
-			err = dmu_free_long_object_raw(rwa->os, obj);
-		else
-			err = dmu_free_long_object(rwa->os, obj);
+		err = dmu_free_long_object(rwa->os, obj);
 
 		if (err != 0)
 			return (err);
@@ -2665,9 +2663,6 @@ receive_write(struct receive_writer_arg *rwa, struct drr_write *drrw,
 		dmu_tx_abort(tx);
 		return (err);
 	}
-
-	if (rwa->raw)
-		VERIFY0(dmu_object_dirty_raw(rwa->os, drrw->drr_object, tx));
 
 	if (rwa->byteswap && !arc_is_encrypted(abuf) &&
 	    arc_get_compression(abuf) == ZIO_COMPRESS_OFF) {
@@ -2755,7 +2750,6 @@ receive_write_byref(struct receive_writer_arg *rwa,
 	}
 
 	if (rwa->raw) {
-		VERIFY0(dmu_object_dirty_raw(rwa->os, drrwbr->drr_object, tx));
 		dmu_copy_from_buf(rwa->os, drrwbr->drr_object,
 		    drrwbr->drr_offset, dbp, tx);
 	} else {
@@ -2859,6 +2853,8 @@ receive_spill(struct receive_writer_arg *rwa, struct drr_spill *drrs,
 		return (err);
 	}
 
+	dmu_buf_will_dirty(db_spill, tx);
+
 	if (db_spill->db_size < drrs->drr_length)
 		VERIFY(0 == dbuf_spill_set_blksz(db_spill,
 				drrs->drr_length, tx));
@@ -2896,13 +2892,8 @@ receive_free(struct receive_writer_arg *rwa, struct drr_free *drrf)
 	if (drrf->drr_object > rwa->max_object)
 		rwa->max_object = drrf->drr_object;
 
-	if (rwa->raw) {
-		err = dmu_free_long_range_raw(rwa->os, drrf->drr_object,
-		    drrf->drr_offset, drrf->drr_length);
-	} else {
-		err = dmu_free_long_range(rwa->os, drrf->drr_object,
-		    drrf->drr_offset, drrf->drr_length);
-	}
+	err = dmu_free_long_range(rwa->os, drrf->drr_object,
+	    drrf->drr_offset, drrf->drr_length);
 
 	return (err);
 }
@@ -2939,9 +2930,10 @@ receive_object_range(struct receive_writer_arg *rwa,
 
 	/*
 	 * The DRR_OBJECT_RANGE handling must be deferred to receive_object()
-	 * so that the encryption parameters are set with each object that is
-	 * written into that block.
+	 * so that the block of dnodes is not written out when it's empty,
+	 * and converted to a HOLE BP.
 	 */
+	rwa->or_crypt_params_present = B_TRUE;
 	rwa->or_firstobj = drror->drr_firstobj;
 	rwa->or_numslots = drror->drr_numslots;
 	bcopy(drror->drr_salt, rwa->or_salt, ZIO_DATA_SALT_LEN);
@@ -2967,6 +2959,7 @@ dmu_recv_cleanup_ds(dmu_recv_cookie_t *drc)
 	 * after we stopped receiving the dataset.
 	 */
 	txg_wait_synced(ds->ds_dir->dd_pool, 0);
+	ds->ds_objset->os_raw_receive = B_FALSE;
 
 	rrw_enter(&ds->ds_bp_rwlock, RW_READER, FTAG);
 	if (drc->drc_resumable && !BP_IS_HOLE(dsl_dataset_get_blkptr(ds))) {
@@ -3791,6 +3784,7 @@ dmu_recv_end_sync(void *arg, dmu_tx_t *tx)
 
 	spa_history_log_internal_ds(drc->drc_ds, "finish receiving",
 	    tx, "snap=%s", drc->drc_tosnap);
+	drc->drc_ds->ds_objset->os_raw_receive = B_FALSE;
 
 	if (!drc->drc_newfs) {
 		dsl_dataset_t *origin_head;
