@@ -447,6 +447,89 @@ basename(char *arg)
 	return(basedir(arg, BASENAME));
 }
 
+char* getIoctlAsString(int cmdNo) {
+	switch (cmdNo) {
+		case 0x800: return "ZFS_IOC_FIRST";
+		case 0x801: return "ZFS_IOC_POOL_DESTROY";
+		case 0x802: return "ZFS_IOC_POOL_IMPORT";
+		case 0x803: return "ZFS_IOC_POOL_EXPORT";
+		case 0x804: return "ZFS_IOC_POOL_CONFIGS";
+		case 0x805: return "ZFS_IOC_POOL_STATS";
+		case 0x806: return "ZFS_IOC_POOL_TRYIMPORT";
+		case 0x807: return "ZFS_IOC_POOL_SCAN";
+		case 0x808: return "ZFS_IOC_POOL_FREEZE";
+		case 0x809: return "ZFS_IOC_POOL_UPGRADE";
+		case 0x80a: return "ZFS_IOC_POOL_GET_HISTORY";
+		case 0x80b: return "ZFS_IOC_VDEV_ADD";
+		case 0x80c: return "ZFS_IOC_VDEV_REMOVE";
+		case 0x80d: return "ZFS_IOC_VDEV_SET_STATE";
+		case 0x80e: return "ZFS_IOC_VDEV_ATTACH";
+		case 0x80f: return "ZFS_IOC_VDEV_DETACH";
+		case 0x810: return "ZFS_IOC_VDEV_SETPATH";
+		case 0x811: return "ZFS_IOC_VDEV_SETFRU";
+		case 0x812: return "ZFS_IOC_OBJSET_STATS";
+		case 0x813: return "ZFS_IOC_OBJSET_ZPLPROPS";
+		case 0x814: return "ZFS_IOC_DATASET_LIST_NEXT";
+		case 0x815: return "ZFS_IOC_SNAPSHOT_LIST_NEXT";
+		case 0x816: return "ZFS_IOC_SET_PROP";
+		case 0x817: return "ZFS_IOC_CREATE";
+		case 0x818: return "ZFS_IOC_DESTROY";
+		case 0x819: return "ZFS_IOC_ROLLBACK";
+		case 0x81a: return "ZFS_IOC_RENAME";
+		case 0x81b: return "ZFS_IOC_RECV";
+		case 0x81c: return "ZFS_IOC_SEND";
+		case 0x81d: return "ZFS_IOC_INJECT_FAULT";
+		case 0x81e: return "ZFS_IOC_CLEAR_FAULT";
+		case 0x81f: return "ZFS_IOC_INJECT_LIST_NEXT";
+		case 0x820: return "ZFS_IOC_ERROR_LOG";
+		case 0x821: return "ZFS_IOC_CLEAR";
+		case 0x822: return "ZFS_IOC_PROMOTE";
+		case 0x823: return "ZFS_IOC_SNAPSHOT";
+		case 0x824: return "ZFS_IOC_DSOBJ_TO_DSNAME";
+		case 0x825: return "ZFS_IOC_OBJ_TO_PATH";
+		case 0x826: return "ZFS_IOC_POOL_SET_PROPS";
+		case 0x827: return "ZFS_IOC_POOL_GET_PROPS";
+		case 0x828: return "ZFS_IOC_SET_FSACL";
+		case 0x829: return "ZFS_IOC_GET_FSACL";
+		case 0x82a: return "ZFS_IOC_SHARE";
+		case 0x82b: return "ZFS_IOC_INHERIT_PROP";
+		case 0x82c: return "ZFS_IOC_SMB_ACL";
+		case 0x82d: return "ZFS_IOC_USERSPACE_ONE";
+		case 0x82e: return "ZFS_IOC_USERSPACE_MANY";
+		case 0x82f: return "ZFS_IOC_USERSPACE_UPGRADE";
+		case 0x830: return "ZFS_IOC_HOLD";
+		case 0x831: return "ZFS_IOC_RELEASE";
+		case 0x832: return "ZFS_IOC_GET_HOLDS";
+		case 0x833: return "ZFS_IOC_OBJSET_RECVD_PROPS";
+		case 0x834: return "ZFS_IOC_VDEV_SPLIT";
+		case 0x835: return "ZFS_IOC_NEXT_OBJ";
+		case 0x836: return "ZFS_IOC_DIFF";
+		case 0x837: return "ZFS_IOC_TMP_SNAPSHOT";
+		case 0x838: return "ZFS_IOC_OBJ_TO_STATS";
+		case 0x839: return "ZFS_IOC_SPACE_WRITTEN";
+		case 0x83a: return "ZFS_IOC_SPACE_SNAPS";
+		case 0x83b: return "ZFS_IOC_DESTROY_SNAPS";
+		case 0x83c: return "ZFS_IOC_POOL_REGUID";
+		case 0x83d: return "ZFS_IOC_POOL_REOPEN";
+		case 0x83e: return "ZFS_IOC_SEND_PROGRESS";
+		case 0x83f: return "ZFS_IOC_LOG_HISTORY";
+		case 0x840: return "ZFS_IOC_SEND_NEW";
+		case 0x841: return "ZFS_IOC_SEND_SPACE";
+		case 0x842: return "ZFS_IOC_CLONE";
+		case 0x843: return "ZFS_IOC_BOOKMARK";
+		case 0x844: return "ZFS_IOC_GET_BOOKMARKS";
+		case 0x845: return "ZFS_IOC_DESTROY_BOOKMARKS";
+
+		case 0x880: return "ZFS_IOC_EVENTS_NEXT";
+		case 0x881: return "ZFS_IOC_EVENTS_CLEAR";
+		case 0x882: return "ZFS_IOC_EVENTS_SEEK";
+
+		case 0x8E0: return "ZFS_IOC_MOUNT";
+		case 0x8E1: return "ZFS_IOC_UNMOUNT";
+		case 0x8E2: return "ZFS_IOC_LAST";
+		default: return "unkown";
+	}
+}
 
 int ioctl(HANDLE hDevice, int request, zfs_cmd_t *zc)
 {
@@ -483,8 +566,8 @@ int ioctl(HANDLE hDevice, int request, zfs_cmd_t *zc)
 		error = GetLastError();
 	else
 		error = zc->zc_ioc_error;
-
-	fprintf(stderr, "    (ioctl 0x%x status %d bytes %ld)\n", (request & 0x2ffc) >> 2, error, bytesReturned); fflush(stderr);
+	
+	fprintf(stderr, "    (ioctl 0x%x (%s) status %d bytes %ld)\n", (request & 0x2ffc) >> 2, getIoctlAsString((request & 0x2ffc) >> 2), error, bytesReturned); fflush(stderr);
 #if 0
 	for (int x = 0; x < 16; x++)
 		fprintf(stderr, "%02x ", ((unsigned char *)zc)[x]);
