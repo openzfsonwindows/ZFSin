@@ -2017,7 +2017,6 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 
 
 			// Add the whole physical device, but lets also try to read EFI off it.
-
 			disk = CreateFile(deviceInterfaceDetailData->DevicePath,
 				GENERIC_READ,
 				FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -2031,7 +2030,6 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 			// 0x200      MBR partition protective GPT
 			// 0x400      EFI partition, s0 as ZFS
 			// 0x8410     "version" "name" "testpool" ZFS label
-
 			if (disk != INVALID_HANDLE_VALUE) {
 				fprintf(stderr, "asking libefi to read label\n"); fflush(stderr);
 				int error;
@@ -2052,7 +2050,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 							// Lets invent a naming scheme with start, and len in it.
 							snprintf(rdsk, sizeof(rdsk), "#%llu#%llu#%s",
 								vtoc->efi_parts[i].p_start * vtoc->efi_lbasize, vtoc->efi_parts[i].p_size * vtoc->efi_lbasize, deviceInterfaceDetailData->DevicePath);
-				
+
 							slice = zfs_alloc(hdl, sizeof(rdsk_node_t));
 							slice->rn_name = zfs_strdup(hdl, rdsk);
 							slice->rn_avl = &slice_cache;
@@ -2064,6 +2062,8 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 				}
 				efi_free(vtoc);
 				CloseHandle(disk);
+			} else { // Unable to open handle
+				fprintf(stderr, "Unable to open disk, are we Administrator? GetLastError() is 0x%x\n", GetLastError()); fflush(stderr);
 			}
 		} // while SetupDiEnumDeviceInterfaces
 

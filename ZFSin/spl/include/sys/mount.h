@@ -89,6 +89,7 @@ struct mount
 	ULONG size;
 //	mount_type_t type;
 	void *fsprivate;
+	void *parent_device; // Only set so vcd can find dcb
 	PDEVICE_OBJECT deviceObject;
 	PDEVICE_OBJECT diskDeviceObject;
 	UNICODE_STRING bus_name;

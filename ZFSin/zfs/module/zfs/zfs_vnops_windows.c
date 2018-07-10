@@ -4629,6 +4629,7 @@ fsDispatcher(
 		Irp->IoStatus.Information = FILE_OPENED;
 		Status = STATUS_SUCCESS;
 
+#if 0
 		// Disallow autorun.inf for now
 		if (IrpSp && IrpSp->FileObject && IrpSp->FileObject->FileName.Buffer &&
 			_wcsicmp(IrpSp->FileObject->FileName.Buffer, L"\\autorun.inf") == 0) {
@@ -4636,7 +4637,7 @@ fsDispatcher(
 			Status = STATUS_OBJECT_NAME_NOT_FOUND;
 			break;
 		}
-
+#endif
 
 		mount_t *zmo = DeviceObject->DeviceExtension;
 		VERIFY(zmo->type == MOUNT_TYPE_VCB);

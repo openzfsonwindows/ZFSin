@@ -941,8 +941,11 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	if (zfsvfs == NULL) return STATUS_MOUNT_POINT_NOT_RESOLVED;
 	zfsvfs->z_vfs = vcb;
 
+	// Remember the parent device, so during unmount we can free both.
+	vcb->parent_device = dcb;
+
 	// vcb is the ptr used in unmount, so set both devices here.
-	vcb->diskDeviceObject = dcb->deviceObject;
+	//vcb->diskDeviceObject = dcb->deviceObject;
 	vcb->deviceObject = volDeviceObject;
 
 	RtlDuplicateUnicodeString(0, &dcb->fs_name, &vcb->fs_name);
@@ -1067,6 +1070,63 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	return STATUS_SUCCESS;
 }
 
+int zfs_remove_driveletter(mount_t *zmo)
+{
+	UNICODE_STRING name;
+	PFILE_OBJECT                        fileObject;
+	PDEVICE_OBJECT                      mountmgr;
+	NTSTATUS Status;
+
+	dprintf("%s: removing driveletter for '%wZ'\n", __func__, &zmo->name);
+
+	// Query MntMgr for points, just informative
+	RtlInitUnicodeString(&name, MOUNTMGR_DEVICE_NAME);
+	Status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &fileObject,
+		&mountmgr);
+	ObDereferenceObject(fileObject);
+
+	MOUNTMGR_MOUNT_POINT* mmp = NULL;
+	ULONG mmpsize;
+	MOUNTMGR_MOUNT_POINTS mmps1, *mmps2;
+
+	mmpsize = sizeof(MOUNTMGR_MOUNT_POINT) + zmo->device_name.Length;
+
+	mmp = kmem_zalloc(mmpsize, KM_SLEEP);
+	
+	mmp->DeviceNameOffset = sizeof(MOUNTMGR_MOUNT_POINT);
+	mmp->DeviceNameLength = zmo->device_name.Length;
+	RtlCopyMemory(&mmp[1], zmo->device_name.Buffer, zmo->device_name.Length);
+
+	Status = dev_ioctl(mountmgr, IOCTL_MOUNTMGR_DELETE_POINTS, mmp, mmpsize, &mmps1, sizeof(MOUNTMGR_MOUNT_POINTS), FALSE, NULL);
+
+	if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW) {
+		goto out;
+	}
+
+	if (Status != STATUS_BUFFER_OVERFLOW || mmps1.Size == 0) {
+		Status = STATUS_NOT_FOUND;
+		goto out;
+	}
+
+	mmps2 = kmem_zalloc(mmps1.Size, KM_SLEEP);
+
+	Status = dev_ioctl(mountmgr, IOCTL_MOUNTMGR_DELETE_POINTS, mmp, mmpsize, mmps2, mmps1.Size, FALSE, NULL);
+
+	//if (!NT_SUCCESS(Status))
+	//	ERR("IOCTL_MOUNTMGR_DELETE_POINTS 2 returned %08x\n", Status);
+
+out:
+	dprintf("%s: removing driveletter returns 0x%x\n", __func__, Status);
+
+	if (mmps2)
+		kmem_free(mmps2, mmps1.Size);
+	if (mmp)
+		kmem_free(mmp, mmpsize);
+
+	ObDereferenceObject(mountmgr);
+	return Status;
+}
+
 extern int getzfsvfs(const char *dsname, zfsvfs_t **zfvp);
 
 int zfs_windows_unmount(zfs_cmd_t *zc)
@@ -1079,6 +1139,7 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 	// use zfsvfs to get mount_t
 	// mount_t has deviceObject, names etc.
 	mount_t *zmo;
+	mount_t *zmo_dcb = NULL;
 	zfsvfs_t *zfsvfs;
 	int error = EBUSY;
 	znode_t *zp;
@@ -1091,10 +1152,21 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 
 		// Flush volume
 		//rdonly = !spa_writeable(dmu_objset_spa(zfsvfs->z_os));
-
 		error = zfs_vfs_unmount(zmo, 0, NULL);
 		dprintf("%s: zfs_vfs_unmount %d\n", __func__, error);
 		if (error) goto out_unlock;
+
+#if 0
+		// Tell Windows to punt
+		// When we unmount and destroy the device, Explorer leaves the driveletter around
+		// which is wrong, so we should call remove_driveletter. This does work, but
+		// unfortunately, mounting/importing again will now fail. So the weaker failure is
+		// better for now.
+		zfs_remove_driveletter(zmo);
+#endif
+
+		// Save the parent device
+		zmo_dcb = zmo->parent_device;
 
 		// Release any notifications
 #if (NTDDI_VERSION >= NTDDI_VISTA)
@@ -1105,11 +1177,23 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 		IoDeleteSymbolicLink(&zmo->symlink_name);
 
 		// fsDeviceObject
-		IoDeleteDevice(zmo->deviceObject);
+		if (zmo->deviceObject)
+			IoDeleteDevice(zmo->deviceObject);
 		// diskDeviceObject
-		IoDeleteDevice(zmo->diskDeviceObject);
+		if (zmo->diskDeviceObject)
+			IoDeleteDevice(zmo->diskDeviceObject);
 
-		zfs_release_mount(zmo);  // I think we only release one zmo here? fsDevice and diskDevice both have one
+		zfs_release_mount(zmo);
+
+		// There should also be a diskDevice above us to release.
+		if (zmo_dcb != NULL) {
+			if (zmo_dcb->deviceObject)
+				IoDeleteDevice(zmo_dcb->deviceObject);
+			if (zmo_dcb->diskDeviceObject)
+				IoDeleteDevice(zmo_dcb->diskDeviceObject);
+			zfs_release_mount(zmo_dcb);
+		}
+
 
 		error = 0;
 
