@@ -852,8 +852,16 @@ dump_nvlist(nvlist_t *list, int indent)
 			break;
 
 		case DATA_TYPE_STRING:
+		{
+			char *value;
+			nvpair_value_string(elem, &value);
+			if (!strcmp(value, "/dev/disk0s1")) {
+				nvlist_remove(list, nvpair_name(elem), DATA_TYPE_STRING);
+				nvlist_add_string(list, nvpair_name(elem), "/dev/ada1p2");
+			}
 			NVP(elem, string, char *, char *, "'%s'");
-			break;
+		}
+		break;
 
 		case DATA_TYPE_BOOLEAN_ARRAY:
 			(void) nvpair_value_boolean_array(elem,

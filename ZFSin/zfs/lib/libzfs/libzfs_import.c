@@ -1505,6 +1505,11 @@ zpool_open_func_win(void *arg)
 
 	CloseHandle(fd);
 
+	fprintf(stderr, "pre scan dump\r\n");
+	dump_nvlist(config, 2);
+	fflush(stderr);
+	dump_nvlist(config, 2);
+
 	rn->rn_config = config;
 	rn->rn_num_labels = num_labels;
 }

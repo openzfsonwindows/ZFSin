@@ -1896,6 +1896,10 @@ zpool_import_props(libzfs_handle_t *hdl, nvlist_t *config, const char *newname,
 		return (-1);
 	}
 
+	fprintf(stderr, "pre import dump\r\n");
+	dump_nvlist(config, 2);
+	fflush(stderr);
+
 	zc.zc_cookie = flags;
 	while ((ret = zfs_ioctl(hdl, ZFS_IOC_POOL_IMPORT, &zc)) != 0 &&
 	    errno == ENOMEM) {
