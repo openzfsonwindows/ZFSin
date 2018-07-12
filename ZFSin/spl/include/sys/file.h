@@ -4,6 +4,7 @@
 
 #define	FIGNORECASE	0x00080000
 #define	FKIOCTL		0x80000000
+#define	FCOPYSTR	0x40000000
 
 #include <sys/list.h>
 

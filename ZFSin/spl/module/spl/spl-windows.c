@@ -135,7 +135,10 @@ ddi_copyin(const void *from, void *to, uint32_t len, int flags)
 
     /* Fake ioctl() issued by kernel, so we just need to bcopy */
 	if (flags & FKIOCTL) {
-		bcopy(from, to, len);
+		if (flags & FCOPYSTR) 
+			strlcpy(to, from, len);
+		else
+			bcopy(from, to, len);
 		return 0;
 	}
 
@@ -176,7 +179,10 @@ ddi_copyin(const void *from, void *to, uint32_t len, int flags)
 		error = STATUS_INSUFFICIENT_RESOURCES;
 	} else {
 		// Success, copy over the data.
-		bcopy(buffer, to, len);
+		if (flags & FCOPYSTR)
+			strlcpy(to, buffer, len);
+		else
+			bcopy(buffer, to, len);
 	}
 
 	dprintf("SPL: copyin return %d (%d bytes)\n", error, len);
@@ -338,7 +344,10 @@ int ddi_copyinstr(const void *uaddr, void *kaddr, uint32_t len, uint32_t *done)
 {
 	int ret = 0;
 
-//	ret = copyinstr((user_addr_t)uaddr, kaddr, len, done);
+	ret = ddi_copyin((user_addr_t)uaddr, kaddr, len, FCOPYSTR);
+	if ((ret == STATUS_SUCCESS) && done) {
+		*done = strlen(kaddr) + 1; // copyinstr includes the NULL byte
+	}
 	return ret;
 }
 
