@@ -3618,6 +3618,7 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 	rwa.byteswap = drc->drc_byteswap;
 	rwa.resumable = drc->drc_resumable;
 	rwa.raw = drc->drc_raw;
+	rwa.os->os_raw_receive = drc->drc_raw;
 
 	(void) thread_create(NULL, 0, receive_writer_thread, &rwa, 0, curproc,
 	    TS_RUN, minclsyspri);
