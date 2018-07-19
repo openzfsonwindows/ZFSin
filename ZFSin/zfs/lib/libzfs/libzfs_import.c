@@ -197,10 +197,8 @@ fix_paths(nvlist_t *nv, name_entry_t *names)
 
 	if (best == NULL)
 		return (0);
-
 	if (nvlist_add_string(nv, ZPOOL_CONFIG_PATH, best->ne_name) != 0)
 		return (-1);
-
 	if ((devid = get_devid(best->ne_name)) == NULL) {
 		(void) nvlist_remove_all(nv, ZPOOL_CONFIG_DEVID);
 	} else {

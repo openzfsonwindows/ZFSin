@@ -588,6 +588,7 @@ typedef struct zpool_load_policy {
 #define	ZPOOL_CONFIG_INDIRECT_BIRTHS	"com.delphix:indirect_births"
 #define	ZPOOL_CONFIG_PREV_INDIRECT_VDEV	"com.delphix:prev_indirect_vdev"
 #define	ZPOOL_CONFIG_PATH		"path"
+#define	ZPOOL_CONFIG_PHYS_PATH	"phys_path"
 #define	ZPOOL_CONFIG_DEVID		"devid"
 #define	ZPOOL_CONFIG_METASLAB_ARRAY	"metaslab_array"
 #define	ZPOOL_CONFIG_METASLAB_SHIFT	"metaslab_shift"

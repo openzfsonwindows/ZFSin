@@ -73,7 +73,7 @@ struct vfsstatfs {
 //};
 
 typedef enum _FSD_IDENTIFIER_TYPE {
-	MOUNT_TYPE_DGL = ':DGL', // Dokan Global
+	MOUNT_TYPE_DGL = ':DGL', // Global /dev/zfs device
 	MOUNT_TYPE_DCB = ':DCB', // Disk Control Block
 	MOUNT_TYPE_VCB = ':VCB', // Volume Control Block
 	MOUNT_TYPE_FCB = ':FCB', // File Control Block
@@ -88,6 +88,7 @@ struct mount
 	FSD_IDENTIFIER_TYPE type;
 	ULONG size;
 //	mount_type_t type;
+	boolean_t iszvol;
 	void *fsprivate;
 	void *parent_device; // Only set so vcd can find dcb
 	PDEVICE_OBJECT deviceObject;

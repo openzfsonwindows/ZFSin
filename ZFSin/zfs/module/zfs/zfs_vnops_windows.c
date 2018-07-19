@@ -124,6 +124,7 @@ BOOLEAN zfs_AcquireForLazyWrite(void *Context, BOOLEAN Wait)
 	VN_HOLD(vp);
 	vnode_ref(vp);
 	VN_RELE(vp);
+	IoSetTopLevelIrp((PIRP)FSRTL_CACHE_TOP_LEVEL_IRP);
 	return TRUE;
 }
 
@@ -135,6 +136,8 @@ void zfs_ReleaseFromLazyWrite(void *Context)
 	VN_HOLD(vp);
 	vnode_rele(vp);
 	VN_RELE(vp);
+	if (IoGetTopLevelIrp() == (PIRP)FSRTL_CACHE_TOP_LEVEL_IRP)
+		IoSetTopLevelIrp(NULL);
 }
 
 BOOLEAN zfs_AcquireForReadAhead(void *Context, BOOLEAN Wait)
@@ -146,6 +149,7 @@ BOOLEAN zfs_AcquireForReadAhead(void *Context, BOOLEAN Wait)
 		return FALSE;
 	}
 	VN_HOLD(vp);
+	IoSetTopLevelIrp((PIRP)FSRTL_CACHE_TOP_LEVEL_IRP);
 	return TRUE;
 }
 
@@ -155,6 +159,8 @@ void zfs_ReleaseFromReadAhead(void *Context)
 	dprintf("%s:\n", __func__);
 	ExReleaseResourceLite(vp->FileHeader.Resource);
 	VN_RELE(vp);
+	if (IoGetTopLevelIrp() == (PIRP)FSRTL_CACHE_TOP_LEVEL_IRP)
+		IoSetTopLevelIrp(NULL);
 }
 
 static CACHE_MANAGER_CALLBACKS CacheManagerCallbacks =
@@ -1485,6 +1491,37 @@ NTSTATUS ioctl_disk_get_drive_geometry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 		return STATUS_INVALID_PARAMETER;
 	}
 
+	if (zmo->iszvol) {
+		int error;
+		objset_t *os;
+		error = dmu_objset_own("tank/disk", DMU_OST_ZVOL, B_TRUE, B_TRUE, FTAG, &os);
+		if (!error) {
+			uint64_t val;
+#define	ZVOL_ZAP_OBJ	2ULL
+			error = zap_lookup(os, ZVOL_ZAP_OBJ, "size", 8, 1, &val);
+			dmu_objset_rele(os, FTAG);
+			DISK_GEOMETRY *geom = Irp->AssociatedIrp.SystemBuffer;
+
+			geom->BytesPerSector = 512;
+			geom->SectorsPerTrack = 1;
+			geom->TracksPerCylinder = 1;
+			geom->Cylinders.QuadPart = (val) / 512;
+			geom->MediaType = FixedMedia;
+
+			Irp->IoStatus.Information = sizeof(DISK_GEOMETRY);
+			return STATUS_SUCCESS;
+		}
+		DISK_GEOMETRY *geom = Irp->AssociatedIrp.SystemBuffer;
+
+		geom->BytesPerSector = 512;
+		geom->SectorsPerTrack = 1;
+		geom->TracksPerCylinder = 1;
+		geom->Cylinders.QuadPart = (1024 * 1024 * 1024 * 1024) / 512;
+		geom->MediaType = FixedMedia;
+
+		Irp->IoStatus.Information = sizeof(DISK_GEOMETRY);
+		return STATUS_SUCCESS;
+	}
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
 
 	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
@@ -1657,6 +1694,13 @@ NTSTATUS ioctl_disk_get_length_info(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_S
 		(zmo->type != MOUNT_TYPE_VCB &&
 			zmo->type != MOUNT_TYPE_DCB)) {
 		return STATUS_INVALID_PARAMETER;
+	}
+
+	if (zmo->iszvol) {
+		GET_LENGTH_INFORMATION *gli = Irp->AssociatedIrp.SystemBuffer;
+		gli->Length.QuadPart = 1024 * 1024* 1024;
+		Irp->IoStatus.Information = sizeof(GET_LENGTH_INFORMATION);
+		return STATUS_SUCCESS;
 	}
 
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
@@ -3411,6 +3455,7 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	}
 
 	struct vnode *vp = fileObject->FsContext;
+	/* held, no returns from here */
 	VN_HOLD(vp);
 	znode_t *zp = VTOZ(vp);
 
@@ -3600,7 +3645,9 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		return STATUS_INVALID_PARAMETER;
 	}
 
+	
 	struct vnode *vp = fileObject->FsContext;
+	/* HOLD vp - no returns from here */
 	VN_HOLD(vp);
 	znode_t *zp = VTOZ(vp);
 	ASSERT(ZTOV(zp) == vp);
@@ -3611,13 +3658,19 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		byteOffset = IrpSp->Parameters.Write.ByteOffset;
 	}
 
+	if (IrpSp->Parameters.Write.ByteOffset.LowPart == FILE_WRITE_TO_END_OF_FILE &&
+		IrpSp->Parameters.Write.ByteOffset.HighPart == -1)
+		byteOffset.QuadPart = zp->z_size;
+
 	if (FlagOn(Irp->Flags, IRP_PAGING_IO)) {
 
-		if (byteOffset.QuadPart >= zp->z_size)
-			return STATUS_SUCCESS;
+		if (byteOffset.QuadPart >= zp->z_size) {
+			Status = STATUS_SUCCESS;
+			goto out;
+		}
 
-		if (byteOffset.QuadPart + bufferLength > zp->z_size)
-			bufferLength = zp->z_size - byteOffset.QuadPart;
+//		if (byteOffset.QuadPart + bufferLength > zp->z_size)
+//			bufferLength = zp->z_size - byteOffset.QuadPart;
 
 		//ASSERT(fileObject->PrivateCacheMap != NULL);
 	}
@@ -3626,9 +3679,10 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		fileObject->SectionObjectPointer = vnode_sectionpointer(vp);
 
 
-	if (!nocache && !CcCanIWrite(fileObject, bufferLength, TRUE, FALSE))
-		return STATUS_PENDING;
-
+	if (!nocache && !CcCanIWrite(fileObject, bufferLength, TRUE, FALSE)) {
+		Status = STATUS_PENDING;
+		goto out;
+	}
 
 	if (nocache && !pagingio && fileObject->SectionObjectPointer &&
 		fileObject->SectionObjectPointer->DataSectionObject) {
@@ -3640,7 +3694,8 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 		if (!NT_SUCCESS(iosb.Status)) {
 			ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
-			return iosb.Status;
+			Status = iosb.Status;
+			goto out;
 		}
 
 		CcPurgeCacheSection(fileObject->SectionObjectPointer, &byteOffset, bufferLength, FALSE);
@@ -3762,7 +3817,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	if ((error == 0) &&
 		(before_size != zp->z_size)) { // FIXME: If changed size only? Partial write etc.
 
-//		vnode_pager_setsize(vp, zp->z_size);
+		vnode_pager_setsize(vp, zp->z_size);
 		dprintf("New filesize set to %llu\n", zp->z_size);
 	}
 
@@ -3779,8 +3834,9 @@ out:
 	VN_RELE(vp);
 
 	// Update the file offset
-	fileObject->CurrentByteOffset.QuadPart =
-		byteOffset.QuadPart + Irp->IoStatus.Information;
+	if (NT_SUCCESS(Status) && !pagingio)
+		fileObject->CurrentByteOffset.QuadPart =
+			byteOffset.QuadPart + Irp->IoStatus.Information;
 
 //	dprintf("  FileName: %wZ offset 0x%llx len 0x%lx mdl %p System %p\n", &fileObject->FileName,
 //		byteOffset.QuadPart, bufferLength, Irp->MdlAddress, Irp->AssociatedIrp.SystemBuffer);
@@ -4521,6 +4577,10 @@ diskDispatcher(
 		case IOCTL_DISK_GET_DRIVE_GEOMETRY:
 			dprintf("IOCTL_DISK_GET_DRIVE_GEOMETRY\n");
 			Status = ioctl_disk_get_drive_geometry(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_DISK_GET_LENGTH_INFO:
+			dprintf("IOCTL_DISK_GET_LENGTH_INFO\n");
+			Status = ioctl_disk_get_length_info(DeviceObject, Irp, IrpSp);
 			break;
 		default:
 			dprintf("**** unknown disk Windows IOCTL: 0x%lx\n", cmd);
