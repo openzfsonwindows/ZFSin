@@ -63,13 +63,14 @@ int random_get_fd(void)
  * Use /dev/urandom if possible, and if not,
  * use glibc pseudo-random functions.
  */
+#ifndef _WIN32
 void random_get_bytes(void *buf, size_t nbytes)
 {
 	size_t i, n = nbytes;
 	int fd = random_get_fd();
 	int lose_counter = 0;
 	unsigned char *cp = (unsigned char *) buf;
-#ifndef _WIN32
+
 	if (fd >= 0) {
 		while (n > 0) {
 			ssize_t x = read(fd, cp, n);
@@ -85,7 +86,6 @@ void random_get_bytes(void *buf, size_t nbytes)
 
 		close(fd);
 	}
-#endif
 	/*
 	 * We do this all the time, but this is the only source of
 	 * randomness if /dev/random/urandom is out to lunch.
@@ -108,6 +108,7 @@ void random_get_bytes(void *buf, size_t nbytes)
 
 	return;
 }
+#endif
 
 #ifdef TEST_PROGRAM
 int main(int argc __attribute__ ((__unused__)),

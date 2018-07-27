@@ -29,14 +29,14 @@ typedef struct osx_kstat {
 	kstat_named_t spa_version;
 	kstat_named_t zpl_version;
 
-	kstat_named_t darwin_active_vnodes;
-	kstat_named_t darwin_debug;
-        kstat_named_t darwin_reclaim_nodes;
-	kstat_named_t darwin_ignore_negatives;
-	kstat_named_t darwin_ignore_positives;
-	kstat_named_t darwin_create_negatives;
-	kstat_named_t darwin_force_formd_normalized;
-	kstat_named_t darwin_skip_unlinked_drain;
+	kstat_named_t win32_active_vnodes;
+	kstat_named_t win32_debug;
+        kstat_named_t win32_reclaim_nodes;
+	kstat_named_t win32_ignore_negatives;
+	kstat_named_t win32_ignore_positives;
+	kstat_named_t win32_create_negatives;
+	kstat_named_t win32_force_formd_normalized;
+	kstat_named_t win32_skip_unlinked_drain;
 
 	kstat_named_t arc_zfs_arc_max;
 	kstat_named_t arc_zfs_arc_min;
