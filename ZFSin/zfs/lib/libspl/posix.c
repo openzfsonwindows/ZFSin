@@ -526,6 +526,7 @@ char* getIoctlAsString(int cmdNo) {
 
 		case 0x8E0: return "ZFS_IOC_MOUNT";
 		case 0x8E1: return "ZFS_IOC_UNMOUNT";
+
 		case 0x8E2: return "ZFS_IOC_LAST";
 		default: return "unkown";
 	}

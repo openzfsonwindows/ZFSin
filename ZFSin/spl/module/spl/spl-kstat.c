@@ -111,3 +111,18 @@ spl_kstat_fini()
 	 * of the oids, second releases all the memory.
 	 */
 }
+
+int spl_kstat_chain_id(void)
+{
+	return 0;
+}
+
+int spl_kstat_read(void)
+{
+	return 0;
+}
+
+int spl_kstat_write(void)
+{
+	return 0;
+}

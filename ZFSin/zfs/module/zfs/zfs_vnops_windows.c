@@ -74,6 +74,7 @@
 #include <sys/callb.h>
 #include <sys/unistd.h>
 #include <sys/zfs_windows.h>
+#include <sys/kstat.h>
 //#include <miscfs/fifofs/fifo.h>
 //#include <miscfs/specfs/specdev.h>
 //#include <vfs/vfs_support.h>
@@ -4319,6 +4320,19 @@ ioctlDispatcher(
 				break;
 			case IOCTL_VOLUME_POST_ONLINE:
 				dprintf("IOCTL_VOLUME_POST_ONLINE\n");
+				Status = STATUS_SUCCESS;
+				break;
+				/* kstat ioctls */
+			case KSTAT_IOC_CHAIN_ID:
+				dprintf("KSTAT_IOC_CHAIN_ID\n");
+				Status = STATUS_SUCCESS;
+				break;
+			case KSTAT_IOC_READ:
+				dprintf("KSTAT_IOC_READ\n");
+				Status = STATUS_SUCCESS;
+				break;
+			case KSTAT_IOC_WRITE:
+				dprintf("KSTAT_IOC_WRITE\n");
 				Status = STATUS_SUCCESS;
 				break;
 			default:

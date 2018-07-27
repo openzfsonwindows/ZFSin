@@ -41,15 +41,15 @@ extern "C" {
 
 typedef int	kid_t;		/* unique kstat id */
 
-/*
- * Kernel statistics driver (/dev/kstat) ioctls
+// Would probably be easier if libspl/include/sys/kstat.h didn't exist, and we used spl/include/sys/kstat.h
+						/*
+ * Kernel statistics driver (/dev/zfs) ioctls
+ * Defined outside the ZFS ioctls, and handled separately in zfs_vnops_windows.c
  */
-
-#define	KSTAT_IOC_BASE		('K' << 8)
-
-#define	KSTAT_IOC_CHAIN_ID	KSTAT_IOC_BASE | 0x01
-#define	KSTAT_IOC_READ		KSTAT_IOC_BASE | 0x02
-#define	KSTAT_IOC_WRITE		KSTAT_IOC_BASE | 0x03
+#define ZFSIOCTL_TYPE 40000
+#define	KSTAT_IOC_CHAIN_ID	CTL_CODE(ZFSIOCTL_TYPE, 0x7FD, METHOD_NEITHER, FILE_ANY_ACCESS)
+#define KSTAT_IOC_READ		CTL_CODE(ZFSIOCTL_TYPE, 0x7FE, METHOD_NEITHER, FILE_ANY_ACCESS)
+#define	KSTAT_IOC_WRITE		CTL_CODE(ZFSIOCTL_TYPE, 0x7FF, METHOD_NEITHER, FILE_ANY_ACCESS)
 
 /*
  * /dev/kstat ioctl usage (kd denotes /dev/kstat descriptor):
@@ -304,6 +304,7 @@ typedef struct kstat32 {
 #define	KSTAT_FLAG_PERSISTENT		0x08
 #define	KSTAT_FLAG_DORMANT		0x10
 #define	KSTAT_FLAG_INVALID		0x20
+#define KSTAT_FLAG_LONGSTRINGS	0x40
 
 /*
  * Dynamic update support

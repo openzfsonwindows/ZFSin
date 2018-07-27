@@ -5424,7 +5424,6 @@ zfs_ioc_unmount(zfs_cmd_t *zc)
 	return zfs_windows_unmount(zc);
 }
 
-
 /*
  * inputs:
  * zc_name		name of new filesystem or snapshot

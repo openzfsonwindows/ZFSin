@@ -32,6 +32,16 @@
 //#include <sys/sysctl.h>
 #include <sys/mutex.h>
 
+/*
+* Kernel statistics driver (/dev/zfs) ioctls
+* Defined outside the ZFS ioctls, and handled separately in zfs_vnops_windows.c
+*/
+
+#define	KSTAT_IOC_CHAIN_ID	CTL_CODE(ZFSIOCTL_TYPE, 0x7FD, METHOD_NEITHER, FILE_ANY_ACCESS)
+#define KSTAT_IOC_READ		CTL_CODE(ZFSIOCTL_TYPE, 0x7FE, METHOD_NEITHER, FILE_ANY_ACCESS)
+#define	KSTAT_IOC_WRITE		CTL_CODE(ZFSIOCTL_TYPE, 0x7FF, METHOD_NEITHER, FILE_ANY_ACCESS)
+
+
 #define KSTAT_STRLEN            63
 
 /* For reference valid classes are:
@@ -71,6 +81,7 @@
 #define KSTAT_FLAG_UNSUPPORTED  (KSTAT_FLAG_VAR_SIZE | KSTAT_FLAG_WRITABLE | \
 KSTAT_FLAG_PERSISTENT | KSTAT_FLAG_DORMANT)
 #define KSTAT_FLAG_INVALID      0x20
+#define KSTAT_FLAG_LONGSTRINGS	0x40
 
 #define KS_MAGIC                0x9d9d9d9d
 
