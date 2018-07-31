@@ -621,9 +621,9 @@ spa_prop_validate(spa_t *spa, nvlist_t *props)
 #ifndef _WIN32 /* OSX can boot large recordsize just fine */
 				} else if ((error =
 				    dsl_prop_get_int_ds(dmu_objset_ds(os),
-				    zfs_prop_to_name(ZFS_PROP_RECORDSIZE),
+				    zfs_prop_to_name(ZFS_PROP_DNODESIZE),
 				    &propval)) == 0 &&
-				    propval > SPA_OLD_MAXBLOCKSIZE) {
+				    propval != ZFS_DNSIZE_LEGACY) {
 					error = SET_ERROR(ENOTSUP);
 #endif
 				} else {

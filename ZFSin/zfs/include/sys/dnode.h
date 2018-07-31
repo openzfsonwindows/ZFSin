@@ -105,8 +105,8 @@ extern "C" {
 #define	DNODES_PER_LEVEL	(1ULL << DNODES_PER_LEVEL_SHIFT)
 
 /* The +2 here is a cheesy way to round up */
-#define	DN_MAX_LEVELS	(2 + ((DN_MAX_OFFSET_SHIFT - SPA_MINBLOCKSHIFT) / \
-	(DN_MIN_INDBLKSHIFT - SPA_BLKPTRSHIFT)))
+#define	DN_MAX_LEVELS	(DIV_ROUND_UP(DN_MAX_OFFSET_SHIFT - SPA_MINBLOCKSHIFT, \
+	DN_MIN_INDBLKSHIFT - SPA_BLKPTRSHIFT) + 1)
 
 #define	DN_BONUS(dnp)	((void*)((dnp)->dn_bonus + \
 	(((dnp)->dn_nblkptr - 1) * sizeof (blkptr_t))))
@@ -338,7 +338,7 @@ int dnode_hold_impl(struct objset *dd, uint64_t object, int flag,
     void *ref, dnode_t **dnp);
 boolean_t dnode_add_ref(dnode_t *dn, void *ref);
 void dnode_rele(dnode_t *dn, void *ref);
-void dnode_rele_and_unlock(dnode_t *dn, void *tag);
+void dnode_rele_and_unlock(dnode_t *dn, void *tag, boolean_t evicting);
 void dnode_setdirty(dnode_t *dn, dmu_tx_t *tx);
 void dnode_sync(dnode_t *dn, dmu_tx_t *tx);
 void dnode_allocate(dnode_t *dn, dmu_object_type_t ot, int blocksize, int ibs,

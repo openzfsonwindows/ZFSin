@@ -1103,7 +1103,7 @@ dbuf_read_done(zio_t *zio, const zbookmark_phys_t *zb, const blkptr_t *bp,
 		db->db_state = DB_CACHED;
 	}
 	cv_broadcast(&db->db_changed);
-	dbuf_rele_and_unlock(db, NULL);
+	dbuf_rele_and_unlock(db, NULL, B_FALSE);
 }
 
 
@@ -2450,7 +2450,8 @@ dbuf_destroy(dmu_buf_impl_t *db)
 		 * value in dnode_move(), since DB_DNODE_EXIT doesn't actually
 		 * release any lock.
 		 */
-		dnode_rele(dn, db);
+		mutex_enter(&dn->dn_mtx);
+		dnode_rele_and_unlock(dn, db, B_TRUE);
 		db->db_dnode_handle = NULL;
 
 		dbuf_hash_remove(db);
@@ -2477,8 +2478,10 @@ dbuf_destroy(dmu_buf_impl_t *db)
 	 * If this dbuf is referenced from an indirect dbuf,
 	 * decrement the ref count on the indirect dbuf.
 	 */
-	if (parent && parent != dndb)
-		dbuf_rele(parent, db);
+	if (parent && parent != dndb) {
+		mutex_enter(&parent->db_mtx);
+		dbuf_rele_and_unlock(parent, db, B_TRUE);
+	}
 }
 
 static __forceinline int
@@ -3207,7 +3210,7 @@ void
 dbuf_rele(dmu_buf_impl_t *db, void *tag)
 {
 	mutex_enter(&db->db_mtx);
-	dbuf_rele_and_unlock(db, tag);
+	dbuf_rele_and_unlock(db, tag, B_FALSE);
 }
 
 void
@@ -3221,7 +3224,7 @@ dmu_buf_rele(dmu_buf_t *db, void *tag)
  * db_dirtycnt and db_holds to be updated atomically.
  */
 void
-dbuf_rele_and_unlock(dmu_buf_impl_t *db, void *tag)
+dbuf_rele_and_unlock(dmu_buf_impl_t *db, void *tag, boolean_t evicting)
 {
 	int64_t holds;
 
@@ -3324,7 +3327,8 @@ dbuf_rele_and_unlock(dmu_buf_impl_t *db, void *tag)
 				    db->db.db_size, db);
 				mutex_exit(&db->db_mtx);
 
-				if (db->db_caching_status == DB_DBUF_CACHE) {
+				if (db->db_caching_status == DB_DBUF_CACHE &&
+				    !evicting) {
 					dbuf_evict_notify();
 				}
 			}
@@ -3620,6 +3624,22 @@ dbuf_sync_leaf(dbuf_dirty_record_t *dr, dmu_tx_t *tx)
 
 	if (db->db_blkid == DMU_SPILL_BLKID) {
 		mutex_enter(&dn->dn_mtx);
+		if (!(dn->dn_phys->dn_flags & DNODE_FLAG_SPILL_BLKPTR)) {
+			/*
+			 * In the previous transaction group, the bonus buffer
+			 * was entirely used to store the attributes for the
+			 * dnode which overrode the dn_spill field.  However,
+			 * when adding more attributes to the file a spill
+			 * block was required to hold the extra attributes.
+			 *
+			 * Make sure to clear the garbage left in the dn_spill
+			 * field from the previous attributes in the bonus
+			 * buffer.  Otherwise, after writing out the spill
+			 * block to the new allocated dva, it will free
+			 * the old block pointed to by the invalid dn_spill.
+			 */
+			db->db_blkptr = NULL;
+		}
 		dn->dn_phys->dn_flags |= DNODE_FLAG_SPILL_BLKPTR;
 		mutex_exit(&dn->dn_mtx);
 	}
@@ -3659,7 +3679,7 @@ dbuf_sync_leaf(dbuf_dirty_record_t *dr, dmu_tx_t *tx)
 		kmem_free(dr, sizeof (dbuf_dirty_record_t));
 		ASSERT(db->db_dirtycnt > 0);
 		db->db_dirtycnt -= 1;
-		dbuf_rele_and_unlock(db, (void *)(uintptr_t)txg);
+		dbuf_rele_and_unlock(db, (void *)(uintptr_t)txg, B_FALSE);
 		return;
 	}
 
@@ -4022,7 +4042,7 @@ dbuf_write_done(zio_t *zio, arc_buf_t *buf, void *vdb)
 	ASSERT(db->db_dirtycnt > 0);
 	db->db_dirtycnt -= 1;
 	db->db_data_pending = NULL;
-	dbuf_rele_and_unlock(db, (void *)(uintptr_t)tx->tx_txg);
+	dbuf_rele_and_unlock(db, (void *)(uintptr_t)tx->tx_txg, B_FALSE);
 }
 
 static void
@@ -4192,7 +4212,8 @@ dbuf_remap(dnode_t *dn, dmu_buf_impl_t *db, dmu_tx_t *tx)
 		dnode_phys_t *dnp = db->db.db_data;
 		ASSERT3U(db->db_dnode_handle->dnh_dnode->dn_type, ==,
 		    DMU_OT_DNODE);
-		for (int i = 0; i < db->db.db_size >> DNODE_SHIFT; i++) {
+		for (int i = 0; i < db->db.db_size >> DNODE_SHIFT;
+			 i += dnp[i].dn_extra_slots + 1) {
 			for (int j = 0; j < dnp[i].dn_nblkptr; j++) {
 				dbuf_remap_impl(dn, &dnp[i].dn_blkptr[j], tx);
 			}

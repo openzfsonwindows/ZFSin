@@ -1006,6 +1006,132 @@ dnode_move(void *buf, void *newbuf, uint32_t size, void *arg)
 }
 #endif	/* _KERNEL */
 
+static void
+dnode_slots_hold(dnode_children_t *children, int idx, int slots)
+{
+	ASSERT3S(idx + slots, <=, DNODES_PER_BLOCK);
+
+	for (int i = idx; i < idx + slots; i++) {
+		dnode_handle_t *dnh = &children->dnc_children[i];
+		zrl_add(&dnh->dnh_zrlock);
+	}
+}
+
+static void
+dnode_slots_rele(dnode_children_t *children, int idx, int slots)
+{
+	ASSERT3S(idx + slots, <=, DNODES_PER_BLOCK);
+
+	for (int i = idx; i < idx + slots; i++) {
+		dnode_handle_t *dnh = &children->dnc_children[i];
+
+		if (zrl_is_locked(&dnh->dnh_zrlock))
+			zrl_exit(&dnh->dnh_zrlock);
+		else
+			zrl_remove(&dnh->dnh_zrlock);
+	}
+}
+
+static int
+dnode_slots_tryenter(dnode_children_t *children, int idx, int slots)
+{
+	ASSERT3S(idx + slots, <=, DNODES_PER_BLOCK);
+
+	for (int i = idx; i < idx + slots; i++) {
+		dnode_handle_t *dnh = &children->dnc_children[i];
+
+		if (!zrl_tryenter(&dnh->dnh_zrlock)) {
+			for (int j = idx; j < i; j++) {
+				dnh = &children->dnc_children[j];
+				zrl_exit(&dnh->dnh_zrlock);
+			}
+
+			return (0);
+		}
+	}
+
+	return (1);
+}
+
+static void
+dnode_set_slots(dnode_children_t *children, int idx, int slots, void *ptr)
+{
+	ASSERT3S(idx + slots, <=, DNODES_PER_BLOCK);
+
+	for (int i = idx; i < idx + slots; i++) {
+		dnode_handle_t *dnh = &children->dnc_children[i];
+		dnh->dnh_dnode = ptr;
+	}
+}
+
+static boolean_t
+dnode_check_slots_free(dnode_children_t *children, int idx, int slots)
+{
+	ASSERT3S(idx + slots, <=, DNODES_PER_BLOCK);
+
+	for (int i = idx; i < idx + slots; i++) {
+		dnode_handle_t *dnh = &children->dnc_children[i];
+		dnode_t *dn = dnh->dnh_dnode;
+
+		if (dn == DN_SLOT_FREE) {
+			continue;
+		} else if (DN_SLOT_IS_PTR(dn)) {
+			mutex_enter(&dn->dn_mtx);
+			boolean_t can_free = (dn->dn_type == DMU_OT_NONE &&
+			    refcount_is_zero(&dn->dn_holds) &&
+			    !DNODE_IS_DIRTY(dn));
+			mutex_exit(&dn->dn_mtx);
+
+			if (!can_free)
+				return (B_FALSE);
+			else
+				continue;
+		} else {
+			return (B_FALSE);
+		}
+	}
+
+	return (B_TRUE);
+}
+
+static void
+dnode_reclaim_slots(dnode_children_t *children, int idx, int slots)
+{
+	ASSERT3S(idx + slots, <=, DNODES_PER_BLOCK);
+
+	for (int i = idx; i < idx + slots; i++) {
+		dnode_handle_t *dnh = &children->dnc_children[i];
+
+		ASSERT(zrl_is_locked(&dnh->dnh_zrlock));
+
+		if (DN_SLOT_IS_PTR(dnh->dnh_dnode)) {
+			ASSERT3S(dnh->dnh_dnode->dn_type, ==, DMU_OT_NONE);
+			dnode_destroy(dnh->dnh_dnode);
+			dnh->dnh_dnode = DN_SLOT_FREE;
+		}
+	}
+}
+
+void
+dnode_free_interior_slots(dnode_t *dn)
+{
+	dnode_children_t *children = dmu_buf_get_user(&dn->dn_dbuf->db);
+	int epb = dn->dn_dbuf->db.db_size >> DNODE_SHIFT;
+	int idx = (dn->dn_object & (epb - 1)) + 1;
+	int slots = dn->dn_num_slots - 1;
+
+	if (slots == 0)
+		return;
+
+	ASSERT3S(idx + slots, <=, DNODES_PER_BLOCK);
+
+	while (!dnode_slots_tryenter(children, idx, slots))
+		DNODE_STAT_BUMP(dnode_free_interior_lock_retry);
+
+	dnode_set_slots(children, idx, slots, DN_SLOT_FREE);
+	dnode_slots_rele(children, idx, slots);
+}
+
 void
 dnode_special_close(dnode_handle_t *dnh)
 {
@@ -1267,11 +1393,11 @@ void
 dnode_rele(dnode_t *dn, void *tag)
 {
 	mutex_enter(&dn->dn_mtx);
-	dnode_rele_and_unlock(dn, tag);
+	dnode_rele_and_unlock(dn, tag, B_FALSE);
 }
 
 void
-dnode_rele_and_unlock(dnode_t *dn, void *tag)
+dnode_rele_and_unlock(dnode_t *dn, void *tag, boolean_t evicting)
 {
 	uint64_t refs;
 	/* Get while the hold prevents the dnode from moving. */
@@ -1302,7 +1428,8 @@ dnode_rele_and_unlock(dnode_t *dn, void *tag)
 		 * that the handle has zero references, but that will be
 		 * asserted anyway when the handle gets destroyed.
 		 */
-		dbuf_rele(db, dnh);
+		mutex_enter(&db->db_mtx);
+		dbuf_rele_and_unlock(db, dnh, evicting);
 	}
 }
 
@@ -2032,7 +2159,14 @@ dnode_next_offset_level(dnode_t *dn, int flags, uint64_t *offset,
 		else
 			minfill++;
 
-		*offset = *offset >> span;
+		if (span >= 8 * sizeof (*offset)) {
+			/* This only happens on the highest indirection level */
+			ASSERT3U((lvl - 1), ==, dn->dn_phys->dn_nlevels - 1);
+			*offset = 0;
+		} else {
+			*offset = *offset >> span;
+		}
+
 		for (i = BF64_GET(*offset, 0, epbs);
 		    i >= 0 && i < epb; i += inc) {
 			if (BP_GET_FILL(&bp[i]) >= minfill &&
@@ -2042,7 +2176,13 @@ dnode_next_offset_level(dnode_t *dn, int flags, uint64_t *offset,
 			if (inc > 0 || *offset > 0)
 				*offset += inc;
 		}
-		*offset = *offset << span;
+
+		if (span >= 8 * sizeof (*offset)) {
+			*offset = start;
+		} else {
+			*offset = *offset << span;
+		}
+
 		if (inc < 0) {
 			/* traversing backwards; position offset at the end */
 			ASSERT3U(*offset, <=, start);

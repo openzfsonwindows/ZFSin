@@ -139,6 +139,9 @@ dmu_object_reclaim(objset_t *os, uint64_t object, dmu_object_type_t ot,
 	dnode_t *dn;
 	int err;
 
+	if (dn_slots == 0)
+		dn_slots = DNODE_MIN_SLOTS;
+
 	if (object == DMU_META_DNODE_OBJECT)
 		return (SET_ERROR(EBADF));
 
