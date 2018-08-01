@@ -1258,7 +1258,7 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	kstat32_t user_kstat32;
 #endif
 	void *kbuf = NULL;
-	size_t kbufsize, ubufsize, copysize;
+	size_t kbufsize, ubufsize, copysize, firstkbufsize;
 	int error = 0;
 	uint_t model;
 
@@ -1310,6 +1310,9 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	*/
 	if (!(ksp->ks_flags & (KSTAT_FLAG_VAR_SIZE | KSTAT_FLAG_LONGSTRINGS))) {
 		kbufsize = ksp->ks_data_size;
+		ASSERT(kbufsize != 0);
+		dprintf("%s: allocating kbuf to size %d\n", __func__, ksp->ks_data_size);
+		firstkbufsize = kbufsize;
 		kbuf = kmem_zalloc(kbufsize + 1, KM_NOSLEEP);
 		if (kbuf == NULL) {
 			kstat_rele(ksp);
@@ -1331,6 +1334,7 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	if (ubufsize < kbufsize) {
 		error = ENOMEM;
 	} else {
+		ASSERT(kbufsize != 0);
 		if (kbuf == NULL)
 			kbuf = kmem_zalloc(kbufsize + 1, KM_NOSLEEP);
 		if (kbuf == NULL) {
@@ -1351,7 +1355,6 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	user_kstat.ks_flags = ksp->ks_flags;
 	user_kstat.ks_snaptime = ksp->ks_snaptime;
 #ifndef _WIN32
-	asd = ;
 	*rvalp = kstat_chain_id;
 #else
 	// This doesn't work, as rvalp refers to the userland struct, before copyin()
@@ -1565,7 +1568,7 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	if (error == 0 &&
 		ddi_copyout(kbuf, user_kstat.ks_data, copysize, 0))
 		error = EFAULT;
-	kmem_free(kbuf, kbufsize + 1);
+	kmem_free(kbuf, (kbufsize?kbufsize:firstkbufsize) + 1);
 
 out:
 	/*
