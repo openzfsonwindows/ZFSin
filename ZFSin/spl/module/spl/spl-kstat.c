@@ -1350,8 +1350,14 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	user_kstat.ks_data_size = kbufsize;
 	user_kstat.ks_flags = ksp->ks_flags;
 	user_kstat.ks_snaptime = ksp->ks_snaptime;
-
+#ifndef _WIN32
+	asd = ;
 	*rvalp = kstat_chain_id;
+#else
+	// This doesn't work, as rvalp refers to the userland struct, before copyin()
+	// and we need to write value to kernel version.
+	user_kstat.ks_returnvalue = kstat_chain_id;
+#endif
 	KSTAT_EXIT(ksp);
 	kstat_rele(ksp);
 
@@ -1584,9 +1590,14 @@ out:
 #endif
 	default:
 	case DDI_MODEL_NONE:
-		// If we have an errorcode, set it in ks_returnvalue before copyout
-		if (error)
-			user_kstat.ks_returnvalue = error;
+		// If we have an errorcode, set it in ks_errnovalue
+		// Above sets returnvalue with *rval =
+		// Must be done before this copyout()
+		user_kstat.ks_errnovalue = 0;
+		if (error) {
+			user_kstat.ks_errnovalue = error;
+			user_kstat.ks_returnvalue = -1;
+		} 
 		if (ddi_copyout(&user_kstat, user_ksp, sizeof(kstat_t), 0) &&
 			error == 0)
 			error = EFAULT;
@@ -1906,7 +1917,7 @@ int spl_kstat_read(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	kstat_t *ksp;
 	ksp = (kstat_t *)IrpSp->Parameters.DeviceIoControl.Type3InputBuffer;
 	rc = read_kstat_data(&ksp->ks_returnvalue, (void *)ksp, 0);
-	return rc;
+	return 0;
 }
 
 int spl_kstat_write(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp)
@@ -1915,5 +1926,5 @@ int spl_kstat_write(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpS
 	kstat_t *ksp;
 	ksp = (kstat_t *)IrpSp->Parameters.DeviceIoControl.Type3InputBuffer;
 	rc = write_kstat_data(&ksp->ks_returnvalue, (void *)ksp, 0, NULL);
-	return rc;
+	return 0;
 }

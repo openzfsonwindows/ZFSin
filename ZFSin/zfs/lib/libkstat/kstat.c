@@ -122,13 +122,17 @@ int kstat_ioctl(HANDLE hDevice, int request, kstat_t *ksp)
 		NULL
 	);
 
-	if (error == 0)
+	// Windows: error from DeviceIoControl() is unlikely
+	if (error == 0) {
 		error = GetLastError();
-	else
+	} else {
+		// More likely is we return error from kernel in errnovalue,
+		// or value in returnvalue
+		errno = ksp->ks_errnovalue;
 		error = ksp->ks_returnvalue;
-
-	fprintf(stderr, "%s: bytesreturned %d returnvalue %d\n", __func__,
-		bytesReturned, error); fflush(stderr);
+	}
+	fprintf(stderr, "%s: bytesreturned %d returnvalue %d errno %d\n", __func__,
+		bytesReturned, error, errno); fflush(stderr);
 
 	return error;
 }

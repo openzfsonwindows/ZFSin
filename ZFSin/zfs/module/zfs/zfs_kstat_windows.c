@@ -186,16 +186,16 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 
 	if (rw == KSTAT_WRITE) {
 
-		/* Darwin */
+		/* win32 */
 
-		debug_vnop_osx_printf = ks->darwin_debug.value.ui64;
-		if (ks->darwin_debug.value.ui64 == 9119)
+		debug_vnop_osx_printf = ks->win32_debug.value.ui64;
+		if (ks->win32_debug.value.ui64 == 9119)
 			panic("ZFS: User requested panic\n");
-		zfs_vnop_ignore_negatives = ks->darwin_ignore_negatives.value.ui64;
-		zfs_vnop_ignore_positives = ks->darwin_ignore_positives.value.ui64;
-		zfs_vnop_create_negatives = ks->darwin_create_negatives.value.ui64;
-		zfs_vnop_force_formd_normalized_output = ks->darwin_force_formd_normalized.value.ui64;
-		zfs_vnop_skip_unlinked_drain = ks->darwin_skip_unlinked_drain.value.ui64;
+		zfs_vnop_ignore_negatives = ks->win32_ignore_negatives.value.ui64;
+		zfs_vnop_ignore_positives = ks->win32_ignore_positives.value.ui64;
+		zfs_vnop_create_negatives = ks->win32_create_negatives.value.ui64;
+		zfs_vnop_force_formd_normalized_output = ks->win32_force_formd_normalized.value.ui64;
+		zfs_vnop_skip_unlinked_drain = ks->win32_skip_unlinked_drain.value.ui64;
 
 		/* ARC */
 		arc_kstat_update(ksp, rw);
@@ -361,15 +361,15 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		ks->spa_version.value.ui64                   = SPA_VERSION;
 		ks->zpl_version.value.ui64                   = ZPL_VERSION;
 
-		/* Darwin */
-		ks->darwin_active_vnodes.value.ui64          = vnop_num_vnodes;
-		ks->darwin_reclaim_nodes.value.ui64          = vnop_num_reclaims;
-		ks->darwin_debug.value.ui64                  = debug_vnop_osx_printf;
-		ks->darwin_ignore_negatives.value.ui64       = zfs_vnop_ignore_negatives;
-		ks->darwin_ignore_positives.value.ui64       = zfs_vnop_ignore_positives;
-		ks->darwin_create_negatives.value.ui64       = zfs_vnop_create_negatives;
-		ks->darwin_force_formd_normalized.value.ui64 = zfs_vnop_force_formd_normalized_output;
-		ks->darwin_skip_unlinked_drain.value.ui64    = zfs_vnop_skip_unlinked_drain;
+		/* win32 */
+		ks->win32_active_vnodes.value.ui64          = vnop_num_vnodes;
+		ks->win32_reclaim_nodes.value.ui64          = vnop_num_reclaims;
+		ks->win32_debug.value.ui64                  = debug_vnop_osx_printf;
+		ks->win32_ignore_negatives.value.ui64       = zfs_vnop_ignore_negatives;
+		ks->win32_ignore_positives.value.ui64       = zfs_vnop_ignore_positives;
+		ks->win32_create_negatives.value.ui64       = zfs_vnop_create_negatives;
+		ks->win32_force_formd_normalized.value.ui64 = zfs_vnop_force_formd_normalized_output;
+		ks->win32_skip_unlinked_drain.value.ui64    = zfs_vnop_skip_unlinked_drain;
 
 		/* ARC */
 		arc_kstat_update(ksp, rw);
@@ -536,7 +536,7 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 
 int kstat_osx_init(void)
 {
-	osx_kstat_ksp = kstat_create("zfs", 0, "tunable", "darwin",
+	osx_kstat_ksp = kstat_create("zfs", 0, "tunable", "win32",
 	    KSTAT_TYPE_NAMED, sizeof (osx_kstat) / sizeof (kstat_named_t),
 	    KSTAT_FLAG_VIRTUAL|KSTAT_FLAG_WRITABLE);
 

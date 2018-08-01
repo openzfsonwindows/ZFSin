@@ -851,6 +851,10 @@ spl_taskq_init(void)
 
 	list_create(&taskq_cpupct_list, sizeof (taskq_t),
 	    offsetof(taskq_t, tq_cpupct_link));
+
+	mutex_init(&taskq_kstat_lock, NULL, MUTEX_DEFAULT, NULL);
+	mutex_init(&taskq_d_kstat_lock, NULL, MUTEX_DEFAULT, NULL);
+	
 	return 0;
 }
 
@@ -867,6 +871,9 @@ spl_taskq_fini(void)
 	}
 
 	list_destroy(&taskq_cpupct_list);
+
+	mutex_destroy(&taskq_d_kstat_lock);
+	mutex_destroy(&taskq_kstat_lock);
 
 	vmem_destroy(taskq_id_arena);
 }

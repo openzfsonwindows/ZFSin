@@ -596,7 +596,7 @@ ks_match(const char *str, ks_pattern_t *pattern)
 
 	return ((gmatch(str, pattern->pstr) != 0));
 #endif
-	return 0;
+	return 1;
 }
 
 /*

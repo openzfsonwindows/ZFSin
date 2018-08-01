@@ -138,7 +138,8 @@ typedef struct kstat {
 	int(*ks_snapshot)(struct kstat *, void *, int);
 	void            *ks_lock;       /* protects this kstat's data */
 
-	int ks_returnvalue; // cant return non-zero values in ioctl()
+	int				ks_returnvalue;
+	int				ks_errnovalue;
 } kstat_t;
 #pragma pack()
 

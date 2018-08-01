@@ -92,6 +92,7 @@ typedef struct kstat {
 	void            *ks_lock;       /* protects this kstat's data */
 
 	int				ks_returnvalue;
+	int				ks_errnovalue;
 } kstat_t;
 #pragma pack()
 
