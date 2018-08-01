@@ -4325,15 +4325,15 @@ ioctlDispatcher(
 				/* kstat ioctls */
 			case KSTAT_IOC_CHAIN_ID:
 				dprintf("KSTAT_IOC_CHAIN_ID\n");
-				Status = STATUS_SUCCESS;
+				Status = spl_kstat_chain_id(DeviceObject, Irp, IrpSp);
 				break;
 			case KSTAT_IOC_READ:
 				dprintf("KSTAT_IOC_READ\n");
-				Status = STATUS_SUCCESS;
+				Status = spl_kstat_read(DeviceObject, Irp, IrpSp);
 				break;
 			case KSTAT_IOC_WRITE:
 				dprintf("KSTAT_IOC_WRITE\n");
-				Status = STATUS_SUCCESS;
+				Status = spl_kstat_write(DeviceObject, Irp, IrpSp);
 				break;
 			default:
 				dprintf("**** unknown Windows IOCTL: 0x%lx\n", cmd);

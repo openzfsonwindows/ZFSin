@@ -133,6 +133,8 @@ static char kext_version[64] = SPL_META_VERSION "-" SPL_META_RELEASE SPL_DEBUG_S
 //			  CTLFLAG_RD | CTLFLAG_LOCKED,
 //			  kext_version, 0, "SPL KEXT Version");
 
+extern void kstat_init(void);
+
 
 // ===============================================================
 // Illumos Variables
@@ -5028,8 +5030,14 @@ spl_kmem_init(uint64_t xtotal_memory)
 	mutex_init(&kmem_flags_lock, "kmem_flags_lock", MUTEX_DEFAULT, NULL); // XNU
 	mutex_init(&kmem_cache_kstat_lock, "kmem_kstat_lock", MUTEX_DEFAULT, NULL); // XNU
 
+	/* kstat mutex init */
 	spl_kstat_init();
 
+	/* start vm_init */
+	kernelheap_init();
+
+	/* kstat init */
+	kstat_init();
 
 	/*
 	 * Small-memory systems (< 24 MB) can't handle kmem_flags overhead.
@@ -5051,8 +5059,6 @@ spl_kmem_init(uint64_t xtotal_memory)
 
 	list_create(&kmem_caches, sizeof (kmem_cache_t),
 				offsetof(kmem_cache_t, cache_link));
-
-	kernelheap_init();
 
 	kmem_metadata_arena = vmem_create("kmem_metadata", NULL, 0, PAGESIZE,
 									  vmem_alloc, vmem_free, heap_arena, 8 * PAGESIZE,

@@ -64,66 +64,36 @@ typedef int	kid_t;		/* unique kstat id */
 /*
  * The generic kstat header
  */
-
+#pragma pack(4)
 typedef struct kstat {
 	/*
-	 * Fields relevant to both kernel and user
-	 */
-	hrtime_t	ks_crtime;	/* creation time (from gethrtime()) */
-	struct kstat	*ks_next;	/* kstat chain linkage */
-	kid_t		ks_kid;		/* unique kstat ID */
-	char		ks_module[KSTAT_STRLEN]; /* provider module name */
-	uchar_t		ks_resv;	/* reserved, currently just padding */
-	int		ks_instance;	/* provider module's instance */
-	char		ks_name[KSTAT_STRLEN]; /* kstat name */
-	uchar_t		ks_type;	/* kstat data type */
-	char		ks_class[KSTAT_STRLEN]; /* kstat class */
-	uchar_t		ks_flags;	/* kstat flags */
-	void		*ks_data;	/* kstat type-specific data */
-	uint_t		ks_ndata;	/* # of type-specific data records */
-	size_t		ks_data_size;	/* total size of kstat data section */
-	hrtime_t	ks_snaptime;	/* time of last data shapshot */
-	/*
-	 * Fields relevant to kernel only
-	 */
-	int		(*ks_update)(struct kstat *, int); /* dynamic update */
-	void		*ks_private;	/* arbitrary provider-private data */
-	int		(*ks_snapshot)(struct kstat *, void *, int);
-	void		*ks_lock;	/* protects this kstat's data */
+	* Fields relevant to both kernel and user
+	*/
+	hrtime_t        ks_crtime;      /* creation time (from gethrtime()) */
+	struct kstat    *ks_next;       /* kstat chain linkage */
+	kid_t           ks_kid;         /* unique kstat ID */
+	char            ks_module[KSTAT_STRLEN]; /* provider module name */
+	uchar_t         ks_resv;        /* reserved, currently just padding */
+	int             ks_instance;    /* provider module's instance */
+	char            ks_name[KSTAT_STRLEN]; /* kstat name */
+	uchar_t         ks_type;        /* kstat data type */
+	char            ks_class[KSTAT_STRLEN]; /* kstat class */
+	uchar_t         ks_flags;       /* kstat flags */
+	void            *ks_data;       /* kstat type-specific data */
+	uint_t          ks_ndata;       /* # of type-specific data records */
+	uint32_t          ks_data_size;   /* total size of kstat data section */
+	hrtime_t        ks_snaptime;    /* time of last data shapshot */
+									/*
+									* Fields relevant to kernel only
+									*/
+	int(*ks_update)(struct kstat *, int); /* dynamic update */
+	void            *ks_private;    /* arbitrary provider-private data */
+	int(*ks_snapshot)(struct kstat *, void *, int);
+	void            *ks_lock;       /* protects this kstat's data */
+
+	int				ks_returnvalue;
 } kstat_t;
-
-#ifdef _SYSCALL32
-
-typedef int32_t kid32_t;
-
-typedef struct kstat32 {
-	/*
-	 * Fields relevant to both kernel and user
-	 */
-	hrtime_t	ks_crtime;
-	caddr32_t	ks_next;		/* struct kstat pointer */
-	kid32_t		ks_kid;
-	char		ks_module[KSTAT_STRLEN];
-	uint8_t		ks_resv;
-	int32_t		ks_instance;
-	char		ks_name[KSTAT_STRLEN];
-	uint8_t		ks_type;
-	char		ks_class[KSTAT_STRLEN];
-	uint8_t		ks_flags;
-	caddr32_t	ks_data;		/* type-specific data */
-	uint32_t	ks_ndata;
-	size32_t	ks_data_size;
-	hrtime_t	ks_snaptime;
-	/*
-	 * Fields relevant to kernel only (only needed here for padding)
-	 */
-	int32_t		_ks_update;
-	caddr32_t	_ks_private;
-	int32_t		_ks_snapshot;
-	caddr32_t	_ks_lock;
-} kstat32_t;
-
-#endif	/* _SYSCALL32 */
+#pragma pack()
 
 /*
  * kstat structure and locking strategy
@@ -440,7 +410,7 @@ typedef struct kstat32 {
  *
  * List of arbitrary name=value statistics.
  */
-
+#pragma pack(4)
 typedef struct kstat_named {
 	char	name[KSTAT_STRLEN];	/* name of counter */
 	uchar_t	data_type;		/* data type */
@@ -468,10 +438,9 @@ typedef struct kstat_named {
  * C99 ANSI C compilation environment, the long long type is supported.
  * The _INT64_TYPE is defined by the implementation (see sys/int_types.h).
  */
-#if defined(_INT64_TYPE)
 		int64_t		i64;
 		uint64_t	ui64;
-#endif
+
 		long		l;
 		ulong_t		ul;
 
@@ -483,6 +452,7 @@ typedef struct kstat_named {
 		double		d;
 	} value;			/* value of counter */
 } kstat_named_t;
+#pragma pack()
 
 #define	KSTAT_DATA_CHAR		0
 #define	KSTAT_DATA_INT32	1

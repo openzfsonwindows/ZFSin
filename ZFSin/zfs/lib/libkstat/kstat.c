@@ -73,7 +73,8 @@ kstat_open(void)
 {
 	kstat_ctl_t *kc;
 	HANDLE h;
-
+	fprintf(stderr, "struct size is %d\r\n", sizeof(kstat_t));
+	fflush(stderr);
 	h = CreateFile("\\\\.\\ZFS", GENERIC_READ | GENERIC_WRITE, // ZFSDEV - no includes
 		0, NULL, OPEN_EXISTING, 0, NULL);
 	if (h == INVALID_HANDLE_VALUE) 
@@ -124,7 +125,10 @@ int kstat_ioctl(HANDLE hDevice, int request, kstat_t *ksp)
 	if (error == 0)
 		error = GetLastError();
 	else
-		error = ksp->ks_kid;
+		error = ksp->ks_returnvalue;
+
+	fprintf(stderr, "%s: bytesreturned %d returnvalue %d\n", __func__,
+		bytesReturned, error); fflush(stderr);
 
 	return error;
 }
@@ -250,8 +254,9 @@ kstat_chain_update(kstat_ctl_t *kc)
 	kstat_t k0, *headers, *oksp, *nksp, **okspp, *next;
 	int i;
 	kid_t kcid;
+	kstat_t ksp = { 0 };
 
-	kcid = (kid_t)kstat_ioctl(kc->kc_kd, KSTAT_IOC_CHAIN_ID, NULL);
+	kcid = (kid_t)kstat_ioctl(kc->kc_kd, KSTAT_IOC_CHAIN_ID, &ksp);
 	if (kcid == -1)
 		return (-1);
 	if (kcid == kc->kc_chain_id)
