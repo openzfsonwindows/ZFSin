@@ -73,8 +73,7 @@ kstat_open(void)
 {
 	kstat_ctl_t *kc;
 	HANDLE h;
-	fprintf(stderr, "struct size is %d\r\n", sizeof(kstat_t));
-	fflush(stderr);
+
 	h = CreateFile("\\\\.\\ZFS", GENERIC_READ | GENERIC_WRITE, // ZFSDEV - no includes
 		0, NULL, OPEN_EXISTING, 0, NULL);
 	if (h == INVALID_HANDLE_VALUE) 
@@ -131,8 +130,6 @@ int kstat_ioctl(HANDLE hDevice, int request, kstat_t *ksp)
 		errno = ksp->ks_errnovalue;
 		error = ksp->ks_returnvalue;
 	}
-	fprintf(stderr, "%s: bytesreturned %d returnvalue %d errno %d\n", __func__,
-		bytesReturned, error, errno); fflush(stderr);
 
 	return error;
 }
