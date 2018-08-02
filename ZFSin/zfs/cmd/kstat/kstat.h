@@ -203,6 +203,7 @@ static void	ks_value_print(ks_nvpair_t *);
 static void	ks_instances_print(void);
 static char	*ks_safe_strdup(char *);
 static void	ks_sleep_until(hrtime_t *, hrtime_t, int, int *);
+static int write_mode(int argc, char **argv);
 
 /* Raw kstat readers */
 #ifndef WIN32

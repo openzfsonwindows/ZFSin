@@ -84,6 +84,7 @@ static boolean_t g_jflg = B_FALSE;
 static boolean_t g_lflg = B_FALSE;
 static boolean_t g_pflg = B_FALSE;
 static boolean_t g_qflg = B_FALSE;
+static boolean_t g_wflg = B_FALSE;
 static ks_pattern_t	g_ks_class = {"*", 0};
 
 static boolean_t g_matched = B_FALSE;
@@ -129,7 +130,7 @@ main(int argc, char **argv)
 	/*
 	 * Parse named command line arguments.
 	 */
-	while ((c = getopt(argc, argv, "h?CqjlpT:m:i:n:s:c:")) != EOF)
+	while ((c = getopt(argc, argv, "h?CqjlpT:m:i:n:s:c:w")) != EOF)
 		switch (c) {
 		case 'h':
 		case '?':
@@ -194,6 +195,10 @@ main(int argc, char **argv)
 			g_ks_class.pstr =
 			    (char *)ks_safe_strdup(optarg);
 			break;
+		case 'w':
+			g_wflg = B_TRUE;
+			break;
+
 		default:
 			errflg = B_TRUE;
 			break;
@@ -212,6 +217,14 @@ main(int argc, char **argv)
 
 	argc -= optind;
 	argv += optind;
+
+	if (g_wflg) {
+		/* kstat_write mode: consume commandline arguments:
+		 * kstat -w module:instance:name:statistic_name=value
+		 */
+		n = write_mode(argc, argv);
+		exit(n);
+	}
 
 	/*
 	 * Consume the rest of the command line. Parsing the
@@ -367,14 +380,15 @@ main(int argc, char **argv)
 static void
 usage(void)
 {
-	(void) fprintf(stderr, gettext(
-	    "Usage:\n"
-	    "kstat [ -Cjlpq ] [ -T d|u ] [ -c class ]\n"
-	    "      [ -m module ] [ -i instance ] [ -n name ] [ -s statistic ]\n"
-	    "      [ interval [ count ] ]\n"
-	    "kstat [ -Cjlpq ] [ -T d|u ] [ -c class ]\n"
-	    "      [ module[:instance[:name[:statistic]]] ... ]\n"
-	    "      [ interval [ count ] ]\n"));
+	(void)fprintf(stderr, gettext(
+		"Usage:\n"
+		"kstat [ -Cjlpq ] [ -T d|u ] [ -c class ]\n"
+		"      [ -m module ] [ -i instance ] [ -n name ] [ -s statistic ]\n"
+		"      [ interval [ count ] ]\n"
+		"kstat [ -Cjlpq ] [ -T d|u ] [ -c class ]\n"
+		"      [ module[:instance[:name[:statistic]]] ... ]\n"
+		"      [ interval [ count ] ]\n"
+		"kstat -w module:instance:name:statistic=value [ ... ] \n"));
 }
 
 /*
@@ -1023,6 +1037,96 @@ ks_instances_print(void)
 		free(ktmp);
 	}
 }
+
+/*
+ * kstat -w module:instance:name:statistic=value [ ... ]
+ * e.g. "kstat -w zfs:0:tunable:zfs_arc_mac=1234567890
+ *
+ */
+int write_mode(int argc, char **argv)
+{
+	char *arg;
+	int instance, rc = 0;
+	int failure = 0;
+	uint64_t value, before_value;
+	kstat_ctl_t *kc;
+
+	if (argc == 0) {
+		usage();
+		(void)fprintf(stderr, "-w takes at least one argument\n");
+		(void)fprintf(stderr, "\te.g. kstat -w zfs:0:tunable:zfs_arc_max=1200000\n");
+		return -1;
+	}
+
+	while ((kc = kstat_open()) == NULL) {
+		if (errno == EAGAIN) {
+			(void)usleep(200);
+		} else {
+			perror("kstat_open");
+			exit(3);
+		}
+	}
+
+	while (argc--) {
+		char mod[KSTAT_STRLEN + 1], name[KSTAT_STRLEN + 1], stat[KSTAT_STRLEN + 1];
+
+		arg = *argv;
+
+		// TODO: make this more flexible. Spaces, and other types than uint64.
+		// Call C11 sscanf_s which takes string-width following ptr.
+		if ((rc = sscanf_s(arg, "%[^:]:%d:%[^:]:%[^=]=%llu",
+			mod, KSTAT_STRLEN, 
+			&instance, 
+			name, KSTAT_STRLEN,
+			stat, KSTAT_STRLEN,
+			&value)) != 5) {
+			(void)fprintf(stderr, "Unable to parse '%s'\n input not in 'module:instance:name:statisticname=value' format. %d\n", arg, rc);
+			failure++;
+		} else {
+			kstat_t *ks;
+			ks = kstat_lookup(kc, mod, instance, name);
+			if (ks == NULL) {
+				(void)fprintf(stderr, "Unable to lookup '%s:%d:%s': %d\n",
+					mod, instance, name, errno);
+				failure++;
+			} else {
+				if (kstat_read(kc, ks, NULL) == -1) {
+					(void)fprintf(stderr, "Unable to read '%s:%d:%s': %d\n",
+						mod, instance, name, errno);
+					failure++;
+				} else {
+					kstat_named_t *kn = kstat_data_lookup(ks, stat);
+					if (kn == NULL) {
+						(void)fprintf(stderr, "Unable to find '%s' in '%s:%d:%s': %d\n",
+							stat, mod, instance, name, errno);
+						failure++;
+					} else {
+						before_value = kn->value.ui64;
+						kn->value.ui64 = value;
+
+						/* Update kernel */
+						rc = kstat_write(kc, ks, NULL);
+
+						if (rc == -1) {
+							(void)fprintf(stderr, "Unable to write '%s:%d:%s:%s': %d\n",
+								mod, instance, name, stat, errno);
+							failure++;
+						} else {
+							(void)fprintf(stderr, "%s:%d:%s:%s: %llu -> %llu\n",
+								mod, instance, name, stat, before_value, value);
+						} // rc
+					} // kstat_data_lookup
+				} // kstat_read
+			} // kstat_lookup
+		} // sscanf
+		argv++;
+	}
+
+	kstat_close(kc);
+	return failure;
+}
+
+
 
 #ifndef WIN32
 static void

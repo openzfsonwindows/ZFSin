@@ -1357,7 +1357,7 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 #ifndef _WIN32
 	*rvalp = kstat_chain_id;
 #else
-	// This doesn't work, as rvalp refers to the userland struct, before copyin()
+	// The above doesn't work, as rvalp refers to the userland struct, before copyin()
 	// and we need to write value to kernel version.
 	user_kstat.ks_returnvalue = kstat_chain_id;
 #endif
@@ -1864,7 +1864,15 @@ write_kstat_data(int *rvalp, void *user_ksp, int flag, cred_t *cred)
 	error = KSTAT_SNAPSHOT(ksp, buf, KSTAT_WRITE);
 	if (!error)
 		error = KSTAT_UPDATE(ksp, KSTAT_WRITE);
+#ifndef _WIN32
 	*rvalp = kstat_chain_id;
+#else
+	// The above doesn't work, as rvalp refers to the userland struct, before copyin()
+	// and we need to write value to kernel version.
+	user_kstat.ks_returnvalue = kstat_chain_id;
+	// We need to copyout() so userland will get the return values.
+#endif
+
 	KSTAT_EXIT(ksp);
 	kstat_rele(ksp);
 	kmem_free(buf, bufsize + 1);
