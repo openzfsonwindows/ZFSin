@@ -608,9 +608,8 @@ ks_match(const char *str, ks_pattern_t *pattern)
 		return (regexec(&pattern->preg, str, 0, NULL, 0) == 0);
 	}
 
-	return ((gmatch(str, pattern->pstr) != 0));
 #endif
-	return 1;
+	return ((gmatch(str, pattern->pstr) != 0));
 }
 
 /*

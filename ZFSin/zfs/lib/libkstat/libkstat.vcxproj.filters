@@ -18,6 +18,9 @@
     <ClCompile Include="kstat.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="gmatch.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="kstat.h">
