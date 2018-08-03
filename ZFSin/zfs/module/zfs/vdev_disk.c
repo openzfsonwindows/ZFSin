@@ -140,10 +140,11 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	int error = EINVAL;
 	uint64_t capacity = 0, blksz = 0, pbsize = 0;
 	int isssd;
+	char *vdev_path = NULL;
 
 	PAGED_CODE();
 
-	dprintf("%s: open of '%s'\n", __func__, vd->vdev_path);
+	xprintf("%s: open of '%s' (physpath '%s')\n", __func__, vd->vdev_path, vd->vdev_physpath ? vd->vdev_physpath : "");
 	/*
 	* We must have a pathname, and it must be absolute.
 	* It can also start with # for partition encoded paths
@@ -186,10 +187,16 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	uint8_t *FileName = NULL;
 	uint32_t FileLength;
 
+	// Use vd->vdev_physpath first, if set, otherwise
+	// usual vd->vdev_path
+	vdev_path = vd->vdev_path;
+	if (vd->vdev_physpath)
+		vdev_path = vd->vdev_physpath;
+
 	/* Check for partition encoded paths */
-	if (vd->vdev_path[0] == '#') {
+	if (vdev_path[0] == '#') {
 		uint8_t *end;
-		end = &vd->vdev_path[0];
+		end = &vdev_path[0];
 		while (end && end[0] == '#') end++;
 		ddi_strtoull(end, &end, 10, &vd->vdev_win_offset);
 		while (end && end[0] == '#') end++;

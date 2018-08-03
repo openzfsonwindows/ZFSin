@@ -406,6 +406,9 @@ vdev_config_generate(spa_t *spa, vdev_t *vd, boolean_t getstats,
 		fnvlist_add_string(nv, ZPOOL_CONFIG_DEVID, vd->vdev_devid);
 
 	if (vd->vdev_physpath != NULL)
+		fnvlist_add_string(nv, ZPOOL_CONFIG_PHYS_PATH, vd->vdev_physpath);
+
+	if (vd->vdev_physpath != NULL)
 		fnvlist_add_string(nv, ZPOOL_CONFIG_PHYS_PATH,
 		    vd->vdev_physpath);
 
