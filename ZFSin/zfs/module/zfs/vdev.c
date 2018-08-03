@@ -1843,6 +1843,20 @@ vdev_copy_path_impl(vdev_t *svd, vdev_t *dvd)
 		zfs_dbgmsg("vdev_copy_path: vdev %llu: path set to '%s'",
 		    (u_longlong_t)dvd->vdev_guid, dvd->vdev_path);
 	}
+
+	if (svd->vdev_physpath != NULL && dvd->vdev_physpath != NULL) {
+		if (strcmp(svd->vdev_physpath, dvd->vdev_physpath) != 0) {
+			zfs_dbgmsg("vdev_copy_path: vdev %llu: physpath changed "
+				"from '%s' to '%s'", (u_longlong_t)dvd->vdev_guid,
+				dvd->vdev_physpath, svd->vdev_physpath);
+			spa_strfree(dvd->vdev_physpath);
+			dvd->vdev_physpath = spa_strdup(svd->vdev_physpath);
+		}
+	} else if (svd->vdev_physpath != NULL) {
+		dvd->vdev_physpath = spa_strdup(svd->vdev_physpath);
+		zfs_dbgmsg("vdev_copy_path: vdev %llu: physpath set to '%s'",
+			(u_longlong_t)dvd->vdev_guid, dvd->vdev_physpath);
+	}
 }
 
 /*

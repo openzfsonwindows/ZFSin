@@ -1461,7 +1461,8 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 		 * chop off the partition number when displaying the device in
 		 * future output.
 		 */
-		verify(nvlist_add_string(nv, ZPOOL_CONFIG_PATH, udevpath) == 0);
+		verify(nvlist_add_string(nv, ZPOOL_CONFIG_PATH, "/dev/physicaldriveFAKE") == 0);
+		verify(nvlist_add_string(nv, ZPOOL_CONFIG_PHYS_PATH, udevpath) == 0);
 
 		return (0);
 	}
