@@ -4692,27 +4692,6 @@ fsDispatcher(
 
 			int isdir = vnode_isdir(vp);
 
-			// Asked to delete?
-			if (vnode_unlink(vp)) {
-
-				/*
-				 * This call to delete_entry may release the vp/zp in one case
-				 * So care needs to be taken. Most branches the vp/zp lives with
-				 * zero iocount, ready to be reused.
-				 * delete_entry() requires iocount to be held.
-				 */
-				delete_entry(DeviceObject, Irp, IrpSp);
-			} else {
-				/*
-				 * Leave node alone, VFS layer will release it when appropriate.
-				 */
-				//if (vp && VTOZ(vp))
-				//	zfs_vnop_recycle(VTOZ(vp), 0);
-
-				// Release our (last?) iocount here, since we didnt call delete_entry
-				VN_RELE(vp);
-			}
-
 			// If we are cleanup up a dir, we need to complete all the SendNotify
 			// we have attached. 
 			zmo = DeviceObject->DeviceExtension;
@@ -4740,6 +4719,30 @@ fsDispatcher(
 			if (IrpSp->FileObject->SectionObjectPointer != NULL)
 				CcUninitializeCacheMap(IrpSp->FileObject, NULL, NULL);
 #endif
+
+			// Asked to delete?
+			if (vnode_unlink(vp)) {
+
+				/*
+				* This call to delete_entry may release the vp/zp in one case
+				* So care needs to be taken. Most branches the vp/zp lives with
+				* zero iocount, ready to be reused.
+				* delete_entry() requires iocount to be held.
+				* Access to "vp" may be invalid after this call, so it should be
+				* last.
+				*/
+				delete_entry(DeviceObject, Irp, IrpSp);
+			} else {
+				/*
+				* Leave node alone, VFS layer will release it when appropriate.
+				*/
+				//if (vp && VTOZ(vp))
+				//	zfs_vnop_recycle(VTOZ(vp), 0);
+
+				// Release our (last?) iocount here, since we didnt call delete_entry
+				VN_RELE(vp);
+			}
+			vp = NULL;
 
 		}
 		Status = STATUS_SUCCESS;
