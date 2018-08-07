@@ -75,6 +75,9 @@ static boolean_t spl_free_thread_exit;
 static volatile _Atomic int64_t spl_free;
 int64_t spl_free_delta_ema;
 
+static boolean_t spl_event_thread_exit;
+static PKEVENT low_mem_event = NULL;
+
 static volatile _Atomic int64_t spl_free_manual_pressure = 0;
 static volatile _Atomic boolean_t spl_free_fast_pressure = FALSE;
 static _Atomic boolean_t spl_free_maybe_reap_flag = FALSE;
@@ -3344,6 +3347,9 @@ kmem_cache_stat(kmem_cache_t *cp, char *name)
 static inline boolean_t
 spl_minimal_physmem_p_logic()
 {
+
+
+
 	// do we have enough memory to avoid throttling?
 	if (vm_page_free_wanted > 0)
 		return (FALSE);
@@ -4907,6 +4913,48 @@ spl_free_thread()
 	thread_exit();
 }
 
+static void
+spl_event_thread()
+{
+	callb_cpr_t cpr;
+	NTSTATUS Status;
+
+	DECLARE_CONST_UNICODE_STRING(low_mem_name, L"\\KernelObjects\\LowMemoryCondition");
+	HANDLE low_mem_handle;
+	low_mem_event = IoCreateNotificationEvent((PUNICODE_STRING)&low_mem_name, &low_mem_handle);
+	if (low_mem_event == NULL) {
+		dprintf("%s: failed IoCreateNotificationEvent(\\KernelObjects\\LowMemoryCondition)");
+		thread_exit();
+	}
+	KeClearEvent(low_mem_event);
+
+	dprintf("SPL: beginning spl_event_thread() loop\n");
+
+	while (!spl_event_thread_exit) {
+
+		/* Don't busy loop */
+		delay(hz);
+
+		/* Sleep forever waiting for event */
+		Status = KeWaitForSingleObject(low_mem_event, Executive, KernelMode, FALSE, NULL);
+		KeClearEvent(low_mem_event);
+
+		xprintf("%s: LOWMEMORY EVENT *** (or quitting): 0x%x\n", __func__, Status);
+		/* We were signalled */
+		//vm_page_free_wanted = vm_page_free_min;
+		spl_free_set_pressure(vm_page_free_min);
+		cv_broadcast(&spl_free_thread_cv);
+	}
+
+	ZwClose(low_mem_handle);
+
+	spl_event_thread_exit = FALSE;
+	dprintf("SPL: %s thread_exit\n", __func__);
+	thread_exit();
+}
+
+
+
 
 static int
 spl_kstat_update(kstat_t *ksp, int rw)
@@ -5301,6 +5349,9 @@ spl_kmem_thread_init(void)
 	spl_free_thread_exit = FALSE;
 	(void) thread_create(NULL, 0, spl_free_thread, 0, 0, 0, 0, 92);
 	(void) cv_init(&spl_free_thread_cv, NULL, CV_DEFAULT, NULL);
+
+	spl_event_thread_exit = FALSE;
+	(void)thread_create(NULL, 0, spl_event_thread, 0, 0, 0, 0, 92);
 }
 
 void
@@ -5321,6 +5372,16 @@ spl_kmem_thread_fini(void)
 	dprintf("SPL: spl_free_thread stop: destroying cv and mutex\n");
 	cv_destroy(&spl_free_thread_cv);
 	mutex_destroy(&spl_free_thread_lock);
+
+	if (low_mem_event != NULL) {
+		dprintf("SPL: stopping spl_event_thread\n");
+		spl_event_thread_exit = TRUE;
+		KeSetEvent(low_mem_event, 0, FALSE);
+		while (spl_free_thread_exit) {
+			delay(hz >> 4);
+		}
+		dprintf("SPL: stopped spl_event_thread\n");
+	}
 
 	dprintf("SPL: bsd_untimeout\n");
 	//bsd_untimeout(kmem_update,  0);

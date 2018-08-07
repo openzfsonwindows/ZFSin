@@ -54,7 +54,7 @@ uint64_t  real_total_memory = 0;
 uint64_t vm_page_free_wanted = 0;
 uint64_t vm_page_free_min = 512;
 uint64_t vm_page_free_count = 5000;
-uint64_t vm_page_speculative_count = 0;
+uint64_t vm_page_speculative_count = 5500;
 
 uint64_t spl_GetPhysMem(void);
 
@@ -383,6 +383,12 @@ int spl_start (void)
     real_total_memory = total_memory;
     total_memory = total_memory * 50ULL / 100ULL; // smd: experiment with 50%, 8GiB
     physmem = total_memory / PAGE_SIZE;
+
+	// We need to set these to some non-zero values
+	// so we don't think there is permanent memory
+	// pressure.
+	vm_page_free_count = physmem/2;
+	vm_page_speculative_count = physmem/2;
 
     /*
      * For some reason, (CTLFLAG_KERN is not set) looking up hostname
