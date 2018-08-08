@@ -719,7 +719,7 @@ vdev_mapping_sync(void *arg, dmu_tx_t *tx)
 	spa_vdev_removal_t *svr = arg;
 	spa_t *spa = dmu_tx_pool(tx)->dp_spa;
 	vdev_t *vd = vdev_lookup_top(spa, svr->svr_vdev_id);
-	vdev_indirect_config_t *vic = &vd->vdev_indirect_config;
+	ASSERTV(vdev_indirect_config_t *vic = &vd->vdev_indirect_config);
 	uint64_t txg = dmu_tx_get_txg(tx);
 	vdev_indirect_mapping_t *vim = vd->vdev_indirect_mapping;
 
