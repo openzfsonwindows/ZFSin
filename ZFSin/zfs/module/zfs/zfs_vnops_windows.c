@@ -3276,39 +3276,46 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 			FILE_BASIC_INFORMATION *fbi = Irp->AssociatedIrp.SystemBuffer;
 			struct vnode *vp = IrpSp->FileObject->FsContext;
-			VN_HOLD(vp);
-			znode_t *zp = VTOZ(vp);
-			vattr_t va = { 0 };
-			uint64_t unixtime[2] = { 0 };
 
-			// can request that the file system not update .. LastAccessTime, LastWriteTime, and ChangeTime ..  setting the appropriate members to -1.
-			if (fbi->ChangeTime.QuadPart != -1) {
-				TIME_WINDOWS_TO_UNIX(fbi->ChangeTime.QuadPart, unixtime);
-				va.va_change_time.tv_sec = unixtime[0]; va.va_change_time.tv_nsec = unixtime[1];
-				va.va_active |= AT_CTIME;
+			// FileAttributes == 0 means don't set - undocumented, but seen in fastfat
+			if (fbi->FileAttributes != 0) {
+				VN_HOLD(vp);
+				znode_t *zp = VTOZ(vp);
+				vattr_t va = { 0 };
+				uint64_t unixtime[2] = { 0 };
+
+				// can request that the file system not update .. LastAccessTime, LastWriteTime, and ChangeTime ..  setting the appropriate members to -1.
+				// ie, LastAccessTime = -1 -> atime = disabled - not implemented
+				// a value of "0" means to keep existing value.
+				if (fbi->ChangeTime.QuadPart != -1 && fbi->ChangeTime.QuadPart != 0) {
+					TIME_WINDOWS_TO_UNIX(fbi->ChangeTime.QuadPart, unixtime);
+					va.va_change_time.tv_sec = unixtime[0]; va.va_change_time.tv_nsec = unixtime[1];
+					va.va_active |= AT_CTIME;
+				}
+				if (fbi->LastWriteTime.QuadPart != -1 && fbi->LastWriteTime.QuadPart != 0) {
+					TIME_WINDOWS_TO_UNIX(fbi->LastWriteTime.QuadPart, unixtime);
+					va.va_modify_time.tv_sec = unixtime[0]; va.va_modify_time.tv_nsec = unixtime[1];
+					va.va_active |= AT_MTIME;
+				}
+				if (fbi->CreationTime.QuadPart != -1 && fbi->CreationTime.QuadPart != 0) {
+					TIME_WINDOWS_TO_UNIX(fbi->CreationTime.QuadPart, unixtime);
+					va.va_create_time.tv_sec = unixtime[0]; va.va_create_time.tv_nsec = unixtime[1];
+					va.va_active |= AT_CRTIME;  // AT_CRTIME
+				}
+				if (fbi->LastAccessTime.QuadPart != -1 && fbi->LastAccessTime.QuadPart != 0) 
+					TIME_WINDOWS_TO_UNIX(fbi->LastAccessTime.QuadPart, zp->z_atime);
+
+				if (fbi->FileAttributes)
+					zfs_setwinflags(VTOZ(vp), fbi->FileAttributes);
+
+				Status = zfs_setattr(vp, &va, 0, NULL, NULL);
+
+				// zfs_setattr will turn ARCHIVE back on, when perhaps it is set off by this call
+				if (fbi->FileAttributes)
+					zfs_setwinflags(VTOZ(vp), fbi->FileAttributes);
+
+				VN_RELE(vp);
 			}
-			if (fbi->LastWriteTime.QuadPart != -1) {
-				TIME_WINDOWS_TO_UNIX(fbi->LastWriteTime.QuadPart, unixtime);
-				va.va_modify_time.tv_sec = unixtime[0]; va.va_modify_time.tv_nsec = unixtime[1];
-				va.va_active |= AT_MTIME;
-			}
-			if (fbi->CreationTime.QuadPart != -1) {
-				TIME_WINDOWS_TO_UNIX(fbi->CreationTime.QuadPart, unixtime);
-				va.va_create_time.tv_sec = unixtime[0]; va.va_create_time.tv_nsec = unixtime[1];
-				va.va_active |= AT_CRTIME;  // AT_CRTIME
-			}
-			if (fbi->LastAccessTime.QuadPart != -1) TIME_WINDOWS_TO_UNIX(fbi->LastAccessTime.QuadPart, zp->z_atime);
-			
-			if (fbi->FileAttributes)
-				zfs_setwinflags(VTOZ(vp), fbi->FileAttributes);
-
-			Status = zfs_setattr(vp, &va, 0, NULL, NULL);
-
-			// zfs_setattr will turn ARCHIVE back on, when perhaps it is set off by this call
-			if (fbi->FileAttributes)
-				zfs_setwinflags(VTOZ(vp), fbi->FileAttributes);
-
-			VN_RELE(vp);
 		}
 		break;
 	case FileDispositionInformation: // unlink
