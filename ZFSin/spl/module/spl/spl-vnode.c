@@ -871,6 +871,7 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	ExInitializeResourceLite((*vpp)->FileHeader.PagingIoResource);
 	ASSERT0(((uint64_t)(*vpp)->FileHeader.Resource) & 7);
 
+#if 0
 	// Release vnodes if needed
 	if (vnode_active >= vnode_max) {
 		uint64_t reclaims = 0;
@@ -880,6 +881,7 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 
 		vflush(NULL, NULL, SKIPROOT|SKIPSYSTEM);
 	}
+#endif
 }
 
 int     vnode_isvroot(vnode_t *vp)
