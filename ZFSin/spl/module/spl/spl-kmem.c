@@ -567,6 +567,7 @@ typedef struct spl_stats {
 	kstat_named_t spl_active_mutex;
 	kstat_named_t spl_active_rwlock;
 	kstat_named_t spl_active_tsd;
+	kstat_named_t spl_active_vnodes;
 	kstat_named_t spl_free_wake_count;
 	kstat_named_t spl_spl_free;
 	kstat_named_t spl_spl_free_manual_pressure;
@@ -631,6 +632,7 @@ static spl_stats_t spl_stats = {
 	{"active_mutex", KSTAT_DATA_UINT64},
 	{"active_rwlock", KSTAT_DATA_UINT64},
 	{"active_tsd", KSTAT_DATA_UINT64},
+	{"active_vnodes", KSTAT_DATA_UINT64 },
 	{"spl_free_wake_count", KSTAT_DATA_UINT64},
 	{"spl_spl_free", KSTAT_DATA_INT64},
 	{"spl_spl_free_manual_pressure", KSTAT_DATA_UINT64},
@@ -5000,6 +5002,7 @@ spl_kstat_update(kstat_t *ksp, int rw)
 		ks->spl_active_mutex.value.ui64 = zfs_active_mutex;
 		ks->spl_active_rwlock.value.ui64 = zfs_active_rwlock;
 		ks->spl_active_tsd.value.ui64 = spl_tsd_size();
+		ks->spl_active_vnodes.value.ui64 = spl_active_vnodes();
 		ks->spl_spl_free.value.i64 = spl_free;
 		ks->spl_spl_free_manual_pressure.value.i64 = spl_free_manual_pressure;
 		ks->spl_spl_free_fast_pressure.value.i64 = spl_free_fast_pressure;

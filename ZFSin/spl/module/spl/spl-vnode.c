@@ -40,10 +40,10 @@ static uint64_t vnode_vid_counter = 0;
 /* Total number of active vnodes */
 static uint64_t vnode_active = 0;
 
-/* Maximum allowed active vnodes */
-uint64_t vnode_max = 3000;
-/* When max is hit, decrease until watermark, 2% of max */
-#define vnode_max_watermark (vnode_max - (vnode_max * 2ULL / 100ULL))
+uint64_t spl_active_vnodes(void)
+{
+	return vnode_active;
+}
 
 /* List of all vnodes */
 static kmutex_t vnode_all_list_lock;
@@ -807,7 +807,6 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
 		FsRtlUninitializeFileLock(&vp->lock);
 
-		vp->fileobject = NULL;
 		// mutex does not need releasing.
 
 		// Call sync?
@@ -817,8 +816,10 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		if (zfs_vnop_reclaim(vp))
 			panic("vnode_recycle: cannot reclaim\n"); // My fav panic from OSX
 
+		vp->fileobject = NULL;
 		mutex_enter(&vnode_all_list_lock);
 		list_remove(&vnode_all_list, vp);
+		dprintf("%p removed from list\n", vp);
 		mutex_exit(&vnode_all_list_lock);
 
 		// There is no spinlock destroy call
@@ -857,7 +858,8 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 		(*vpp)->v_flags |= VNODE_MARKROOT;
 
 	mutex_enter(&vnode_all_list_lock);
-	list_insert_tail(&vnode_all_list, *vpp);
+	list_insert_head(&vnode_all_list, *vpp);
+	dprintf("%p added to list\n", *vpp);
 	mutex_exit(&vnode_all_list_lock);
 
 	// Initialise the Windows specific data.
@@ -871,15 +873,6 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	ExInitializeResourceLite((*vpp)->FileHeader.PagingIoResource);
 	ASSERT0(((uint64_t)(*vpp)->FileHeader.Resource) & 7);
 
-	// Release vnodes if needed
-	if (vnode_active >= vnode_max) {
-		uint64_t reclaims = 0;
-		int isbusy = 0;
-
-		dprintf("%s: vnode_max reclaim processing\n", __func__);
-
-		vflush(NULL, NULL, SKIPROOT|SKIPSYSTEM);
-	}
 }
 
 int     vnode_isvroot(vnode_t *vp)
@@ -977,9 +970,6 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 		// If the end of the list was reached, stop entirely
 		if (!rvp) break;
 
-		// If reclaiming (mp is NULL) stop at low watermark
-		if (mp == NULL && vnode_active <= vnode_max_watermark) 
-			break;
 	}
 
 	if (mp == NULL && reclaims > 0) {

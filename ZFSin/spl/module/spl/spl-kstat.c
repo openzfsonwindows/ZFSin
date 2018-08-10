@@ -1334,9 +1334,10 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	if (ubufsize < kbufsize) {
 		error = ENOMEM;
 	} else {
-		ASSERT(kbufsize != 0);
-		if (kbuf == NULL)
+		if (kbuf == NULL) {
+			firstkbufsize = kbufsize;
 			kbuf = kmem_zalloc(kbufsize + 1, KM_NOSLEEP);
+		}
 		if (kbuf == NULL) {
 			error = EAGAIN;
 		} else {
@@ -1568,7 +1569,7 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	if (error == 0 &&
 		ddi_copyout(kbuf, user_kstat.ks_data, copysize, 0))
 		error = EFAULT;
-	kmem_free(kbuf, (kbufsize?kbufsize:firstkbufsize) + 1);
+	kmem_free(kbuf, firstkbufsize + 1);
 
 out:
 	/*

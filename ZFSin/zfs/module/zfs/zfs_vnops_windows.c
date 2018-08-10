@@ -117,7 +117,18 @@ uint64_t vnop_num_vnodes = 0;
 BOOLEAN zfs_AcquireForLazyWrite(void *Context, BOOLEAN Wait)
 {
 	struct vnode *vp = Context;
+	if (vp == NULL) return FALSE;
+	znode_t *zp = VTOZ(vp);
+	if (zp == NULL) return FALSE;
+	zfsvfs_t *zfsvfs = VTOZ(vp)->z_zfsvfs;
+	if (zfsvfs == NULL) return FALSE;
+
 	dprintf("%s:\n", __func__);
+	ZFS_ENTER_NOERROR(zfsvfs); 
+	if (zfsvfs->z_unmounted) {
+		ZFS_EXIT(zfsvfs);
+		return (FALSE);
+	}
 	if (!ExAcquireResourceSharedLite(vp->FileHeader.PagingIoResource, Wait)) {
 		dprintf("Failed\n");
 		return FALSE;
@@ -136,6 +147,7 @@ void zfs_ReleaseFromLazyWrite(void *Context)
 	VN_HOLD(vp);
 	vnode_rele(vp);
 	VN_RELE(vp);
+	ZFS_EXIT(VTOZ(vp)->z_zfsvfs);
 }
 
 BOOLEAN zfs_AcquireForReadAhead(void *Context, BOOLEAN Wait)
@@ -542,6 +554,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		dvp = ZTOV(zp);
 		vnode_ref(dvp); // Hold open reference, until CLOSE
 		zfs_set_security(dvp, NULL);
+		vnode_setfileobject(dvp, FileObject);
 		VN_RELE(dvp);
 
 		FileObject->FsContext = dvp;
@@ -594,6 +607,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 					FileObject->FsContext = vp;
 					vnode_ref(vp); // Hold open reference, until CLOSE
 					zfs_set_security(vp, NULL);
+					vnode_setfileobject(vp, FileObject);
 					VN_RELE(vp);
 
 					// A valid lookup gets a ccb attached
@@ -625,6 +639,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (vnode_isdir(dvp))
 				FileObject->FsContext2 = zfs_dirlist_alloc();
 			zfs_set_security(dvp, NULL);
+			vnode_setfileobject(dvp, FileObject);
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = FILE_OPENED;
@@ -720,6 +735,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (Status == STATUS_SUCCESS)
 				Irp->IoStatus.Information = FILE_OPENED;
 
+			vnode_setfileobject(dvp, FileObject);
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
 			return Status;
@@ -787,6 +803,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 					FILE_NOTIFY_CHANGE_DIR_NAME,
 					FILE_ACTION_ADDED);
 			}
+			vnode_setfileobject(vp, FileObject);
 			VN_RELE(vp);
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
@@ -822,7 +839,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		// vnode_setsize is greatly helped by having access
 		// to the fileobject, so store that in vp for files.
 		vnode_setfileobject(vp, FileObject);
-	}
+	} 
 
 	// If HIDDEN and SYSTEM are set, then the open of file must also have
 	// HIDDEN and SYSTEM set.
@@ -955,6 +972,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			FileObject->FsContext = vp;
 			vnode_ref(vp); // Hold open reference, until CLOSE
 			zfs_set_security(vp, dvp);
+			vnode_setfileobject(vp, FileObject);
 
 			if (DeleteOnClose) 
 				Status = zfs_setunlink(vp, dvp);
@@ -1009,6 +1027,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		FileObject->FsContext = dvp;
 		vnode_ref(dvp); // Hold open reference, until CLOSE
 		zfs_set_security(dvp, NULL);
+		vnode_setfileobject(dvp, FileObject);
+
 		if (DeleteOnClose) 
 			Status = zfs_setunlink(vp, dvp);
 
@@ -1021,6 +1041,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		FileObject->FsContext = vp;
 		vnode_ref(vp); // Hold open reference, until CLOSE
 		zfs_set_security(vp, dvp);
+		vnode_setfileobject(vp, FileObject);
+
 		if (DeleteOnClose)
 			Status = zfs_setunlink(vp, dvp);
 
@@ -1071,17 +1093,33 @@ int zfs_vnop_reclaim(struct vnode *vp)
 
 	dprintf("  zfs_vnop_recycle: releasing zp %p and vp %p: '%s'\n", zp, vp,
 		zp->z_name_cache ? zp->z_name_cache : "");
-#if 0
-	SECTION_OBJECT_POINTERS *section;
-	section = vnode_sectionpointer(vp);
-	if (section->DataSectionObject != NULL) {
-		CcFlushCache(section, NULL, 0, NULL);
-		CcPurgeCacheSection(vp->segment_object, NULL, 0, FALSE);
+	PFILE_OBJECT FileObject = vnode_fileobject(vp);
+	ASSERT(FileObject != NULL);
+#if 1
+	if (FileObject != NULL) {
+		SECTION_OBJECT_POINTERS *section;
+		section = vnode_sectionpointer(vp);
+		//vnode_setsectionpointer(vp, NULL);
+		if (!vnode_isdir(vp)) {
+			if ((FileObject->Flags & FO_CACHE_SUPPORTED) && section && section->DataSectionObject) {
+				IO_STATUS_BLOCK iosb;
+				CcFlushCache(FileObject->SectionObjectPointer, NULL, 0, &iosb);
+				CcPurgeCacheSection(section, NULL, 0, FALSE);
+			}
+			if (FileObject->SectionObjectPointer != NULL)
+				CcUninitializeCacheMap(FileObject, NULL, NULL);
+		}
 
-		vnode_setsectionpointer(vp, NULL);
-		//		CcUninitializeCacheMap(FileObject, NULL, NULL);
+		FileObject->Flags |= FO_CLEANUP_COMPLETE;
+
+		// Unlink is from FileObject, paranoia?
+		FileObject->FsContext = NULL;
+		FileObject->FsContext2 = NULL;
+		dprintf("FileObject->FSContext set to NULL\n");
 	}
+	FsRtlTeardownPerStreamContexts(&vp->FileHeader);
 #endif
+
 	//IrpSp->FileObject->SectionObjectPointer = NULL;
 	void *sd = vnode_security(vp);
 	if (sd != NULL)
@@ -4676,6 +4714,10 @@ fsDispatcher(
 			zmo) {
 
 			Status = zfs_vnop_lookup(Irp, IrpSp, zmo);
+			if (Status == STATUS_SUCCESS) {
+				struct vnode *vp = IrpSp->FileObject->FsContext;
+				ASSERT(vp->fileobject != NULL);
+			}
 		}
 		break;
 
@@ -4713,7 +4755,7 @@ fsDispatcher(
 			FsRtlNotifyFullChangeDirectory(zmo->NotifySync, &zmo->DirNotifyList,
 				zp, NULL, FALSE, FALSE, 0, NULL, NULL, NULL);
 
-#if 1
+#if 0
 			SECTION_OBJECT_POINTERS *section;
 			section = vnode_sectionpointer(vp);
 			//vnode_setsectionpointer(vp, NULL);
@@ -4726,6 +4768,12 @@ fsDispatcher(
 			if (IrpSp->FileObject->SectionObjectPointer != NULL)
 				CcUninitializeCacheMap(IrpSp->FileObject, NULL, NULL);
 #endif
+
+			// We are still holding a lock, so this will mark the vp DEAD
+			// and next RELE it will be released.
+			// This isn't great, we have no way to release directories
+			//if (!vnode_isdir(vp))
+			//	vnode_recycle(vp);
 
 			// Asked to delete?
 			if (vnode_unlink(vp)) {
@@ -4749,6 +4797,7 @@ fsDispatcher(
 				// Release our (last?) iocount here, since we didnt call delete_entry
 				VN_RELE(vp);
 			}
+			// Just to clearly show not to use vp
 			vp = NULL;
 
 		}
@@ -5114,26 +5163,32 @@ are any writers to this file.  Note that main is acquired, so new handles cannot
 	struct vnode *vp;
 	vp = CallbackData->FileObject->FsContext;
 
+	switch (CallbackData->Operation) {
 
-	if (vp->FileHeader.Resource) {
-		ExAcquireResourceExclusiveLite(vp->FileHeader.Resource, TRUE);
+	case FS_FILTER_ACQUIRE_FOR_SECTION_SYNCHRONIZATION:
+		if (vp->FileHeader.Resource) {
+			ExAcquireResourceExclusiveLite(vp->FileHeader.Resource, TRUE);
+			VN_HOLD(vp);
+		}
+		if (CallbackData->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) {
+			return STATUS_FSFILTER_OP_COMPLETED_SUCCESSFULLY;
+		} else if (vp->share_access.Writers == 0) {
+			return STATUS_FILE_LOCKED_WITH_ONLY_READERS;
+		} else {
+			return STATUS_FILE_LOCKED_WITH_WRITERS;
+		}
+		break;
+
+	case FS_FILTER_RELEASE_FOR_SECTION_SYNCHRONIZATION:
+		if (vp->FileHeader.Resource) {
+			ExReleaseResourceLite(vp->FileHeader.Resource);
+			VN_RELE(vp);
+		}
+		break;
 	}
 
-	if (CallbackData->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) {
-
-		return STATUS_FSFILTER_OP_COMPLETED_SUCCESSFULLY;
-
-	} else if (vp->share_access.Writers == 0) {
-
-		return STATUS_FILE_LOCKED_WITH_ONLY_READERS;
-
-	} else {
-
-		return STATUS_FILE_LOCKED_WITH_WRITERS;
-	}
-
+	return STATUS_SUCCESS;
 }
-
 
 void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject)
 {

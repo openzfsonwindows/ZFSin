@@ -6951,7 +6951,8 @@ zfs_attach(void)
 		sizeof(FS_FILTER_CALLBACKS));
 
 	FilterCallbacks.SizeOfFsFilterCallbacks = sizeof(FS_FILTER_CALLBACKS);
-	FilterCallbacks.PreAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
+	FilterCallbacks.PreAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection; // rename me to generic name
+	FilterCallbacks.PostAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
 
 	NTSTATUS Status;
 

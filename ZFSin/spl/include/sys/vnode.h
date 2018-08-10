@@ -518,5 +518,6 @@ FILE_OBJECT *vnode_fileobject(vnode_t *vp);
 #define NULLVP NULL
 
 int     vflush(struct mount *mp, struct vnode *skipvp, int flags);
+uint64_t spl_active_vnodes(void);
 
 #endif /* SPL_VNODE_H */
