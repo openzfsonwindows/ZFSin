@@ -1244,6 +1244,8 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 	ASSERT3P(zio, !=, NULL);
 	ASSERT3U(size, !=, 0);
 
+	if (ZTOV(zp))
+		VN_HOLD(ZTOV(zp));
 #ifndef _WIN32
 	/*
 	 * Nothing to do if the file has been removed
@@ -1338,8 +1340,11 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 			 * release this dbuf.  We will finish everything up
 			 * in the zfs_get_done() callback.
 			 */
-			if (error == 0)
+			if (error == 0) {
+				if(ZTOV(zp))
+					VN_RELE_ASYNC(ZTOV(zp), dsl_pool_vnrele_taskq(dmu_objset_pool(os)));
 				return (0);
+			}
 
 			if (error == EALREADY) {
 				lr->lr_common.lrc_txtype = TX_WRITE2;
