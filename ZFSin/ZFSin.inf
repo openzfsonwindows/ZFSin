@@ -22,15 +22,15 @@ ZFSin.DllFiles          = 11            ;%windir%\system32
 ;; Default install sections
 ;;
 
-[DefaultInstall]
-OptionDesc  = %ServiceDescription%
-CopyFiles   = ZFSin.DriverFiles
-;;,ZFSin.DllFiles
-RegisterDlls = shellzfsin
-CopyINF     = ZFSin.inf
-
-[DefaultInstall.Services]
-AddService  = %ServiceName%,0x802,ZFSin.Service
+;[DefaultInstall]
+;OptionDesc  = %ServiceDescription%
+;CopyFiles   = ZFSin.DriverFiles
+;;;,ZFSin.DllFiles
+;RegisterDlls = shellzfsin
+;CopyINF     = ZFSin.inf
+;
+;[DefaultInstall.Services]
+;AddService  = %ServiceName%,0x802,ZFSin.Service
 
 [Manufacturer]
 %Me%=Standard,NTamd64,NTx86
