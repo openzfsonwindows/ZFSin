@@ -1196,10 +1196,13 @@ zfs_get_done(zgd_t *zgd, int error)
 	objset_t *os = zp->z_zfsvfs->z_os;
 #endif
 
+	ASSERT(zgd->zgd_rl != NULL);
+
 	if (zgd->zgd_db)
 		dmu_buf_rele(zgd->zgd_db, zgd);
 
-	zfs_range_unlock(zgd->zgd_rl);
+	if (zgd->zgd_rl)
+		zfs_range_unlock(zgd->zgd_rl);
 
 	/*
 	 * Release the vnode asynchronously as we currently have the
@@ -1266,6 +1269,9 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 	zgd = (zgd_t *)kmem_zalloc(sizeof (zgd_t), KM_SLEEP);
 	zgd->zgd_lwb = lwb;
 	zgd->zgd_private = zp;
+#ifdef _WIN32
+	zgd->zgd_rl = rl;
+#endif
 
 	/*
 	 * Write records come in two flavors: immediate and indirect.
@@ -1301,12 +1307,14 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 			offset -= blkoff;
 #ifndef _WIN32
 			zgd->zgd_rl = zfs_range_lock(zp, offset, size,
-			    RL_READER);
+				RL_READER);
 #endif
 			if (zp->z_blksz == size)
 				break;
 			offset += blkoff;
-			zfs_range_unlock(zgd->zgd_rl);
+#ifndef _WIN32
+			 zfs_range_unlock(zgd->zgd_rl);
+#endif
 		}
 		/* test for truncation needs to be done while range locked */
 		if (lr->lr_offset >= zp->z_size)
