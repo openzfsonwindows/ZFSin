@@ -255,7 +255,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 			// allow it not to exist
 			if (finalpartmaynotexist) break;
 			dprintf("failing out here\n");
-			//VN_RELE(dvp);
+			VN_RELE(dvp); // since we weren't successful, we should release dvp here
 			dvp = NULL;
 			break;
 		}
@@ -674,6 +674,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if (error) {
 
 		if (dvp) VN_RELE(dvp);
+		if (vp) VN_RELE(vp);
 
 		if (error == STATUS_REPARSE) {
 			REPARSE_DATA_BUFFER *rpb = finalname;

@@ -1196,10 +1196,13 @@ zfs_get_done(zgd_t *zgd, int error)
 	objset_t *os = zp->z_zfsvfs->z_os;
 #endif
 
+	ASSERT(zgd->zgd_rl != NULL);
+
 	if (zgd->zgd_db)
 		dmu_buf_rele(zgd->zgd_db, zgd);
 
-	zfs_range_unlock(zgd->zgd_rl);
+	if (zgd->zgd_rl)
+		zfs_range_unlock(zgd->zgd_rl);
 
 	/*
 	 * Release the vnode asynchronously as we currently have the
@@ -1244,6 +1247,8 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 	ASSERT3P(zio, !=, NULL);
 	ASSERT3U(size, !=, 0);
 
+	if (ZTOV(zp))
+		VN_HOLD(ZTOV(zp));
 #ifndef _WIN32
 	/*
 	 * Nothing to do if the file has been removed
@@ -1264,6 +1269,9 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 	zgd = (zgd_t *)kmem_zalloc(sizeof (zgd_t), KM_SLEEP);
 	zgd->zgd_lwb = lwb;
 	zgd->zgd_private = zp;
+#ifdef _WIN32
+	zgd->zgd_rl = rl;
+#endif
 
 	/*
 	 * Write records come in two flavors: immediate and indirect.
@@ -1299,12 +1307,14 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 			offset -= blkoff;
 #ifndef _WIN32
 			zgd->zgd_rl = zfs_range_lock(zp, offset, size,
-			    RL_READER);
+				RL_READER);
 #endif
 			if (zp->z_blksz == size)
 				break;
 			offset += blkoff;
-			zfs_range_unlock(zgd->zgd_rl);
+#ifndef _WIN32
+			 zfs_range_unlock(zgd->zgd_rl);
+#endif
 		}
 		/* test for truncation needs to be done while range locked */
 		if (lr->lr_offset >= zp->z_size)
@@ -1338,8 +1348,11 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 			 * release this dbuf.  We will finish everything up
 			 * in the zfs_get_done() callback.
 			 */
-			if (error == 0)
+			if (error == 0) {
+				if(ZTOV(zp))
+					VN_RELE_ASYNC(ZTOV(zp), dsl_pool_vnrele_taskq(dmu_objset_pool(os)));
 				return (0);
+			}
 
 			if (error == EALREADY) {
 				lr->lr_common.lrc_txtype = TX_WRITE2;
