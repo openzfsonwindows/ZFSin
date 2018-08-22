@@ -7620,6 +7620,14 @@ arc_state_fini(void)
 	multilist_destroy(arc_mfu->arcs_list[ARC_BUFC_DATA]);
 	multilist_destroy(arc_mfu_ghost->arcs_list[ARC_BUFC_DATA]);
 	multilist_destroy(arc_l2c_only->arcs_list[ARC_BUFC_DATA]);
+
+	aggsum_fini(&arc_meta_used);
+	aggsum_fini(&arc_size);
+	aggsum_fini(&astat_data_size);
+	aggsum_fini(&astat_metadata_size);
+	aggsum_fini(&astat_hdr_size);
+	aggsum_fini(&astat_other_size);
+	aggsum_fini(&astat_l2_hdr_size);
 }
 
 uint64_t
