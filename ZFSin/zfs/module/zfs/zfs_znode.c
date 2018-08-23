@@ -2318,6 +2318,10 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 
 	for (i = 0; i != ZFS_OBJ_MTX_SZ; i++)
 		mutex_destroy(&zfsvfs->z_hold_mtx[i]);
+
+	list_destroy(&zfsvfs->z_all_znodes);
+	mutex_destroy(&zfsvfs->z_znodes_lock);
+
 	kmem_free(zfsvfs, sizeof (zfsvfs_t));
 }
 
