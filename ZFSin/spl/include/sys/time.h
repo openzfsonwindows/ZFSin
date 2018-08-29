@@ -91,9 +91,15 @@ extern void hrt2ts(hrtime_t hrt, struct timespec *tsp);
 #define     USEC2NSEC(u)    ((hrtime_t)(u) * (NANOSEC / MICROSEC))
 #define  NSEC2MSEC(n)    ((n) / (NANOSEC / MILLISEC))
 
+// Windows 100NS 
+#define SEC2NSEC100(n) ((n) * 10000000ULL)
+#define NSEC2NSEC100(n) ((n) / 100ULL)
+
 // ZFS time is 2* 64bit values, which are seconds, and nanoseconds since 1970
 // Windows time is 1 64bit value; representing the number of 100-nanosecond intervals since January 1, 1601 (UTC).
 // There's 116444736000000000 100ns between 1601 and 1970
+
+// I think these functions handle sec correctly, but nsec should be */100 
 #define TIME_WINDOWS_TO_UNIX(WT, UT) do { \
 	uint64_t unixepoch = (WT) - 116444736000000000ULL; \
 	(UT)[0] = /* seconds */ unixepoch / 10000000ULL; \
@@ -105,7 +111,7 @@ extern void hrt2ts(hrtime_t hrt, struct timespec *tsp);
 	} while(0)
 
 #define TIME_UNIX_TO_WINDOWS_EX(SEC, USEC, WT) do { \
-	(WT) = (SEC) + ((USEC) * 10000000ULL) + 116444736000000000ULL; \
+	(WT) = (USEC) + ((SEC) * 10000000ULL) + 116444736000000000ULL; \
 	} while(0)
 
 #endif  /* _SPL_TIME_H */

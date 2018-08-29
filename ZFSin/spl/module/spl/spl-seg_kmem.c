@@ -156,9 +156,12 @@ osif_malloc(uint64_t size)
 		atomic_add_64(&stat_osif_malloc_bytes, size);
 		return(tr);
 	} else {
-		// well, this can't really happen, kernel_memory_allocate
-		// would panic instead
-		DbgBreakPoint();
+		dprintf("%s: ExAllocatePoolWithTag failed (memusage: %llu)\n", __func__, segkmem_total_mem_allocated);
+		ASSERT(0);
+		extern volatile unsigned int vm_page_free_wanted;
+		extern volatile unsigned int vm_page_free_min;
+		spl_free_set_pressure(vm_page_free_min);
+		vm_page_free_wanted = vm_page_free_min;
 		return(NULL);
 	}
 #else

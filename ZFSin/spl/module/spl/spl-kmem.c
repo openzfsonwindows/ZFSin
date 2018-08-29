@@ -2840,8 +2840,13 @@ kmem_cache_reap(kmem_cache_t *cp)
 	}
 }
 
+
+#ifdef _WIN32
+static void kmem_reap_timeout(struct _KDPC *Dpc, void *flag_arg, void *SystemArgument1, void *SystemArgument2)
+#else
 static void
 kmem_reap_timeout(void *flag_arg)
+#endif
 {
 	uint32_t *flag = (uint32_t *)flag_arg;
 
@@ -2849,10 +2854,25 @@ kmem_reap_timeout(void *flag_arg)
 	*flag = 0;
 }
 
+// Timer used to simulate bsd_timeout().
+static KTIMER timer_kmem_reaping;
+static KDPC *timer_callback = NULL;
+
 static void
 kmem_reap_done(void *flag)
 {
-	//(void) bsd_timeout(kmem_reap_timeout, flag, &kmem_reap_interval);
+	//(void) bsd_timeout(kmem_reap_timeout, flag, &kmem_reap_interval);2
+	// RelativeTime is negative, 100NS
+	LARGE_INTEGER duetime;
+	duetime.QuadPart = -(SEC2NSEC100(kmem_reap_interval.tv_sec) + NSEC2NSEC100(kmem_reap_interval.tv_nsec));
+
+	// Setup to call kmem_reap_done(flag);
+	KeInitializeDpc(timer_callback, kmem_reap_timeout, flag);
+	int value = KeSetTimer(&timer_kmem_reaping, duetime, timer_callback);
+
+	// Windows have no way for these values to return to zero.
+	// Let them decay toward zero, set by memory low events
+	vm_page_free_wanted >>= 1;
 }
 
 static void
@@ -3173,16 +3193,14 @@ kmem_cache_update(kmem_cache_t *cp)
 
 }
 
-static void kmem_update(void *);
+static void kmem_update_timeout(void *dummy);
 
-static void
-kmem_update_timeout(void *dummy)
-{
-//	(void) bsd_timeout(kmem_update, dummy, &kmem_reap_interval);
-}
-
+#ifdef _WIN32
+static void kmem_update(struct _KDPC *Dpc, void *dummy, void *SystemArgument1, void *SystemArgument2)
+#else
 static void
 kmem_update(void *dummy)
+#endif
 {
 	kmem_cache_applyall(kmem_cache_update, NULL, TQ_NOSLEEP);
 
@@ -3193,6 +3211,19 @@ kmem_update(void *dummy)
 	 */
 	if (!taskq_dispatch(kmem_taskq, kmem_update_timeout, dummy, TQ_NOSLEEP))
 		kmem_update_timeout(NULL);
+
+}
+
+static void
+kmem_update_timeout(void *dummy)
+{
+	//	(void) bsd_timeout(kmem_update, dummy, &kmem_reap_interval);
+	LARGE_INTEGER duetime;
+	duetime.QuadPart = -(SEC2NSEC100(kmem_reap_interval.tv_sec) + NSEC2NSEC100(kmem_reap_interval.tv_nsec));
+
+	// Setup to call kmem_reap_done(flag);
+	KeInitializeDpc(timer_callback, kmem_update, dummy);
+	KeSetTimer(&timer_kmem_reaping, duetime, timer_callback);
 
 }
 
@@ -4939,10 +4970,11 @@ spl_event_thread()
 		Status = KeWaitForSingleObject(low_mem_event, Executive, KernelMode, FALSE, NULL);
 		KeClearEvent(low_mem_event);
 
-		xprintf("%s: LOWMEMORY EVENT *** (or quitting): 0x%x\n", __func__, Status);
+		xprintf("%s: LOWMEMORY EVENT *** 0x%x (memusage: %llu)\n", __func__, Status, segkmem_total_mem_allocated);
 		/* We were signalled */
 		//vm_page_free_wanted = vm_page_free_min;
 		spl_free_set_pressure(vm_page_free_min);
+		vm_page_free_wanted = vm_page_free_min;
 		cv_broadcast(&spl_free_thread_cv);
 	}
 
@@ -5352,6 +5384,9 @@ spl_kmem_thread_init(void)
 
 	spl_event_thread_exit = FALSE;
 	(void)thread_create(NULL, 0, spl_event_thread, 0, 0, 0, 0, 92);
+
+	KeInitializeTimer(&timer_kmem_reaping);
+	timer_callback = kmem_alloc(sizeof(KDPC), KM_SLEEP);
 }
 
 void
@@ -5387,6 +5422,8 @@ spl_kmem_thread_fini(void)
 	//bsd_untimeout(kmem_update,  0);
 	//bsd_untimeout(kmem_reap_timeout, &kmem_reaping);
 	//bsd_untimeout(kmem_reap_timeout, &kmem_reaping_idspace);
+	KeCancelTimer(&timer_kmem_reaping);
+	kmem_free(timer_callback, sizeof(KDPC));
 
 	dprintf("SPL: wait for taskqs to empty\n");
 	taskq_wait(kmem_taskq);

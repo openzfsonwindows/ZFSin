@@ -1334,7 +1334,6 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	if (ubufsize < kbufsize) {
 		error = ENOMEM;
 	} else {
-		ASSERT(kbufsize != 0);
 		if (kbuf == NULL)
 			kbuf = kmem_zalloc(kbufsize + 1, KM_NOSLEEP);
 		if (kbuf == NULL) {
