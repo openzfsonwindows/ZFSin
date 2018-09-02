@@ -21,8 +21,12 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
+<<<<<<< HEAD
  * Copyright (c) 2011 Pawel Jakub Dawidek. All rights reserved.
  * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
+=======
+ * Copyright (c) 2011, 2018 by Delphix. All rights reserved.
+>>>>>>> b83a0e2dc1... Add basic zfs ioc input nvpair validation
  * Copyright (c) 2012, Joyent, Inc. All rights reserved.
  * Copyright (c) 2013 Steven Hartland. All rights reserved.
  * Copyright 2016 Nexenta Systems, Inc.
@@ -166,6 +170,7 @@ typedef enum zfs_error {
 	EZFS_INITIALIZING,	/* currently initializing */
 	EZFS_NO_INITIALIZE,	/* no active initialize */
 	EZFS_ACTIVE_POOL,	/* pool is imported on a different system */
+	EZFS_IOC_NOTSUPPORTED,	/* operation not supported by zfs module */
 	EZFS_UNKNOWN
 } zfs_error_t;
 

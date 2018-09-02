@@ -61,6 +61,7 @@ AC_CONFIG_FILES([
 	zfs-tests/cmd/chg_usr_exec/Makefile
 	zfs-tests/cmd/mmapwrite/Makefile
 	zfs-tests/cmd/xattrtest/Makefile
+	zfs-tests/cmd/libzfs_input_check/Makefile
 	zfs-tests/tests/functional/exec/Makefile
 	zfs-tests/tests/functional/ctime/Makefile
 	zfs-tests/include/commands.cfg

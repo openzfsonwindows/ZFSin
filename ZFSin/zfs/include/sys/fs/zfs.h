@@ -21,7 +21,7 @@
 
 /*
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
- * Copyright (c) 2011, 2017 by Delphix. All rights reserved.
+ * Copyright (c) 2011, 2018 by Delphix. All rights reserved.
  * Copyright 2011 Nexenta Systems, Inc.  All rights reserved.
  * Copyright (c) 2014 Integros [integros.com]
  * Copyright 2017 Joyent, Inc.
@@ -1140,6 +1140,8 @@ typedef struct ddt_histogram {
  * The enum implicitly includes all the error codes from errno.h.
  * New code should use and extend this enum for errors that are
  * not described precisely by generic errno codes.
+ *
+ * These numbers should not change over time. New entries should be appended.
  */
 typedef enum {
 	ZFS_ERR_CHECKPOINT_EXISTS = 1024,

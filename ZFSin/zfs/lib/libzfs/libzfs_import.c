@@ -164,6 +164,7 @@ remove_partition_offset_hack(char *hacked_path, char **out_dev_path)
 		while (*end && *end != '#') {
 			end++;
 		}
+		if (*end == 0) break;
 		end++;
 	}
 	*out_dev_path = end;

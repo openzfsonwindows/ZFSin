@@ -1094,6 +1094,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 
 			SeLockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
+#if 0
 			if (!SeAccessCheck(/* (fileref->fcb->ads || fileref->fcb == Vcb->dummy_fcb) ? fileref->parent->fcb->sd : */ vnode_security(vp ? vp : dvp),
 				&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext,
 				TRUE, IrpSp->Parameters.Create.SecurityContext->DesiredAccess, 0, NULL,
@@ -1106,6 +1107,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				dprintf("%s: denied due to SeAccessCheck()\n", __func__);
 				return Status;
 			}
+#endif
 			SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
 		} else {
 			granted_access = 0;
