@@ -1067,6 +1067,11 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 int zfs_vnop_reclaim(struct vnode *vp)
 {
 	znode_t *zp = VTOZ(vp);
+	if (zp == NULL) {
+		ASSERT("NULL zp in reclaim?");
+		return 0;
+	}
+
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 	boolean_t fastpath;
 

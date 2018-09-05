@@ -797,12 +797,14 @@ int vnode_put(vnode_t *vp)
 	// Re-test for idle, as we may have dropped lock for inactive
 	if ((vp->v_usecount == 0) && (vp->v_iocount == 0)) {
 		// Was it marked TERM, but we were waiting for last ref to leave.
+#if 0
 		if ((vp->v_flags & VNODE_MARKTERM)) {
 			//vnode_recycle_int(vp, VNODE_LOCKED);  //OldIrql is lost!
 			KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 			vnode_recycle_int(vp, 0);  //OldIrql is lost!
 			return 0;
 		}
+#endif
 	}
 
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
@@ -815,8 +817,8 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 	ASSERT((vp->v_flags & VNODE_DEAD) == 0);
 	vp->v_flags |= VNODE_MARKTERM; // Mark it terminating
 
-	if (!(flags & VNODE_LOCKED))
-		KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+//	if (!(flags & VNODE_LOCKED))
+	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 
 	// We will only reclaim idle nodes, and not mountpoints(ROOT)
 	if ((flags & FORCECLOSE) ||
@@ -898,7 +900,7 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	ExInitializeResourceLite((*vpp)->FileHeader.PagingIoResource);
 	ASSERT0(((uint64_t)(*vpp)->FileHeader.Resource) & 7);
 
-#if 1
+#if 0
 	// Release vnodes if needed
 	if (vnode_active >= vnode_max) {
 		uint64_t reclaims = 0;
