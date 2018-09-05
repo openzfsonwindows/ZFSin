@@ -52,7 +52,9 @@
 #define VNODE_MARKTERM		2
 #define VNODE_NEEDINACTIVE	4
 #define VNODE_MARKROOT		8
+#define VNODE_VALIDBITS		15
 
+#pragma pack(8)
 struct vnode {
 	// Windows specific header, has to be first.
 	FSRTL_ADVANCED_FCB_HEADER FileHeader;
@@ -66,11 +68,11 @@ struct vnode {
 
 	mount_t *v_mount;
 	uint32_t v_flags;
-	void *v_data;
-	uint16_t v_type;
-	int v_unlink;
 	uint32_t v_iocount;  // Short term holds
 	uint32_t v_usecount; // Long term holds
+	uint32_t v_type;
+	uint32_t v_unlink;
+	void *v_data;
 	uint64_t v_id;
 
 	// Other Windows entries
@@ -85,6 +87,7 @@ struct vnode {
 	list_node_t v_list; // vnode_all_list member node.
 };
 typedef struct vnode vnode_t;
+#pragma pack()
 
 struct vfs_context;
 typedef struct vfs_context vfs_context_t;
@@ -492,7 +495,7 @@ int     vnode_isfifo(vnode_t *vp);
 int     vnode_islnk(vnode_t *vp);
 mount_t *vnode_mountedhere(vnode_t *vp);
 void ubc_setsize(struct vnode *, uint64_t);
-int     vnode_isinuse(vnode_t *vp, int refcnt);
+int     vnode_isinuse(vnode_t *vp, uint64_t refcnt);
 int     vnode_recycle(vnode_t *vp);
 int     vnode_isvroot(vnode_t *vp);
 mount_t *vnode_mount(vnode_t *vp);

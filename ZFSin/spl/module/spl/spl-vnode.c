@@ -41,7 +41,7 @@ static uint64_t vnode_vid_counter = 0;
 static uint64_t vnode_active = 0;
 
 /* Maximum allowed active vnodes */
-uint64_t vnode_max = 3000;
+uint64_t vnode_max = 300;
 /* When max is hit, decrease until watermark, 2% of max */
 #define vnode_max_watermark (vnode_max - (vnode_max * 2ULL / 100ULL))
 
@@ -61,6 +61,15 @@ int     vttoif_tab[9] = {
 	0, S_IFREG, S_IFDIR, S_IFBLK, S_IFCHR, S_IFLNK,
 	S_IFSOCK, S_IFIFO, S_IFMT,
 };
+
+/* 
+ * In a real VFS the filesystem would register the callbacks for
+ * VNOP_ACTIVE and VNOP_RECLAIM - but here we just call them direct 
+ */
+extern int zfs_zinactive(struct vnode *, void *, void*);
+extern int zfs_vnop_reclaim(struct vnode *);
+
+int vnode_recycle_int(vnode_t *vp, int flags);
 
 
 int
@@ -297,7 +306,8 @@ extern int VFS_ROOT(mount_t *, struct vnode **, vfs_context_t);
 int spl_vfs_root(mount_t *mount, struct vnode **vp)
 {
  //   return VFS_ROOT(mount, vp, vfs_context_current() );
-	return NULL;
+	*vp = NULL;
+	return -1;
 }
 
 
@@ -447,7 +457,7 @@ void *getf(uint64_t fd)
      * The f_vnode ptr is used to point back to the "sfp" node itself, as it is
      * the only information passed to vn_rdwr.
      */
-	if (ObReferenceObjectByHandle(fd, 0, 0, KernelMode, &fp, 0) != STATUS_SUCCESS) {
+	if (ObReferenceObjectByHandle((HANDLE)fd, 0, 0, KernelMode, &fp, 0) != STATUS_SUCCESS) {
 		dprintf("%s: failed to get fd %d fp 0x\n", __func__, fd);
 	}
 
@@ -456,7 +466,7 @@ void *getf(uint64_t fd)
     sfp->f_fd     = fd;
     sfp->f_offset = 0;
     sfp->f_proc   = current_proc();
-    sfp->f_fp     = fp;
+    sfp->f_fp     = (void *)fp;
 	sfp->f_file   = fp;
 
 	mutex_enter(&spl_getf_lock);
@@ -724,7 +734,7 @@ void ubc_setsize(struct vnode *vp, uint64_t size)
 {
 }
 
-int     vnode_isinuse(vnode_t *vp, int refcnt)
+int     vnode_isinuse(vnode_t *vp, uint64_t refcnt)
 {
 	if (((vp->v_usecount /*+ vp->v_iocount*/) >  refcnt)) // xnu uses usecount +kusecount, not iocount
 		return 1;
@@ -763,25 +773,41 @@ extern void zfs_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct);
 
 int vnode_put(vnode_t *vp)
 {
+	KIRQL OldIrql;
 	ASSERT(!(vp->v_flags & VNODE_DEAD));
 	ASSERT(vp->v_iocount > 0);
+	ASSERT((vp->v_flags & ~VNODE_VALIDBITS) == 0);
 	atomic_dec_32(&vp->v_iocount);
 
-	// If it needs INACTIVE, do so now.
-	if (vp->v_flags & VNODE_NEEDINACTIVE) {
-		vp->v_flags &= ~VNODE_NEEDINACTIVE;
-		zfs_inactive(vp, NULL, NULL);
+	// Now idle?
+	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+
+	if ((vp->v_usecount == 0) && (vp->v_iocount == 0)) {
+
+		if (vp->v_flags & VNODE_NEEDINACTIVE) {
+			vp->v_flags &= ~VNODE_NEEDINACTIVE;
+			KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+			zfs_inactive(vp, NULL, NULL);
+			KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+		}
 	}
 
-	// Was it marked TERM, but we were waiting for last ref to leave.
-	if ((vp->v_flags & VNODE_MARKTERM)) {
-		vnode_recycle(vp, 0);
+	vp->v_flags &= ~VNODE_NEEDINACTIVE;
+
+	// Re-test for idle, as we may have dropped lock for inactive
+	if ((vp->v_usecount == 0) && (vp->v_iocount == 0)) {
+		// Was it marked TERM, but we were waiting for last ref to leave.
+		if ((vp->v_flags & VNODE_MARKTERM)) {
+			//vnode_recycle_int(vp, VNODE_LOCKED);  //OldIrql is lost!
+			KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+			vnode_recycle_int(vp, 0);  //OldIrql is lost!
+			return 0;
+		}
 	}
 
+	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 	return 0;
 }
-
-extern int zfs_vnop_reclaim(struct vnode *);
 
 int vnode_recycle_int(vnode_t *vp, int flags)
 {
@@ -789,29 +815,30 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 	ASSERT((vp->v_flags & VNODE_DEAD) == 0);
 	vp->v_flags |= VNODE_MARKTERM; // Mark it terminating
 
-	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	if (!(flags & VNODE_LOCKED))
+		KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 
 	// We will only reclaim idle nodes, and not mountpoints(ROOT)
 	if ((flags & FORCECLOSE) ||
 
 		((vp->v_usecount == 0) &&
-		(vp->v_iocount == 0) &&
+		(vp->v_iocount <= 1) &&
 			((vp->v_flags&VNODE_MARKROOT) == 0))) {
-
-		// Call inactive?
-		ASSERT(!(vp->v_flags & VNODE_NEEDINACTIVE));
 
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
 		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 
-		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
-		FsRtlUninitializeFileLock(&vp->lock);
+		// Call sync? If vnode_write
+		//zfs_fsync(vp, 0, NULL, NULL);
+
+		// Call inactive?
+		if (vp->v_flags & VNODE_NEEDINACTIVE) {
+			vp->v_flags &= ~VNODE_NEEDINACTIVE;
+			zfs_inactive(vp, NULL, NULL);
+		}
 
 		vp->fileobject = NULL;
 		// mutex does not need releasing.
-
-		// Call sync?
-		//zfs_fsync(vp, 0, NULL, NULL);
 
 		// Tell FS to release node.
 		if (zfs_vnop_reclaim(vp))
@@ -851,7 +878,7 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	(*vpp)->v_type = type;
 	(*vpp)->v_id = atomic_inc_64_nv(&(vnode_vid_counter));
 	KeInitializeSpinLock(&(*vpp)->v_spinlock);
-	atomic_inc_64(&(*vpp)->v_iocount);
+	atomic_inc_32(&(*vpp)->v_iocount);
 	atomic_inc_64(&vnode_active);
 	if (flags & VNODE_MARKROOT)
 		(*vpp)->v_flags |= VNODE_MARKROOT;
@@ -871,7 +898,7 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	ExInitializeResourceLite((*vpp)->FileHeader.PagingIoResource);
 	ASSERT0(((uint64_t)(*vpp)->FileHeader.Resource) & 7);
 
-#if 0
+#if 1
 	// Release vnodes if needed
 	if (vnode_active >= vnode_max) {
 		uint64_t reclaims = 0;
@@ -897,7 +924,6 @@ mount_t *vnode_mount(vnode_t *vp)
 void    vnode_clearfsnode(vnode_t *vp)
 {
 	vp->v_data = NULL;
-	return 0;
 }
 
 int   vnode_unlink(vnode_t *vp)
@@ -928,13 +954,43 @@ vnode_ref(vnode_t *vp)
 void
 vnode_rele(vnode_t *vp)
 {
+	KIRQL OldIrql;
+
 	ASSERT(!(vp->v_flags & VNODE_DEAD));
 	ASSERT(vp->v_iocount > 0);
 	ASSERT(vp->v_usecount > 0);
 	atomic_dec_32(&vp->v_usecount);
-	// If we were the last usecount, we set NEEDINACTIVE
-	if (vp->v_usecount == 0 && vnode_isdir(vp))
+
+	// Grab lock and inspect
+	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+
+	// If we were the last usecount, but vp is still
+	// busy, we set NEEDINACTIVE
+	if (vp->v_usecount > 0 || vp->v_iocount > 0) {
 		vp->v_flags |= VNODE_NEEDINACTIVE;
+	} else {
+		// We are idle, call inactive, grab a hold
+		// so we can call inactive unlocked
+		vp->v_flags &= ~VNODE_NEEDINACTIVE;
+		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+		atomic_inc_32(&vp->v_iocount);
+
+		zfs_inactive(vp, NULL, NULL);
+
+		atomic_dec_32(&vp->v_iocount);
+		// Re-check we are still free, and recycle (markterm) was called
+		// we can reclaim now
+		KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+		if ((vp->v_iocount == 0) && (vp->v_usecount == 0) &&
+			((vp->v_flags & (VNODE_MARKTERM)))) {
+			//vnode_recycle_int(vp, VNODE_LOCKED);
+			KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+			vnode_recycle_int(vp, 0);
+			return;
+		}
+	}
+
+	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 }
 
 int vflush(struct mount *mp, struct vnode *skipvp, int flags)

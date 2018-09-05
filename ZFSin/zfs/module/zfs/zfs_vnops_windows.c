@@ -1072,18 +1072,7 @@ int zfs_vnop_reclaim(struct vnode *vp)
 
 	dprintf("  zfs_vnop_recycle: releasing zp %p and vp %p: '%s'\n", zp, vp,
 		zp->z_name_cache ? zp->z_name_cache : "");
-#if 0
-	SECTION_OBJECT_POINTERS *section;
-	section = vnode_sectionpointer(vp);
-	if (section->DataSectionObject != NULL) {
-		CcFlushCache(section, NULL, 0, NULL);
-		CcPurgeCacheSection(vp->segment_object, NULL, 0, FALSE);
 
-		vnode_setsectionpointer(vp, NULL);
-		//		CcUninitializeCacheMap(FileObject, NULL, NULL);
-	}
-#endif
-	//IrpSp->FileObject->SectionObjectPointer = NULL;
 	void *sd = vnode_security(vp);
 	if (sd != NULL)
 		ExFreePool(sd);
@@ -3891,7 +3880,7 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	// Release final HOLD on item, ready for deletion
 	int isdir = vnode_isdir(vp);
-	//VN_RELE(vp);
+	VN_RELE(vp);
 
 	if (isdir) {
 		
@@ -4724,6 +4713,10 @@ fsDispatcher(
 
 				CcPurgeCacheSection(section, NULL, 0, FALSE);
 			}
+
+			FsRtlTeardownPerStreamContexts(&vp->FileHeader);
+			FsRtlUninitializeFileLock(&vp->lock);
+
 			if (IrpSp->FileObject->SectionObjectPointer != NULL)
 				CcUninitializeCacheMap(IrpSp->FileObject, NULL, NULL);
 #endif
@@ -4750,6 +4743,7 @@ fsDispatcher(
 				// Release our (last?) iocount here, since we didnt call delete_entry
 				VN_RELE(vp);
 			}
+			IrpSp->FileObject->FsContext = NULL;
 			vp = NULL;
 
 		}

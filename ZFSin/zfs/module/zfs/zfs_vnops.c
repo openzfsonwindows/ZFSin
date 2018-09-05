@@ -1952,6 +1952,7 @@ top:
 	/*
 	 * Attempt to lock directory; fail if entry doesn't exist.
 	 */
+	// This calls grabs vp->v_iocount++
 	if ((error = zfs_dirent_lock(&dl, dzp, name, &zp, zflg,
                                  NULL, realnmp))) {
 		if (realnmp)
@@ -2017,6 +2018,12 @@ top:
 	if (may_delete_now) {
 		toobig =
 		    zp->z_size > zp->z_blksz * DMU_MAX_DELETEBLKCNT;
+#ifdef _WIN32
+		/* Currently we have no real vnop_inactive support, so everything 
+		 * has to be directly deleted, even large files.
+		 */
+		toobig = 0;
+#endif
 		/* if the file is too big, only hold_free a token amount */
 		dmu_tx_hold_free(tx, zp->z_id, 0,
 		    (toobig ? DMU_MAX_ACCESS : DMU_OBJECT_END));
