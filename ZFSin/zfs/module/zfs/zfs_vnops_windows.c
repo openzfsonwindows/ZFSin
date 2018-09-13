@@ -4965,6 +4965,10 @@ fsDispatcher(
 	case IRP_MJ_SET_SECURITY:
 		Status = set_security(DeviceObject, Irp, IrpSp);
 		break;
+	case IRP_MJ_SHUTDOWN:
+		dprintf("IRP_MJ_SHUTDOWN\n");
+		Status = STATUS_SUCCESS;
+		break;
 	}
 
 	return Status;

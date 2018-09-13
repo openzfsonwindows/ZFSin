@@ -2779,7 +2779,7 @@ vmem_bucket_alloc(vmem_t *null_vmp, uint32_t size, const int vmflags)
 
 	const uint64_t loop_ticks = 25; // a tick is 10 msec, so 250 msec
 	const uint64_t hiprio_loop_ticks = 4; // 40 msec
-
+	int crutch = 0;
 	for (uint64_t entry_time = zfs_lbolt(), loop_timeout = entry_time + loop_ticks,
 		 hiprio_timeout = entry_time + hiprio_loop_ticks, timedout = 0;
 	     waiters > 1UL || loop_once; ) {
@@ -2788,6 +2788,7 @@ vmem_bucket_alloc(vmem_t *null_vmp, uint32_t size, const int vmflags)
 		if (vmflags & (VM_NOSLEEP | VM_PANIC | VM_ABORT)) {
 			break;
 		}
+		if (crutch++ > 100) break;
 		if (vmem_canalloc_atomic(bvmp, size)) {
 			// We can probably vmem_alloc(bvmp, size, vmflags).
 			// At worst case it will give us a NULL and we will

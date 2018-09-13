@@ -11,10 +11,10 @@ extern void windows_delay(int ticks);
 
 PDRIVER_OBJECT WIN_DriverObject = NULL;
 
+DRIVER_UNLOAD ZFSin_Fini;
 void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
 {
 	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "ZFSin_Fini\n"));
-
 	zfs_stop();
 	spl_stop();
 }
