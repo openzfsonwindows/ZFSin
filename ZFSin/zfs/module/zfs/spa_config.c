@@ -302,8 +302,16 @@ spa_write_cachefile(spa_t *target, boolean_t removing, boolean_t postsysevent)
 
 	spa_config_generation++;
 
-	if (postsysevent)
-		spa_event_notify(target, NULL, NULL, ESC_ZFS_CONFIG_SYNC);
+	if (postsysevent) {
+		/* We don't have spa in spa_config_write, so handle the events here */
+		if (nvl == NULL) {
+			zfs_ereport_post(FM_EREPORT_ZFS_CONFIG_REMOVE, target, NULL, NULL,
+			    NULL, (uint64_t)dp->scd_path, 0);
+		} else {
+			zfs_ereport_post(FM_EREPORT_ZFS_CONFIG_RENAME, target, NULL, NULL,
+			    NULL, (uint64_t)dp->scd_path, 0);
+		}
+	}
 }
 
 /*
