@@ -72,6 +72,7 @@ struct vnode {
 	uint32_t v_usecount; // Long term holds
 	uint32_t v_type;
 	uint32_t v_unlink;
+	uint32_t v_unused;
 	void *v_data;
 	uint64_t v_id;
 
@@ -416,8 +417,8 @@ static inline int win_has_cached_data(struct vnode *vp)
 #else
 #define vnode_pager_setsize(vp, sz)  do { \
 		PFILE_OBJECT fileObject = vnode_fileobject(vp); \
-        if (fileObject != NULL) { \
-			ObReferenceObject(fileObject); /* Is this safe?*/ \
+        if (fileObject != NULL && \
+		 (ObReferenceObjectByPointer(fileObject,STANDARD_RIGHTS_REQUIRED,NULL,KernelMode) == STATUS_SUCCESS)) { \
 			CC_FILE_SIZES ccfs; \
 			vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP((sz), PAGE_SIZE); \
 			vp->FileHeader.FileSize.QuadPart = (sz); \
