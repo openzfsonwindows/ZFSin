@@ -3605,6 +3605,10 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	VN_HOLD(vp);
 	znode_t *zp = VTOZ(vp);
 	ASSERT(ZTOV(zp) == vp);
+
+	// zfs_write() path uses vnode_pager_setsize() so we need to make sure fileobject is set.
+	vnode_setfileobject(vp, fileObject);
+
 	if (IrpSp->Parameters.Write.ByteOffset.LowPart == FILE_USE_FILE_POINTER_POSITION &&
 		IrpSp->Parameters.Write.ByteOffset.HighPart == -1) {
 		byteOffset = fileObject->CurrentByteOffset;
@@ -3883,6 +3887,9 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	// Release final HOLD on item, ready for deletion
 	int isdir = vnode_isdir(vp);
+
+	// zfs_remove() calls vnode_pager_setsize, set fileobject
+	vnode_setfileobject(vp, IrpSp->FileObject);
 	VN_RELE(vp);
 
 	if (isdir) {
