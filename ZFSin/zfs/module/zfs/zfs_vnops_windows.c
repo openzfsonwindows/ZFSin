@@ -3057,6 +3057,24 @@ NTSTATUS user_fs_request(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		Status = FsRtlOplockFsctrl(&oplock, Irp, 0);
 #endif
 		break;
+	case FSCTL_FILESYSTEM_GET_STATISTICS:
+		dprintf("    FSCTL_FILESYSTEM_GET_STATISTICS: \n");
+		FILESYSTEM_STATISTICS *fss = Irp->AssociatedIrp.SystemBuffer;
+
+		// btrfs: This is hideously wrong, but at least it stops SMB from breaking
+
+		if (IrpSp->Parameters.FileSystemControl.OutputBufferLength < sizeof(FILESYSTEM_STATISTICS))
+			return STATUS_BUFFER_TOO_SMALL;
+
+		memset(fss, 0, sizeof(FILESYSTEM_STATISTICS));
+
+		fss->Version = 1;
+		fss->FileSystemType = FILESYSTEM_STATISTICS_TYPE_NTFS;
+		fss->SizeOfCompleteStructure = sizeof(FILESYSTEM_STATISTICS);
+
+		Irp->IoStatus.Information = sizeof(FILESYSTEM_STATISTICS);
+		Status = STATUS_SUCCESS;
+		break;
 	default:
 		dprintf("* %s: unknown class 0x%x\n", __func__, IrpSp->Parameters.FileSystemControl.FsControlCode);
 		break;
