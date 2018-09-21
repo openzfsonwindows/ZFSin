@@ -6946,12 +6946,17 @@ zfs_attach(void)
 		IN PFS_FILTER_CALLBACK_DATA CallbackData,
 		OUT PVOID *CompletionContext
 	);
+	extern NTSTATUS ZFSCallbackReleaseForCreateSection(
+		IN PFS_FILTER_CALLBACK_DATA CallbackData,
+		OUT PVOID *CompletionContext
+	);
 	FS_FILTER_CALLBACKS FilterCallbacks;
 	RtlZeroMemory(&FilterCallbacks,
 		sizeof(FS_FILTER_CALLBACKS));
 
 	FilterCallbacks.SizeOfFsFilterCallbacks = sizeof(FS_FILTER_CALLBACKS);
 	FilterCallbacks.PreAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
+	FilterCallbacks.PreReleaseForSectionSynchronization = ZFSCallbackReleaseForCreateSection;
 
 	NTSTATUS Status;
 

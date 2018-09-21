@@ -820,9 +820,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	if (vp) {
 		zp = VTOZ(vp);
-		// vnode_setsize is greatly helped by having access
-		// to the fileobject, so store that in vp for files.
-		vnode_setfileobject(vp, FileObject);
 	}
 
 	// If HIDDEN and SYSTEM are set, then the open of file must also have
@@ -1037,6 +1034,8 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (CreateDisposition == FILE_OVERWRITE) {
 				Irp->IoStatus.Information = FILE_OVERWRITTEN;
 				zp->z_pflags |= ZFS_ARCHIVE;
+				// zfs_freesp() path uses vnode_pager_setsize() so we need to make sure fileobject is set.
+				vnode_setfileobject(vp, FileObject);
 				zfs_freesp(zp, 0, 0, FWRITE, B_TRUE);
 				// Did they ask for an AllocationSize
 				if (Irp->Overlay.AllocationSize.QuadPart > 0) {
@@ -1082,6 +1081,13 @@ int zfs_vnop_reclaim(struct vnode *vp)
 	if (sd != NULL)
 		ExFreePool(sd);
 	vnode_setsecurity(vp, NULL);
+
+	FILE_OBJECT *fileobject = vnode_fileobject(vp);
+	if (fileobject != NULL) {
+		fileobject->FsContext = NULL;
+		dprintf("%s: setting FsContext to NULL\n", __func__);
+		fileobject = NULL;
+	}
 
 	// Decouple the nodes
 	ZTOV(zp) = NULL;
@@ -3340,7 +3346,8 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			FILE_END_OF_FILE_INFORMATION *feofi = Irp->AssociatedIrp.SystemBuffer;
 			struct vnode *vp = IrpSp->FileObject->FsContext;
 			VN_HOLD(vp);
-
+			// zfs_freesp() path uses vnode_pager_setsize() so we need to make sure fileobject is set.
+			vnode_setfileobject(vp, IrpSp->FileObject);
 			znode_t *zp = VTOZ(vp);
 			zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 			ZFS_ENTER(zfsvfs); // this returns if true, is that ok?
@@ -3404,9 +3411,10 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 
 	fileObject = IrpSp->FileObject;
 
+	// File may have been closed, but CC mgr setting section will ask to read
 	if (fileObject == NULL || fileObject->FsContext == NULL) {
 		dprintf("  fileObject == NULL\n");
-		ASSERT0("fileobject == NULL");
+		//ASSERT0("fileobject == NULL");
 		return STATUS_INVALID_PARAMETER;
 	}
 
@@ -3888,8 +3896,6 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	// Release final HOLD on item, ready for deletion
 	int isdir = vnode_isdir(vp);
 
-	// zfs_remove() calls vnode_pager_setsize, set fileobject
-	vnode_setfileobject(vp, IrpSp->FileObject);
 	VN_RELE(vp);
 
 	if (isdir) {
@@ -4731,7 +4737,10 @@ fsDispatcher(
 				CcUninitializeCacheMap(IrpSp->FileObject, NULL, NULL);
 #endif
 
-			// Asked to delete?
+			// Asked to delete? Since we might end up calling recycle
+			// we set the FileObject ptr back, so it can be cleared.
+			// zfs_remove also calls vnode_pager_setsize().
+			vnode_setfileobject(vp, IrpSp->FileObject);
 			if (vnode_unlink(vp)) {
 
 				/*
@@ -4743,6 +4752,10 @@ fsDispatcher(
 				* last.
 				*/
 				delete_entry(DeviceObject, Irp, IrpSp);
+
+				// It is possible that we can not call recycle, so we must explicitly clear it
+				IrpSp->FileObject->FsContext = NULL;
+
 			} else {
 				/*
 				* Leave node alone, VFS layer will release it when appropriate.
@@ -4753,7 +4766,6 @@ fsDispatcher(
 				// Release our (last?) iocount here, since we didnt call delete_entry
 				VN_RELE(vp);
 			}
-			IrpSp->FileObject->FsContext = NULL;
 			vp = NULL;
 
 		}
@@ -5123,9 +5135,15 @@ are any writers to this file.  Note that main is acquired, so new handles cannot
 	struct vnode *vp;
 	vp = CallbackData->FileObject->FsContext;
 
+	ASSERT(vp != NULL);
+	if (vp == NULL) return STATUS_INVALID_PARAMETER;
 
 	if (vp->FileHeader.Resource) {
+		dprintf("%s: locked\n", __func__);
 		ExAcquireResourceExclusiveLite(vp->FileHeader.Resource, TRUE);
+		VN_HOLD(vp);
+		vnode_ref(vp);
+		VN_RELE(vp);
 	}
 
 	if (CallbackData->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) {
@@ -5143,6 +5161,27 @@ are any writers to this file.  Note that main is acquired, so new handles cannot
 
 }
 
+NTSTATUS ZFSCallbackReleaseForCreateSection(
+	IN PFS_FILTER_CALLBACK_DATA CallbackData,
+	OUT PVOID *CompletionContext
+)
+{
+	struct vnode *vp;
+	vp = CallbackData->FileObject->FsContext;
+
+	ASSERT(vp != NULL);
+	if (vp == NULL) return STATUS_INVALID_PARAMETER;
+
+	if (vp->FileHeader.Resource) {
+		dprintf("%s: unlocked\n", __func__);
+		ExReleaseResource(vp->FileHeader.Resource, TRUE);
+		VN_HOLD(vp);
+		vnode_rele(vp);
+		VN_RELE(vp);
+	}
+
+	return STATUS_FSFILTER_OP_COMPLETED_SUCCESSFULLY;
+}
 
 void zfs_windows_vnops_callback(PDEVICE_OBJECT deviceObject)
 {

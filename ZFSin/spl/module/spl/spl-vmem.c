@@ -2788,7 +2788,7 @@ vmem_bucket_alloc(vmem_t *null_vmp, uint32_t size, const int vmflags)
 		if (vmflags & (VM_NOSLEEP | VM_PANIC | VM_ABORT)) {
 			break;
 		}
-		if (crutch++ > 100) break;
+		if (crutch++ > 25) break;
 		if (vmem_canalloc_atomic(bvmp, size)) {
 			// We can probably vmem_alloc(bvmp, size, vmflags).
 			// At worst case it will give us a NULL and we will
