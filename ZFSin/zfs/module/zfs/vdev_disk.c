@@ -312,13 +312,11 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 
 skip_open:
 
-	// kernel_ioctl() corrupts the stack, so hardcode this for now
-#if 0
 	/*
 	* Determine the actual size of the device.
 	*/
 	if (vd->vdev_win_length != 0) {
-		psize = vd->vdev_win_length;
+		*psize = vd->vdev_win_length;
 	} else {
 		DISK_GEOMETRY_EX geometry_ex;
 		DWORD len;
@@ -355,8 +353,6 @@ skip_open:
 		blksz = pbsize = DEV_BSIZE;
 	}
 
-#endif // broken ioctl, see above
-
 	// Set psize to the size of the partition. For now, assume virtual
 	// since ioctls do not seem to work.
 	if (vd->vdev_win_length != 0) 
@@ -370,7 +366,7 @@ skip_open:
 	if (!pbsize) pbsize = DEV_BSIZE;
 
 	*ashift = highbit64(MAX(pbsize, SPA_MINBLOCKSIZE)) - 1;
-
+	xprintf("%s: picked ashift %llu for device\n", __func__, *ashift);
 
 	/*
 	* Clear the nowritecache bit, so that on a vdev_reopen() we will
