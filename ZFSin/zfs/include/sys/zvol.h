@@ -67,10 +67,8 @@ typedef struct zvol_state {
 	uint32_t zv_open_count;	/* open counts */
 	uint32_t zv_total_opens;	/* total open count */
 	zilog_t *zv_zilog;	/* ZIL handle */
+	rangelock_t		zv_rangelock;	/* for range locking */
 	list_t zv_extents;	/* List of extents for dump */
-#ifdef _KERNEL
-	znode_t zv_znode;	/* for range locking */
-#endif
 	dmu_buf_t *zv_dbuf;	/* bonus handle */
 	zvol_iokit_t *zv_iokitdev;	/* IOKit device */
 	uint64_t zv_openflags;	/* Remember flags used at open */
