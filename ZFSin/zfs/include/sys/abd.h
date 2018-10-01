@@ -47,7 +47,7 @@ typedef struct abd {
 	kmutex_t        abd_mutex;
 	hrtime_t        abd_create_time;
 	struct abd	*abd_parent;
-	refcount_t	abd_children;
+	zfs_refcount_t	abd_children;
 	union {
 		struct abd_scatter {
 			uint_t	abd_offset;

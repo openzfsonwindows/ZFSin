@@ -459,7 +459,7 @@ abd_alloc(size_t size, boolean_t is_metadata)
 	}
 	abd->abd_size = size;
 	abd->abd_parent = NULL;
-	refcount_create(&abd->abd_children);
+	zfs_refcount_create(&abd->abd_children);
 
 	abd->abd_u.abd_scatter.abd_offset = 0;
 	abd->abd_u.abd_scatter.abd_chunk_size = zfs_abd_chunk_size;
@@ -500,7 +500,7 @@ abd_free_scatter(abd_t *abd)
 		abd_free_chunk(abd->abd_u.abd_scatter.abd_chunks[i]);
 	}
 
-	refcount_destroy(&abd->abd_children);
+	zfs_refcount_destroy(&abd->abd_children);
 	ABDSTAT_BUMPDOWN(abdstat_scatter_cnt);
 	ABDSTAT_INCR(abdstat_scatter_data_size, -(int)abd->abd_size);
 	ABDSTAT_INCR(abdstat_scatter_chunk_waste,
@@ -541,7 +541,7 @@ abd_alloc_linear(size_t size, boolean_t is_metadata)
 	}
 	abd->abd_size = size;
 	abd->abd_parent = NULL;
-	refcount_create(&abd->abd_children);
+	zfs_refcount_create(&abd->abd_children);
 
 	if (is_metadata) {
 		abd->abd_u.abd_linear.abd_buf = zio_buf_alloc(size);
@@ -572,7 +572,7 @@ abd_free_linear(abd_t *abd)
 		zio_data_buf_free(abd->abd_u.abd_linear.abd_buf, abd->abd_size);
 	}
 
-	refcount_destroy(&abd->abd_children);
+	zfs_refcount_destroy(&abd->abd_children);
 	ABDSTAT_BUMPDOWN(abdstat_linear_cnt);
 	ABDSTAT_INCR(abdstat_linear_data_size, -(int)abd->abd_size);
 
@@ -696,8 +696,8 @@ abd_get_offset_impl(abd_t *sabd, size_t off, size_t size)
 	abd->abd_size = sabd->abd_size - off;
 	abd->abd_parent = sabd;
 	abd->abd_flags |= ABD_FLAG_NOMOVE;
-	refcount_create(&abd->abd_children);
-	(void) refcount_add_many(&sabd->abd_children, abd->abd_size, abd);
+	zfs_refcount_create(&abd->abd_children);
+	(void) zfs_refcount_add_many(&sabd->abd_children, abd->abd_size, abd);
 	mutex_exit(&sabd->abd_mutex);
 
 	return (abd);
@@ -747,7 +747,7 @@ abd_get_from_buf(void *buf, size_t size)
 	abd->abd_flags = ABD_FLAG_LINEAR | ABD_FLAG_NOMOVE;
 	abd->abd_size = size;
 	abd->abd_parent = NULL;
-	refcount_create(&abd->abd_children);
+	zfs_refcount_create(&abd->abd_children);
 
 	abd->abd_u.abd_linear.abd_buf = buf;
 
@@ -767,14 +767,14 @@ abd_put(abd_t *abd)
 
 	if (abd->abd_parent != NULL) {
 		mutex_enter(&abd->abd_parent->abd_mutex);
-		(void) refcount_remove_many(&abd->abd_parent->abd_children,
+		(void) zfs_refcount_remove_many(&abd->abd_parent->abd_children,
 		    abd->abd_size, abd);
-		if (refcount_is_zero(&abd->abd_parent->abd_children))
+		if (zfs_refcount_is_zero(&abd->abd_parent->abd_children))
 			abd->abd_parent->abd_flags &= ~(ABD_FLAG_NOMOVE);
 		mutex_exit(&abd->abd_parent->abd_mutex);
 	}
 
-	refcount_destroy(&abd->abd_children);
+	zfs_refcount_destroy(&abd->abd_children);
 	mutex_exit(&abd->abd_mutex);
 	abd_free_struct(abd);
 }
@@ -826,7 +826,8 @@ abd_borrow_buf(abd_t *abd, size_t n)
 	} else {
 		buf = zio_buf_alloc(n);
 	}
-	(void) refcount_add_many(&abd->abd_children, n, buf);
+
+	(void) zfs_refcount_add_many(&abd->abd_children, n, buf);
 	mutex_exit(&abd->abd_mutex);
 
 	ABDSTAT_BUMP(abdstat_borrowed_buf_cnt);
@@ -867,7 +868,8 @@ abd_return_buf(abd_t *abd, void *buf, size_t n)
 		mutex_enter(&abd->abd_mutex);
 		zio_buf_free(buf, n);
 	}
-	(void) refcount_remove_many(&abd->abd_children, n, buf);
+
+	(void) zfs_refcount_remove_many(&abd->abd_children, n, buf);
 	mutex_exit(&abd->abd_mutex);
 	ABDSTAT_BUMPDOWN(abdstat_borrowed_buf_cnt);
 }
@@ -920,7 +922,7 @@ abd_return_buf_off(abd_t *abd, void *buf, size_t off, size_t len, size_t n)
 		mutex_enter(&abd->abd_mutex);
 		zio_buf_free(buf, n);
 	}
-	(void) refcount_remove_many(&abd->abd_children, n, buf);
+	(void) zfs_refcount_remove_many(&abd->abd_children, n, buf);
 	mutex_exit(&abd->abd_mutex);
 	ABDSTAT_BUMPDOWN(abdstat_borrowed_buf_cnt);
 }
@@ -1358,7 +1360,7 @@ abd_try_move_scattered_impl(abd_t *abd)
 
 	abd_verify(abd);
 
-	if (!refcount_is_zero(&abd->abd_children)) {
+	if (!zfs_refcount_is_zero(&abd->abd_children)) {
 		mutex_exit(&abd->abd_mutex);
 		ABDSTAT_BUMP(abdstat_move_refcount_nonzero);
 		return (B_FALSE);
@@ -1416,7 +1418,7 @@ abd_try_move_linear_impl(abd_t *abd)
 
 	abd_verify(abd);
 
-	if (!refcount_is_zero(&abd->abd_children)) {
+	if (!zfs_refcount_is_zero(&abd->abd_children)) {
 		mutex_exit(&abd->abd_mutex);
 		ABDSTAT_BUMP(abdstat_move_refcount_nonzero);
 		return (B_FALSE);

@@ -65,7 +65,7 @@
 	__entry->db_offset = db->db.db_offset;			\
 	__entry->db_size   = db->db.db_size;			\
 	__entry->db_state  = db->db_state;			\
-	__entry->db_holds  = refcount_count(&db->db_holds);
+	__entry->db_holds  = zfs_refcount_count(&db->db_holds);
 
 #define	DBUF_TP_PRINTK_FMT						\
 	"dbuf { spa \"%s\" objset %llu object %llu level %llu "		\

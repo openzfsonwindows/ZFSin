@@ -67,7 +67,6 @@
 #include <sys/sa.h>
 #include <sys/zfs_sa.h>
 #include <sys/zfs_stat.h>
-#include <sys/refcount.h>
 
 #include "zfs_prop.h"
 #include "zfs_comutil.h"

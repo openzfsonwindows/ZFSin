@@ -74,19 +74,19 @@
 static void
 dsl_wrapping_key_hold(dsl_wrapping_key_t *wkey, void *tag)
 {
-	(void) refcount_add(&wkey->wk_refcnt, tag);
+	(void) zfs_refcount_add(&wkey->wk_refcnt, tag);
 }
 
 static void
 dsl_wrapping_key_rele(dsl_wrapping_key_t *wkey, void *tag)
 {
-	(void) refcount_remove(&wkey->wk_refcnt, tag);
+	(void) zfs_refcount_remove(&wkey->wk_refcnt, tag);
 }
 
 static void
 dsl_wrapping_key_free(dsl_wrapping_key_t *wkey)
 {
-	ASSERT0(refcount_count(&wkey->wk_refcnt));
+	ASSERT0(zfs_refcount_count(&wkey->wk_refcnt));
 
 	if (wkey->wk_key.ck_data) {
 		bzero(wkey->wk_key.ck_data,
@@ -95,7 +95,7 @@ dsl_wrapping_key_free(dsl_wrapping_key_t *wkey)
 		    CRYPTO_BITS2BYTES(wkey->wk_key.ck_length));
 	}
 
-	refcount_destroy(&wkey->wk_refcnt);
+	zfs_refcount_destroy(&wkey->wk_refcnt);
 	kmem_free(wkey, sizeof (dsl_wrapping_key_t));
 }
 
@@ -123,7 +123,7 @@ dsl_wrapping_key_create(uint8_t *wkeydata, zfs_keyformat_t keyformat,
 	bcopy(wkeydata, wkey->wk_key.ck_data, WRAPPING_KEY_LEN);
 
 	/* initialize the rest of the struct */
-	refcount_create(&wkey->wk_refcnt);
+	zfs_refcount_create(&wkey->wk_refcnt);
 	wkey->wk_keyformat = keyformat;
 	wkey->wk_salt = salt;
 	wkey->wk_iters = iters;
@@ -516,13 +516,13 @@ out:
 static void
 dsl_crypto_key_free(dsl_crypto_key_t *dck)
 {
-	ASSERT(refcount_count(&dck->dck_holds) == 0);
+	ASSERT(zfs_refcount_count(&dck->dck_holds) == 0);
 
 	/* destroy the zio_crypt_key_t */
 	zio_crypt_key_destroy(&dck->dck_key);
 
 	/* free the refcount, wrapping key, and lock */
-	refcount_destroy(&dck->dck_holds);
+	zfs_refcount_destroy(&dck->dck_holds);
 	if (dck->dck_wkey)
 		dsl_wrapping_key_rele(dck->dck_wkey, dck);
 
@@ -533,7 +533,7 @@ dsl_crypto_key_free(dsl_crypto_key_t *dck)
 static void
 dsl_crypto_key_rele(dsl_crypto_key_t *dck, void *tag)
 {
-	if (refcount_remove(&dck->dck_holds, tag) == 0)
+	if (zfs_refcount_remove(&dck->dck_holds, tag) == 0)
 		dsl_crypto_key_free(dck);
 }
 
@@ -599,11 +599,11 @@ dsl_crypto_key_open(objset_t *mos, dsl_wrapping_key_t *wkey,
 	}
 
 	/* finish initializing the dsl_crypto_key_t */
-	refcount_create(&dck->dck_holds);
+	zfs_refcount_create(&dck->dck_holds);
 	dsl_wrapping_key_hold(wkey, dck);
 	dck->dck_wkey = wkey;
 	dck->dck_obj = dckobj;
-	(void) refcount_add(&dck->dck_holds, tag);
+	(void) zfs_refcount_add(&dck->dck_holds, tag);
 
 	*dck_out = dck;
 	return (0);
@@ -639,7 +639,7 @@ spa_keystore_dsl_key_hold_impl(spa_t *spa, uint64_t dckobj, void *tag,
 	}
 
 	/* increment the refcount */
-	(void) refcount_add(&found_dck->dck_holds, tag);
+	(void) zfs_refcount_add(&found_dck->dck_holds, tag);
 
 	*dck_out = found_dck;
 	return (0);
@@ -712,7 +712,7 @@ spa_keystore_dsl_key_rele(spa_t *spa, dsl_crypto_key_t *dck, void *tag)
 {
 	rw_enter(&spa->spa_keystore.sk_dk_lock, RW_WRITER);
 
-	if (refcount_remove(&dck->dck_holds, tag) == 0) {
+	if (zfs_refcount_remove(&dck->dck_holds, tag) == 0) {
 		avl_remove(&spa->spa_keystore.sk_dsl_keys, dck);
 		dsl_crypto_key_free(dck);
 	}
@@ -868,7 +868,7 @@ spa_keystore_unload_wkey_impl(spa_t *spa, uint64_t ddobj)
 	if (!found_wkey) {
 		ret = SET_ERROR(EACCES);
 		goto error_unlock;
-	} else if (refcount_count(&found_wkey->wk_refcnt) != 0) {
+	} else if (zfs_refcount_count(&found_wkey->wk_refcnt) != 0) {
 		ret = SET_ERROR(EBUSY);
 		goto error_unlock;
 	}
@@ -946,8 +946,8 @@ error:
 void
 key_mapping_add_ref(dsl_key_mapping_t *km, void *tag)
 {
-	ASSERT3U(refcount_count(&km->km_refcnt), >=, 1);
-	refcount_add(&km->km_refcnt, tag);
+	ASSERT3U(zfs_refcount_count(&km->km_refcnt), >=, 1);
+	zfs_refcount_add(&km->km_refcnt, tag);
 }
 
 /*
@@ -963,9 +963,9 @@ key_mapping_add_ref(dsl_key_mapping_t *km, void *tag)
 void
 key_mapping_rele(spa_t *spa, dsl_key_mapping_t *km, void *tag)
 {
-	ASSERT3U(refcount_count(&km->km_refcnt), >=, 1);
+	ASSERT3U(zfs_refcount_count(&km->km_refcnt), >=, 1);
 
-	if (refcount_remove(&km->km_refcnt, tag) != 0)
+	if (zfs_refcount_remove(&km->km_refcnt, tag) != 0)
 		return;
 
 	/*
@@ -975,10 +975,10 @@ key_mapping_rele(spa_t *spa, dsl_key_mapping_t *km, void *tag)
 	 * racy, so we will confirm that we are legitimately the
 	 * last holder once we have the sk_km_lock as a writer.
 	 */
-	(void) refcount_add(&km->km_refcnt, FTAG);
+	(void) zfs_refcount_add(&km->km_refcnt, FTAG);
 
 	rw_enter(&spa->spa_keystore.sk_km_lock, RW_WRITER);
-	if (refcount_remove(&km->km_refcnt, FTAG) != 0) {
+	if (zfs_refcount_remove(&km->km_refcnt, FTAG) != 0) {
 		rw_exit(&spa->spa_keystore.sk_km_lock);
 		return;
 	}
@@ -1001,11 +1001,11 @@ spa_keystore_create_mapping(spa_t *spa, dsl_dataset_t *ds, void *tag,
 
 	/* Allocate and initialize the mapping */
 	km = kmem_zalloc(sizeof (dsl_key_mapping_t), KM_SLEEP);
-	refcount_create(&km->km_refcnt);
+	zfs_refcount_create(&km->km_refcnt);
 
 	ret = spa_keystore_dsl_key_hold_dd(spa, ds->ds_dir, km, &km->km_key);
 	if (ret != 0) {
-		refcount_destroy(&km->km_refcnt);
+		zfs_refcount_destroy(&km->km_refcnt);
 		kmem_free(km, sizeof (dsl_key_mapping_t));
 
 		if (km_out != NULL)
@@ -1028,11 +1028,11 @@ spa_keystore_create_mapping(spa_t *spa, dsl_dataset_t *ds, void *tag,
 	found_km = avl_find(&spa->spa_keystore.sk_key_mappings, km, &where);
 	if (found_km != NULL) {
 		should_free = B_TRUE;
-		(void) refcount_add(&found_km->km_refcnt, tag);
+		(void) zfs_refcount_add(&found_km->km_refcnt, tag);
 		if (km_out != NULL)
 			*km_out = found_km;
 	} else {
-		(void) refcount_add(&km->km_refcnt, tag);
+		(void) zfs_refcount_add(&km->km_refcnt, tag);
 		avl_insert(&spa->spa_keystore.sk_key_mappings, km, where);
 		if (km_out != NULL)
 			*km_out = km;
@@ -1042,7 +1042,7 @@ spa_keystore_create_mapping(spa_t *spa, dsl_dataset_t *ds, void *tag,
 
 	if (should_free) {
 		spa_keystore_dsl_key_rele(spa, km->km_key, km);
-		refcount_destroy(&km->km_refcnt);
+		zfs_refcount_destroy(&km->km_refcnt);
 		kmem_free(km, sizeof (dsl_key_mapping_t));
 	}
 
@@ -1112,7 +1112,7 @@ spa_keystore_lookup_key(spa_t *spa, uint64_t dsobj, void *tag,
 	}
 
 	if (found_km && tag)
-		refcount_add(&found_km->km_key->dck_holds, tag);
+		zfs_refcount_add(&found_km->km_key->dck_holds, tag);
 
 	rw_exit(&spa->spa_keystore.sk_km_lock);
 
@@ -1544,7 +1544,7 @@ spa_keystore_change_key_sync(void *arg, dmu_tx_t *tx)
 	wkey_search.wk_ddobj = ds->ds_dir->dd_object;
 	found_wkey = avl_find(&spa->spa_keystore.sk_wkeys, &wkey_search, NULL);
 	if (found_wkey != NULL) {
-		ASSERT0(refcount_count(&found_wkey->wk_refcnt));
+		ASSERT0(zfs_refcount_count(&found_wkey->wk_refcnt));
 		avl_remove(&spa->spa_keystore.sk_wkeys, found_wkey);
 		dsl_wrapping_key_free(found_wkey);
 	}
