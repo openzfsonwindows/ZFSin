@@ -548,6 +548,10 @@ dnode_allocate(dnode_t *dn, dmu_object_type_t ot, int blocksize, int ibs,
 
 	ASSERT3U(blocksize, <=,
 	    spa_maxblocksize(dmu_objset_spa(dn->dn_objset)));
+
+	if (blocksize == 0 && dn->dn_objset && dn->dn_objset->os_spa)
+		blocksize = 1 << spa_minashift(dn->dn_objset->os_spa);
+
 	if (blocksize == 0)
 		blocksize = 1 << zfs_default_bs;
 	else

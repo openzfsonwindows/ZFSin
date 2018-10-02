@@ -2127,6 +2127,12 @@ spa_maxblocksize(spa_t *spa)
 		return (SPA_OLD_MAXBLOCKSIZE);
 }
 
+
+int
+spa_minashift(spa_t *spa) {
+	return spa->spa_min_ashift;
+}
+
 /*
  * Returns the txg that the last device removal completed. No indirect mappings
  * have been added since this txg.
