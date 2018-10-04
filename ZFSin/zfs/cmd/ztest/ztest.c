@@ -3526,10 +3526,6 @@ ztest_objset_create_cb(objset_t *os, void *arg, cred_t *cr, dmu_tx_t *tx)
 static int
 ztest_dataset_create(char *dsname)
 {
-<<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
-<<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
-=======
->>>>>>> f2e3bf1a... Encryption patch follow-up:cmd/ztest/ztest.c
 	int err;
 	uint64_t rand;
 	dsl_crypto_params_t *dcp = NULL;
@@ -3576,13 +3572,6 @@ ztest_dataset_create(char *dsname)
 	}
 
 	err = dmu_objset_create(dsname, DMU_OST_OTHER, 0, dcp,
-<<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
-=======
-	uint64_t zilset = ztest_random(100);
-	int err = dmu_objset_create(dsname, DMU_OST_OTHER, 0, NULL,
->>>>>>> 4644f687... Native data and metadata encryption for zfs:cmd/ztest/ztest.c
-=======
->>>>>>> f2e3bf1a... Encryption patch follow-up:cmd/ztest/ztest.c
 	    ztest_objset_create_cb, NULL);
 	dsl_crypto_params_free(dcp, !!err);
 
@@ -3607,17 +3596,9 @@ ztest_objset_destroy_cb(const char *name, void *arg)
 	/*
 	 * Verify that the dataset contains a directory object.
 	 */
-<<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
-<<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
-	VERIFY0(ztest_dmu_objset_own(name, DMU_OST_OTHER, B_TRUE,
-	    B_TRUE, FTAG, &os));
-=======
 	VERIFY0(dmu_objset_own(name, DMU_OST_OTHER, B_TRUE, B_TRUE, FTAG, &os));
->>>>>>> 4644f687... Native data and metadata encryption for zfs:cmd/ztest/ztest.c
-=======
 	VERIFY0(ztest_dmu_objset_own(name, DMU_OST_OTHER, B_TRUE,
 	    B_TRUE, FTAG, &os));
->>>>>>> f2e3bf1a... Encryption patch follow-up:cmd/ztest/ztest.c
 	error = dmu_object_info(os, ZTEST_DIROBJ, &doi);
 	if (error != ENOENT) {
 		/* We could have crashed in the middle of destroying it */
@@ -3717,12 +3698,15 @@ ztest_dmu_objset_create_destroy(ztest_ds_t *zd, uint64_t id)
 		ztest_zd_fini(zdtmp);
 <<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
 <<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
+<<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
 		txg_wait_synced(dmu_objset_pool(os), 0);
 =======
 >>>>>>> 4644f687... Native data and metadata encryption for zfs:cmd/ztest/ztest.c
 =======
 		txg_wait_synced(dmu_objset_pool(os), 0);
 >>>>>>> f2e3bf1a... Encryption patch follow-up:cmd/ztest/ztest.c
+=======
+>>>>>>> 88187b5d0... Refcounted DSL Crypto Key Mappings:cmd/ztest/ztest.c
 		dmu_objset_disown(os, B_TRUE, FTAG);
 	}
 
@@ -3824,8 +3808,11 @@ ztest_dmu_objset_create_destroy(ztest_ds_t *zd, uint64_t id)
 	    B_FALSE, B_TRUE, FTAG, &os2));
 
 	zil_close(zilog);
+<<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
 	txg_wait_synced(spa_get_dsl(os->os_spa), 0);
 >>>>>>> f2e3bf1a... Encryption patch follow-up:cmd/ztest/ztest.c
+=======
+>>>>>>> 88187b5d0... Refcounted DSL Crypto Key Mappings:cmd/ztest/ztest.c
 	dmu_objset_disown(os, B_TRUE, FTAG);
 	ztest_zd_fini(zdtmp);
 out:
@@ -6354,12 +6341,15 @@ ztest_dataset_close(int d)
 	zil_close(zd->zd_zilog);
 <<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
 <<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
+<<<<<<< HEAD:ZFSin/zfs/cmd/ztest/ztest.c
 	txg_wait_synced(spa_get_dsl(zd->zd_os->os_spa), 0);
 =======
 >>>>>>> 4644f687... Native data and metadata encryption for zfs:cmd/ztest/ztest.c
 =======
 	txg_wait_synced(spa_get_dsl(zd->zd_os->os_spa), 0);
 >>>>>>> f2e3bf1a... Encryption patch follow-up:cmd/ztest/ztest.c
+=======
+>>>>>>> 88187b5d0... Refcounted DSL Crypto Key Mappings:cmd/ztest/ztest.c
 	dmu_objset_disown(zd->zd_os, B_TRUE, zd);
 
 	ztest_zd_fini(zd);
