@@ -6500,7 +6500,7 @@ top:
 		ASSERT(*arc_flags & ARC_FLAG_NOWAIT);
 		zio_nowait(rzio);
 	}
-	return (0);
+	return (rc);
 }
 
 /*
