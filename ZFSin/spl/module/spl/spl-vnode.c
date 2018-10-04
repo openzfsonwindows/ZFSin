@@ -1074,3 +1074,18 @@ FILE_OBJECT *vnode_fileobject(vnode_t *vp)
 	if (vp) return vp->fileobject;
 	return NULL;
 }
+
+void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) {
+	
+	if (fileobject)
+		fileobject->FsContext = vp;
+
+	vnode_setfileobject(vp, fileobject);
+}
+
+void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) {
+	if(fileobject)
+		fileobject->FsContext = NULL;
+	if(vp)
+		vp->fileobject = NULL;
+}
