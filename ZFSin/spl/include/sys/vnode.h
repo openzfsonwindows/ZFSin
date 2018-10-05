@@ -510,6 +510,8 @@ void *vnode_sectionpointer(vnode_t *vp);
 void *vnode_security(vnode_t *vp);
 void vnode_setsecurity(vnode_t *vp, void *sd);
 void vnode_setfileobject(vnode_t *vp, FILE_OBJECT *fileobject);
+void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject);
+void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject);
 FILE_OBJECT *vnode_fileobject(vnode_t *vp);
 
 #define VNODE_READDIR_EXTENDED 1

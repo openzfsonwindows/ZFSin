@@ -544,8 +544,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		zfs_set_security(dvp, NULL);
 		VN_RELE(dvp);
 
-		FileObject->FsContext = dvp;
-
+		vnode_couplefileobject(dvp, FileObject);
 		IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 
 		Irp->IoStatus.Information = FILE_OPENED;
@@ -591,7 +590,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 				if (error == 0) {
 					vp = ZTOV(zp);
-					FileObject->FsContext = vp;
+					vnode_couplefileobject(vp, FileObject);
 					vnode_ref(vp); // Hold open reference, until CLOSE
 					zfs_set_security(vp, NULL);
 					VN_RELE(vp);
@@ -621,7 +620,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			dvp = FileObject->RelatedFileObject->FsContext;
 			VN_HOLD(dvp);
 			vnode_ref(dvp); // Hold open reference, until CLOSE
-			FileObject->FsContext = dvp;
+			vnode_couplefileobject(dvp, FileObject);
 			if (vnode_isdir(dvp))
 				FileObject->FsContext2 = zfs_dirlist_alloc();
 			zfs_set_security(dvp, NULL);
@@ -712,7 +711,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		if (dvp) {
 			dprintf("%s: opening PARENT directory\n", __func__);
 			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
-			FileObject->FsContext = dvp;
+			vnode_couplefileobject(dvp, FileObject);
 			vnode_ref(dvp); // Hold open reference, until CLOSE
 			zfs_set_security(dvp, NULL);
 			if (DeleteOnClose) 
@@ -767,7 +766,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 			// TODO: move creating zccb to own function
 			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
-			FileObject->FsContext = vp;
+			vnode_couplefileobject(vp, FileObject);
 			vnode_ref(vp); // Hold open reference, until CLOSE
 			zfs_set_security(vp, dvp);
 			if (DeleteOnClose)
@@ -950,7 +949,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		// O_EXCL only if FILE_CREATE
 		error = zfs_create(dvp, finalname, &vap, CreateDisposition == FILE_CREATE, vap.va_mode, &vp, NULL);
 		if (error == 0) {
-			FileObject->FsContext = vp;
+			vnode_couplefileobject(vp, FileObject);
 			vnode_ref(vp); // Hold open reference, until CLOSE
 			zfs_set_security(vp, dvp);
 
@@ -1004,7 +1003,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	ASSERT(IrpSp->FileObject->FsContext == NULL);
 	if (vp == NULL) {
 		IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
-		FileObject->FsContext = dvp;
+		vnode_couplefileobject(dvp, FileObject);
 		vnode_ref(dvp); // Hold open reference, until CLOSE
 		zfs_set_security(dvp, NULL);
 		if (DeleteOnClose) 
@@ -1016,7 +1015,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		VN_RELE(dvp);
 	} else {
 		// Technically, this should call zfs_open() - but it is mostly empty
-		FileObject->FsContext = vp;
+		vnode_couplefileobject(vp, FileObject);
 		vnode_ref(vp); // Hold open reference, until CLOSE
 		zfs_set_security(vp, dvp);
 		if (DeleteOnClose)
@@ -1084,7 +1083,7 @@ int zfs_vnop_reclaim(struct vnode *vp)
 
 	FILE_OBJECT *fileobject = vnode_fileobject(vp);
 	if (fileobject != NULL) {
-		fileobject->FsContext = NULL;
+		vnode_decouplefileobject(vp, fileobject);
 		dprintf("%s: setting FsContext to NULL\n", __func__);
 		fileobject = NULL;
 	}
@@ -4758,7 +4757,7 @@ fsDispatcher(
 			// Asked to delete? Since we might end up calling recycle
 			// we set the FileObject ptr back, so it can be cleared.
 			// zfs_remove also calls vnode_pager_setsize().
-			vnode_setfileobject(vp, IrpSp->FileObject);
+			vnode_couplefileobject(vp, IrpSp->FileObject);
 			if (vnode_unlink(vp)) {
 
 				/*
@@ -4772,8 +4771,8 @@ fsDispatcher(
 				delete_entry(DeviceObject, Irp, IrpSp);
 
 				// It is possible that we can not call recycle, so we must explicitly clear it
-				IrpSp->FileObject->FsContext = NULL;
-
+				if(IrpSp->FileObject)
+					vnode_decouplefileobject((vnode_t*)IrpSp->FileObject->FsContext, IrpSp->FileObject);
 			} else {
 				/*
 				* Leave node alone, VFS layer will release it when appropriate.
@@ -4814,7 +4813,8 @@ fsDispatcher(
 		// Disconnect Windows to vnode now, so they can't use stale vnode data.
 		// When they open file again, znode will have vnode ptr still if available.
 		// Or VFS has called reclaim, and znode was released.
-		IrpSp->FileObject->FsContext = NULL;
+		if(IrpSp->FileObject)
+			vnode_decouplefileobject((vnode_t*)IrpSp->FileObject->FsContext, IrpSp->FileObject);
 		//IrpSp->FileObject->SectionObjectPointer = NULL;
 
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext2) {
