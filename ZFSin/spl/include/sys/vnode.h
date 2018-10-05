@@ -416,14 +416,14 @@ static inline int win_has_cached_data(struct vnode *vp)
 	} while(0)
 #else
 #define vnode_pager_setsize(vp, sz)  do { \
+		vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP((sz), PAGE_SIZE); \
+		vp->FileHeader.FileSize.QuadPart = (sz); \
+		vp->FileHeader.ValidDataLength.QuadPart = (sz); \
 		PFILE_OBJECT fileObject = vnode_fileobject(vp); \
         if (fileObject != NULL && \
 		 (ObReferenceObjectByPointer(fileObject,STANDARD_RIGHTS_REQUIRED,NULL,KernelMode) == STATUS_SUCCESS)) { \
-			CC_FILE_SIZES ccfs; \
-			vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP((sz), PAGE_SIZE); \
-			vp->FileHeader.FileSize.QuadPart = (sz); \
-			vp->FileHeader.ValidDataLength.QuadPart = (sz); \
 			if (CcIsFileCached(fileObject)) { \
+				CC_FILE_SIZES ccfs; \
 				ccfs.AllocationSize = vp->FileHeader.AllocationSize; \
 				ccfs.FileSize = vp->FileHeader.FileSize; \
 				ccfs.ValidDataLength = vp->FileHeader.ValidDataLength; \
