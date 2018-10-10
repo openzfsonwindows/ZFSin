@@ -924,7 +924,7 @@ zfs_write(vnode_t *vp, uio_t *uio, int ioflag, cred_t *cr, caller_context_t *ct)
 	 * in a separate transaction; this keeps the intent log records small
 	 * and allows us to do more fine-grained space accounting.
 	 */
-    dprintf("zfs_write: resid/n %llu : offset %llu (rl_len %llu) blksz %llu\n",
+    dprintf("zfs_write: resid/n %llu : offset %llu (rl_len %llu) blksz %u\n",
            n,uio_offset(uio), rl->r_len, zp->z_blksz );
 
 	while (n > 0) {

@@ -839,7 +839,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 			zfs_inactive(vp, NULL, NULL);
 		}
 
-		vp->fileobject = NULL;
+		//vp->fileobject = NULL; // we decouple the fileobject in zfs_vnop_reclaim
 		// mutex does not need releasing.
 
 		// Tell FS to release node.
