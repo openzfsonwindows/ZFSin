@@ -235,8 +235,8 @@ refcount_transfer(refcount_t *dst, refcount_t *src)
 }
 
 void
-refcount_transfer_ownership(refcount_t *rc, void *current_holder,
-    void *new_holder)
+refcount_transfer_ownership_many(refcount_t *rc, uint64_t number,
+    void *current_holder, void *new_holder)
 {
 	reference_t *ref;
 	boolean_t found = B_FALSE;
@@ -249,7 +249,8 @@ refcount_transfer_ownership(refcount_t *rc, void *current_holder,
 
 	for (ref = list_head(&rc->rc_list); ref;
 	    ref = list_next(&rc->rc_list, ref)) {
-		if (ref->ref_holder == current_holder) {
+		if (ref->ref_holder == current_holder &&
+		    ref->ref_number == number) {
 			ref->ref_holder = new_holder;
 			found = B_TRUE;
 			break;
@@ -257,6 +258,14 @@ refcount_transfer_ownership(refcount_t *rc, void *current_holder,
 	}
 	ASSERT(found);
 	mutex_exit(&rc->rc_mtx);
+}
+
+void
+refcount_transfer_ownership(refcount_t *rc, void *current_holder,
+    void *new_holder)
+{
+	return (refcount_transfer_ownership_many(rc, 1, current_holder,
+	    new_holder));
 }
 
 /*

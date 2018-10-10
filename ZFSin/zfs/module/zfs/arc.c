@@ -3152,7 +3152,8 @@ arc_share_buf(arc_buf_hdr_t *hdr, arc_buf_t *buf)
 	 * refcount ownership to the hdr since it always owns
 	 * the refcount whenever an arc_buf_t is shared.
 	 */
-	refcount_transfer_ownership(&hdr->b_l1hdr.b_state->arcs_size, buf, hdr);
+	refcount_transfer_ownership_many(&hdr->b_l1hdr.b_state->arcs_size,
+	    arc_hdr_size(hdr), buf, hdr);
 	hdr->b_l1hdr.b_pabd = abd_get_from_buf(buf->b_data, arc_buf_size(buf));
 	abd_take_ownership_of_buf(hdr->b_l1hdr.b_pabd,
 	    HDR_ISTYPE_METADATA(hdr));
@@ -3180,7 +3181,8 @@ arc_unshare_buf(arc_buf_hdr_t *hdr, arc_buf_t *buf)
 	 * We are no longer sharing this buffer so we need
 	 * to transfer its ownership to the rightful owner.
 	 */
-	refcount_transfer_ownership(&hdr->b_l1hdr.b_state->arcs_size, hdr, buf);
+	refcount_transfer_ownership_many(&hdr->b_l1hdr.b_state->arcs_size,
+	    arc_hdr_size(hdr), hdr, buf);
 	arc_hdr_clear_flags(hdr, ARC_FLAG_SHARED_DATA);
 	abd_release_ownership_of_buf(hdr->b_l1hdr.b_pabd);
 	abd_put(hdr->b_l1hdr.b_pabd);
