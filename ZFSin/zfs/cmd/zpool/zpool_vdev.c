@@ -634,6 +634,10 @@ is_shorthand_path(const char *arg, char *path,
 	error = zfs_resolve_shortname(arg, path, MAXPATHLEN);
 	if (error == 0) {
 		*wholedisk = is_whole_disk(path);
+#ifdef _WIN32
+		// is_whole_disk currently fail with shortname, lets just say yes.
+		return (0);
+#endif
 		if (*wholedisk || (stat(path, statbuf) == 0))
 			return (0);
 	}
@@ -729,6 +733,8 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 #endif
 		) {
 
+
+
 		/*
 		 * Complete device or file path.  Exact type is determined by
 		 * examining the file descriptor afterwards.  Symbolic links
@@ -737,94 +743,27 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 		 * to store the given path as ZPOOL_CONFIG_PATH to ensure we
 		 * can leverage udev's persistent device labels.
 		 */
-		if (realpath(arg, path) == NULL) {
-			(void) fprintf(stderr,
-			    gettext("cannot resolve path '%s'\n"), arg);
+		 if (realpath(arg, path) == NULL) {
+			(void)fprintf(stderr,
+				gettext("cannot resolve path '%s'\n"), arg);
 			return (NULL);
 		}
 
-#ifdef _WIN32
-		/* Let users use short name like \\.\PHYSICALDISK2 so open
-		* the device and query the full name
-		*/
-		h = CreateFile(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
-		if (h == INVALID_HANDLE_VALUE) {
-			(void)fprintf(stderr,
-				gettext("cannot open '%s': %s\n"),
-				path, strerror(errno));
-			return NULL;
-	}
-
-		PARTITION_INFORMATION partInfo;
-		DWORD retcount = 0;
-		int err;
-		char buf[1024];
-		int isdisk = 0;
-#define IOCTL_MOUNTDEV_QUERY_DEVICE_NAME 0x004d0008
-		err = DeviceIoControl(h,
-			IOCTL_MOUNTDEV_QUERY_DEVICE_NAME,
-			(LPVOID)NULL,
-			(DWORD)0,
-			(LPVOID)buf,
-			sizeof(buf),
-			&retcount,
-			(LPOVERLAPPED)NULL);
-		if (err) isdisk++;
-		fprintf(stderr, "DeviceName said %s with '%S'\n\n", err?"OK":"NG", buf);
-		DISK_GEOMETRY_EX *p = buf;
-		err = DeviceIoControl(h,
-			IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
-			(LPVOID)NULL,
-			(DWORD)0,
-			(LPVOID)buf,
-			sizeof(buf),
-			&retcount,
-			(LPOVERLAPPED)NULL);
-		if (err) isdisk++;
-		fprintf(stderr, "DriveGeometry said %s\n", err ? "OK" : "NG");
-		DRIVE_LAYOUT_INFORMATION_EX *x = buf;
-		err = DeviceIoControl(h,
-			IOCTL_DISK_GET_DRIVE_LAYOUT_EX,
-			(LPVOID)NULL,
-			(DWORD)0,
-			(LPVOID)buf,
-			sizeof(buf),
-			&retcount,
-			(LPOVERLAPPED)NULL);
-		if (err) isdisk++;
-		fprintf(stderr, "LayoutInfo said %s\n", err ? "OK" : "NG");
-		VOLUME_DISK_EXTENTS  *e = buf;
-		err = DeviceIoControl(h,
-			IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
-			(LPVOID)NULL,
-			(DWORD)0,
-			(LPVOID)buf,
-			sizeof(buf),
-			&retcount,
-			(LPOVERLAPPED)NULL);
-		fprintf(stderr, "DiskExtents said %s\n", err ? "OK" : "NG");
-		if (err) isdisk++;
-
-		// If no extents, full disk?
-		if (isdisk)
-			wholedisk = 1;
-		else
-			wholedisk = 0;
-#endif
-
-//		wholedisk = is_whole_disk(path);
+		//		wholedisk = is_whole_disk(path);
 
 #ifndef _WIN32
 		if (!wholedisk && (stat(path, &statbuf) != 0)) {
-			(void) fprintf(stderr,
-			    gettext("cannot open '%s': %s\n"),
-			    path, strerror(errno));
+			(void)fprintf(stderr,
+				gettext("cannot open '%s': %s\n"),
+				path, strerror(errno));
 			return (NULL);
 		}
 #endif
 		/* After is_whole_disk() check restore original passed path */
 		strlcpy(path, arg, MAXPATHLEN);
-	} else {
+
+	} else {  // Doesnt start with "/"
+
 		err = is_shorthand_path(arg, path, &statbuf, &wholedisk);
 		if (err != 0) {
 			/*
@@ -835,21 +774,92 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 			 * can do.
 			 */
 			if (err == ENOENT) {
-				(void) fprintf(stderr,
-				    gettext("cannot open '%s': no such "
-				    "device in %s\n"), arg, ZFS_DISK_ROOT);
-				(void) fprintf(stderr,
-				    gettext("must be a full path or "
-				    "shorthand device name\n"));
+				(void)fprintf(stderr,
+					gettext("cannot open '%s': no such "
+						"device in %s\n"), arg, ZFS_DISK_ROOT);
+				(void)fprintf(stderr,
+					gettext("must be a full path or "
+						"shorthand device name\n"));
 				return (NULL);
 			} else {
-				(void) fprintf(stderr,
-				    gettext("cannot open '%s': %s\n"),
-				    path, strerror(errno));
+				(void)fprintf(stderr,
+					gettext("cannot open '%s': %s\n"),
+					path, strerror(errno));
 				return (NULL);
 			}
 		}
 	}
+
+
+#ifdef _WIN32
+	/* Let users use short name like \\.\PHYSICALDISK2 so open
+	* the device and query the full name
+	*/
+	h = CreateFile(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+	if (h == INVALID_HANDLE_VALUE) {
+		(void)fprintf(stderr,
+			gettext("cannot open '%s': %s\n"),
+			path, strerror(errno));
+		return NULL;
+	}
+
+	PARTITION_INFORMATION partInfo;
+	DWORD retcount = 0;
+	//int err;
+	char buf[1024];
+	int isdisk = 0;
+#define IOCTL_MOUNTDEV_QUERY_DEVICE_NAME 0x004d0008
+	err = DeviceIoControl(h,
+		IOCTL_MOUNTDEV_QUERY_DEVICE_NAME,
+		(LPVOID)NULL,
+		(DWORD)0,
+		(LPVOID)buf,
+		sizeof(buf),
+		&retcount,
+		(LPOVERLAPPED)NULL);
+	if (err) isdisk++;
+	fprintf(stderr, "DeviceName said %s with '%s'\n", err ? "OK" : "NG", buf);
+	DISK_GEOMETRY_EX *p = buf;
+	err = DeviceIoControl(h,
+		IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
+		(LPVOID)NULL,
+		(DWORD)0,
+		(LPVOID)buf,
+		sizeof(buf),
+		&retcount,
+		(LPOVERLAPPED)NULL);
+	if (err) isdisk++;
+	fprintf(stderr, "DriveGeometry said %s\n", err ? "OK" : "NG");
+	DRIVE_LAYOUT_INFORMATION_EX *x = buf;
+	err = DeviceIoControl(h,
+		IOCTL_DISK_GET_DRIVE_LAYOUT_EX,
+		(LPVOID)NULL,
+		(DWORD)0,
+		(LPVOID)buf,
+		sizeof(buf),
+		&retcount,
+		(LPOVERLAPPED)NULL);
+	if (err) isdisk++;
+	fprintf(stderr, "LayoutInfo said %s\n", err ? "OK" : "NG");
+	VOLUME_DISK_EXTENTS  *e = buf;
+	err = DeviceIoControl(h,
+		IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
+		(LPVOID)NULL,
+		(DWORD)0,
+		(LPVOID)buf,
+		sizeof(buf),
+		&retcount,
+		(LPOVERLAPPED)NULL);
+	fprintf(stderr, "DiskExtents said %s\n", err ? "OK" : "NG");
+	if (err) isdisk++;
+
+	// If no extents, full disk?
+	if (isdisk)
+		wholedisk = 1;
+	else
+		wholedisk = 0;
+#endif
+
 
 	/*
 	 * Determine whether this is a device or a file.

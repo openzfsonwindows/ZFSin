@@ -1213,6 +1213,14 @@ zfs_resolve_shortname(const char *name, char *path, size_t len)
 		}
 	}
 
+	/* Ok lets let them say just "PHYSICALDRIVEx" */
+	if (!strncmp("PHYSICALDRIVE", name, 13)) {
+		// Convert to "\\?\PHYSICALDRIVEx"
+		snprintf(path, len, "\\\\?\\%s", name);
+		error = 0;
+		printf("Expanded path to '%s'\n", path);
+	}
+
 out:
 	return (error ? ENOENT : 0);
 }
