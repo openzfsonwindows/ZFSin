@@ -40,7 +40,7 @@
 uint64_t zfs_active_mutex = 0;
 
 #define MUTEX_INITIALISED 0x23456789
-
+#define MUTEX_DESTROYED 0x98765432
 
 #ifdef SPL_DEBUG_MUTEX
 #include <sys/list.h>
@@ -247,7 +247,7 @@ void spl_mutex_destroy(kmutex_t *mp)
 		panic("%s: mutex not initialised\n", __func__);
 		spl_mutex_init(mp, "uhoh", 0, NULL);
 	}
-	mp->initialised = 0;
+	mp->initialised = MUTEX_DESTROYED;
 
 	if (mp->m_owner != 0) panic("SPL: releasing held mutex");
 

@@ -436,7 +436,12 @@ int spl_stop (void)
     spl_rwlock_fini();
 	spl_tsd_fini();
     spl_kmem_fini();
-	spl_kstat_fini();
+	// XXX: we run into a bunch of problems with this kstat_fini stuff, as it calls vmem_fini a second time
+	// after spl_kmem_fini()->kernelheap_fini()->vmem_fini(heap_arena) got called
+	// and therefore destroys global structures twice
+	// so skip that for the moment
+	//
+	// spl_kstat_fini();	
     spl_mutex_subsystem_fini();
     IOLog("SPL: Unloaded module v%s-%s "
           "(os_mem_alloc: %llu)\n",

@@ -1898,8 +1898,9 @@ spl_kstat_fini()
 	 * Done in two passes, first unregisters all
 	 * of the oids, second releases all the memory.
 	 */
-	mutex_destroy(&kstat_chain_lock);
+	
 	vmem_fini(kstat_arena);
+	mutex_destroy(&kstat_chain_lock);
 }
 
 

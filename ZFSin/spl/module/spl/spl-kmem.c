@@ -75,7 +75,7 @@ static boolean_t spl_free_thread_exit;
 static volatile _Atomic int64_t spl_free;
 int64_t spl_free_delta_ema;
 
-static boolean_t spl_event_thread_exit;
+static boolean_t spl_event_thread_exit = FALSE;
 static PKEVENT low_mem_event = NULL;
 
 static volatile _Atomic int64_t spl_free_manual_pressure = 0;
@@ -5371,6 +5371,16 @@ spl_kmem_thread_fini(void)
 {
 	shutting_down = 1;
 
+	if (low_mem_event != NULL) {
+		dprintf("SPL: stopping spl_event_thread\n");
+		spl_event_thread_exit = TRUE;
+		KeSetEvent(low_mem_event, 0, FALSE);
+		while (spl_event_thread_exit) {
+			delay(hz >> 4);
+		}
+		dprintf("SPL: stopped spl_event_thread\n");
+	}
+
 	dprintf("SPL: stop spl_free_thread\n");
 	mutex_enter(&spl_free_thread_lock);
 	dprintf("SPL: stop spl_free_thread, lock acquired, setting exit variable and waiting\n");
@@ -5384,16 +5394,6 @@ spl_kmem_thread_fini(void)
 	dprintf("SPL: spl_free_thread stop: destroying cv and mutex\n");
 	cv_destroy(&spl_free_thread_cv);
 	mutex_destroy(&spl_free_thread_lock);
-
-	if (low_mem_event != NULL) {
-		dprintf("SPL: stopping spl_event_thread\n");
-		spl_event_thread_exit = TRUE;
-		KeSetEvent(low_mem_event, 0, FALSE);
-		while (spl_free_thread_exit) {
-			delay(hz >> 4);
-		}
-		dprintf("SPL: stopped spl_event_thread\n");
-	}
 
 	dprintf("SPL: bsd_untimeout\n");
 
