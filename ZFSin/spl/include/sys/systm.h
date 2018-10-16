@@ -39,7 +39,9 @@ static inline void bsd_untimeout(void(*func)(void *), void *ID)
 	struct bsd_timeout_wrapper *btw = (struct bsd_timeout_wrapper *)ID;
 	LARGE_INTEGER p = { -1 };
 	btw->init = 0;
-	KeSetTimer(&btw->timer, p, NULL);
+	ASSERT(btw->init == BSD_TIMEOUT_MAGIC); // timer was not initialized 
+	if(btw->init == BSD_TIMEOUT_MAGIC)
+		KeSetTimer(&btw->timer, p, NULL);
 }
 
 static inline void bsd_timeout(void *FUNC, void *ID, struct timespec *TIM)
