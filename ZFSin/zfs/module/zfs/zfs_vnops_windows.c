@@ -82,6 +82,7 @@
 
 
 PDEVICE_OBJECT ioctlDeviceObject = NULL;
+PDEVICE_OBJECT fsDiskDeviceObject = NULL;
 
 #ifdef _KERNEL
 
@@ -4293,6 +4294,9 @@ ioctlDispatcher(
 				 * this logic, but some ioctls are really short lived.
 				 */
 				switch (cmd) {
+				case ZFS_IOC_UNREGISTER_FS:
+					Status = zfs_ioc_unregister_fs();
+					break;
 					/*
 					 * So to do ioctl in async mode is a hassle, we have to do the copyin/copyout
 					 * MDL work in *this* thread, as the thread we spawn does not have access.
