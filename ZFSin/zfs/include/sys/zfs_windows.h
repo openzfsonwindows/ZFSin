@@ -29,6 +29,7 @@
 #include <sys/mount.h>
 
 extern PDEVICE_OBJECT ioctlDeviceObject;
+extern PDEVICE_OBJECT fsDiskDeviceObject;
 
 #define ZFS_SERIAL (ULONG)'wZFS'
 #define VOLUME_LABEL			L"ZFS"

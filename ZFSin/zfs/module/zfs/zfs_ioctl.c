@@ -5909,6 +5909,18 @@ zfs_ioctl_register_dataset_modify(zfs_ioc_t ioc, zfs_ioc_legacy_func_t *func,
 							  DATASET_NAME, B_TRUE, POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY);
 }
 
+int
+zfs_ioc_unregister_fs(void) {
+	//IoUnregisterFsRegistrationChange(WIN_DriverObject, DriverNotificationRoutine);
+	dprintf("%s\n", __func__);
+	IoUnregisterFileSystem(fsDiskDeviceObject);
+	IoDeleteDevice(fsDiskDeviceObject);
+	IoDeleteDevice(ioctlDeviceObject);
+	return 0;
+}
+
+//void zfs_ioc_unregister_fs(zfs_cmd_t*);
+
 static void
 zfs_ioctl_init(void)
 {
@@ -6150,6 +6162,12 @@ zfs_ioctl_init(void)
 		zfs_secpolicy_config, NO_NAME, B_FALSE, POOL_CHECK_NONE);
 	zfs_ioctl_register_legacy(ZFS_IOC_UNMOUNT, zfs_ioc_unmount,
 		zfs_secpolicy_config, NO_NAME, B_FALSE, POOL_CHECK_NONE);
+	// cannot send zfs_ioc_unregister_fs as regular zfs ioctl from installer as
+	// we're missing zfs things like zfs_cmd_t and already get kicked out at
+	// inBufLength < sizeof(zfs_cmd_t)
+
+	/*zfs_ioctl_register_legacy(ZFS_IOC_UNREGISTER_FS, zfs_ioc_unregister_fs, 
+		zfs_secpolicy_config, NO_NAME, B_FALSE, POOL_CHECK_NONE);*/
 
 }
 
@@ -6833,7 +6851,7 @@ zfs_attach(void)
 	}
 	dprintf("ZFS: created kernel device node: %p: name %wZ\n", ioctlDeviceObject, ZFS_DEV_KERNEL);
 
-	PDEVICE_OBJECT fsDiskDeviceObject;
+
 	UNICODE_STRING fsDiskDeviceName;
 	RtlInitUnicodeString(&fsDiskDeviceName, ZFS_GLOBAL_FS_DISK_DEVICE_NAME);
 

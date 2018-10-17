@@ -598,8 +598,9 @@ typedef enum zfs_ioc {
 	//ZFS_IOC_WINDOWS= ('Z' << 8) + 0xE0,
 	ZFS_IOC_MOUNT				= CTL_CODE(ZFSIOCTL_TYPE, 0x8E0, METHOD_NEITHER, FILE_ANY_ACCESS),
 	ZFS_IOC_UNMOUNT				= CTL_CODE(ZFSIOCTL_TYPE, 0x8E1, METHOD_NEITHER, FILE_ANY_ACCESS),
+	ZFS_IOC_UNREGISTER_FS		= CTL_CODE(ZFSIOCTL_TYPE, 0x8E2, METHOD_NEITHER, FILE_ANY_ACCESS),
 
-	ZFS_IOC_LAST				= CTL_CODE(ZFSIOCTL_TYPE, 0x8E2, METHOD_NEITHER, FILE_ANY_ACCESS),
+	ZFS_IOC_LAST				= CTL_CODE(ZFSIOCTL_TYPE, 0x8E3, METHOD_NEITHER, FILE_ANY_ACCESS),
 } zfs_ioc_t;
 
 
@@ -658,7 +659,7 @@ extern minor_t zfsdev_minor_alloc(void);
 
 extern int zfs_ioctl_osx_init(void);
 extern int zfs_ioctl_osx_fini(void);
-
+extern int zfs_ioc_unregister_fs(void);
 extern int zfs_vnop_force_formd_normalized_output;
 
 #endif	/* _KERNEL */
