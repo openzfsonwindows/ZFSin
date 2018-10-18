@@ -3567,6 +3567,8 @@ dsl_scan_sync(dsl_pool_t *dp, dmu_tx_t *tx)
 			    (longlong_t)tx->tx_txg);
 		}
 	} else if (scn->scn_is_sorted && scn->scn_bytes_pending != 0) {
+		ASSERT(scn->scn_clearing);
+
 		/* need to issue scrubbing IOs from per-vdev queues */
 		scn->scn_zio_root = zio_root(dp->dp_spa, NULL,
 		    NULL, ZIO_FLAG_CANFAIL);
