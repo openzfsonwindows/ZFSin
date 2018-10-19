@@ -347,4 +347,9 @@ zpool_feature_init(void)
 	    "Support for separate allocation classes.",
 	    ZFEATURE_FLAG_READONLY_COMPAT, NULL);
 	}
+
+	zfeature_register(SPA_FEATURE_RESILVER_DEFER,
+	    "com.datto:resilver_defer", "resilver_defer",
+	    "Support for defering new resilvers when one is already running.",
+	    ZFEATURE_FLAG_READONLY_COMPAT, /*ZFEATURE_TYPE_BOOLEAN,*/ NULL);
 }

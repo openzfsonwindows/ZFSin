@@ -103,6 +103,7 @@ static int zpool_do_split(int, char **);
 
 static int zpool_do_initialize(int, char **);
 static int zpool_do_scrub(int, char **);
+static int zpool_do_resilver(int, char **);
 
 static int zpool_do_import(int, char **);
 static int zpool_do_export(int, char **);
@@ -156,6 +157,7 @@ typedef enum {
 	HELP_REMOVE,
 	HELP_INITIALIZE,
 	HELP_SCRUB,
+	HELP_RESILVER,
 	HELP_STATUS,
 	HELP_UPGRADE,
 	HELP_EVENTS,
@@ -284,6 +286,7 @@ static zpool_command_t command_table[] = {
 	{ NULL },
 	{ "initialize",	zpool_do_initialize,	HELP_INITIALIZE		},
 	{ "scrub",	zpool_do_scrub,		HELP_SCRUB		},
+	{ "resilver",	zpool_do_resilver,	HELP_RESILVER		},
 	{ NULL },
 	{ "import",	zpool_do_import,	HELP_IMPORT		},
 	{ "export",	zpool_do_export,	HELP_EXPORT		},
@@ -368,6 +371,8 @@ get_usage(zpool_help_t idx) {
 		return (gettext("\tinitialize [-cs] <pool> [<device> ...]\n"));
 	case HELP_SCRUB:
 		return (gettext("\tscrub [-s | -p] <pool> ...\n"));
+	case HELP_RESILVER:
+		return (gettext("\tresilver <pool> ...\n"));
 	case HELP_STATUS:
 		return (gettext("\tstatus [-gLPvxD] [-T d|u] [pool] ... "
 		    "[interval [count]]\n"));
@@ -1782,11 +1787,14 @@ print_status_config(zpool_handle_t *zhp, status_cbdata_t *cb, const char *name,
 	(void) nvlist_lookup_uint64_array(nv, ZPOOL_CONFIG_SCAN_STATS,
 	    (uint64_t **)&ps, &c);
 
-	if (ps != NULL && ps->pss_state == DSS_SCANNING &&
-	    vs->vs_scan_processed != 0 && children == 0) {
-		(void) printf(gettext("  (%s)"),
-		    (ps->pss_func == POOL_SCAN_RESILVER) ?
-		    "resilvering" : "repairing");
+	if (ps != NULL && ps->pss_state == DSS_SCANNING && children == 0) {
+		if (vs->vs_scan_processed != 0) {
+			(void) printf(gettext("  (%s)"),
+			    (ps->pss_func == POOL_SCAN_RESILVER) ?
+			    "resilvering" : "repairing");
+		} else if (vs->vs_resilver_deferred) {
+			(void) printf(gettext("  (awaiting resilver)"));
+		}
 	}
 
 	if ((vs->vs_initialize_state == VDEV_INITIALIZE_ACTIVE ||
@@ -6003,7 +6011,7 @@ scrub_callback(zpool_handle_t *zhp, void *data)
 	 * Ignore faulted pools.
 	 */
 	if (zpool_get_state(zhp) == POOL_STATE_UNAVAIL) {
-		(void) fprintf(stderr, gettext("cannot scrub '%s': pool is "
+		(void) fprintf(stderr, gettext("cannot scan '%s': pool is "
 		    "currently unavailable\n"), zpool_get_name(zhp));
 		return (1);
 	}
@@ -6065,6 +6073,43 @@ zpool_do_scrub(int argc, char **argv)
 
 	if (argc < 1) {
 		(void) fprintf(stderr, gettext("missing pool name argument\n"));
+		usage(B_FALSE);
+	}
+
+	return (for_each_pool(argc, argv, B_TRUE, NULL, scrub_callback, &cb));
+}
+
+/*
+ * zpool resilver <pool> ...
+ *
+ *	Restarts any in-progress resilver
+ */
+int
+zpool_do_resilver(int argc, char **argv)
+{
+	int c;
+	scrub_cbdata_t cb;
+
+	cb.cb_type = POOL_SCAN_RESILVER;
+	cb.cb_scrub_cmd = POOL_SCRUB_NORMAL;
+	cb.cb_argc = argc;
+	cb.cb_argv = argv;
+
+	/* check options */
+	while ((c = getopt(argc, argv, "")) != -1) {
+		switch (c) {
+		case '?':
+			(void)fprintf(stderr, gettext("invalid option '%c'\n"),
+				optopt);
+			usage(B_FALSE);
+		}
+	}
+
+	argc -= optind;
+	argv += optind;
+
+	if (argc < 1) {
+		(void)fprintf(stderr, gettext("missing pool name argument\n"));
 		usage(B_FALSE);
 	}
 

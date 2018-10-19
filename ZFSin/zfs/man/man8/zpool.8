@@ -156,6 +156,9 @@
 .Op Fl f
 .Ar pool Ar device Op Ar new_device
 .Nm
+.Cm resilver
+.Ar pool Ns ...
+.Nm
 .Cm scrub
 .Op Fl s | Fl p
 .Ar pool Ns ...
@@ -1743,6 +1746,14 @@ To resume a paused scrub issue
 .Nm zpool Cm scrub
 again.
 .El
+.It Xo
+.Nm
+.Cm resilver
+.Ar pool Ns ...
+.Xc
+Starts a resilver. If an existing resilver is already running it will be
+restarted from the beginning. Any drives that were scheduled for a deferred
+resilver will be added to the new one.
 .It Xo
 .Nm
 .Cm set

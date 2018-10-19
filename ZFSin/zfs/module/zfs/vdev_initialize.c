@@ -247,49 +247,6 @@ vdev_initialize_write(vdev_t *vd, uint64_t start, uint64_t size, abd_t *data)
 }
 
 /*
- * Translate a logical range to the physical range for the specified vdev_t.
- * This function is initially called with a leaf vdev and will walk each
- * parent vdev until it reaches a top-level vdev. Once the top-level is
- * reached the physical range is initialized and the recursive function
- * begins to unwind. As it unwinds it calls the parent's vdev specific
- * translation function to do the real conversion.
- */
-void
-vdev_xlate(vdev_t *vd, const range_seg_t *logical_rs, range_seg_t *physical_rs)
-{
-	/*
-	 * Walk up the vdev tree
-	 */
-	if (vd != vd->vdev_top) {
-		vdev_xlate(vd->vdev_parent, logical_rs, physical_rs);
-	} else {
-		/*
-		 * We've reached the top-level vdev, initialize the
-		 * physical range to the logical range and start to
-		 * unwind.
-		 */
-		physical_rs->rs_start = logical_rs->rs_start;
-		physical_rs->rs_end = logical_rs->rs_end;
-		return;
-	}
-
-	vdev_t *pvd = vd->vdev_parent;
-	ASSERT3P(pvd, !=, NULL);
-	ASSERT3P(pvd->vdev_ops->vdev_op_xlate, !=, NULL);
-
-	/*
-	 * As this recursive function unwinds, translate the logical
-	 * range into its physical components by calling the
-	 * vdev specific translate function.
-	 */
-	range_seg_t intermediate = { { { 0 } } };
-	pvd->vdev_ops->vdev_op_xlate(vd, physical_rs, &intermediate);
-
-	physical_rs->rs_start = intermediate.rs_start;
-	physical_rs->rs_end = intermediate.rs_end;
-}
-
-/*
  * Callback to fill each ABD chunk with zfs_initialize_value. len must be
  * divisible by sizeof (uint64_t), and buf must be 8-byte aligned. The ABD
  * allocation will guarantee these for us.

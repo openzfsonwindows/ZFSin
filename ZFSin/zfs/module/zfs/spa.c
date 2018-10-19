@@ -6412,9 +6412,14 @@ spa_vdev_attach(spa_t *spa, uint64_t guid, nvlist_t *nvroot, int replacing)
 	/*
 	 * Schedule the resilver to restart in the future. We do this to
 	 * ensure that dmu_sync-ed blocks have been stitched into the
-	 * respective datasets.
+	 * respective datasets. We do not do this if resilvers have been
+	 * deferred.
 	 */
-	dsl_resilver_restart(spa->spa_dsl_pool, dtl_max_txg);
+	if (dsl_scan_resilvering(spa_get_dsl(spa)) &&
+	    spa_feature_is_enabled(spa, SPA_FEATURE_RESILVER_DEFER))
+		vdev_set_deferred_resilver(spa, newvd);
+	else
+		dsl_resilver_restart(spa->spa_dsl_pool, dtl_max_txg);
 
 	/*
 	 * Commit the config
@@ -7453,6 +7458,7 @@ spa_async_thread(void *arg)
 {
 	int tasks, i;
 	spa_t *spa = (spa_t *)arg;
+	dsl_pool_t *dp = spa->spa_dsl_pool;
 
 	ASSERT(spa->spa_sync_on);
 
@@ -7527,8 +7533,10 @@ spa_async_thread(void *arg)
 	/*
 	 * Kick off a resilver.
 	 */
-	if (tasks & SPA_ASYNC_RESILVER)
-		dsl_resilver_restart(spa->spa_dsl_pool, 0);
+	if (tasks & SPA_ASYNC_RESILVER &&
+	    (!dsl_scan_resilvering(dp) ||
+	    !spa_feature_is_enabled(dp->dp_spa, SPA_FEATURE_RESILVER_DEFER)))
+		dsl_resilver_restart(dp, 0);
 
 	if (tasks & SPA_ASYNC_INITIALIZE_RESTART) {
 		mutex_enter(&spa_namespace_lock);

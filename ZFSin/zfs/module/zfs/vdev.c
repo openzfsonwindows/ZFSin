@@ -758,6 +758,9 @@ vdev_alloc(spa_t *spa, vdev_t **vdp, nvlist_t *nv, vdev_t *parent, uint_t id,
 		(void) nvlist_lookup_uint64(nv, ZPOOL_CONFIG_RESILVER_TXG,
 		    &vd->vdev_resilver_txg);
 
+		if (nvlist_exists(nv, ZPOOL_CONFIG_RESILVER_DEFER))
+			vdev_set_deferred_resilver(spa, vd);
+
 		/*
 		 * When importing a pool, we want to ignore the persistent fault
 		 * state, as the diagnosis made on another system may not be
@@ -1757,8 +1760,13 @@ vdev_open(vdev_t *vd)
 	 * since this would just restart the scrub we are already doing.
 	 */
 	if (vd->vdev_ops->vdev_op_leaf && !spa->spa_scrub_reopen &&
-	    vdev_resilver_needed(vd, NULL, NULL))
-		spa_async_request(spa, SPA_ASYNC_RESILVER);
+	    vdev_resilver_needed(vd, NULL, NULL)) {
+		if (dsl_scan_resilvering(spa->spa_dsl_pool) &&
+		    spa_feature_is_enabled(spa, SPA_FEATURE_RESILVER_DEFER))
+			vdev_set_deferred_resilver(spa, vd);
+		else
+			spa_async_request(spa, SPA_ASYNC_RESILVER);
+	}
 
 	return (0);
 }
@@ -2464,6 +2472,9 @@ vdev_dtl_should_excise(vdev_t *vd)
 	ASSERT0(vd->vdev_children);
 
 	if (vd->vdev_state < VDEV_STATE_DEGRADED)
+		return (B_FALSE);
+
+	if (vd->vdev_resilver_deferred)
 		return (B_FALSE);
 
 	if (vd->vdev_resilver_txg == 0 ||
@@ -3565,8 +3576,14 @@ vdev_clear(spa_t *spa, vdev_t *vd)
 		if (vd != rvd && vdev_writeable(vd->vdev_top))
 			vdev_state_dirty(vd->vdev_top);
 
-		if (vd->vdev_aux == NULL && !vdev_is_dead(vd))
-			spa_async_request(spa, SPA_ASYNC_RESILVER);
+		if (vd->vdev_aux == NULL && !vdev_is_dead(vd)) {
+			if (dsl_scan_resilvering(spa->spa_dsl_pool) &&
+			    spa_feature_is_enabled(spa,
+			    SPA_FEATURE_RESILVER_DEFER))
+				vdev_set_deferred_resilver(spa, vd);
+			else
+				spa_async_request(spa, SPA_ASYNC_RESILVER);
+		}
 
 		spa_event_notify(spa, vd, NULL, ESC_ZFS_VDEV_CLEAR);
 	}
@@ -3795,6 +3812,8 @@ vdev_get_stats_ex(vdev_t *vd, vdev_stat_t *vs, vdev_stat_ex_t *vsx)
 			vs->vs_fragmentation = (vd->vdev_mg != NULL) ?
 			    vd->vdev_mg->mg_fragmentation : 0;
 		}
+		if (vd->vdev_ops->vdev_op_leaf)
+			vs->vs_resilver_deferred = vd->vdev_resilver_deferred;
 	}
 
 	ASSERT(spa_config_held(vd->vdev_spa, SCL_ALL, RW_READER) != 0);
@@ -4535,4 +4554,55 @@ vdev_deadman(vdev_t *vd)
 		}
 		mutex_exit(&vq->vq_lock);
 	}
+}
+
+/*
+ * Translate a logical range to the physical range for the specified vdev_t.
+ * This function is initially called with a leaf vdev and will walk each
+ * parent vdev until it reaches a top-level vdev. Once the top-level is
+ * reached the physical range is initialized and the recursive function
+ * begins to unwind. As it unwinds it calls the parent's vdev specific
+ * translation function to do the real conversion.
+ */
+void
+vdev_xlate(vdev_t *vd, const range_seg_t *logical_rs, range_seg_t *physical_rs)
+{
+	/*
+	 * Walk up the vdev tree
+	 */
+	if (vd != vd->vdev_top) {
+		vdev_xlate(vd->vdev_parent, logical_rs, physical_rs);
+	} else {
+		/*
+		 * We've reached the top-level vdev, initialize the
+		 * physical range to the logical range and start to
+		 * unwind.
+		 */
+		physical_rs->rs_start = logical_rs->rs_start;
+		physical_rs->rs_end = logical_rs->rs_end;
+		return;
+	}
+
+	vdev_t *pvd = vd->vdev_parent;
+	ASSERT3P(pvd, !=, NULL);
+	ASSERT3P(pvd->vdev_ops->vdev_op_xlate, !=, NULL);
+
+	/*
+	 * As this recursive function unwinds, translate the logical
+	 * range into its physical components by calling the
+	 * vdev specific translate function.
+	 */
+	range_seg_t intermediate = { { { 0, 0 } } };
+	pvd->vdev_ops->vdev_op_xlate(vd, physical_rs, &intermediate);
+
+	physical_rs->rs_start = intermediate.rs_start;
+	physical_rs->rs_end = intermediate.rs_end;
+}
+
+void
+vdev_set_deferred_resilver(spa_t *spa, vdev_t *vd)
+{
+	ASSERT(vd->vdev_ops->vdev_op_leaf);
+	vd->vdev_resilver_deferred = B_TRUE;
+	spa->spa_resilver_deferred = B_TRUE;
 }
