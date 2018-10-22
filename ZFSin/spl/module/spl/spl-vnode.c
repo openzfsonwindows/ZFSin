@@ -1076,16 +1076,25 @@ FILE_OBJECT *vnode_fileobject(vnode_t *vp)
 }
 
 void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) {
+	KIRQL OldIrql;
 	
 	if (fileobject)
 		fileobject->FsContext = vp;
-
-	vnode_setfileobject(vp, fileobject);
+	if (vp) {
+		KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+		vnode_setfileobject(vp, fileobject);
+		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	}
 }
 
 void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) {
+	KIRQL OldIrql;
+	
 	if(fileobject)
 		fileobject->FsContext = NULL;
-	if(vp)
+	if (vp) {
+		KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 		vp->fileobject = NULL;
+		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	}	
 }

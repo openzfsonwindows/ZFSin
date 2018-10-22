@@ -416,6 +416,8 @@ static inline int win_has_cached_data(struct vnode *vp)
 	} while(0)
 #else
 #define vnode_pager_setsize(vp, sz)  do { \
+		KIRQL OldIrql; \
+		KeAcquireSpinLock(&vp->v_spinlock, &OldIrql); \
 		vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP((sz), PAGE_SIZE); \
 		vp->FileHeader.FileSize.QuadPart = (sz); \
 		vp->FileHeader.ValidDataLength.QuadPart = (sz); \
@@ -431,6 +433,7 @@ static inline int win_has_cached_data(struct vnode *vp)
 			} \
 			ObDereferenceObject(fileObject); \
 		} \
+		KeReleaseSpinLock(&vp->v_spinlock, OldIrql); \
 	} while(0)
 #endif
 
