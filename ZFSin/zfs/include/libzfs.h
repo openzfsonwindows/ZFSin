@@ -432,6 +432,7 @@ extern nvlist_t *zpool_search_import(libzfs_handle_t *, importargs_t *);
 extern nvlist_t *zpool_find_import(libzfs_handle_t *, int, char **);
 extern nvlist_t *zpool_find_import_cached(libzfs_handle_t *, const char *,
     char *, uint64_t);
+extern uint64_t GetFileDriveSize(HANDLE h);
 
 /*
  * Miscellaneous pool functions
