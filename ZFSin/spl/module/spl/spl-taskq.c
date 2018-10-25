@@ -535,7 +535,7 @@ int taskq_minimum_nthreads_max = 1;
 
 /* Maximum percentage allowed for TASKQ_THREADS_CPU_PCT */
 #define	TASKQ_CPUPCT_MAX_PERCENT	1000
-int taskq_cpupct_max_percent = TASKQ_CPUPCT_MAX_PERCENT;
+uint_t taskq_cpupct_max_percent = TASKQ_CPUPCT_MAX_PERCENT;
 
 /*
  * Dynamic task queue threads that don't get any work within
@@ -545,7 +545,7 @@ int taskq_cpupct_max_percent = TASKQ_CPUPCT_MAX_PERCENT;
 int taskq_thread_timeout = TASKQ_THREAD_TIMEOUT;
 
 #define	TASKQ_MAXBUCKETS 128
-int taskq_maxbuckets = TASKQ_MAXBUCKETS;
+uint_t taskq_maxbuckets = TASKQ_MAXBUCKETS;
 
 /*
  * When a bucket has no available entries another buckets are tried.
@@ -554,7 +554,7 @@ int taskq_maxbuckets = TASKQ_MAXBUCKETS;
  * spend too much time scanning busy buckets.
  */
 #define	TASKQ_SEARCH_DEPTH 4
-int taskq_search_depth = TASKQ_SEARCH_DEPTH;
+uint_t taskq_search_depth = TASKQ_SEARCH_DEPTH;
 
 /*
  * Hashing function: mix various bits of x. May be pretty much anything.
@@ -909,7 +909,7 @@ void
 system_taskq_init(void)
 {
 	system_taskq = taskq_create_common("system_taskq", 0,
-	    system_taskq_size * max_ncpus, minclsyspri, 4, 512, &p0, 0,
+	    system_taskq_size * max_ncpus, minclsyspri, 4, 512, NULL, 0,
 	    TASKQ_DYNAMIC | TASKQ_PREPOPULATE);
 }
 
@@ -1312,7 +1312,7 @@ taskq_wait(taskq_t *tq)
 
 	if (tq->tq_flags & TASKQ_DYNAMIC) {
 		taskq_bucket_t *b = tq->tq_buckets;
-		int bid = 0;
+		uint_t bid = 0;
 		for (; (b != NULL) && (bid < tq->tq_nbuckets); b++, bid++) {
 			mutex_enter(&b->tqbucket_lock);
 			while (b->tqbucket_nalloc > 0)
@@ -1336,7 +1336,7 @@ taskq_suspend(taskq_t *tq)
 
 	if (tq->tq_flags & TASKQ_DYNAMIC) {
 		taskq_bucket_t *b = tq->tq_buckets;
-		int bid = 0;
+		uint_t bid = 0;
 		for (; (b != NULL) && (bid < tq->tq_nbuckets); b++, bid++) {
 			mutex_enter(&b->tqbucket_lock);
 			b->tqbucket_flags |= TQBUCKET_SUSPEND;
@@ -1371,7 +1371,7 @@ taskq_resume(taskq_t *tq)
 
 	if (tq->tq_flags & TASKQ_DYNAMIC) {
 		taskq_bucket_t *b = tq->tq_buckets;
-		int bid = 0;
+		uint_t bid = 0;
 		for (; (b != NULL) && (bid < tq->tq_nbuckets); b++, bid++) {
 			mutex_enter(&b->tqbucket_lock);
 			b->tqbucket_flags &= ~TQBUCKET_SUSPEND;
@@ -1387,7 +1387,7 @@ taskq_resume(taskq_t *tq)
 }
 
 int
-taskq_member(taskq_t *tq, struct kthread *thread)
+taskq_member(taskq_t *tq, kthread_t *thread)
 {
 	int i;
 
@@ -1801,7 +1801,7 @@ taskq_create(const char *name, int nthreads, pri_t pri, int minalloc,
 	ASSERT((flags & ~TASKQ_INTERFACE_FLAGS) == 0);
 
 	return (taskq_create_common(name, 0, nthreads, pri, minalloc,
-	    maxalloc, &p0, 0, flags | TASKQ_NOINSTANCE));
+	    maxalloc, NULL, 0, flags | TASKQ_NOINSTANCE));
 }
 
 /*
@@ -1825,7 +1825,7 @@ taskq_create_instance(const char *name, int instance, int nthreads, pri_t pri,
 	}
 
 	return (taskq_create_common(name, instance, nthreads,
-	    pri, minalloc, maxalloc, &p0, 0, flags));
+	    pri, minalloc, maxalloc, NULL, 0, flags));
 }
 
 taskq_t *
@@ -1867,7 +1867,7 @@ taskq_create_common(const char *name, int instance, int nthreads, pri_t pri,
 	IMPLY((flags & TASKQ_DYNAMIC), !(flags & TASKQ_DUTY_CYCLE));
 
 	/* Cannot have DUTY_CYCLE with a p0 kernel process */
-	IMPLY((flags & TASKQ_DUTY_CYCLE), proc != &p0);
+	//IMPLY((flags & TASKQ_DUTY_CYCLE), proc != &p0);
 
 	/* Cannot have DC_BATCH without DUTY_CYCLE */
 	ASSERT((flags & (TASKQ_DUTY_CYCLE|TASKQ_DC_BATCH)) != TASKQ_DC_BATCH);
@@ -1960,7 +1960,7 @@ taskq_create_common(const char *name, int instance, int nthreads, pri_t pri,
 	if (flags & TASKQ_DYNAMIC) {
 		taskq_bucket_t *bucket = kmem_zalloc(sizeof (taskq_bucket_t) *
 		    bsize, KM_SLEEP);
-		int b_id;
+		uint_t b_id;
 
 		tq->tq_buckets = bucket;
 
@@ -2028,7 +2028,7 @@ void
 taskq_destroy(taskq_t *tq)
 {
 	taskq_bucket_t *b = tq->tq_buckets;
-	int bid = 0;
+	uint_t bid = 0;
 
 	ASSERT(! (tq->tq_flags & TASKQ_CPR_SAFE));
 
@@ -2152,7 +2152,7 @@ taskq_bucket_extend(void *arg)
 	taskq_ent_t *tqe;
 	taskq_bucket_t *b = (taskq_bucket_t *)arg;
 	taskq_t *tq = b->tqbucket_taskq;
-	int nthreads;
+	uint_t nthreads;
 	kthread_t *thread;
 
 	if (! ENOUGH_MEMORY()) {
@@ -2192,7 +2192,7 @@ taskq_bucket_extend(void *arg)
 	 * for it to be initialized (below).
 	 */
 	tqe->tqent_thread = (kthread_t *)0xCEDEC0DE;
-	thread = thread_create(NULL, 0, (void (*)(void *))taskq_d_thread, tqe, 0, pp0, TS_RUN,
+	thread = thread_create(NULL, 0, (void (*)(void *))taskq_d_thread, tqe, 0, &p0, TS_RUN,
 	                       tq->tq_pri);
 
 	/*
@@ -2248,7 +2248,7 @@ taskq_d_kstat_update(kstat_t *ksp, int rw)
 	struct taskq_d_kstat *tqsp = &taskq_d_kstat;
 	taskq_t *tq = ksp->ks_private;
 	taskq_bucket_t *b = tq->tq_buckets;
-	int bid = 0;
+	uint_t bid = 0;
 
 	if (rw == KSTAT_WRITE)
 		return (EACCES);

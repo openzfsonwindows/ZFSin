@@ -151,7 +151,7 @@ struct taskq {
 	hrtime_t	tq_totaltime;	/* Time spent processing tasks */
 	uint64_t	tq_tasks;	/* Total # of tasks posted */
 	uint64_t	tq_executed;	/* Total # of tasks executed */
-	int		tq_maxtasks;	/* Max number of tasks in the queue */
+	uint64_t		tq_maxtasks;	/* Max number of tasks in the queue */
 	int		tq_tcreates;
 	int		tq_tdeaths;
 };

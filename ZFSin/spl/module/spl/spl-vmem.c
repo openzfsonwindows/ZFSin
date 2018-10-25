@@ -868,7 +868,7 @@ static void
 vmem_span_destroy(vmem_t *vmp, vmem_seg_t *vsp)
 {
 	vmem_seg_t *span = vsp->vs_aprev;
-	uint32_t size = VS_SIZE(vsp);
+	uintptr_t size = VS_SIZE(vsp);
 
 	ASSERT(MUTEX_HELD(&vmp->vm_lock));
 	ASSERT(span->vs_type == VMEM_SPAN);
@@ -893,7 +893,7 @@ vmem_seg_alloc(vmem_t *vmp, vmem_seg_t *vsp, uintptr_t addr, uint32_t size)
 {
 	uintptr_t vs_start = vsp->vs_start;
 	uintptr_t vs_end = vsp->vs_end;
-	uint32_t vs_size = vs_end - vs_start;
+	uint32_t vs_size = (uint32_t)(vs_end - vs_start);
 	uint32_t realsize = P2ROUNDUP(size, vmp->vm_quantum);
 	uintptr_t addr_end = addr + realsize;
 
@@ -1347,7 +1347,7 @@ vmem_xalloc(vmem_t *vmp, uint32_t size, uint32_t align_arg, uint32_t phase,
 	vmem_seg_t *vsp;
 	vmem_seg_t *vbest = NULL;
 	uintptr_t addr, taddr, start, end;
-	uintptr_t align = (align_arg != 0) ? align_arg : vmp->vm_quantum;
+	uint32_t align = (align_arg != 0) ? align_arg : vmp->vm_quantum;
 	void *vaddr, *xvaddr = NULL;
 	uint32_t xsize;
 	int hb, flist, resv;
@@ -2323,7 +2323,7 @@ vmem_bucket_number(uint32_t size)
         if (bucket < 0)
                 bucket = 0;
 
-	return (bucket);
+	return ((uint16_t)bucket);
 }
 
 static inline vmem_t *
@@ -2871,7 +2871,7 @@ vmem_bucket_alloc(vmem_t *null_vmp, uint32_t size, const int vmflags)
 		if (timedout > 0 || local_memory_blocked > 0) {
 			wait_time = MSEC2NSEC(1);
 		}
-		int ret = cv_timedwait_hires(&calling_arena->vm_cv, &calling_arena->vm_lock,
+		int ret = (int) cv_timedwait_hires(&calling_arena->vm_cv, &calling_arena->vm_lock,
 		    wait_time, 0, 0);
 		// We almost certainly have exited because of a signal/broadcast,
 		// but maybe just timed out.  Either way, recheck memory.
@@ -3021,7 +3021,7 @@ vmem_bucket_free(vmem_t *null_vmp, void *vaddr, uint32_t size)
 }
 
 static inline int64_t
-vmem_bucket_arena_free(uint16_t bucket)
+vmem_bucket_arena_free(int bucket)
 {
 	VERIFY(bucket < VMEM_BUCKETS);
 	return((int64_t)vmem_size_semi_atomic(vmem_bucket_arena[bucket], VMEM_FREE));
@@ -3076,7 +3076,7 @@ spl_modify_bucket_span_size(int bucket, uint64_t size)
 	vmem_t *bvmp = vmem_bucket_arena[bucket];
 
 	mutex_enter(&bvmp->vm_lock);
-	bvmp->vm_min_import = size;
+	bvmp->vm_min_import = (uint32_t)size;
 	mutex_exit(&bvmp->vm_lock);
 }
 

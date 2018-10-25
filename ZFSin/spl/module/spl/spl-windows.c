@@ -147,7 +147,7 @@ ddi_copyin(const void *from, void *to, uint32_t len, int flags)
 	dprintf("SPL: trying windows copyin: %p:%d\n", from, len);
 
 	try {
-		ProbeForRead(from, len, sizeof(UCHAR));
+		ProbeForRead((void *)from, len, sizeof(UCHAR));
 	}
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -156,7 +156,7 @@ ddi_copyin(const void *from, void *to, uint32_t len, int flags)
 	}
 	if (error) goto end;
 
-	mdl = IoAllocateMdl(from, len, FALSE, TRUE, NULL);
+	mdl = IoAllocateMdl((void *)from, len, FALSE, TRUE, NULL);
 	if (!mdl) {
 		error = STATUS_INSUFFICIENT_RESOURCES;
 		goto end;
@@ -344,7 +344,7 @@ int ddi_copyinstr(const void *uaddr, void *kaddr, uint32_t len, uint32_t *done)
 {
 	int ret = 0;
 
-	ret = ddi_copyin((user_addr_t)uaddr, kaddr, len, FCOPYSTR);
+	ret = ddi_copyin((const void *)uaddr, kaddr, len, FCOPYSTR);
 	if ((ret == STATUS_SUCCESS) && done) {
 		*done = strlen(kaddr) + 1; // copyinstr includes the NULL byte
 	}

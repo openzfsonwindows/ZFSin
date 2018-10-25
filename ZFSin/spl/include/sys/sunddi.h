@@ -120,9 +120,9 @@ int	ddi_strtoull(const char *, char **, int, unsigned long long *);
 int	ddi_strtoul(const char *, char **, int, unsigned long *);
 int	ddi_strtol(const char *, char **, int, long *);
 int	ddi_soft_state_init(void **, uint32_t, uint32_t);
-int	ddi_soft_state_zalloc(void *, int);
-void	*ddi_get_soft_state(void *, int);
-void	ddi_soft_state_free(void *, int);
+int	ddi_soft_state_zalloc(void *, uint32_t);
+void	*ddi_get_soft_state(void *, uint32_t);
+void	ddi_soft_state_free(void *, uint32_t);
 void	ddi_soft_state_fini(void **);
 int	ddi_create_minor_node(dev_info_t *, char *, int,
                               minor_t, char *, int);

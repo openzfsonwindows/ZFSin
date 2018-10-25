@@ -186,6 +186,7 @@ extern void spl_cleanup(void);
  * For some reason Windows makes some of these signed, and everything goes to hell.
  * But may have put in too many (uint64_t), check this
  */
+#pragma warning( disable : 4146 )
 #define P2ALIGN(x, align)	(((uint64_t)x) & -((uint64_t)align))
 #define P2CROSS(x, y, align)	((((uint64_t)x) ^ ((uint64_t)y)) > ((uint64_t)align) - 1)
 #define P2ROUNDUP(x, align)	(-(-((uint64_t)x) & -((uint64_t)align)))
@@ -196,7 +197,7 @@ extern void spl_cleanup(void);
 #define P2BOUNDARY(off, len, align) \
 				((((uint64_t)off) ^ (((uint64_t)off) + ((uint64_t)len) - 1)) > ((uint64_t)align) - 1)
 
-/*
+ /*
  * Typed version of the P2* macros.  These macros should be used to ensure
  * that the result is correctly calculated based on the data type of (x),
  * which is passed in as the last argument, regardless of the data

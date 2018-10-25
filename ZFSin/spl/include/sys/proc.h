@@ -5,7 +5,8 @@
 //#include <sys/ucred.h>
 //#include_next <sys/proc.h>
 //#include <sys/kernel_types.h>
-typedef struct proc { void *something; } proc_t;
+//typedef struct proc { void *something; } proc_t;
+typedef  struct _KPROCESS proc_t;
 extern proc_t p0;              /* process 0 */
 #define current_proc PsGetCurrentProcess
 

@@ -98,7 +98,7 @@ extern uint32_t cpu_number();
 extern void Debugger(const char *message);
 
 // Read from /dev/random
-ULONG RtlRandomEx(PULONG Seed);
+//ULONG RtlRandomEx(PULONG Seed);
 
 // ===============================================================
 // Non Illumos Variables
@@ -654,7 +654,7 @@ static spl_stats_t spl_stats = {
 	{"vmem_conditional_allocs", KSTAT_DATA_UINT64},
 	{"vmem_conditional_alloc_bytes", KSTAT_DATA_UINT64},
 	{"vmem_conditional_alloc_deny", KSTAT_DATA_UINT64},
-	{"vmem_conditional_alloc_deny_bytes", KSTAT_DATA_UINT64},
+	{"vmem_conditional_alloc_deny_b", KSTAT_DATA_UINT64},
 
 	{"spl_xat_success", KSTAT_DATA_UINT64},
 	{"spl_xat_late_success", KSTAT_DATA_UINT64},
@@ -686,13 +686,12 @@ static spl_stats_t spl_stats = {
 	{"spl_buckets_mem_free", KSTAT_DATA_UINT64},
 	{"spl_arc_no_grow_bits", KSTAT_DATA_UINT64},
 	{"spl_arc_no_grow_count", KSTAT_DATA_UINT64},
-
 	{"spl_vmem_frag_max_walk", KSTAT_DATA_UINT64},
 	{"spl_vmem_frag_walked_out", KSTAT_DATA_UINT64},
 	{"spl_vmem_frag_walk_cnt", KSTAT_DATA_UINT64},
 	{"spl_arc_reclaim_avoided", KSTAT_DATA_UINT64},
 
-	{"kmem_free_to_slab_when_fragmented", KSTAT_DATA_UINT64},
+	{"kmem_free_to_slab_when_frag", KSTAT_DATA_UINT64},
 };
 
 static kstat_t *spl_ksp = 0;
@@ -730,7 +729,7 @@ random_get_bytes(uint8_t *ptr, uint32_t len)
 
 	KeQueryTickCount(&TickCount);
 
-	b = ptr;
+	b = (PULONG)ptr;
 
 	for (i = 0; i < len / sizeof(ULONG); i++)
         b[i] = RtlRandomEx(&TickCount.LowPart);
@@ -2471,12 +2470,14 @@ kmem_cache_free(kmem_cache_t *cp, void *buf)
 		 * If there's a slot available in the current CPU's
 		 * loaded magazine, just put the object there and return.
 		 */
+#pragma warning( disable : 4018 )
 		if ((uint_t)ccp->cc_rounds < ccp->cc_magsize) {
 			ccp->cc_loaded->mag_round[ccp->cc_rounds++] = buf;
 			ccp->cc_free++;
 			mutex_exit(&ccp->cc_lock);
 			return;
 		}
+#pragma warning( default : 4018 )
 
 		/*
 		 * If the magazine layer is disabled, break out now.
@@ -2601,6 +2602,7 @@ kmem_slab_prefill(kmem_cache_t *cp, kmem_slab_t *sp)
 		 * loaded magazine, just put the object there and
 		 * continue.
 		 */
+#pragma warning( disable : 4018 )
 		if ((uint_t)ccp->cc_rounds < ccp->cc_magsize) {
 			ccp->cc_loaded->mag_round[ccp->cc_rounds++] =
 			buf;
@@ -2609,6 +2611,7 @@ kmem_slab_prefill(kmem_cache_t *cp, kmem_slab_t *sp)
 			head = head->bc_next;
 			continue;
 		}
+#pragma warning( default : 4018 )
 
 		/*
 		 * The loaded magazine is full.  If the previously
@@ -2852,7 +2855,7 @@ kmem_reap_timeout(void *flag_arg)
 {
 	uint32_t *flag = (uint32_t *)flag_arg;
 
-	ASSERT(flag == &kmem_reaping || flag == &kmem_reaping_idspace);
+	ASSERT(flag == (uint32_t *)&kmem_reaping || flag == (uint32_t *)&kmem_reaping_idspace);
 	*flag = 0;
 }
 
@@ -4453,7 +4456,7 @@ spl_maybe_send_large_pressure(uint64_t now, uint64_t minutes, boolean_t full)
 }
 
 static void
-spl_free_thread()
+spl_free_thread(void *notused)
 {
 	callb_cpr_t cpr;
 	uint64_t last_update = zfs_lbolt();
@@ -4925,7 +4928,7 @@ spl_free_thread()
 }
 
 static void
-spl_event_thread()
+spl_event_thread(void *notused)
 {
 	callb_cpr_t cpr;
 	NTSTATUS Status;
@@ -5187,14 +5190,14 @@ spl_kmem_init(uint64_t xtotal_memory)
 
 	if (kmem_flags & (KMF_AUDIT | KMF_RANDOMIZE)) {
 		if (kmem_transaction_log_size == 0)
-			kmem_transaction_log_size = MIN(kmem_maxavail() / 50ULL,
+			kmem_transaction_log_size = (uint32_t)MIN(kmem_maxavail() / 50ULL,
 											PAGESIZE<<4);
 		kmem_transaction_log = kmem_log_init(kmem_transaction_log_size);
 	}
 
 	if (kmem_flags & (KMF_CONTENTS | KMF_RANDOMIZE)) {
 		if (kmem_content_log_size == 0)
-			kmem_content_log_size = MIN(kmem_maxavail() / 50ULL,
+			kmem_content_log_size = (uint32_t)MIN(kmem_maxavail() / 50ULL,
 										PAGESIZE<<4);
 		kmem_content_log = kmem_log_init(kmem_content_log_size);
 	}
@@ -5267,13 +5270,13 @@ spl_kmem_fini(void)
 
 	if (kmem_flags & (KMF_CONTENTS | KMF_RANDOMIZE)) {
 		if (kmem_content_log_size == 0)
-			kmem_content_log_size = kmem_maxavail() / 50;
+			kmem_content_log_size = (uint32_t)kmem_maxavail() / 50ULL;
 		kmem_log_fini(kmem_content_log);
 	}
 
 	if (kmem_flags & (KMF_AUDIT | KMF_RANDOMIZE)) {
 		if (kmem_transaction_log_size == 0)
-			kmem_transaction_log_size = kmem_maxavail() / 50;
+			kmem_transaction_log_size = (uint32_t)kmem_maxavail() / 50ULL;
 		kmem_log_fini(kmem_transaction_log);
 	}
 
@@ -6461,7 +6464,7 @@ kmem_cache_scan(kmem_cache_t *cp)
 uint32_t
 kmem_size(void)
 {
-	return (total_memory); // smd
+	return ((uint32_t)total_memory); // smd
 }
 
 // this is used in arc_reclaim_needed.  if 1, reclaim is needed.

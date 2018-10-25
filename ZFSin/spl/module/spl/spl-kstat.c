@@ -1372,7 +1372,7 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	copysize = kbufsize;
 
 	switch (model) {
-		int i;
+		uint_t i;
 #ifdef _MULTI_DATAMODEL
 		kstat32_t *k32;
 		kstat_t *k;
@@ -1695,7 +1695,7 @@ write_kstat_data(int *rvalp, void *user_ksp, int flag, cred_t *cred)
 		void *kbuf;
 		kstat_named_t *kold;
 		kstat_named_t *knew = buf;
-		int i;
+		uint_t i;
 
 #ifdef	_MULTI_DATAMODEL
 		int model = ddi_model_convert_from(flag & FMODELS);

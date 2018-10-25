@@ -67,7 +67,7 @@ ddi_soft_state_init(void **state_p, uint32_t size, uint32_t n_items)
  * allow the requested offset, if needed.
  */
 int
-ddi_soft_state_zalloc(void *state, int item)
+ddi_soft_state_zalloc(void *state, uint32_t item)
 {
 	struct i_ddi_soft_state *ss;
 	void **array;
@@ -179,7 +179,7 @@ ddi_soft_state_zalloc(void *state, int item)
  * ddi_soft_state_fini() time.
  */
 void *
-ddi_get_soft_state(void *state, int item)
+ddi_get_soft_state(void *state, uint32_t item)
 {
 	struct i_ddi_soft_state *ss = state;
 
@@ -201,7 +201,7 @@ ddi_get_soft_state(void *state, int item)
  * provoke an error message.
  */
 void
-ddi_soft_state_free(void *state, int item)
+ddi_soft_state_free(void *state, uint32_t item)
 {
 	struct i_ddi_soft_state *ss;
 	void **array;
@@ -253,7 +253,7 @@ void
 ddi_soft_state_fini(void **state_p)
 {
 	struct i_ddi_soft_state *ss, *dirty;
-	int item;
+	uint32_t item;
 	static char msg[] = "ddi_soft_state_fini:";
 
 	if (state_p == NULL || (ss = *state_p) == NULL) {
@@ -473,9 +473,8 @@ ddi_strtoull(const char *str, char **nptr, int base, unsigned long long *result)
 	return (0);
 }
 
+#include <sys/stropts.h>
 #define LONG_BIT 64
-#define IDX(c)  ((uint8_t)(c) / LONG_BIT)
-#define BIT(c)  ((u_long)1 << ((uint8_t)(c) % LONG_BIT))
 
 uint32_t
 ddi_strcspn(const char * __restrict s, const char * __restrict charset)
@@ -507,7 +506,7 @@ ddi_strcspn(const char * __restrict s, const char * __restrict charset)
 		if ((tbl[idx] & bit) != 0)
 			break;
 		}
-	return (s1 - s);
+	return (uint32_t)(s1 - s);
 }
 
 extern uint32_t
@@ -526,7 +525,7 @@ strlcpy(register char* s, register const char* t, register uint32_t n)
 		} while (*s++ = *t++);
 		if (!n)
 			while (*t++);
-		return t - o - 1;
+		return (uint32_t)(t - o - 1);
 }
 
 extern uint32_t

@@ -82,13 +82,13 @@ typedef enum uio_seg { UIO_USERSPACE, UIO_SYSSPACE, UIO_USERISPACE } uio_seg_t;
 
 typedef struct uio {
 	iovec_t		*uio_iov;	/* pointer to array of iovecs */
-	int		uio_iovcnt;	/* number of iovecs */
+	uint32_t		uio_iovcnt;	/* number of iovecs */
 	loff_t		uio_offset;	/* file offset */
 	uio_seg_t	uio_segflg;	/* address space (kernel or user) */
 	loff_t		uio_limit;	/* u-limit (maximum byte offset) */
 	ssize_t		uio_resid;	/* residual count */
 	enum uio_rw     uio_rw;
-	int         uio_max_iovs;   /* max number of iovecs this uio_t can hold */
+	uint32_t         uio_max_iovs;   /* max number of iovecs this uio_t can hold */
 	uint32_t    uio_index;      /* Current index */
 } uio_t;
 
@@ -99,7 +99,7 @@ uio_t *uio_create(int iovcount, off_t offset, int spacetype, int iodirection);
 void uio_free(uio_t *uio);
 int uio_addiov(uio_t *uio, user_addr_t baseaddr, user_size_t length);
 int uio_isuserspace(uio_t *uio);
-int uio_getiov(uio_t *uio, int index, user_addr_t *baseaddr, user_size_t *length);
+int uio_getiov(uio_t *uio, uint_t index, user_addr_t *baseaddr, user_size_t *length);
 int uio_iovcnt(uio_t *uio);
 off_t uio_offset(uio_t *uio);
 void uio_update(uio_t *uio, user_size_t count);
@@ -112,7 +112,7 @@ int uio_rw(uio_t *a_uio);
 void uio_setrw(uio_t *a_uio, int a_value);
 
 int	uiomove(void *, uint32_t, enum uio_rw, struct uio *);
-int	spl_uiomove(const uint8_t *, uint32_t, struct uio *);
+int	spl_uiomove(uint8_t *, uint32_t, struct uio *);
 int	uiocopy(void *, uint32_t, enum uio_rw, struct uio *, uint64_t *);
 void uioskip(struct uio *, uint32_t);
 int	uiodup(struct uio *, struct uio *, iovec_t *, int);
@@ -162,7 +162,7 @@ typedef struct xuio {
 * same as uiomove() but doesn't modify uio structure.
 * return in cbytes how many bytes were copied.
 */
-static inline int uiocopy(const char *p, uint32_t n, enum uio_rw rw, struct uio *uio, uint64_t *cbytes) \
+static inline int uiocopy(char *p, uint32_t n, enum uio_rw rw, struct uio *uio, uint64_t *cbytes) \
 {                                                                       \
 int result;                                                         \
 struct uio *nuio = uio_duplicate(uio);                              \

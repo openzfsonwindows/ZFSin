@@ -76,7 +76,7 @@ extern "C" {
 		vmem_seg_t	*vs_kprev;	/* prev of kin */
 	} vmem_freelist_t;
 
-#define	VS_SIZE(vsp)	((vsp)->vs_end - (vsp)->vs_start)
+#define	VS_SIZE(vsp)	(uint32_t)((vsp)->vs_end - (vsp)->vs_start)
 
 	/*
 	 * Segment hashing

@@ -92,12 +92,12 @@ spl_thread_create(
         //thread_deallocate(thread);
 
         atomic_inc_64(&zfs_threads);
-		int threadid;
+		void *threadid;
 #include <ntddk.h>
 		PETHREAD eThread;
 		HANDLE PsGetThreadId();
 		ObReferenceObjectByHandle(thread, 0, 0, KernelMode, &eThread, 0);
-		threadid = PsGetThreadId(eThread);
+		threadid = (void *)PsGetThreadId(eThread);
 		ObDereferenceObject(eThread);
 		ZwClose(thread);
         return ((kthread_t *)threadid);

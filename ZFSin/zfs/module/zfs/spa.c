@@ -977,11 +977,9 @@ spa_taskqs_init(spa_t *spa, zio_type_t t, zio_taskq_type_t q)
 			(void) snprintf(name, sizeof (name), "%s_%s",
 			    zio_type_name[t], zio_taskq_types[q]);
 		}
-
-		if (zio_taskq_sysdc && spa->spa_proc != &p0) {
+		if (zio_taskq_sysdc && spa->spa_proc != NULL /*&p0*/) {
 			if (batch)
 				flags |= TASKQ_DC_BATCH;
-
 			tq = taskq_create_sysdc(name, value, 50, INT_MAX,
 			    spa->spa_proc, zio_taskq_basedc, flags);
 		} else {
@@ -1176,7 +1174,7 @@ spa_activate(spa_t *spa, int mode)
 	/* Try to create a covering process */
 	mutex_enter(&spa->spa_proc_lock);
 	ASSERT(spa->spa_proc_state == SPA_PROC_NONE);
-	ASSERT(spa->spa_proc == &p0);
+	//ASSERT(spa->spa_proc == &p0);
 	spa->spa_did = 0;
 
 #ifdef HAVE_SPA_THREAD
@@ -1203,10 +1201,12 @@ spa_activate(spa_t *spa, int mode)
 #endif /* HAVE_SPA_THREAD */
 	mutex_exit(&spa->spa_proc_lock);
 
+#ifdef illumos
 	/* If we didn't create a process, we need to create our taskqs. */
 	if (spa->spa_proc == &p0) {
 		spa_create_zio_taskqs(spa);
 	}
+#endif
 
 	for (size_t i = 0; i < TXG_SIZE; i++) {
 		spa->spa_txg_zio[i] = zio_root(spa, NULL, NULL,
@@ -1326,13 +1326,13 @@ spa_deactivate(spa_t *spa)
 		spa->spa_proc_state = SPA_PROC_DEACTIVATE;
 		cv_broadcast(&spa->spa_proc_cv);
 		while (spa->spa_proc_state == SPA_PROC_DEACTIVATE) {
-			ASSERT(spa->spa_proc != &p0);
+			//ASSERT(spa->spa_proc != &p0);
 			cv_wait(&spa->spa_proc_cv, &spa->spa_proc_lock);
 		}
 		ASSERT(spa->spa_proc_state == SPA_PROC_GONE);
 		spa->spa_proc_state = SPA_PROC_NONE;
 	}
-	ASSERT(spa->spa_proc == &p0);
+	//ASSERT(spa->spa_proc == &p0);
 	mutex_exit(&spa->spa_proc_lock);
 
 	/*

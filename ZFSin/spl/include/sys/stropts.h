@@ -161,8 +161,8 @@ kmemchr(const void *s, int c, size_t n)
     return (NULL);
 }
 
-#define IDX(c)  ((u_char)(c) / LONG_BIT)
-#define BIT(c)  ((u_long)1 << ((u_char)(c) % LONG_BIT))
+#define IDX(c)  ((uint8_t)(c) / LONG_BIT)
+#define BIT(c)  ((u_long)1 << ((uint8_t)(c) % LONG_BIT))
 
 
 #ifdef __cplusplus

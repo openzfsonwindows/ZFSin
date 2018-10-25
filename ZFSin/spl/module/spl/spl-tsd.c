@@ -296,7 +296,7 @@ void tsd_thread_exit(void)
 	spl_tsd_node_t *entry = NULL;
 	spl_tsd_node_t search;
 	avl_index_t loc;
-	int i;
+	uint32_t i;
 
 	search.tsd_thread = current_thread();
 

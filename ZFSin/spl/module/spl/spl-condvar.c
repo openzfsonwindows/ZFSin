@@ -270,6 +270,6 @@ cv_timedwait_hires(kcondvar_t *cvp, kmutex_t *mp, hrtime_t tim,
 #ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, gethrestime_sec());
 #endif
-
-	return (result == STATUS_TIMEOUT ? -1 : 0);
+	// We should return "-1" for timeout (including 0 time left), or "timeleft".
+	return ((clock_t)result == STATUS_TIMEOUT ? -1 : 0);
 }

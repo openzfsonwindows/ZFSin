@@ -38,7 +38,7 @@
 uio_t *uio_create(int iovcount, off_t offset, int spacetype, int iodirection)
 {
 	void *                          my_buf_p;
-	uint64_t                        my_size;
+	uint32_t                        my_size;
 	uio_t                          *my_uio;
 
 	// Future, make sure the uio struct is aligned, and do one alloc for uio and iovec
@@ -78,10 +78,10 @@ int uio_addiov(uio_t *uio, user_addr_t baseaddr, user_size_t length)
 	ASSERT(uio != NULL);
 	ASSERT(uio->uio_iov != NULL);
 
-	for (int i = 0; i < uio->uio_max_iovs; i++) {
+	for (uint_t i = 0; i < uio->uio_max_iovs; i++) {
 		if (uio->uio_iov[i].iov_len == 0 && uio->uio_iov[i].iov_base == 0) {
 			uio->uio_iov[i].iov_len = (uint64_t)length;
-			uio->uio_iov[i].iov_base = (uint64_t)baseaddr;
+			uio->uio_iov[i].iov_base = (void *)baseaddr;
 			uio->uio_iovcnt++;
 			uio->uio_resid += length;
 			return(0);
@@ -99,7 +99,7 @@ int uio_isuserspace(uio_t *uio)
 	return 0;
 }
 
-int uio_getiov(uio_t *uio, int index, user_addr_t *baseaddr, user_size_t *length)
+int uio_getiov(uio_t *uio, uint_t index, user_addr_t *baseaddr, user_size_t *length)
 {
 	ASSERT(uio != NULL);
 	ASSERT(uio->uio_iov != NULL);
@@ -109,7 +109,7 @@ int uio_getiov(uio_t *uio, int index, user_addr_t *baseaddr, user_size_t *length
 	}
 
 	if (baseaddr != NULL) {
-		*baseaddr = uio->uio_iov[index].iov_base;
+		*baseaddr = (user_addr_t)uio->uio_iov[index].iov_base;
 	}
 	if (length != NULL) {
 		*length = uio->uio_iov[index].iov_len;
@@ -275,7 +275,7 @@ uio_t *uio_duplicate(uio_t *a_uio)
 	return(my_uio);
 }
 
-int spl_uiomove(const uint8_t *c_cp, uint32_t n, struct uio *uio)
+int spl_uiomove(uint8_t *c_cp, uint32_t n, struct uio *uio)
 {
 	uint8_t *cp = c_cp;
 	uint64_t acnt;
@@ -304,7 +304,7 @@ int spl_uiomove(const uint8_t *c_cp, uint32_t n, struct uio *uio)
 		}
 		uio_update(uio, acnt);
 		cp += acnt;
-		n -= acnt;
+		n -= (uint32_t)acnt;
 	}
 	ASSERT0(n);
 	return (error);
