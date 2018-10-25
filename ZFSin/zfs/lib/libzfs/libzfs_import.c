@@ -1992,6 +1992,23 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 						break;
 					}
 				}
+				// in case we have a disk without partition, it would be possible that the
+				// disk itself contains a pool, so let's check that
+				if (partitions->PartitionCount == 0) {
+					slice = zfs_alloc(hdl, sizeof(rdsk_node_t));
+					char diskname[1024];
+
+					// Do the lundman trick
+					snprintf(diskname, sizeof(diskname), "#%llu#%llu#%s",
+						0, GetFileDriveSize(disk), deviceInterfaceDetailData->DevicePath);
+
+					slice->rn_name = zfs_strdup(hdl, diskname);
+					slice->rn_avl = &slice_cache;
+					slice->rn_hdl = hdl;
+					slice->rn_nozpool = B_FALSE;
+					avl_add(&slice_cache, slice);
+				}
+
 				free(partitions);
 			}
 			else {
@@ -1999,15 +2016,6 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 			}
 
 			CloseHandle(disk);
-
-			slice = zfs_alloc(hdl, sizeof(rdsk_node_t));
-			slice->rn_name = zfs_strdup(hdl, deviceInterfaceDetailData->DevicePath);
-			slice->rn_avl = &slice_cache;
-
-			slice->rn_hdl = hdl;
-			slice->rn_nozpool = B_FALSE;
-			avl_add(&slice_cache, slice);
-
 
 			// Add the whole physical device, but lets also try to read EFI off it.
 			disk = CreateFile(deviceInterfaceDetailData->DevicePath,
