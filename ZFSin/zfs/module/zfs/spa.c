@@ -1201,12 +1201,9 @@ spa_activate(spa_t *spa, int mode)
 #endif /* HAVE_SPA_THREAD */
 	mutex_exit(&spa->spa_proc_lock);
 
-#ifdef illumos
-	/* If we didn't create a process, we need to create our taskqs. */
-	if (spa->spa_proc == &p0) {
-		spa_create_zio_taskqs(spa);
-	}
-#endif
+
+	spa_create_zio_taskqs(spa);
+
 
 	for (size_t i = 0; i < TXG_SIZE; i++) {
 		spa->spa_txg_zio[i] = zio_root(spa, NULL, NULL,
