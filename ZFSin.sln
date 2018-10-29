@@ -71,6 +71,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libkstat", "ZFSin\zfs\lib\l
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "kstat", "ZFSin\zfs\cmd\kstat\kstat.vcxproj", "{124252BB-55ED-429B-AF4B-9D19043912D1}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zfsinstaller", "zfsinstaller\zfsinstaller.vcxproj", "{D8FFC7E2-16B5-4A68-86BD-C570669EA263}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM = Debug|ARM
@@ -733,6 +735,26 @@ Global
 		{124252BB-55ED-429B-AF4B-9D19043912D1}.ReleaseWithoutAsm|x64.Build.0 = Release|x64
 		{124252BB-55ED-429B-AF4B-9D19043912D1}.ReleaseWithoutAsm|x86.ActiveCfg = Release|Win32
 		{124252BB-55ED-429B-AF4B-9D19043912D1}.ReleaseWithoutAsm|x86.Build.0 = Release|Win32
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Debug|ARM.ActiveCfg = Debug|Win32
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Debug|ARM64.ActiveCfg = Debug|Win32
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Debug|x64.ActiveCfg = Debug|x64
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Debug|x64.Build.0 = Debug|x64
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Debug|x86.ActiveCfg = Debug|Win32
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Debug|x86.Build.0 = Debug|Win32
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Release|ARM.ActiveCfg = Release|Win32
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Release|ARM64.ActiveCfg = Release|Win32
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Release|x64.ActiveCfg = Release|x64
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Release|x64.Build.0 = Release|x64
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Release|x86.ActiveCfg = Release|Win32
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.Release|x86.Build.0 = Release|Win32
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.ReleaseWithoutAsm|ARM.ActiveCfg = Release|x64
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.ReleaseWithoutAsm|ARM.Build.0 = Release|x64
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.ReleaseWithoutAsm|ARM64.ActiveCfg = Release|x64
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.ReleaseWithoutAsm|ARM64.Build.0 = Release|x64
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.ReleaseWithoutAsm|x64.ActiveCfg = Release|x64
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.ReleaseWithoutAsm|x64.Build.0 = Release|x64
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.ReleaseWithoutAsm|x86.ActiveCfg = Release|Win32
+		{D8FFC7E2-16B5-4A68-86BD-C570669EA263}.ReleaseWithoutAsm|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
