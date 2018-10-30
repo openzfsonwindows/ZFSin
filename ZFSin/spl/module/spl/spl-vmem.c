@@ -2139,9 +2139,9 @@ vmem_destroy(vmem_t *vmp)
 
 	kstat_delete(vmp->vm_ksp);
 
-	vmem_free(vmem_vmem_arena, vmp, sizeof (vmem_t));
 	mutex_destroy(&vmp->vm_lock);
 	cv_destroy(&vmp->vm_cv);
+	vmem_free(vmem_vmem_arena, vmp, sizeof(vmem_t));
 }
 
 
