@@ -1872,7 +1872,7 @@ taskq_create_common(const char *name, int instance, int nthreads, pri_t pri,
 	/* Cannot have DC_BATCH without DUTY_CYCLE */
 	ASSERT((flags & (TASKQ_DUTY_CYCLE|TASKQ_DC_BATCH)) != TASKQ_DC_BATCH);
 
-	ASSERT(proc != NULL);
+	//ASSERT(proc != NULL);
 
 	bsize = 1 << (highbit(ncpus) - 1);
 	ASSERT(bsize >= 1);
