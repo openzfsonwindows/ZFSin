@@ -389,6 +389,15 @@ NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 		VN_HOLD(dvp);
 	}
 
+
+	// If we are a dir, and have more than "." and "..", we
+	// are not empty.
+	if (S_ISDIR(zp->z_mode))
+		if (zp->z_size > 2) {
+			Status = STATUS_DIRECTORY_NOT_EMPTY;
+			goto err;
+		}
+
 	int error = zfs_zaccess_delete(dzp, zp, 0);
 
 	if (error == 0) {
@@ -409,9 +418,6 @@ err:
 		dvp = NULL;
 	}
 
-	// this should be the only states that are returned here
-
-	ASSERT(Status == STATUS_SUCCESS || Status == STATUS_ACCESS_DENIED);
 	return Status;
 
 }
@@ -3352,7 +3358,7 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 					FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, VTOZ(vp));
 				} else {
 					// zfs_setunlink->vnode_setunlink failed
-					Status = STATUS_ACCESS_DENIED;
+//					Status = STATUS_ACCESS_DENIED;
 				}
 				VN_RELE(vp);
 			}
@@ -3914,12 +3920,17 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	// Release final HOLD on item, ready for deletion
 	int isdir = vnode_isdir(vp);
 
+	// We do not HOLD any on vp, as the function takes dvp and filename. It
+	// internally looks up the vp to grab one final HOLD before deleting.
 	VN_RELE(vp);
+	vp = NULL;
 
 	if (isdir) {
 		
-		// We expect usecount == 0, and iocount == 1 (only us) then we can delete immediately.
 		error = zfs_rmdir(dvp, finalname, NULL, NULL, NULL, 0);
+
+		if (error == ENOTEMPTY)
+			error = STATUS_DIRECTORY_NOT_EMPTY;
 
 		if (!error) {
 			dprintf("sending DIR notify: '%s' name '%s'\n", namecopy, &namecopy[namecopyoffset]);
@@ -4772,25 +4783,20 @@ fsDispatcher(
 				* Access to "vp" may be invalid after this call, so it should be
 				* last.
 				*/
-				delete_entry(DeviceObject, Irp, IrpSp);
+				Status = delete_entry(DeviceObject, Irp, IrpSp);
+				vp = NULL; // May not refer to memory at vp after calling delete_entry
 
-				// It is possible that we can not call recycle, so we must explicitly clear it
-				if(IrpSp->FileObject)
-					vnode_decouplefileobject((vnode_t*)IrpSp->FileObject->FsContext, IrpSp->FileObject);
 			} else {
 				/*
 				* Leave node alone, VFS layer will release it when appropriate.
 				*/
-				//if (vp && VTOZ(vp))
-				//	zfs_vnop_recycle(VTOZ(vp), 0);
 
 				// Release our (last?) iocount here, since we didnt call delete_entry
 				VN_RELE(vp);
+				Status = STATUS_SUCCESS;
 			}
 			vp = NULL;
-
 		}
-		Status = STATUS_SUCCESS;
 		break;
 
 	case IRP_MJ_CLOSE:

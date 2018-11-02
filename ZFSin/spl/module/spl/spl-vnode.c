@@ -839,16 +839,18 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 			zfs_inactive(vp, NULL, NULL);
 		}
 
-		vp->fileobject = NULL;
-		// mutex does not need releasing.
 
-		// Tell FS to release node.
+		// Tell FS to release node. This includes the chance to
+		// set vp->fileobject -> FsContext to NULL
 		if (zfs_vnop_reclaim(vp))
 			panic("vnode_recycle: cannot reclaim\n"); // My fav panic from OSX
+
+		ASSERT3P(vp->fileobject, == , NULL);
 
 		mutex_enter(&vnode_all_list_lock);
 		list_remove(&vnode_all_list, vp);
 		mutex_exit(&vnode_all_list_lock);
+		// mutex does not need releasing.
 
 		// There is no spinlock destroy call
 		// vp->v_spinlock
@@ -1065,8 +1067,12 @@ void *vnode_security(vnode_t *vp)
 
 void vnode_setfileobject(vnode_t *vp, FILE_OBJECT *fileobject)
 {
-	if (vp) 
+	if (vp) {
+		ASSERT(vp->fileobject != 0xdeadbeefdeadbeef);
+		// This triggers, we actually do overwrite entries.
+		//ASSERT(vp->fileobject == NULL || vp->fileobject == fileobject);
 		vp->fileobject = fileobject;
+	}
 }
 
 FILE_OBJECT *vnode_fileobject(vnode_t *vp)
@@ -1086,6 +1092,5 @@ void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) {
 void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) {
 	if(fileobject)
 		fileobject->FsContext = NULL;
-	if(vp)
-		vp->fileobject = NULL;
+	vnode_setfileobject(vp, NULL);
 }
