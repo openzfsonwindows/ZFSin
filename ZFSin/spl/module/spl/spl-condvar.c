@@ -238,7 +238,7 @@ cv_timedwait_hires(kcondvar_t *cvp, kmutex_t *mp, hrtime_t tim,
 		// 'tim' here is absolute UNIX time (from gethrtime()) so convert it to
 		// absolute Windows time
 		hrtime_t now = gethrtime();
-		ASSERT(now >= tim);
+
 		tim -= now; // Remove the ticks, what remains should be "sleep" amount.
 	}
 	timeout.QuadPart = -tim / 100;
