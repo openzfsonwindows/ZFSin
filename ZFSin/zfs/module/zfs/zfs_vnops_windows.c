@@ -1494,6 +1494,8 @@ NTSTATUS ioctl_disk_get_drive_geometry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 	}
 
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+	if (zfsvfs == NULL)
+		return STATUS_INVALID_PARAMETER;
 
 	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
 
@@ -1538,6 +1540,8 @@ NTSTATUS ioctl_disk_get_drive_geometry_ex(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 	}
 
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+	if (zfsvfs == NULL)
+		return STATUS_INVALID_PARAMETER;
 
 	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
 
@@ -1583,6 +1587,8 @@ NTSTATUS ioctl_disk_get_partition_info(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 	}
 
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+	if (zfsvfs == NULL)
+		return STATUS_INVALID_PARAMETER;
 
 	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
 
@@ -1625,6 +1631,8 @@ NTSTATUS ioctl_disk_get_partition_info_ex(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 	}
 
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+	if (zfsvfs == NULL) 
+		return STATUS_INVALID_PARAMETER;
 
 	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
 
@@ -1668,6 +1676,8 @@ NTSTATUS ioctl_disk_get_length_info(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_S
 	}
 
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+	if (zfsvfs == NULL)
+		return STATUS_INVALID_PARAMETER;
 
 	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
 
@@ -1898,7 +1908,8 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 	}
 
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
-	VERIFY(zfsvfs != NULL);
+	if (zfsvfs == NULL)
+		return STATUS_INVALID_PARAMETER;
 
 	ZFS_ENTER(zfsvfs);  // This returns EIO if fail
 
@@ -3374,10 +3385,11 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			vnode_setfileobject(vp, IrpSp->FileObject);
 			znode_t *zp = VTOZ(vp);
 			zfsvfs_t *zfsvfs = zp->z_zfsvfs;
-			ZFS_ENTER(zfsvfs); // this returns if true, is that ok?
-			Status = zfs_freesp(zp, feofi->EndOfFile.QuadPart, 0, 0, TRUE); // Len = 0 is truncate
-			ZFS_EXIT(zfsvfs);
-
+			if (zfsvfs) {
+				ZFS_ENTER(zfsvfs); // this returns if true, is that ok?
+				Status = zfs_freesp(zp, feofi->EndOfFile.QuadPart, 0, 0, TRUE); // Len = 0 is truncate
+				ZFS_EXIT(zfsvfs);
+			}
 			VN_RELE(vp);
 		}
 		break;
