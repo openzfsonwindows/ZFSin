@@ -44,7 +44,9 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 	int hasprop = 0;
 
 	// mount 'spec' "tank/joe" on path 'dir' "/home/joe".
+#ifdef DEBUG
 	fprintf(stderr, "zmount running, emulating Unix mount: '%s'\r\n", dir); fflush(stderr);
+#endif
 	zfs_cmd_t zc = { "\0" };
 
 	if (zhp) {
@@ -98,8 +100,10 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 				if ((libzfs_mnttab_find(zhp->zfs_hdl, parent, &entry) == 0) &&
 					(entry.mnt_mountp[1] == ':')) {
 					driveletter[0] = entry.mnt_mountp[0];
+#ifdef DEBUG
 					fprintf(stderr, "we think '%s' parent is '%s' and its mounts are: '%s'\r\n",
 						zfs_get_name(zhp), parent, entry.mnt_mountp); fflush(stderr);
+#endif
 					break;
 				}
 				if ((slashp = strrchr(parent, '/')) == NULL)
@@ -124,16 +128,18 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 	for (int i = 0; zc.zc_value[i]; i++)
 		if (zc.zc_value[i] == '/')
 			zc.zc_value[i] = '\\'; // "\\??\\c:\\BOOM\\lower"
-
+#ifdef DEBUG
 	fprintf(stderr, "zmount(%s,'%s') hasprop %d ispool %d\n",
 		zhp->zfs_name, zc.zc_value, hasprop, ispool); fflush(stderr);
-
+#endif
 	ret = zfs_ioctl(zhp->zfs_hdl, ZFS_IOC_MOUNT, &zc);
 
+#ifdef DEBUG
 	fprintf(stderr, "zmount(%s,%s) returns %d\n",
 		zhp->zfs_name, dir, ret);
 
 	fprintf(stderr, "'%s' mounted on %s\r\n", zc.zc_name, zc.zc_value);
+#endif
 
 	// For BOOM, we get back 
 	// "\\Device\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}\\"

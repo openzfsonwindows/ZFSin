@@ -569,7 +569,9 @@ int ioctl(HANDLE hDevice, int request, zfs_cmd_t *zc)
 	else
 		error = zc->zc_ioc_error;
 	
+#ifdef DEBUG
 	fprintf(stderr, "    (ioctl 0x%x (%s) status %d bytes %ld)\n", (request & 0x2ffc) >> 2, getIoctlAsString((request & 0x2ffc) >> 2), error, bytesReturned); fflush(stderr);
+#endif
 #if 0
 	for (int x = 0; x < 16; x++)
 		fprintf(stderr, "%02x ", ((unsigned char *)zc)[x]);
