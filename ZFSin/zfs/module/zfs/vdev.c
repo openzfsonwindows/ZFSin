@@ -4602,7 +4602,14 @@ vdev_xlate(vdev_t *vd, const range_seg_t *logical_rs, range_seg_t *physical_rs)
 void
 vdev_set_deferred_resilver(spa_t *spa, vdev_t *vd)
 {
-	ASSERT(vd->vdev_ops->vdev_op_leaf);
+	for (uint64_t i = 0; i < vd->vdev_children; i++)
+		vdev_set_deferred_resilver(spa, vd->vdev_child[i]);
+
+	if (!vd->vdev_ops->vdev_op_leaf || !vdev_writeable(vd) ||
+	    range_tree_is_empty(vd->vdev_dtl[DTL_MISSING])) {
+		return;
+	}
+
 	vd->vdev_resilver_deferred = B_TRUE;
 	spa->spa_resilver_deferred = B_TRUE;
 }
