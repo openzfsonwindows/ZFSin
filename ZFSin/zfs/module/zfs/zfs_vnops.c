@@ -2151,10 +2151,11 @@ top:
 		 */
 
 		zp->z_fastpath = B_TRUE;
-		if (vnode_recycle(vp) == 0) {
+		if (1 /*vnode_recycle(vp) == 0*/) {
 
 			/* recycle/reclaim is done, so we can just release now */
 			zfs_znode_delete(zp, tx);
+			VN_RELE(vp);
 		} else {
 			/* failed to recycle, so just place it on the unlinked list */
 			zp->z_fastpath = B_FALSE;
@@ -2832,10 +2833,12 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					NULL))
 					skip_this_entry = 1;
 			}
+#if 0
 			dprintf("comparing names '%.*S' == '%.*S' skip %d\n",
 				thisname.Length / sizeof(WCHAR), thisname.Buffer,
 				zccb->searchname.Length / sizeof(WCHAR), zccb->searchname.Buffer,
 				skip_this_entry);
+#endif
 			}
 
 
@@ -3001,9 +3004,10 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			ULONG namelenholder2 = 0;
 			error = RtlUTF8ToUnicodeN(nameptr, namelenholder, &namelenholder2, zap.za_name, namelen);
 			ASSERT(namelenholder == namelenholder2);
+#if 0
 			dprintf("%s: '%.*S' -> '%s' (namelen %d bytes: structsize %d)\n", __func__,
 				namelenholder / sizeof(WCHAR), nameptr, zap.za_name, namelenholder, structsize);
-
+#endif
 			// Release the zp
 #if 1
 			if (get_zp == 0) {
@@ -5390,7 +5394,6 @@ zfs_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct)
 
 
 		rw_exit(&zfsvfs->z_teardown_inactive_lock);
-		vnode_recycle(vp);
 		return;
 	}
 
@@ -5401,7 +5404,6 @@ zfs_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct)
 		 */
 		mutex_exit(&zp->z_lock);
 		rw_exit(&zfsvfs->z_teardown_inactive_lock);
-		vnode_recycle(vp);
 		return;
 	}
 	mutex_exit(&zp->z_lock);

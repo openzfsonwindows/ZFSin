@@ -1310,8 +1310,6 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	*/
 	if (!(ksp->ks_flags & (KSTAT_FLAG_VAR_SIZE | KSTAT_FLAG_LONGSTRINGS))) {
 		kbufsize = ksp->ks_data_size;
-		ASSERT(kbufsize != 0);
-		dprintf("%s: allocating kbuf to size %d\n", __func__, ksp->ks_data_size);
 		firstkbufsize = kbufsize;
 		kbuf = kmem_zalloc(kbufsize + 1, KM_NOSLEEP);
 		if (kbuf == NULL) {

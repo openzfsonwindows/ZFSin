@@ -794,18 +794,18 @@ int vnode_put(vnode_t *vp)
 
 	vp->v_flags &= ~VNODE_NEEDINACTIVE;
 
+#if 0
 	// Re-test for idle, as we may have dropped lock for inactive
 	if ((vp->v_usecount == 0) && (vp->v_iocount == 0)) {
 		// Was it marked TERM, but we were waiting for last ref to leave.
-#if 0
 		if ((vp->v_flags & VNODE_MARKTERM)) {
 			//vnode_recycle_int(vp, VNODE_LOCKED);  //OldIrql is lost!
 			KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 			vnode_recycle_int(vp, 0);  //OldIrql is lost!
 			return 0;
 		}
-#endif
 	}
+#endif
 
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 	return 0;
@@ -815,8 +815,14 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 {
 	KIRQL OldIrql;
 	ASSERT((vp->v_flags & VNODE_DEAD) == 0);
-	vp->v_flags |= VNODE_MARKTERM; // Mark it terminating
 
+	// Mark it for recycle, if we are not ROOT.
+	if (!(vp->v_flags&VNODE_MARKROOT)) {
+		if (vp->v_flags & VNODE_MARKTERM) 
+			dprintf("already marked\n");
+		vp->v_flags |= VNODE_MARKTERM; // Mark it terminating
+		dprintf("%s: marking %p VNODE_MARKTERM\n", __func__, vp);
+	}
 //	if (!(flags & VNODE_LOCKED))
 	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 
@@ -824,7 +830,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 	if ((flags & FORCECLOSE) ||
 
 		((vp->v_usecount == 0) &&
-		(vp->v_iocount <= 1) &&
+		(vp->v_iocount == 0) &&
 			((vp->v_flags&VNODE_MARKROOT) == 0))) {
 
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
@@ -840,12 +846,10 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		}
 
 
-		// Tell FS to release node. This includes the chance to
-		// set vp->fileobject -> FsContext to NULL
+		// Tell FS to release node. 
 		if (zfs_vnop_reclaim(vp))
 			panic("vnode_recycle: cannot reclaim\n"); // My fav panic from OSX
 
-		ASSERT3P(vp->fileobject, == , NULL);
 
 		mutex_enter(&vnode_all_list_lock);
 		list_remove(&vnode_all_list, vp);
@@ -987,7 +991,6 @@ vnode_rele(vnode_t *vp)
 		KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 		if ((vp->v_iocount == 0) && (vp->v_usecount == 0) &&
 			((vp->v_flags & (VNODE_MARKTERM)))) {
-			//vnode_recycle_int(vp, VNODE_LOCKED);
 			KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 			vnode_recycle_int(vp, 0);
 			return;
@@ -1065,32 +1068,33 @@ void *vnode_security(vnode_t *vp)
 	return vp->security_descriptor;
 }
 
-void vnode_setfileobject(vnode_t *vp, FILE_OBJECT *fileobject)
-{
-	if (vp) {
-		ASSERT(vp->fileobject != 0xdeadbeefdeadbeef);
-		// This triggers, we actually do overwrite entries.
-		//ASSERT(vp->fileobject == NULL || vp->fileobject == fileobject);
-		vp->fileobject = fileobject;
-	}
-}
 
-FILE_OBJECT *vnode_fileobject(vnode_t *vp)
+void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) 
 {
-	if (vp) return vp->fileobject;
-	return NULL;
-}
-
-void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) {
-	
 	if (fileobject)
 		fileobject->FsContext = vp;
-
-	vnode_setfileobject(vp, fileobject);
 }
 
-void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) {
-	if(fileobject)
+void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) 
+{
+	if (fileobject)
 		fileobject->FsContext = NULL;
-	vnode_setfileobject(vp, NULL);
+}
+
+void vnode_setsizechange(vnode_t *vp, int set)
+{
+	if (set)
+		vp->v_flags |= VNODE_SIZECHANGE;
+	else
+		vp->v_flags &= ~VNODE_SIZECHANGE;
+}
+
+int vnode_sizechange(vnode_t *vp)
+{
+	return (vp->v_flags & VNODE_SIZECHANGE);
+}
+
+int vnode_isrecycled(vnode_t *vp)
+{
+	return (vp->v_flags&(VNODE_MARKTERM | VNODE_DEAD));
 }

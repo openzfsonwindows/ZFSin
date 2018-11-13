@@ -52,7 +52,9 @@
 #define VNODE_MARKTERM		2
 #define VNODE_NEEDINACTIVE	4
 #define VNODE_MARKROOT		8
-#define VNODE_VALIDBITS		15
+#define VNODE_SIZECHANGE    16
+#define VNODE_VALIDBITS		31
+
 
 #pragma pack(8)
 struct vnode {
@@ -83,7 +85,6 @@ struct vnode {
 	FILE_LOCK lock;
 	SECURITY_DESCRIPTOR *security_descriptor;
 	SHARE_ACCESS share_access;
-	FILE_OBJECT *fileobject;
 
 	list_node_t v_list; // vnode_all_list member node.
 };
@@ -419,18 +420,7 @@ static inline int win_has_cached_data(struct vnode *vp)
 		vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP((sz), PAGE_SIZE); \
 		vp->FileHeader.FileSize.QuadPart = (sz); \
 		vp->FileHeader.ValidDataLength.QuadPart = (sz); \
-		PFILE_OBJECT fileObject = vnode_fileobject(vp); \
-        if (fileObject != NULL && \
-		 (ObReferenceObjectByPointer(fileObject,STANDARD_RIGHTS_REQUIRED,NULL,KernelMode) == STATUS_SUCCESS)) { \
-			if (CcIsFileCached(fileObject)) { \
-				CC_FILE_SIZES ccfs; \
-				ccfs.AllocationSize = vp->FileHeader.AllocationSize; \
-				ccfs.FileSize = vp->FileHeader.FileSize; \
-				ccfs.ValidDataLength = vp->FileHeader.ValidDataLength; \
-				CcSetFileSizes(fileObject, &ccfs); \
-			} \
-			ObDereferenceObject(fileObject); \
-		} \
+		vnode_setsizechange(vp, 1); \
 	} while(0)
 #endif
 
@@ -509,10 +499,11 @@ void vnode_rele(vnode_t *vp);
 void *vnode_sectionpointer(vnode_t *vp);
 void *vnode_security(vnode_t *vp);
 void vnode_setsecurity(vnode_t *vp, void *sd);
-void vnode_setfileobject(vnode_t *vp, FILE_OBJECT *fileobject);
 void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject);
 void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject);
-FILE_OBJECT *vnode_fileobject(vnode_t *vp);
+void vnode_setsizechange(vnode_t *vp, int set);
+int vnode_sizechange(vnode_t *vp);
+int vnode_isrecycled(vnode_t *vp);
 
 #define VNODE_READDIR_EXTENDED 1
 
