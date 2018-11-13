@@ -246,13 +246,58 @@ NTSTATUS mountmgr_add_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devp
 	return Status;
 }
 
-NTSTATUS mountmgr_get_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devpath, char *savename)
+/*
+ * check if valid mountpoint, like \DosDevices\X:
+ */
+BOOLEAN MOUNTMGR_IS_DRIVE_LETTER_A(
+	char *mountpoint
+)
+{
+	UNICODE_STRING wc_mpt;
+	wchar_t buf[PATH_MAX];
+	mbstowcs(buf, mountpoint, sizeof (buf));
+	RtlInitUnicodeString(&wc_mpt, buf);
+	return (MOUNTMGR_IS_DRIVE_LETTER(&wc_mpt));
+}
+
+/*
+ * check if valid mountpoint, like \??\Volume{abc}
+ */
+BOOLEAN MOUNTMGR_IS_VOLUME_NAME_A(
+	char *mountpoint
+)
+{
+	UNICODE_STRING wc_mpt;
+	wchar_t buf[PATH_MAX];
+	mbstowcs(buf, mountpoint, sizeof (buf));
+	RtlInitUnicodeString(&wc_mpt, buf);
+	return (MOUNTMGR_IS_VOLUME_NAME(&wc_mpt));
+}
+
+/*
+ * Returns the last mountpoint for the device (devpath) (unfiltered)
+ * This is either \DosDevices\X: or \??\Volume{abc} in most cases
+ * If only_driveletter or only_volume_name is set TRUE,
+ * every mountpoint will be checked with MOUNTMGR_IS_DRIVE_LETTER or
+ * MOUNTMGR_IS_VOLUME_NAME and discarded if not valid
+ * only_driveletter and only_volume_name are mutual exclusive
+ */
+NTSTATUS mountmgr_get_mountpoint(
+	PDEVICE_OBJECT mountmgr,
+	PUNICODE_STRING devpath,
+	char *savename,
+	BOOLEAN only_driveletter,
+	BOOLEAN only_volume_name
+)
 {
 	MOUNTMGR_MOUNT_POINT point = { 0 };
 	MOUNTMGR_MOUNT_POINTS points;
 	PMOUNTMGR_MOUNT_POINTS ppoints = NULL;
 	int len;
 	NTSTATUS Status;
+
+	if (only_driveletter && only_volume_name)
+		return STATUS_INVALID_PARAMETER;
 
 	ppoints = &points;
 	Status = dev_ioctl(mountmgr, IOCTL_MOUNTMGR_QUERY_POINTS, &point, sizeof(MOUNTMGR_MOUNT_POINT), ppoints, sizeof(MOUNTMGR_MOUNT_POINTS), FALSE, NULL);
@@ -266,19 +311,25 @@ NTSTATUS mountmgr_get_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devp
 	dprintf("IOCTL_MOUNTMGR_QUERY_POINTS return %x - looking for '%S'\n", Status,
 		devpath->Buffer);
 	if (Status == STATUS_SUCCESS) {
-		for (int Index = 0; Index < ppoints->NumberOfMountPoints; Index++) {
+		for (int Index = 0;
+			Index < ppoints->NumberOfMountPoints;
+			Index++) {
 			PMOUNTMGR_MOUNT_POINT ipoint = ppoints->MountPoints + Index;
 			PUCHAR DeviceName = (PUCHAR)ppoints + ipoint->DeviceNameOffset;
 			PUCHAR SymbolicLinkName = (PUCHAR)ppoints + ipoint->SymbolicLinkNameOffset;
 
 			// Why is this hackery needed, we should be able to lookup the drive letter from volume name
-			dprintf("   point %d: '%.*S' '%.*S'\n", Index, 
+			dprintf("   point %d: '%.*S' '%.*S'\n", Index,
 				ipoint->DeviceNameLength / sizeof(WCHAR), DeviceName,
 				ipoint->SymbolicLinkNameLength / sizeof(WCHAR), SymbolicLinkName);
 			if (wcsncmp(DeviceName, devpath->Buffer, ipoint->DeviceNameLength / sizeof(WCHAR)) == 0) {
 				ULONG len = 0;
 				RtlUnicodeToUTF8N(savename, MAXPATHLEN, &len, SymbolicLinkName, ipoint->SymbolicLinkNameLength);
 				savename[len] = 0;
+				if (only_driveletter && !MOUNTMGR_IS_DRIVE_LETTER_A(savename))
+					savename[0] = 0;
+				else if (only_volume_name && !MOUNTMGR_IS_VOLUME_NAME_A(savename))
+					savename[0] = 0;
 			}
 		}
 	}
@@ -287,6 +338,29 @@ NTSTATUS mountmgr_get_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devp
 	return STATUS_SUCCESS;
 }
 
+/*
+* Returns the last valid mountpoint of the device according to MOUNTMGR_IS_DRIVE_LETTER()
+*/
+NTSTATUS mountmgr_get_drive_letter(
+	PDEVICE_OBJECT mountmgr,
+	PUNICODE_STRING devpath,
+	char *savename
+)
+{
+	return mountmgr_get_mountpoint(mountmgr, devpath, savename, TRUE, FALSE);
+}
+
+/*
+* Returns the last valid mountpoint of the device according to MOUNTMGR_IS_VOLUME_NAME()
+*/
+NTSTATUS mountmgr_get_volume_name_mountpoint(
+	PDEVICE_OBJECT mountmgr,
+	PUNICODE_STRING devpath,
+	char *savename
+)
+{
+	return mountmgr_get_mountpoint(mountmgr, devpath, savename, FALSE, TRUE);
+}
 
 int AsciiStringToUnicodeString(char *in, PUNICODE_STRING out)
 {
@@ -359,6 +433,32 @@ NTSTATUS
 	return status;
 }
 
+NTSTATUS MountMgrChangeNotify(
+	void
+)
+{
+	NTSTATUS					status;
+	ULONG						length;
+	MOUNTMGR_CHANGE_NOTIFY_INFO chinfo_in;
+	MOUNTMGR_CHANGE_NOTIFY_INFO chinfo_out;
+
+
+	dprintf("=> MountMgrChangeNotify\n");
+
+	length = sizeof(MOUNTMGR_CHANGE_NOTIFY_INFO);
+
+	status = SendIoctlToMountManager(
+		IOCTL_MOUNTMGR_CHANGE_NOTIFY, &chinfo_in, length, &chinfo_out, length);
+
+	if (NT_SUCCESS(status))
+		dprintf("  IoCallDriver success\n");
+	else
+		dprintf("  IoCallDriver failed: 0x%x\n", status);
+
+	dprintf("<= MountMgrChangeNotify\n");
+
+	return (status);
+}
 
 NTSTATUS
 SendVolumeArrivalNotification(
@@ -836,6 +936,155 @@ NTSTATUS CreateReparsePoint(POBJECT_ATTRIBUTES poa, LPCWSTR SubstituteName, LPCW
 	return status;
 }
 
+
+/*
+ * go through all mointpoints (IOCTL_MOUNTMGR_QUERY_POINTS)
+ * and check if our driveletter is in the list
+ * return 1 if yes, otherwise 0
+ */
+NTSTATUS mountmgr_is_driveletter_assigned(
+	PDEVICE_OBJECT mountmgr,
+	wchar_t driveletter,
+	BOOLEAN *ret
+)
+{
+	MOUNTMGR_MOUNT_POINT point = { 0 };
+	MOUNTMGR_MOUNT_POINTS points;
+	PMOUNTMGR_MOUNT_POINTS ppoints = NULL;
+	int len;
+	*ret = 0;
+	NTSTATUS Status;
+
+	ppoints = &points;
+	Status = dev_ioctl(mountmgr, IOCTL_MOUNTMGR_QUERY_POINTS, &point,
+		sizeof(MOUNTMGR_MOUNT_POINT), ppoints,
+		sizeof(MOUNTMGR_MOUNT_POINTS), FALSE, NULL);
+
+	if (Status == STATUS_BUFFER_OVERFLOW) {
+		len = points.Size;
+		ppoints = kmem_alloc(len, KM_SLEEP);
+		Status = dev_ioctl(mountmgr, IOCTL_MOUNTMGR_QUERY_POINTS,
+			&point, sizeof(MOUNTMGR_MOUNT_POINT), ppoints,
+			len, FALSE, NULL);
+	}
+	dprintf("IOCTL_MOUNTMGR_QUERY_POINTS return %x - looking for driveletter '%c'\n",
+		Status, driveletter);
+	if (Status == STATUS_SUCCESS) {
+		char mpt_name[PATH_MAX];
+		for (int Index = 0;
+			Index < ppoints->NumberOfMountPoints;
+			Index++) {
+			PMOUNTMGR_MOUNT_POINT ipoint = ppoints->MountPoints + Index;
+			PUCHAR DeviceName = (PUCHAR)ppoints + ipoint->DeviceNameOffset;
+			PUCHAR SymbolicLinkName = (PUCHAR)ppoints + ipoint->SymbolicLinkNameOffset;
+
+			dprintf("   point %d: '%.*S' '%.*S'\n", Index,
+				ipoint->DeviceNameLength / sizeof(WCHAR), DeviceName,
+				ipoint->SymbolicLinkNameLength / sizeof(WCHAR), SymbolicLinkName);
+
+			ULONG len = 0;
+			RtlUnicodeToUTF8N(mpt_name, MAXPATHLEN, &len, SymbolicLinkName,
+				ipoint->SymbolicLinkNameLength);
+			mpt_name[len] = 0;
+			char c_driveletter;
+			wctomb(&c_driveletter, driveletter);
+			if (MOUNTMGR_IS_DRIVE_LETTER_A(mpt_name) && mpt_name[12] == c_driveletter) {
+				*ret = 1;
+				if (ppoints != NULL) kmem_free(ppoints, len);
+				return STATUS_SUCCESS;
+			}
+		}
+	}
+
+	if (ppoints != NULL) kmem_free(ppoints, len);
+	return (Status);
+}
+
+/*
+ * assign driveletter with IOCTL_MOUNTMGR_CREATE_POINT
+ */
+NTSTATUS mountmgr_assign_driveletter(
+	PUNICODE_STRING device_name,
+	wchar_t driveletter
+)
+{
+	DECLARE_UNICODE_STRING_SIZE(mpt, 16);
+	RtlUnicodeStringPrintf(&mpt, L"\\DosDevices\\%c:", driveletter);
+	return (SendVolumeCreatePoint(device_name, &mpt));
+}
+
+
+/*
+ * assign next free driveletter (D..Z) if mountmgr is offended and refuses to do it
+ */
+NTSTATUS SetNextDriveletterManually(
+	PDEVICE_OBJECT mountmgr,
+	PUNICODE_STRING device_name
+)
+{
+	NTSTATUS status;
+	for (wchar_t c = 'D'; c <= 'Z'; c++) {
+		BOOLEAN ret;
+		status = mountmgr_is_driveletter_assigned(mountmgr, c, &ret);
+		if (status == STATUS_SUCCESS && ret == 0) {
+			status = mountmgr_assign_driveletter(device_name, c);
+
+			if (status == STATUS_SUCCESS) {
+				// prove it 
+				status = mountmgr_is_driveletter_assigned(mountmgr, c, &ret);
+				if (status == STATUS_SUCCESS) {
+					if (ret == 1)
+						return STATUS_SUCCESS;
+					else
+						return STATUS_VOLUME_DISMOUNTED;
+				} else {
+					return status;
+				}
+			}
+		}
+	}
+	return status;
+}
+
+
+
+void generateGUID(
+	char* pguid
+)
+{
+	char *uuid_format = "xxxxxxxx-xxxx-4xxx-Nxxx-xxxxxxxxxxxx";
+	char *szHex = "0123456789ABCDEF-";
+	int len = strlen(uuid_format);
+
+	for (int i = 0; i < len + 1; i++)
+	{
+		int r = rand() % 16;
+		char c = ' ';
+
+		switch (uuid_format[i])
+		{
+		case 'x': { c = szHex[r]; } break;
+		case 'N': { c = szHex[r & 0x03 | 0x08]; } break;
+		case '-': { c = '-'; } break;
+		case '4': { c = '4'; } break;
+		}
+
+		pguid[i] = (i < len) ? c : 0x00;
+	}
+}
+
+
+void generateVolumeNameMountpoint(
+	wchar_t *vol_mpt
+)
+{
+	char GUID[50];
+	wchar_t wc_guid[50];
+	generateGUID(&GUID);
+	mbstowcs(&wc_guid, GUID, 50);
+	int len = _snwprintf(vol_mpt, 50, L"\\??\\Volume{%s}", wc_guid);
+}
+
 int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	PDRIVER_OBJECT DriverObject = DiskDevice->DriverObject;
@@ -1025,20 +1274,8 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	// IOCTL_DISK_GET_PARTITION_INFO_EX	0x70048
 #endif
 
-	UNICODE_STRING name;
-	PFILE_OBJECT                        fileObject;
-	PDEVICE_OBJECT                      deviceObject;
 
-	// Query MntMgr for points, just informative
-	RtlInitUnicodeString(&name, MOUNTMGR_DEVICE_NAME);
-	status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &fileObject,
-		&deviceObject);
-	//status = mountmgr_add_drive_letter(deviceObject, &fsDeviceName);
-	char namex[200] = "";
-	status = mountmgr_get_drive_letter(deviceObject, &dcb->device_name, namex);
-	ObDereferenceObject(fileObject);
-
-	// Set the mountpoint, if not a drive letter.
+	// Set the mountpoint if necessary
 #if 0
 	OBJECT_ATTRIBUTES poa;
 	UNICODE_STRING usStr;
@@ -1047,9 +1284,62 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	//CreateReparsePoint(&poa, L"\\??\\Volume{7cc383a0-beac-11e7-b56d-02150b22a130}", L"AnyBOOM");
 	CreateReparsePoint(&poa, L"\\??\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}", L"AnyBOOM");
 #endif
+	UNICODE_STRING	name;
+	PFILE_OBJECT	fileObject;
+	PDEVICE_OBJECT	mountmgr;
 
-	// Check if we are to mount as path (not just drive letter)
-	if (!dcb->justDriveLetter) {
+	// Query MntMgr for points, just informative
+	RtlInitUnicodeString(&name, MOUNTMGR_DEVICE_NAME);
+	status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES, &fileObject,
+		&mountmgr);
+	char namex[PATH_MAX] = "";
+	status = mountmgr_get_drive_letter(mountmgr, &dcb->device_name, namex);
+
+	// Check if we are to mount as path or just drive letter
+	if (dcb->justDriveLetter) {
+
+		// If SendVolumeArrival was executed successfully we should have two mountpoints
+		// point 1: \Device\Volumes{abc}	\DosDevices\X:
+		// point 2: \Device\Volumes{abc}	\??\Volume{xyz}
+		// but if we are in remount and removed the mountpoints for this volume manually before
+		// they won't get assigned by mountmgr automatically anymore.
+		// So at least check if we got them and if not, try to create.
+
+		if (!MOUNTMGR_IS_DRIVE_LETTER_A(namex)) {
+
+			namex[0] = 0;
+			status = mountmgr_get_volume_name_mountpoint(mountmgr, &dcb->device_name, &namex);
+			if (!MOUNTMGR_IS_VOLUME_NAME_A(namex)) {
+				// We have no volume name mountpoint for our device,
+				// so generate a valid GUID and mount the device
+				UNICODE_STRING vol_mpt;
+				wchar_t buf[50];
+				generateVolumeNameMountpoint(&buf);
+				RtlInitUnicodeString(&vol_mpt, buf);
+				status = SendVolumeCreatePoint(&dcb->device_name, &vol_mpt);
+			}
+
+			// If driveletter was provided, try to add it as mountpoint
+			if (dcb && dcb->mountpoint.Length > 0 && dcb->mountpoint.Buffer[4] != '?') {
+				// check if driveletter is unassigned
+				BOOLEAN ret;
+				status = mountmgr_is_driveletter_assigned(mountmgr, dcb->mountpoint.Buffer[4], &ret);
+
+				if (status == STATUS_SUCCESS && ret == 0) {
+					// driveletter is unassigned, try to add mountpoint
+					status = mountmgr_assign_driveletter(&dcb->device_name, dcb->mountpoint.Buffer[4]);
+				} else {
+					// driveletter already assigned, find another one
+					SetNextDriveletterManually(mountmgr, &dcb->device_name);
+				}
+			} else {
+				// user provided no driveletter, find one on our own
+				SetNextDriveletterManually(mountmgr, &dcb->device_name);
+			}
+		} // !MOUNTMGR_IS_DRIVE_LETTER(&actualDriveletter)
+		namex[0] = 0;
+		status = mountmgr_get_drive_letter(mountmgr, &dcb->device_name, namex);
+	} else {
 		OBJECT_ATTRIBUTES poa;
 		DECLARE_UNICODE_STRING_SIZE(volStr, ZFS_MAX_DATASET_NAME_LEN); // 36(uuid) + 6 (punct) + 6 (Volume)
 		RtlUnicodeStringPrintf(&volStr, L"\\??\\Volume{%wZ}", vcb->uuid); // "\??\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}"
@@ -1058,16 +1348,17 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		CreateReparsePoint(&poa, volStr.Buffer, vcb->name.Buffer);  // 3rd arg is visible in DOS box
 
 		// Remove drive letter?
-		//RtlUnicodeStringPrintf(&volStr, L"\\DosDevices\\E:");  // FIXME 
-		//RtlUnicodeStringPrintf(&volStr, L"%s", namex); // "\??\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}"
+		// RtlUnicodeStringPrintf(&volStr, L"\\DosDevices\\E:");  // FIXME
+		// RtlUnicodeStringPrintf(&volStr, L"%s", namex); // "\??\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}"
 		RtlUTF8ToUnicodeN(volStr.Buffer, ZFS_MAX_DATASET_NAME_LEN, &volStr.Length, namex, strlen(namex));
-		SendVolumeDeletePoints(&volStr, &dcb->device_name);
+		status = SendVolumeDeletePoints(&volStr, &dcb->device_name);
 	}
 
 	// match IoGetDeviceAttachmentBaseRef()
+	ObDereferenceObject(fileObject);
 	ObDereferenceObject(DeviceToMount);
 
-	return STATUS_SUCCESS;
+	return (status);
 }
 
 int zfs_remove_driveletter(mount_t *zmo)
@@ -1151,19 +1442,39 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 		ASSERT(zmo->type == MOUNT_TYPE_VCB);
 
 		// Flush volume
-		//rdonly = !spa_writeable(dmu_objset_spa(zfsvfs->z_os));
+		// rdonly = !spa_writeable(dmu_objset_spa(zfsvfs->z_os));
 		error = zfs_vfs_unmount(zmo, 0, NULL);
 		dprintf("%s: zfs_vfs_unmount %d\n", __func__, error);
 		if (error) goto out_unlock;
 
-#if 0
-		// Tell Windows to punt
-		// When we unmount and destroy the device, Explorer leaves the driveletter around
-		// which is wrong, so we should call remove_driveletter. This does work, but
-		// unfortunately, mounting/importing again will now fail. So the weaker failure is
-		// better for now.
-		zfs_remove_driveletter(zmo);
-#endif
+		// Delete mountpoints for our volume manually
+		// Query the mountmgr for mountpoints and delete them until no mountpoint is left
+		// Because we are not satisfied with mountmgrs work, it gets offended and
+		// doesn't automatically create mointpoints for our volume after we deleted them manually
+		// But as long as we recheck that in mount and create points manually (if necessary),
+		// that should be ok hopefully
+
+		UNICODE_STRING	name;
+		PFILE_OBJECT	fileObject;
+		PDEVICE_OBJECT	mountmgr;
+
+		// Query MntMgr for points, just informative
+		RtlInitUnicodeString(&name, MOUNTMGR_DEVICE_NAME);
+		NTSTATUS status = IoGetDeviceObjectPointer(&name, FILE_READ_ATTRIBUTES,
+			&fileObject, &mountmgr);
+		char namex[PATH_MAX] = "";
+		status = mountmgr_get_drive_letter(mountmgr, &zmo->device_name, namex);
+		while (strlen(namex) > 0) {
+			UNICODE_STRING unicode_mpt;
+			wchar_t wbuf[PATH_MAX];
+			mbstowcs(wbuf, namex, sizeof(namex));
+			RtlInitUnicodeString(&unicode_mpt, wbuf);
+			status = SendVolumeDeletePoints(&unicode_mpt, &zmo->device_name);
+			namex[0] = 0;
+			status = mountmgr_get_mountpoint(mountmgr, &zmo->device_name, namex, FALSE, FALSE);
+		}
+		ObDereferenceObject(fileObject);
+
 
 		// Save the parent device
 		zmo_dcb = zmo->parent_device;
