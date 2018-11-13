@@ -575,10 +575,10 @@ class TestRun(object):
                         pass
 
                 # Repopulate tests using eval to convert the string to a list
-                testgroup.tests = eval(config.get(section, 'tests'))
+                testgroup.tests = ast.literal_eval(config.get(section, 'tests'))
 
                 if testgroup.verify(logger):
-                    self.testgroups[section] = testgroup
+                    self.testgroups[section] = testgroupast.literal_
             else:
                 test = Test(section)
                 for prop in Test.props:
