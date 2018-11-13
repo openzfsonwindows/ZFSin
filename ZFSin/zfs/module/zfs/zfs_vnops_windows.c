@@ -1041,7 +1041,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				Irp->IoStatus.Information = FILE_OVERWRITTEN;
 				zp->z_pflags |= ZFS_ARCHIVE;
 				// zfs_freesp() path uses vnode_pager_setsize() so we need to make sure fileobject is set.
-				vnode_setfileobject(vp, FileObject);
 				zfs_freesp(zp, 0, 0, FWRITE, B_TRUE);
 				// Did they ask for an AllocationSize
 				if (Irp->Overlay.AllocationSize.QuadPart > 0) {
@@ -1087,13 +1086,6 @@ int zfs_vnop_reclaim(struct vnode *vp)
 	if (sd != NULL)
 		ExFreePool(sd);
 	vnode_setsecurity(vp, NULL);
-
-	FILE_OBJECT *fileobject = vnode_fileobject(vp);
-	if (fileobject != NULL) {
-		vnode_decouplefileobject(vp, fileobject);
-		dprintf("%s: setting FsContext to NULL\n", __func__);
-		fileobject = NULL;
-	}
 
 	// Decouple the nodes
 	ZTOV(zp) = NULL;
@@ -3382,7 +3374,6 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			struct vnode *vp = IrpSp->FileObject->FsContext;
 			VN_HOLD(vp);
 			// zfs_freesp() path uses vnode_pager_setsize() so we need to make sure fileobject is set.
-			vnode_setfileobject(vp, IrpSp->FileObject);
 			znode_t *zp = VTOZ(vp);
 			zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 			if (zfsvfs) {
@@ -3649,9 +3640,6 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	VN_HOLD(vp);
 	znode_t *zp = VTOZ(vp);
 	ASSERT(ZTOV(zp) == vp);
-
-	// zfs_write() path uses vnode_pager_setsize() so we need to make sure fileobject is set.
-	vnode_setfileobject(vp, fileObject);
 
 	if (IrpSp->Parameters.Write.ByteOffset.LowPart == FILE_USE_FILE_POINTER_POSITION &&
 		IrpSp->Parameters.Write.ByteOffset.HighPart == -1) {
@@ -4674,11 +4662,27 @@ fsDispatcher(
 )
 {
 	NTSTATUS Status;
-
+	struct vnode *hold_vp = NULL;
+	
 	PAGED_CODE();
 
 	dprintf("  %s: enter: major %d: minor %d: %s fsDeviceObject\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
 		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
+
+	/*
+	 * Like VFS layer in upstream, we hold the "vp" here before calling into the VNOP handlers.
+	 * There is one special case, IRP_MJ_CREATE / zfs_vnop_lookup, which has no vp to start, 
+	 * and assigns the vp on success (held).
+	 */
+	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
+		hold_vp = IrpSp->FileObject->FsContext;
+		if (VN_HOLD(hold_vp) != 0)
+			hold_vp = NULL;
+	}
+	/* Inside VNOP handlers, we no longer need to call VN_HOLD() on *this* vp
+	 * (but might for dvp etc) and eventually that code will be removed, if this
+	 * style works out.
+	 */
 
 
 	Status = STATUS_NOT_IMPLEMENTED;
@@ -4726,6 +4730,11 @@ fsDispatcher(
 			zmo) {
 
 			Status = zfs_vnop_lookup(Irp, IrpSp, zmo);
+
+			// If we claimed to have opened a file, vp should be set
+			if (Status == 0) {
+				ASSERT(IrpSp->FileObject != NULL);
+			}
 		}
 		break;
 
@@ -4784,7 +4793,7 @@ fsDispatcher(
 			// Asked to delete? Since we might end up calling recycle
 			// we set the FileObject ptr back, so it can be cleared.
 			// zfs_remove also calls vnode_pager_setsize().
-			vnode_couplefileobject(vp, IrpSp->FileObject);
+
 			if (vnode_unlink(vp)) {
 
 				/*
@@ -4798,6 +4807,12 @@ fsDispatcher(
 				Status = delete_entry(DeviceObject, Irp, IrpSp);
 				vp = NULL; // May not refer to memory at vp after calling delete_entry
 
+				// Because vp has been released, do not refer to it again
+				// (However, the dispatcher holds the final count, and it will
+				// be released before leaving dispatcher).
+				if (Status == 0) {
+					IrpSp->FileObject->FsContext = NULL;
+				}
 			} else {
 				/*
 				* Leave node alone, VFS layer will release it when appropriate.
@@ -4832,11 +4847,6 @@ fsDispatcher(
 		}
 #endif
 
-		// Disconnect Windows to vnode now, so they can't use stale vnode data.
-		// When they open file again, znode will have vnode ptr still if available.
-		// Or VFS has called reclaim, and znode was released.
-		if(IrpSp->FileObject)
-			vnode_decouplefileobject((vnode_t*)IrpSp->FileObject->FsContext, IrpSp->FileObject);
 		//IrpSp->FileObject->SectionObjectPointer = NULL;
 
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext2) {
@@ -5026,6 +5036,32 @@ fsDispatcher(
 		dprintf("IRP_MJ_SHUTDOWN\n");
 		Status = STATUS_SUCCESS;
 		break;
+	}
+
+
+	/* Re-check (since MJ_CREATE/vnop_lookup might have set it) vp here, to see if
+	 * we should call setsize 
+	 */
+	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
+		struct vnode *vp = IrpSp->FileObject->FsContext;
+
+		/* vp "might" be held above, or not (vnop_lookup) so grab another just in case */
+		if (vp && vnode_sizechange(vp) &&
+			VN_HOLD(vp) == 0) {
+			if (CcIsFileCached(IrpSp->FileObject)) {
+				CC_FILE_SIZES ccfs;
+				ccfs.AllocationSize = vp->FileHeader.AllocationSize;
+				ccfs.FileSize = vp->FileHeader.FileSize;
+				ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
+				CcSetFileSizes(IrpSp->FileObject, &ccfs);
+			}
+			VN_RELE(vp);
+		}
+	}
+
+	/* If we held the vp above, release it now. */
+	if (hold_vp != NULL) {
+		VN_RELE(hold_vp);
 	}
 
 	return Status;

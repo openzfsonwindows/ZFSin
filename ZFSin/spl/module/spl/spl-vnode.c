@@ -840,12 +840,10 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		}
 
 
-		// Tell FS to release node. This includes the chance to
-		// set vp->fileobject -> FsContext to NULL
+		// Tell FS to release node. 
 		if (zfs_vnop_reclaim(vp))
 			panic("vnode_recycle: cannot reclaim\n"); // My fav panic from OSX
 
-		ASSERT3P(vp->fileobject, == , NULL);
 
 		mutex_enter(&vnode_all_list_lock);
 		list_remove(&vnode_all_list, vp);
@@ -1065,32 +1063,28 @@ void *vnode_security(vnode_t *vp)
 	return vp->security_descriptor;
 }
 
-void vnode_setfileobject(vnode_t *vp, FILE_OBJECT *fileobject)
-{
-	if (vp) {
-		ASSERT(vp->fileobject != 0xdeadbeefdeadbeef);
-		// This triggers, we actually do overwrite entries.
-		//ASSERT(vp->fileobject == NULL || vp->fileobject == fileobject);
-		vp->fileobject = fileobject;
-	}
-}
 
-FILE_OBJECT *vnode_fileobject(vnode_t *vp)
+void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) 
 {
-	if (vp) return vp->fileobject;
-	return NULL;
-}
-
-void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) {
-	
 	if (fileobject)
 		fileobject->FsContext = vp;
-
-	vnode_setfileobject(vp, fileobject);
 }
 
-void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) {
-	if(fileobject)
+void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) 
+{
+	if (fileobject)
 		fileobject->FsContext = NULL;
-	vnode_setfileobject(vp, NULL);
+}
+
+void vnode_setsizechange(vnode_t *vp, int set)
+{
+	if (set)
+		vp->v_flags |= VNODE_SIZECHANGE;
+	else
+		vp->v_flags &= ~VNODE_SIZECHANGE;
+}
+
+int vnode_sizechange(vnode_t *vp)
+{
+	return (vp->v_flags & VNODE_SIZECHANGE);
 }
