@@ -3641,11 +3641,14 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	znode_t *zp = VTOZ(vp);
 	ASSERT(ZTOV(zp) == vp);
 
-	if (IrpSp->Parameters.Write.ByteOffset.LowPart == FILE_USE_FILE_POINTER_POSITION &&
-		IrpSp->Parameters.Write.ByteOffset.HighPart == -1) {
-		byteOffset = fileObject->CurrentByteOffset;
-	} else {
-		byteOffset = IrpSp->Parameters.Write.ByteOffset;
+	// Special encoding
+	byteOffset = IrpSp->Parameters.Write.ByteOffset;
+	if (IrpSp->Parameters.Write.ByteOffset.HighPart == -1) {
+		if (IrpSp->Parameters.Write.ByteOffset.LowPart == FILE_USE_FILE_POINTER_POSITION) {
+			byteOffset = fileObject->CurrentByteOffset;
+		} else if (IrpSp->Parameters.Write.ByteOffset.LowPart == FILE_WRITE_TO_END_OF_FILE) { // APPEND
+			byteOffset.QuadPart = zp->z_size;
+		}
 	}
 
 	if (FlagOn(Irp->Flags, IRP_PAGING_IO)) {
@@ -5055,6 +5058,7 @@ fsDispatcher(
 				ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
 				CcSetFileSizes(IrpSp->FileObject, &ccfs);
 			}
+			vnode_setsizechange(vp, 0);
 			VN_RELE(vp);
 		}
 	}
