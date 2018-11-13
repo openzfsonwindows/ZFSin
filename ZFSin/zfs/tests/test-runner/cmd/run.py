@@ -578,7 +578,7 @@ class TestRun(object):
                 testgroup.tests = ast.literal_eval(config.get(section, 'tests'))
 
                 if testgroup.verify(logger):
-                    self.testgroups[section] = testgroupast.literal_
+                    self.testgroups[section] = testgroup
             else:
                 test = Test(section)
                 for prop in Test.props:
