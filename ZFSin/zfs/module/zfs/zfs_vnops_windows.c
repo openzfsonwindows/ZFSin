@@ -4746,6 +4746,14 @@ fsDispatcher(
 		 * require them to arrive at CLEANUP time, and deemed too late
 		 * to be sent from CLOSE. It is required we act on DELETE_ON_CLOSE
 		 * in CLEANUP, which means we have to call delete here.
+		 * fastfat:
+		 * Close is invoked whenever the last reference to a file object is deleted.
+		 * Cleanup is invoked when the last handle to a file object is closed, and
+		 * is called before close.
+		 * The function of close is to completely tear down and remove the fcb/dcb/ccb
+		 * structures associated with the file object.
+		 * So for ZFS, CLEANUP will leave FsContext=vp around - to have it be freed in
+		 * CLOSE.
 		 */
 	case IRP_MJ_CLEANUP: 
 		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
@@ -4808,23 +4816,27 @@ fsDispatcher(
 				* last.
 				*/
 				Status = delete_entry(DeviceObject, Irp, IrpSp);
-				vp = NULL; // May not refer to memory at vp after calling delete_entry
+				//vp = NULL; // May not refer to memory at vp after calling delete_entry
+				// If we called vnode_recycle in delete_entry, clear out the VP now.
+				// Technically, this is incorrect, Windows would keep this vp around
+				// until CLOSE is called.
+//				if (Status == 0)
+	//				IrpSp->FileObject->FsContext = NULL;
 
 				// Because vp has been released, do not refer to it again
 				// (However, the dispatcher holds the final count, and it will
 				// be released before leaving dispatcher).
-				if (Status == 0) {
-					IrpSp->FileObject->FsContext = NULL;
-				}
 			} else {
 				/*
 				* Leave node alone, VFS layer will release it when appropriate.
 				*/
-
-				// Release our (last?) iocount here, since we didnt call delete_entry
 				VN_RELE(vp);
 				Status = STATUS_SUCCESS;
 			}
+
+			if (vnode_isrecycled(vp))
+				IrpSp->FileObject->FsContext = NULL;
+
 			vp = NULL;
 		}
 		break;
@@ -4832,29 +4844,26 @@ fsDispatcher(
 	case IRP_MJ_CLOSE:
 		Status = STATUS_SUCCESS;
 
-		/*
-		 * CLOSE is mostly a NOOP now, in fastfat it is used to 
-		 * release the directory CCB, and finally FCB. But we
-		 * leave vnodes around to be reused. 
-		 */
+		dprintf("IRP_MJ_CLOSE: '%wZ' \n", &IrpSp->FileObject->FileName);
 
-		dprintf("IRP_MJ_CLOSE: \n");
-#if 0
-		struct vnode *vp = IrpSp->FileObject->FsContext;
-		if (vp) {
-			znode_t *zp = VTOZ(vp);
-			dprintf("IRP_MJ_CLOSE: '%s' iocount %u usecount %u delete %u\n",
-				zp && zp->z_name_cache?zp->z_name_cache:"", vp->v_iocount, vp->v_usecount, vp->v_unlink);
-			// Destroy vnode
-			vnode_recycle(vp);
-		}
-#endif
+		if (IrpSp->FileObject) {
 
-		//IrpSp->FileObject->SectionObjectPointer = NULL;
+			if (IrpSp->FileObject->FsContext2) {
+				zfs_dirlist_free((zfs_dirlist_t *)IrpSp->FileObject->FsContext2);
+				IrpSp->FileObject->FsContext2 = NULL;
+			}
 
-		if (IrpSp->FileObject && IrpSp->FileObject->FsContext2) {
-			zfs_dirlist_free((zfs_dirlist_t *)IrpSp->FileObject->FsContext2);
-			IrpSp->FileObject->FsContext2 = NULL;
+			if (IrpSp->FileObject->FsContext) {
+				dprintf("CLOSE clearing FsContext of FO 0x%llx\n", IrpSp->FileObject);
+				// Mark vnode for cleanup, we grab a HOLD to make sure it isn't
+				// released right here, but marked to be released upon reaching 0 count
+				vnode_t *vp = IrpSp->FileObject->FsContext;
+				if (VN_HOLD(vp) == 0) {
+					vnode_recycle(IrpSp->FileObject->FsContext);
+					VN_RELE(vp);
+				}
+				IrpSp->FileObject->FsContext = NULL;
+			}
 		}
 		break;
 	case IRP_MJ_DEVICE_CONTROL:
@@ -5210,7 +5219,8 @@ are any writers to this file.  Note that main is acquired, so new handles cannot
 	ASSERT(CallbackData->Operation == FS_FILTER_ACQUIRE_FOR_SECTION_SYNCHRONIZATION);
 	ASSERT(CallbackData->SizeOfFsFilterCallbackData == sizeof(FS_FILTER_CALLBACK_DATA));
 
-	dprintf("%s: \n", __func__);
+	dprintf("%s: Operation 0x%x \n", __func__, 
+		CallbackData->Operation);
 
 	struct vnode *vp;
 	vp = CallbackData->FileObject->FsContext;

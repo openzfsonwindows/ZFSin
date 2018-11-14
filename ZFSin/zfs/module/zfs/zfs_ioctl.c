@@ -6976,6 +6976,20 @@ zfs_attach(void)
 	FilterCallbacks.PreAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
 	FilterCallbacks.PreReleaseForSectionSynchronization = ZFSCallbackReleaseForCreateSection;
 
+	FilterCallbacks.PreAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
+	FilterCallbacks.PostAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
+	FilterCallbacks.PreReleaseForSectionSynchronization = ZFSCallbackReleaseForCreateSection;
+	FilterCallbacks.PostReleaseForSectionSynchronization = ZFSCallbackReleaseForCreateSection;
+	FilterCallbacks.PreAcquireForCcFlush = ZFSCallbackAcquireForCreateSection;
+	FilterCallbacks.PostAcquireForCcFlush = ZFSCallbackAcquireForCreateSection;
+	FilterCallbacks.PreReleaseForCcFlush = ZFSCallbackReleaseForCreateSection;
+	FilterCallbacks.PostReleaseForCcFlush = ZFSCallbackReleaseForCreateSection;
+	FilterCallbacks.PreAcquireForModifiedPageWriter = ZFSCallbackAcquireForCreateSection;
+	FilterCallbacks.PostAcquireForModifiedPageWriter = ZFSCallbackAcquireForCreateSection;
+	FilterCallbacks.PreReleaseForModifiedPageWriter = ZFSCallbackReleaseForCreateSection;
+	FilterCallbacks.PostReleaseForModifiedPageWriter = ZFSCallbackReleaseForCreateSection;
+
+
 	NTSTATUS Status;
 
 	Status = FsRtlRegisterFileSystemFilterCallbacks(WIN_DriverObject,

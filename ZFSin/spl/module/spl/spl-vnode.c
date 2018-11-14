@@ -797,14 +797,12 @@ int vnode_put(vnode_t *vp)
 	// Re-test for idle, as we may have dropped lock for inactive
 	if ((vp->v_usecount == 0) && (vp->v_iocount == 0)) {
 		// Was it marked TERM, but we were waiting for last ref to leave.
-#if 0
 		if ((vp->v_flags & VNODE_MARKTERM)) {
 			//vnode_recycle_int(vp, VNODE_LOCKED);  //OldIrql is lost!
 			KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 			vnode_recycle_int(vp, 0);  //OldIrql is lost!
 			return 0;
 		}
-#endif
 	}
 
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
@@ -815,8 +813,12 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 {
 	KIRQL OldIrql;
 	ASSERT((vp->v_flags & VNODE_DEAD) == 0);
-	vp->v_flags |= VNODE_MARKTERM; // Mark it terminating
 
+	// Mark it for recycle, if we are not ROOT.
+	if (!(vp->v_flags&VNODE_MARKROOT)) {
+		vp->v_flags |= VNODE_MARKTERM; // Mark it terminating
+		dprintf("%s: marking %p VNODE_MARKTERM\n", __func__, vp);
+	}
 //	if (!(flags & VNODE_LOCKED))
 	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 
@@ -824,7 +826,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 	if ((flags & FORCECLOSE) ||
 
 		((vp->v_usecount == 0) &&
-		(vp->v_iocount <= 1) &&
+		(vp->v_iocount == 0) &&
 			((vp->v_flags&VNODE_MARKROOT) == 0))) {
 
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
@@ -985,7 +987,6 @@ vnode_rele(vnode_t *vp)
 		KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 		if ((vp->v_iocount == 0) && (vp->v_usecount == 0) &&
 			((vp->v_flags & (VNODE_MARKTERM)))) {
-			//vnode_recycle_int(vp, VNODE_LOCKED);
 			KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 			vnode_recycle_int(vp, 0);
 			return;
@@ -1087,4 +1088,9 @@ void vnode_setsizechange(vnode_t *vp, int set)
 int vnode_sizechange(vnode_t *vp)
 {
 	return (vp->v_flags & VNODE_SIZECHANGE);
+}
+
+int vnode_isrecycled(vnode_t *vp)
+{
+	return (vp->v_flags&(VNODE_MARKTERM | VNODE_DEAD));
 }

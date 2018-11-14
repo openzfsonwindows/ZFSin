@@ -503,6 +503,7 @@ void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject);
 void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject);
 void vnode_setsizechange(vnode_t *vp, int set);
 int vnode_sizechange(vnode_t *vp);
+int vnode_isrecycled(vnode_t *vp);
 
 #define VNODE_READDIR_EXTENDED 1
 

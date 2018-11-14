@@ -2151,10 +2151,11 @@ top:
 		 */
 
 		zp->z_fastpath = B_TRUE;
-		if (vnode_recycle(vp) == 0) {
+		if (1 /*vnode_recycle(vp) == 0*/) {
 
 			/* recycle/reclaim is done, so we can just release now */
 			zfs_znode_delete(zp, tx);
+			VN_RELE(vp);
 		} else {
 			/* failed to recycle, so just place it on the unlinked list */
 			zp->z_fastpath = B_FALSE;
@@ -5393,7 +5394,6 @@ zfs_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct)
 
 
 		rw_exit(&zfsvfs->z_teardown_inactive_lock);
-		vnode_recycle(vp);
 		return;
 	}
 
@@ -5404,7 +5404,6 @@ zfs_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct)
 		 */
 		mutex_exit(&zp->z_lock);
 		rw_exit(&zfsvfs->z_teardown_inactive_lock);
-		vnode_recycle(vp);
 		return;
 	}
 	mutex_exit(&zp->z_lock);
