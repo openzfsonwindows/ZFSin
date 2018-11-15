@@ -4834,9 +4834,6 @@ fsDispatcher(
 				Status = STATUS_SUCCESS;
 			}
 
-			if (vnode_isrecycled(vp))
-				IrpSp->FileObject->FsContext = NULL;
-
 			vp = NULL;
 		}
 		break;
@@ -4858,10 +4855,20 @@ fsDispatcher(
 				// Mark vnode for cleanup, we grab a HOLD to make sure it isn't
 				// released right here, but marked to be released upon reaching 0 count
 				vnode_t *vp = IrpSp->FileObject->FsContext;
-				if (VN_HOLD(vp) == 0) {
+
+				/* If we can release now, do so.
+				 * If the reference count for the per-file context structure reaches zero 
+				 * and both the ImageSectionObject and DataSectionObject of the SectionObjectPointers
+				 * field from the FILE_OBJECT is zero, the filter driver may then delete the per-file context data.
+				 */
+				if (vp->v_iocount == 1 && vp->v_usecount == 0 &&
+					(IrpSp->FileObject->SectionObjectPointer == NULL || 
+					 ( IrpSp->FileObject->SectionObjectPointer->ImageSectionObject == NULL &&
+					IrpSp->FileObject->SectionObjectPointer->DataSectionObject == NULL)) )
 					vnode_recycle(IrpSp->FileObject->FsContext);
-					VN_RELE(vp);
-				}
+				else
+					dprintf("IRP_CLOSE but can't close yet.\n");
+
 				IrpSp->FileObject->FsContext = NULL;
 			}
 		}
@@ -5216,7 +5223,7 @@ If SyncType is SyncTypeCreateSection, we return a status that indicates whether 
 are any writers to this file.  Note that main is acquired, so new handles cannot be opened.
 --*/
 {
-	ASSERT(CallbackData->Operation == FS_FILTER_ACQUIRE_FOR_SECTION_SYNCHRONIZATION);
+	//ASSERT(CallbackData->Operation == FS_FILTER_ACQUIRE_FOR_SECTION_SYNCHRONIZATION);
 	ASSERT(CallbackData->SizeOfFsFilterCallbackData == sizeof(FS_FILTER_CALLBACK_DATA));
 
 	dprintf("%s: Operation 0x%x \n", __func__, 

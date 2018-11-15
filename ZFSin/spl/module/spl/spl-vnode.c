@@ -794,6 +794,7 @@ int vnode_put(vnode_t *vp)
 
 	vp->v_flags &= ~VNODE_NEEDINACTIVE;
 
+#if 0
 	// Re-test for idle, as we may have dropped lock for inactive
 	if ((vp->v_usecount == 0) && (vp->v_iocount == 0)) {
 		// Was it marked TERM, but we were waiting for last ref to leave.
@@ -804,6 +805,7 @@ int vnode_put(vnode_t *vp)
 			return 0;
 		}
 	}
+#endif
 
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 	return 0;
@@ -816,6 +818,8 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 
 	// Mark it for recycle, if we are not ROOT.
 	if (!(vp->v_flags&VNODE_MARKROOT)) {
+		if (vp->v_flags & VNODE_MARKTERM) 
+			dprintf("already marked\n");
 		vp->v_flags |= VNODE_MARKTERM; // Mark it terminating
 		dprintf("%s: marking %p VNODE_MARKTERM\n", __func__, vp);
 	}
