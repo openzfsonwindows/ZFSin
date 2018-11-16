@@ -323,9 +323,9 @@ NTSTATUS mountmgr_get_mountpoint(
 				ipoint->DeviceNameLength / sizeof(WCHAR), DeviceName,
 				ipoint->SymbolicLinkNameLength / sizeof(WCHAR), SymbolicLinkName);
 			if (wcsncmp(DeviceName, devpath->Buffer, ipoint->DeviceNameLength / sizeof(WCHAR)) == 0) {
-				ULONG len = 0;
-				RtlUnicodeToUTF8N(savename, MAXPATHLEN, &len, SymbolicLinkName, ipoint->SymbolicLinkNameLength);
-				savename[len] = 0;
+				ULONG length = 0;
+				RtlUnicodeToUTF8N(savename, MAXPATHLEN, &length, SymbolicLinkName, ipoint->SymbolicLinkNameLength);
+				savename[length] = 0;
 				if (only_driveletter && !MOUNTMGR_IS_DRIVE_LETTER_A(savename))
 					savename[0] = 0;
 				else if (only_volume_name && !MOUNTMGR_IS_VOLUME_NAME_A(savename))
@@ -982,10 +982,10 @@ NTSTATUS mountmgr_is_driveletter_assigned(
 				ipoint->DeviceNameLength / sizeof(WCHAR), DeviceName,
 				ipoint->SymbolicLinkNameLength / sizeof(WCHAR), SymbolicLinkName);
 
-			ULONG len = 0;
-			RtlUnicodeToUTF8N(mpt_name, MAXPATHLEN, &len, SymbolicLinkName,
+			ULONG length = 0;
+			RtlUnicodeToUTF8N(mpt_name, MAXPATHLEN, &length, SymbolicLinkName,
 				ipoint->SymbolicLinkNameLength);
-			mpt_name[len] = 0;
+			mpt_name[length] = 0;
 			char c_driveletter;
 			wctomb(&c_driveletter, driveletter);
 			if (MOUNTMGR_IS_DRIVE_LETTER_A(mpt_name) && mpt_name[12] == c_driveletter) {
