@@ -261,8 +261,16 @@ Enable unsigned drivers:
 Then **reboot**. After restart it should have _Test Mode_ bottom right
 corner of the screen.
 
+After that either 
+
 * Right click on ZFSin.INF file
 * Select "Install"
+
+Or run this command:
+```
+zfsinstaller.exe install .\ZFSin.inf
+```
+
 * Click "Install anyway" in the "unknown developer" popup
 * Run "zpool.exe status" to confirm it can talk to the kernel
 
@@ -340,3 +348,25 @@ USB device before unplugging it.
 ```
 # zpool export tank
 ```
+
+# Uninstalling the driver
+
+The driver can be uninstalled like this:
+
+```
+zfsinstaller uninstall .\ZFSin.inf
+```
+
+To verify that the driver got uninstalled properly you can check "zpool.exe status".
+
+When uninstalled with success, "zpool.exe status" should return:
+```
+Unable to open \\.\ZFS: No error.
+```
+
+If the driver is still there, it would be:
+```
+No pools available
+```
+
+A reboot might be neccessary to uninstall it completely.
