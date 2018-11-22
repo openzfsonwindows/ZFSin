@@ -5158,7 +5158,7 @@ dispatcher(
 	IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
 
-	xprintf("%s: enter: major %d: minor %d: %s: type 0x%x\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
+	dprintf("%s: enter: major %d: minor %d: %s: type 0x%x\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
 		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction), Irp->Type);
 
 	Status = STATUS_NOT_IMPLEMENTED;
@@ -5275,7 +5275,7 @@ NTSTATUS ZFSCallbackReleaseForCreateSection(
 
 	if (vp->FileHeader.Resource) {
 		dprintf("%s: unlocked\n", __func__);
-		ExReleaseResource(vp->FileHeader.Resource, TRUE);
+		ExReleaseResourceLite(vp->FileHeader.Resource);
 		VN_HOLD(vp);
 		vnode_rele(vp);
 		VN_RELE(vp);
