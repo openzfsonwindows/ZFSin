@@ -21,8 +21,7 @@
 
 /*
  *
- * Copyright (C) 2008 MacZFS
- * Copyright (C) 2013 Jorgen Lundman <lundman@lundman.net>
+ * Copyright (C) 2018 Jorgen Lundman <lundman@lundman.net>
  *
  */
 
@@ -55,8 +54,6 @@ rw_init(krwlock_t *rwlp, char *name, krw_type_t type, /*__unused*/ void *arg)
 {
     ASSERT(type != RW_DRIVER);
 
-    //lck_rw_init((lck_rw_t *)&rwlp->rw_lock[0],
-	//          zfs_rwlock_group, zfs_rwlock_attr);
 	ExInitializeResourceLite(&rwlp->rw_lock);
     rwlp->rw_owner = NULL;
     rwlp->rw_readers = 0;
@@ -69,7 +66,10 @@ rw_init(krwlock_t *rwlp, char *name, krw_type_t type, /*__unused*/ void *arg)
 void
 rw_destroy(krwlock_t *rwlp)
 {
-    //lck_rw_destroy((lck_rw_t *)&rwlp->rw_lock[0], zfs_rwlock_group);
+	// Confirm it was initialised, and is unlocked, and not already destroyed.
+	VERIFY3U(rwlp->rw_pad, == , 0x012345678);
+	VERIFY3U(rwlp->rw_owner, ==, 0);
+	VERIFY3U(rwlp->rw_readers, ==, 0);
 
 	// This has caused panic due to IRQL panic, from taskq->zap_evict->rw_destroy
 	ExDeleteResourceLite(&rwlp->rw_lock);
@@ -77,8 +77,6 @@ rw_destroy(krwlock_t *rwlp)
 	rwlp->rw_pad = 0x99;
 #endif
 	atomic_dec_64(&zfs_active_rwlock);
-	ASSERT(rwlp->rw_owner == NULL);
-	ASSERT(rwlp->rw_readers == 0);
 }
 
 void
@@ -90,14 +88,12 @@ rw_enter(krwlock_t *rwlp, krw_t rw)
 #endif
 
     if (rw == RW_READER) {
-        //lck_rw_lock_shared((lck_rw_t *)&rwlp->rw_lock[0]);
 		ExAcquireResourceSharedLite(&rwlp->rw_lock, TRUE);
         atomic_inc_32((volatile uint32_t *)&rwlp->rw_readers);
         ASSERT(rwlp->rw_owner == 0);
     } else {
         if (rwlp->rw_owner == current_thread())
             panic("rw_enter: locking against myself!");
-        //lck_rw_lock_exclusive((lck_rw_t *)&rwlp->rw_lock[0]);
 		ExAcquireResourceExclusiveLite(&rwlp->rw_lock, TRUE);
         ASSERT(rwlp->rw_owner == 0);
         ASSERT(rwlp->rw_readers == 0);
@@ -120,16 +116,13 @@ rw_tryenter(krwlock_t *rwlp, krw_t rw)
 #endif
 
     if (rw == RW_READER) {
-        //held = lck_rw_try_lock((lck_rw_t *)&rwlp->rw_lock[0],
-        //                       LCK_RW_TYPE_SHARED);
 		held = ExAcquireResourceSharedLite(&rwlp->rw_lock, FALSE);
         if (held)
             atomic_inc_32((volatile uint32_t *)&rwlp->rw_readers);
     } else {
         if (rwlp->rw_owner == current_thread())
             panic("rw_tryenter: locking against myself!");
-        //held = lck_rw_try_lock((lck_rw_t *)&rwlp->rw_lock[0],
-		//                     LCK_RW_TYPE_EXCLUSIVE);
+
 		held = ExAcquireResourceExclusiveLite(&rwlp->rw_lock, FALSE);
         if (held)
             rwlp->rw_owner = current_thread();
@@ -167,12 +160,9 @@ rw_tryupgrade(krwlock_t *rwlp)
 	 * grab the WRITER as quickly as possible.
 	 */
 	atomic_dec_32((volatile uint32_t *)&rwlp->rw_readers);
-	//lck_rw_unlock_shared((lck_rw_t *)&rwlp->rw_lock[0]);
 	ExReleaseResourceLite(&rwlp->rw_lock);
 
 	/* Grab the WRITER lock */
-	//held = lck_rw_try_lock((lck_rw_t *)&rwlp->rw_lock[0],
-	//				   LCK_RW_TYPE_EXCLUSIVE);
 	held = ExAcquireResourceExclusiveLite(&rwlp->rw_lock, FALSE);
 
 	if (held) {
@@ -199,12 +189,10 @@ rw_exit(krwlock_t *rwlp)
     if (rwlp->rw_owner == current_thread()) {
         rwlp->rw_owner = NULL;
         ASSERT(rwlp->rw_readers == 0);
-        //lck_rw_unlock_exclusive((lck_rw_t *)&rwlp->rw_lock[0]);
 		ExReleaseResourceLite(&rwlp->rw_lock);
     } else {
         atomic_dec_32((volatile uint32_t *)&rwlp->rw_readers);
         ASSERT(rwlp->rw_owner == 0);
-        //lck_rw_unlock_shared((lck_rw_t *)&rwlp->rw_lock[0]);
 		ExReleaseResourceLite(&rwlp->rw_lock);
     }
 }
@@ -230,11 +218,8 @@ rw_downgrade(krwlock_t *rwlp)
 {
 	if (rwlp->rw_owner != current_thread())
 		panic("SPL: rw_downgrade not WRITE lock held\n");
-    //rwlp->rw_owner = NULL;
-    //lck_rw_lock_exclusive_to_shared((lck_rw_t *)&rwlp->rw_lock[0]);
 	rw_exit(rwlp);
 	rw_enter(rwlp, RW_READER);
-    //atomic_inc_32((volatile uint32_t *)&rwlp->rw_readers);
 }
 
 int spl_rwlock_init(void)
