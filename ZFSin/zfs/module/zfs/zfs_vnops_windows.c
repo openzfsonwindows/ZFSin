@@ -4681,6 +4681,7 @@ fsDispatcher(
 		hold_vp = IrpSp->FileObject->FsContext;
 		if (VN_HOLD(hold_vp) != 0)
 			hold_vp = NULL;
+		ASSERT(hold_vp != NULL); // Should we abort the op if vp is gone?
 	}
 	/* Inside VNOP handlers, we no longer need to call VN_HOLD() on *this* vp
 	 * (but might for dvp etc) and eventually that code will be removed, if this
@@ -5236,11 +5237,14 @@ are any writers to this file.  Note that main is acquired, so new handles cannot
 	if (vp == NULL) return STATUS_INVALID_PARAMETER;
 
 	if (vp->FileHeader.Resource) {
-		dprintf("%s: locked\n", __func__);
-		ExAcquireResourceExclusiveLite(vp->FileHeader.Resource, TRUE);
-		VN_HOLD(vp);
-		vnode_ref(vp);
-		VN_RELE(vp);
+		if (VN_HOLD(vp) == 0) {
+			dprintf("%s: locked\n", __func__);
+			ExAcquireResourceExclusiveLite(vp->FileHeader.Resource, TRUE);
+			vnode_ref(vp);
+			VN_RELE(vp);
+		} else {
+			return STATUS_INVALID_PARAMETER;
+		}
 	}
 
 	if (CallbackData->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) {
