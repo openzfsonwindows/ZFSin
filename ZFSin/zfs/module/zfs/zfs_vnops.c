@@ -2151,11 +2151,10 @@ top:
 		 */
 
 		zp->z_fastpath = B_TRUE;
-		if (1 /*vnode_recycle(vp) == 0*/) {
+		if (vnode_recycle(vp) == 0) {
 
 			/* recycle/reclaim is done, so we can just release now */
 			zfs_znode_delete(zp, tx);
-			VN_RELE(vp);
 		} else {
 			/* failed to recycle, so just place it on the unlinked list */
 			zp->z_fastpath = B_FALSE;
@@ -2861,6 +2860,16 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 #else
 					ZGET_FLAG_WITHOUT_VNODE );
 #endif
+
+			// If marked deleted, skip over node.
+			if (tzp && ZTOV(tzp) && vnode_deleted(ZTOV(tzp))) {
+				skip_this_entry = 1; // FIXME
+				/* We should not show entries that are tagged deleted, which typically
+				 * happens for deleted .exe files (as CCmgr hold on to it).
+				 * Insert code here after finding a clean way to handle it:)
+				 */
+			}
+
 			// Is it worth warning about failing stat here?
 
 			// We need to fill in more fields.

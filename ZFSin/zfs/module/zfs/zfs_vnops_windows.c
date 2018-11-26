@@ -324,6 +324,13 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		return EEXIST;
 	}
 
+	/* Test for deleted status */
+	if (vp != NULL && vnode_deleted(vp)) {
+		dprintf("%s: detected isdeleted, returning ENOENT\n", __func__);
+		VN_RELE(vp);
+		return ENOENT;
+	}
+
 	if (lastname) {
 
 		*lastname = word /* ? word : filename */;
@@ -401,7 +408,7 @@ NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 	int error = zfs_zaccess_delete(dzp, zp, 0);
 
 	if (error == 0) {
-		vnode_setunlink(vp);
+		vnode_setdeleteonclose(vp);
 		Status = STATUS_SUCCESS;
 	} else {
 		Status = STATUS_ACCESS_DENIED;
@@ -2072,7 +2079,7 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	FILE_RENAME_INFORMATION *ren = Irp->AssociatedIrp.SystemBuffer;
 	dprintf("* FileRenameInformation: %.*S\n", ren->FileNameLength / sizeof(WCHAR), ren->FileName);
 
-	ASSERT(ren->RootDirectory == NULL);
+	//ASSERT(ren->RootDirectory == NULL);
 
 	// So, use FileObject to get VP.
 	// Use VP to lookup parent.
@@ -2377,7 +2384,7 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 		//standard->AllocationSize.QuadPart = zp->z_size;  // space taken on disk, multiples of block size
 		standard->EndOfFile.QuadPart = vnode_isdir(vp) ? 0 : zp->z_size;       // byte size of file
 		standard->NumberOfLinks = zp->z_links;
-		standard->DeletePending = vnode_unlink(vp) ? TRUE : FALSE;
+		standard->DeletePending = vnode_deleteonclose(vp) ? TRUE : FALSE;
 		VN_RELE(vp);
 		dprintf("Returning size %llu and allocsize %llu\n",
 			standard->EndOfFile.QuadPart, standard->AllocationSize.QuadPart);
@@ -2441,7 +2448,7 @@ NTSTATUS file_standard_link_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, P
 
 	fsli->NumberOfAccessibleLinks = zp->z_links; 
 	fsli->TotalNumberOfLinks = zp->z_links; 
-	fsli->DeletePending = vnode_unlink(vp); 
+	fsli->DeletePending = vnode_deleteonclose(vp); 
 	fsli->Directory = S_ISDIR(zp->z_mode); 
 
 	VN_RELE(vp);
@@ -3266,7 +3273,7 @@ NTSTATUS notify_change_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		return STATUS_INVALID_PARAMETER;
 	}
 
-	if (vnode_unlink(vp)) {
+	if (vnode_deleteonclose(vp)) {
 		VN_RELE(vp);
 		return STATUS_DELETE_PENDING;
 	}
@@ -3828,28 +3835,18 @@ out:
 	return Status;
 }
 
-#if 0
-if (FlagOn(Irp->Flags, IRP_PAGING_IO)) {
-	if (fileObject->PrivateCacheMap == NULL) {
-		FatInitializeCacheMap(fileObject,
-			(PCC_FILE_SIZES)&FcbOrDcb->Header.AllocationSize,
-			FALSE,
-			&FatData.CacheManagerCallbacks,
-			FcbOrDcb);
-		CcInitializeCacheMap(FileObject,
-			FileSizes,
-			PinAccess,
-			Callbacks,
-			LazyWriteContext);
-
-		CcSetReadAheadGranularity(FileObject, READ_AHEAD_GRANULARITY);
-	}
-}
-#endif
-
-
-// IRP_MJ_CLEANUP was called, and the FileObject had been marked to delete
-// This call expects iocount to be held (VN_HOLD)
+/*
+ * The lifetime of a delete.
+ * 1) If a file open is marked DELETE_ON_CLOSE in zfs_vnop_lookup() we will call
+ * vnode_setdeleteonclose(vp) to signal the intent. This is so file_standard_information
+ * can return DeletePending correctly (as well as a few more)
+ * 2) Upon IRP_MJ_CLEANUP (closing a file handle) we are expected to remove the file
+ * (as tested by IFStest.exe) we will call vnode_setdeleted(vp), this will:
+ * 3) Make zfs_vnop_lookup() return ENOENT when "setdeleted" is set. Making it appear
+ * as if the file was deleted - but retaining vp and zp as required by Windows.
+ * 4) Eventually IRP_MJ_CLOSE is called, and if final, we can release vp and zp, and
+ * if "setdeleted" was active, we can finally call delete_entry() to remove the file.
+ */
 NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	// In Unix, both zfs_unlink and zfs_rmdir expect a filename, and we do not have that here
@@ -3923,8 +3920,7 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	// Release final HOLD on item, ready for deletion
 	int isdir = vnode_isdir(vp);
 
-	// We do not HOLD any on vp, as the function takes dvp and filename. It
-	// internally looks up the vp to grab one final HOLD before deleting.
+	/* ZFS deletes from filename, so RELE last hold on vp. */
 	VN_RELE(vp);
 	vp = NULL;
 
@@ -4676,6 +4672,7 @@ fsDispatcher(
 	 * Like VFS layer in upstream, we hold the "vp" here before calling into the VNOP handlers.
 	 * There is one special case, IRP_MJ_CREATE / zfs_vnop_lookup, which has no vp to start, 
 	 * and assigns the vp on success (held).
+	 * We also pass "hold_vp" down to delete_entry, so it can release the last hold to delete
 	 */
 	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 		hold_vp = IrpSp->FileObject->FsContext;
@@ -4800,42 +4797,23 @@ fsDispatcher(
 
 			if (IrpSp->FileObject->SectionObjectPointer != NULL)
 				CcUninitializeCacheMap(IrpSp->FileObject, NULL, NULL);
+
+			IrpSp->FileObject->Flags |= FO_CLEANUP_COMPLETE;
 #endif
 
-			// Asked to delete? Since we might end up calling recycle
-			// we set the FileObject ptr back, so it can be cleared.
-			// zfs_remove also calls vnode_pager_setsize().
+			/* Technically, this should only be called on the FileObject which 
+			 * opened the file with DELETE_ON_CLOSE - in fastfat, that is stored
+			 * in the ccb (context) set in FsContext2, which holds data for each
+			 * FileObject context. Possibly, we should as well. (We do for dirs)
+			 */
+			if (vnode_deleteonclose(vp)) {
 
-			if (vnode_unlink(vp)) {
+				// Mark it as deleted, zfs_vnop_lookup() will return error now.
+				vnode_setdeleted(vp);
 
-				/*
-				* This call to delete_entry may release the vp/zp in one case
-				* So care needs to be taken. Most branches the vp/zp lives with
-				* zero iocount, ready to be reused.
-				* delete_entry() requires iocount to be held.
-				* Access to "vp" may be invalid after this call, so it should be
-				* last.
-				*/
-				Status = delete_entry(DeviceObject, Irp, IrpSp);
-				//vp = NULL; // May not refer to memory at vp after calling delete_entry
-				// If we called vnode_recycle in delete_entry, clear out the VP now.
-				// Technically, this is incorrect, Windows would keep this vp around
-				// until CLOSE is called.
-//				if (Status == 0)
-	//				IrpSp->FileObject->FsContext = NULL;
-
-				// Because vp has been released, do not refer to it again
-				// (However, the dispatcher holds the final count, and it will
-				// be released before leaving dispatcher).
-			} else {
-				/*
-				* Leave node alone, VFS layer will release it when appropriate.
-				*/
-				VN_RELE(vp);
-				Status = STATUS_SUCCESS;
 			}
-
-			vp = NULL;
+			VN_RELE(vp);
+			Status = STATUS_SUCCESS;
 		}
 		break;
 
@@ -4863,17 +4841,53 @@ fsDispatcher(
 				 * field from the FILE_OBJECT is zero, the filter driver may then delete the per-file context data.
 				 */
 				if (vp->v_iocount == 1 && vp->v_usecount == 0 &&
-					(IrpSp->FileObject->SectionObjectPointer == NULL || 
-					 ( IrpSp->FileObject->SectionObjectPointer->ImageSectionObject == NULL &&
-					IrpSp->FileObject->SectionObjectPointer->DataSectionObject == NULL)) )
-					vnode_recycle(IrpSp->FileObject->FsContext);
-				else
-					dprintf("IRP_CLOSE but can't close yet.\n");
+					(IrpSp->FileObject->SectionObjectPointer == NULL ||
+					(IrpSp->FileObject->SectionObjectPointer->ImageSectionObject == NULL &&
+						IrpSp->FileObject->SectionObjectPointer->DataSectionObject == NULL))) {
 
+
+					/* 
+					 * Get rid of the dispatchers HOLD(hold_vp) here so we can
+					 * free things immediately. 
+					 */
+
+					/* Take hold from above, we will release in recycle */
+					hold_vp = NULL;
+
+					/* We can free memory, check if we also should delete file */
+					if (vnode_deleted(vp)) {
+
+						/*
+						 * This call to delete_entry may release the vp/zp in one case
+						 * So care needs to be taken. Most branches the vp/zp lives with
+						 * zero iocount, ready to be reused.
+						 * delete_entry() requires iocount to be held.
+						 * Access to "vp" may be invalid after this call, so it should be
+						 * last.
+						 */
+						Status = delete_entry(DeviceObject, Irp, IrpSp);
+
+					} else {
+
+						/* Otherwise, just release memory. */
+						// Only unmount releases root (we should check we do?)
+						// Release all non-root vnodes now.
+						if (!vnode_isvroot(vp))
+//							if (!vnode_isdir(vp)) // Comment me in if you get tired of FltSteam BSOD
+							vnode_recycle(vp);
+						
+						Status = STATUS_SUCCESS;
+					}
+					vp = NULL; // Paranoia, signal it is gone.
+
+				} else {
+					dprintf("IRP_CLOSE but can't close yet.\n");
+				}
 				IrpSp->FileObject->FsContext = NULL;
 			}
 		}
 		break;
+
 	case IRP_MJ_DEVICE_CONTROL:
 	{
 		u_long cmd = IrpSp->Parameters.DeviceIoControl.IoControlCode;

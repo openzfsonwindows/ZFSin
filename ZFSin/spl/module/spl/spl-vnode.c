@@ -830,7 +830,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 	if ((flags & FORCECLOSE) ||
 
 		((vp->v_usecount == 0) &&
-		(vp->v_iocount == 0) &&
+		(vp->v_iocount <= 1) &&
 			((vp->v_flags&VNODE_MARKROOT) == 0))) {
 
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
@@ -921,7 +921,7 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 
 int     vnode_isvroot(vnode_t *vp)
 {
-	return 0;
+	return (vp->v_flags & VNODE_MARKROOT);
 }
 
 mount_t *vnode_mount(vnode_t *vp)
@@ -934,15 +934,26 @@ void    vnode_clearfsnode(vnode_t *vp)
 	vp->v_data = NULL;
 }
 
-int   vnode_unlink(vnode_t *vp)
+int   vnode_deleteonclose(vnode_t *vp)
 {
-	return vp->v_unlink;
+	return (vp->v_unlink & UNLINK_DELETE_ON_CLOSE);
 }
 
-void   vnode_setunlink(vnode_t *vp)
+void   vnode_setdeleteonclose(vnode_t *vp)
 {
 	dprintf("%s: \n", __func__);
-	vp->v_unlink = 1;
+	vp->v_unlink |= UNLINK_DELETE_ON_CLOSE;
+}
+
+int   vnode_deleted(vnode_t *vp)
+{
+	return (vp->v_unlink & UNLINK_DELETED);
+}
+
+void   vnode_setdeleted(vnode_t *vp)
+{
+	dprintf("%s: \n", __func__);
+	vp->v_unlink |= UNLINK_DELETED;
 }
 
 void *vnode_sectionpointer(vnode_t *vp)

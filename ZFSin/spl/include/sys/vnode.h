@@ -55,6 +55,10 @@
 #define VNODE_SIZECHANGE    16
 #define VNODE_VALIDBITS		31
 
+/* v_unlink flags */
+#define UNLINK_DELETE_ON_CLOSE	(1 << 0) // 1
+#define UNLINK_DELETED			(1 << 1) // 2
+
 
 #pragma pack(8)
 struct vnode {
@@ -491,8 +495,10 @@ int     vnode_recycle(vnode_t *vp);
 int     vnode_isvroot(vnode_t *vp);
 mount_t *vnode_mount(vnode_t *vp);
 void    vnode_clearfsnode(vnode_t *vp);
-int   vnode_unlink(vnode_t *vp);
-void   vnode_setunlink(vnode_t *vp);
+int   vnode_deleteonclose(vnode_t *vp);
+void   vnode_setdeleteonclose(vnode_t *vp);
+int   vnode_deleted(vnode_t *vp);
+void   vnode_setdeleted(vnode_t *vp);
 void vnode_create(mount_t *, void *v_data, int type, int flags, struct vnode **vpp);
 int vnode_ref(vnode_t *vp);
 void vnode_rele(vnode_t *vp);

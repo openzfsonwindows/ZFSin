@@ -5072,7 +5072,7 @@ arc_reclaim_thread(void)
 					grow_pass = 0;
 				} else {
 					// check for 500ms not being enough
-					ASSERT3U(growtime,>,curtime);
+					//ASSERT3U(growtime,>,curtime);
 					if (growtime <= curtime)
 						growtime = curtime + MSEC2NSEC(500);
 
