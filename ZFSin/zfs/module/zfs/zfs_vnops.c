@@ -2597,11 +2597,11 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 	int structsize = 0;
 	int flag_index_specified    = flags & SL_INDEX_SPECIFIED     ? 1 : 0;
 	int flag_restart_scan       = flags & SL_RESTART_SCAN        ? 1 : 0;
-	int flag_return_sigle_entry = flags & SL_RETURN_SINGLE_ENTRY ? 1 : 0;
+	int flag_return_single_entry= flags & SL_RETURN_SINGLE_ENTRY ? 1 : 0;
 	FILE_DIRECTORY_INFORMATION *fdi;
 
 	dprintf("+zfs_readdir: Index %d, Restart %d, Single %d\n",
-		flag_index_specified, flag_restart_scan, flag_return_sigle_entry);
+		flag_index_specified, flag_restart_scan, flag_return_single_entry);
 
 	ZFS_ENTER(zfsvfs);
 	ZFS_VERIFY_ZP(zp);
@@ -2862,183 +2862,187 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 #endif
 
 			// If marked deleted, skip over node.
-			if (tzp && ZTOV(tzp) && vnode_deleted(ZTOV(tzp))) {
+			if ((get_zp == 0) && ZTOV(tzp) && vnode_deleted(ZTOV(tzp))) {
 				skip_this_entry = 1; // FIXME
 				/* We should not show entries that are tagged deleted, which typically
 				 * happens for deleted .exe files (as CCmgr hold on to it).
 				 * Insert code here after finding a clean way to handle it:)
 				 */
+				VN_RELE(ZTOV(tzp));
 			}
 
 			// Is it worth warning about failing stat here?
+			if (!skip_this_entry) {
 
-			// We need to fill in more fields.
-			sa_bulk_attr_t bulk[3];
-			int count = 0;
-			uint64_t mtime[2];
-			uint64_t ctime[2];
-			uint64_t crtime[2];
-			SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
-			SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
-			SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
-			sa_bulk_lookup(tzp->z_sa_hdl, bulk, count);
-			// Is it worth warning about failed lookup here?		
+				// We need to fill in more fields.
+				sa_bulk_attr_t bulk[3];
+				int count = 0;
+				uint64_t mtime[2];
+				uint64_t ctime[2];
+				uint64_t crtime[2];
+				SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
+				SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
+				SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
+				sa_bulk_lookup(tzp->z_sa_hdl, bulk, count);
+				// Is it worth warning about failed lookup here?		
 
-			structsize = 0;
+				structsize = 0;
 
-			switch (dirlisttype) {
+				switch (dirlisttype) {
 
-			case FileFullDirectoryInformation:
-				structsize = FIELD_OFFSET(FILE_FULL_DIR_INFORMATION, FileName[0]);
+				case FileFullDirectoryInformation:
+					structsize = FIELD_OFFSET(FILE_FULL_DIR_INFORMATION, FileName[0]);
+					if (outcount + structsize + namelenholder > bufsize) break;
+
+					eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
+					eodp->FileIndex = offset;
+					eodp->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp)); // File size in block alignment
+					eodp->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size; // File size in bytes
+					TIME_UNIX_TO_WINDOWS(mtime, eodp->LastWriteTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(ctime, eodp->ChangeTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(crtime, eodp->CreationTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(tzp->z_atime, eodp->LastAccessTime.QuadPart);
+					eodp->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0; // Magic code to change dir icon to link
+					eodp->FileAttributes = zfs_getwinflags(tzp);
+					nameptr = eodp->FileName;
+					eodp->FileNameLength = namelenholder;
+
+					break;
+
+				case FileIdBothDirectoryInformation:
+					structsize = FIELD_OFFSET(FILE_ID_BOTH_DIR_INFORMATION, FileName[0]);
+					if (outcount + structsize + namelenholder > bufsize) break;
+
+					eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
+					FILE_ID_BOTH_DIR_INFORMATION *fibdi = (FILE_ID_BOTH_DIR_INFORMATION *)bufptr;
+					fibdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
+					fibdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size;
+					TIME_UNIX_TO_WINDOWS(mtime, fibdi->LastWriteTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(ctime, fibdi->ChangeTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(crtime, fibdi->CreationTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(tzp->z_atime, fibdi->LastAccessTime.QuadPart);
+					fibdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0;
+					fibdi->FileAttributes = zfs_getwinflags(tzp);
+					fibdi->FileId.QuadPart = objnum;
+					fibdi->FileIndex = offset;
+					fibdi->ShortNameLength = 0;
+					nameptr = fibdi->FileName;
+					fibdi->FileNameLength = namelenholder;
+
+					break;
+
+				case FileBothDirectoryInformation:
+					structsize = FIELD_OFFSET(FILE_BOTH_DIR_INFORMATION, FileName[0]);
+					if (outcount + structsize + namelenholder > bufsize) break;
+
+					eodp = (FILE_BOTH_DIR_INFORMATION *)bufptr;
+					FILE_BOTH_DIR_INFORMATION *fbdi = (FILE_BOTH_DIR_INFORMATION *)bufptr;
+					fbdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
+					fbdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size;
+					TIME_UNIX_TO_WINDOWS(mtime, fbdi->LastWriteTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(ctime, fbdi->ChangeTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(crtime, fbdi->CreationTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(tzp->z_atime, fbdi->LastAccessTime.QuadPart);
+					fbdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0;
+					fbdi->FileAttributes = zfs_getwinflags(tzp);
+					fbdi->FileIndex = offset;
+					fbdi->ShortNameLength = 0;
+					nameptr = fbdi->FileName;
+					fbdi->FileNameLength = namelenholder;
+
+					break;
+
+				case FileDirectoryInformation:
+					structsize = FIELD_OFFSET(FILE_DIRECTORY_INFORMATION, FileName[0]);
+					if (outcount + structsize + namelenholder > bufsize) break;
+					eodp = (FILE_DIRECTORY_INFORMATION *)bufptr;
+					//FILE_DIRECTORY_INFORMATION *fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
+					fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
+					fdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
+					fdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size;
+					TIME_UNIX_TO_WINDOWS(mtime, fdi->LastWriteTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(ctime, fdi->ChangeTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(crtime, fdi->CreationTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(tzp->z_atime, fdi->LastAccessTime.QuadPart);
+					fdi->FileAttributes = zfs_getwinflags(tzp);
+					//dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY :
+					//	tzp->z_pflags&ZFS_REPARSEPOINT ? FILE_ATTRIBUTE_REPARSE_POINT : FILE_ATTRIBUTE_NORMAL;
+					fdi->FileIndex = offset;
+					nameptr = fdi->FileName;
+					fdi->FileNameLength = namelenholder;
+
+					break;
+
+				case FileNamesInformation:
+					structsize = FIELD_OFFSET(FILE_NAMES_INFORMATION, FileName[0]);
+					if (outcount + structsize + namelenholder > bufsize) break;
+					eodp = (FILE_NAMES_INFORMATION *)bufptr;
+					FILE_NAMES_INFORMATION *fni = (FILE_NAMES_INFORMATION *)bufptr;
+					fni = (FILE_NAMES_INFORMATION *)bufptr;
+					fni->FileIndex = offset;
+					nameptr = fni->FileName;
+					fni->FileNameLength = namelenholder;
+					break;
+
+				}
+
+				// If know we can't fit struct, just leave
 				if (outcount + structsize + namelenholder > bufsize) break;
 
-				eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
-				eodp->FileIndex = offset;
-				eodp->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp)); // File size in block alignment
-				eodp->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size; // File size in bytes
-				TIME_UNIX_TO_WINDOWS(mtime, eodp->LastWriteTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(ctime, eodp->ChangeTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(crtime, eodp->CreationTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(tzp->z_atime, eodp->LastAccessTime.QuadPart);
-				eodp->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0; // Magic code to change dir icon to link
-				eodp->FileAttributes = zfs_getwinflags(tzp);
-				nameptr = eodp->FileName;
-				eodp->FileNameLength = namelenholder;
-
-				break;
-
-			case FileIdBothDirectoryInformation:
-				structsize = FIELD_OFFSET(FILE_ID_BOTH_DIR_INFORMATION, FileName[0]);
-				if (outcount + structsize + namelenholder > bufsize) break;
-
-				eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
-				FILE_ID_BOTH_DIR_INFORMATION *fibdi = (FILE_ID_BOTH_DIR_INFORMATION *)bufptr;
-				fibdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
-				fibdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size;
-				TIME_UNIX_TO_WINDOWS(mtime, fibdi->LastWriteTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(ctime, fibdi->ChangeTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(crtime, fibdi->CreationTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(tzp->z_atime, fibdi->LastAccessTime.QuadPart);
-				fibdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0;
-				fibdi->FileAttributes = zfs_getwinflags(tzp);
-				fibdi->FileId.QuadPart = objnum;
-				fibdi->FileIndex = offset;
-				fibdi->ShortNameLength = 0;
-				nameptr = fibdi->FileName;
-				fibdi->FileNameLength = namelenholder;
-
-				break;
-
-			case FileBothDirectoryInformation:
-				structsize = FIELD_OFFSET(FILE_BOTH_DIR_INFORMATION, FileName[0]);
-				if (outcount + structsize + namelenholder > bufsize) break;
-
-				eodp = (FILE_BOTH_DIR_INFORMATION *)bufptr;
-				FILE_BOTH_DIR_INFORMATION *fbdi = (FILE_BOTH_DIR_INFORMATION *)bufptr;
-				fbdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
-				fbdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size;
-				TIME_UNIX_TO_WINDOWS(mtime, fbdi->LastWriteTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(ctime, fbdi->ChangeTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(crtime, fbdi->CreationTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(tzp->z_atime, fbdi->LastAccessTime.QuadPart);
-				fbdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0;
-				fbdi->FileAttributes = zfs_getwinflags(tzp);
-				fbdi->FileIndex = offset;
-				fbdi->ShortNameLength = 0;
-				nameptr = fbdi->FileName;
-				fbdi->FileNameLength = namelenholder;
-
-				break;
-
-			case FileDirectoryInformation:
-				structsize = FIELD_OFFSET(FILE_DIRECTORY_INFORMATION, FileName[0]);
-				if (outcount + structsize + namelenholder > bufsize) break;
-				eodp = (FILE_DIRECTORY_INFORMATION *)bufptr;
-				//FILE_DIRECTORY_INFORMATION *fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
-				fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
-				fdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
-				fdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size;
-				TIME_UNIX_TO_WINDOWS(mtime, fdi->LastWriteTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(ctime, fdi->ChangeTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(crtime, fdi->CreationTime.QuadPart);
-				TIME_UNIX_TO_WINDOWS(tzp->z_atime, fdi->LastAccessTime.QuadPart);
-				fdi->FileAttributes = zfs_getwinflags(tzp);
-				//dtype == DT_DIR ? FILE_ATTRIBUTE_DIRECTORY :
-				//	tzp->z_pflags&ZFS_REPARSEPOINT ? FILE_ATTRIBUTE_REPARSE_POINT : FILE_ATTRIBUTE_NORMAL;
-				fdi->FileIndex = offset;
-				nameptr = fdi->FileName;
-				fdi->FileNameLength = namelenholder;
-
-				break;
-
-			case FileNamesInformation:
-				structsize = FIELD_OFFSET(FILE_NAMES_INFORMATION, FileName[0]);
-				if (outcount + structsize + namelenholder > bufsize) break;
-				eodp = (FILE_NAMES_INFORMATION *)bufptr;
-				FILE_NAMES_INFORMATION *fni = (FILE_NAMES_INFORMATION *)bufptr;
-				fni = (FILE_NAMES_INFORMATION *)bufptr;
-				fni->FileIndex = offset;
-				nameptr = fni->FileName;
-				fni->FileNameLength = namelenholder;
-				break;
-
-			}
-
-			// If know we can't fit struct, just leave
-			if (outcount + structsize + namelenholder > bufsize) break;
-
-			rawsize = structsize + namelenholder;
-			reclen = DIRENT_RECLEN(rawsize);
-
-			/*
-			 * Will this entry fit in the buffer? This time with alignment
-			 */
-			if (outcount + reclen > bufsize) {
+				rawsize = structsize + namelenholder;
+				reclen = DIRENT_RECLEN(rawsize);
 
 				/*
-				* Did we manage to fit anything in the buffer?
-				*/
-				if (!outcount) {
-					error = (EINVAL);
-					goto update;
+				 * Will this entry fit in the buffer? This time with alignment
+				 */
+				if (outcount + reclen > bufsize) {
+
+					/*
+					* Did we manage to fit anything in the buffer?
+					*/
+					if (!outcount) {
+						error = (EINVAL);
+						goto update;
+					}
+					break;
 				}
-				break;
-			}
-			// If it is going to fit, compute alignment, in case
-			// this dir entry is the last one, we don't align last one.
-			last_alignment = reclen - rawsize;
+				// If it is going to fit, compute alignment, in case
+				// this dir entry is the last one, we don't align last one.
+				last_alignment = reclen - rawsize;
 
 
-			// Convert the filename over, or as much as we can fit
-			ULONG namelenholder2 = 0;
-			error = RtlUTF8ToUnicodeN(nameptr, namelenholder, &namelenholder2, zap.za_name, namelen);
-			ASSERT(namelenholder == namelenholder2);
+				// Convert the filename over, or as much as we can fit
+				ULONG namelenholder2 = 0;
+				error = RtlUTF8ToUnicodeN(nameptr, namelenholder, &namelenholder2, zap.za_name, namelen);
+				ASSERT(namelenholder == namelenholder2);
 #if 0
-			dprintf("%s: '%.*S' -> '%s' (namelen %d bytes: structsize %d)\n", __func__,
-				namelenholder / sizeof(WCHAR), nameptr, zap.za_name, namelenholder, structsize);
+				dprintf("%s: '%.*S' -> '%s' (namelen %d bytes: structsize %d)\n", __func__,
+					namelenholder / sizeof(WCHAR), nameptr, zap.za_name, namelenholder, structsize);
 #endif
-			// Release the zp
+				// Release the zp
 #if 1
-			if (get_zp == 0) {
-				VN_RELE(ZTOV(tzp));
-			}
-#else
-			if (get_zp == 0) {
-				if (ZTOV(tzp) == NULL) {
-					zfs_zinactive(tzp);
-				} else {
+				if (get_zp == 0) {
 					VN_RELE(ZTOV(tzp));
 				}
-			}
+#else
+				if (get_zp == 0) {
+					if (ZTOV(tzp) == NULL) {
+						zfs_zinactive(tzp);
+					}
+					else {
+						VN_RELE(ZTOV(tzp));
+					}
+				}
 #endif
 
-			// If we aren't to skip, advance all pointers
-			eodp->NextEntryOffset = reclen;
+				// If we aren't to skip, advance all pointers
+				eodp->NextEntryOffset = reclen;
 
-			outcount += reclen;
-			bufptr += reclen;
-			numdirent++;
-		}
+				outcount += reclen;
+				bufptr += reclen;
+				numdirent++;
+			} // !skip_this_entry
+		} // while
 
 		ASSERT(outcount <= bufsize);
 
@@ -3056,7 +3060,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			offset += 1;
 		}
 
-		if (!skip_this_entry && flag_return_sigle_entry) break;
+		if (!skip_this_entry && flag_return_single_entry) break;
 	}
 
 	// The last eodp should have Next offset of 0

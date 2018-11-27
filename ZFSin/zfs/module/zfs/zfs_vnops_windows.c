@@ -4679,6 +4679,10 @@ fsDispatcher(
 		if (VN_HOLD(hold_vp) != 0)
 			hold_vp = NULL;
 		ASSERT(hold_vp != NULL); // Should we abort the op if vp is gone?
+
+		/* If this is the first we've heard of this FO, we need to remember it */
+		ASSERT((IrpSp->FileObject->Flags & FO_STREAM_FILE) == 0);
+
 	}
 	/* Inside VNOP handlers, we no longer need to call VN_HOLD() on *this* vp
 	 * (but might for dvp etc) and eventually that code will be removed, if this
@@ -4835,6 +4839,64 @@ fsDispatcher(
 				// released right here, but marked to be released upon reaching 0 count
 				vnode_t *vp = IrpSp->FileObject->FsContext;
 
+				/*
+				 * Get rid of the dispatchers HOLD(hold_vp) here so we can
+				 * free things immediately.
+				 */
+
+				if (vp->v_iocount == 1 && vp->v_usecount == 0) {
+
+					SECTION_OBJECT_POINTERS *section;
+					section = vnode_sectionpointer(vp);
+
+					if (IrpSp->FileObject->SectionObjectPointer)
+						ASSERT(IrpSp->FileObject->SectionObjectPointer == section);
+
+					// ImageSection has to be first
+					if (section->ImageSectionObject) {
+						(VOID)MmFlushImageSection(section, MmFlushForWrite); 
+					}
+
+					// DataSection next
+					if (FlagOn(IrpSp->FileObject->Flags, FO_CACHE_SUPPORTED) &&
+						section && section->DataSectionObject) {
+						IO_STATUS_BLOCK iosb;
+						CcFlushCache(section, NULL, 0, &iosb);
+
+						CcPurgeCacheSection(section, NULL, 0, FALSE);
+					}
+
+					// Finally force out CCMap
+					if (IrpSp->FileObject->SectionObjectPointer) {
+						LARGE_INTEGER Zero = { 0,0 };
+							CACHE_UNINITIALIZE_EVENT UninitializeCompleteEvent;
+							NTSTATUS WaitStatus;
+							KeInitializeEvent(&UninitializeCompleteEvent.Event,
+								SynchronizationEvent,
+								FALSE);
+							// Because CcUninitializeCacheMap() can call MJ_CLOSE immediately, and we
+							// don't want to free anything in *that* call, take a usecount++ here.
+							vnode_ref(vp);
+							dprintf("Waiting for CcMgr to fuckoff\n");
+							CcUninitializeCacheMap(IrpSp->FileObject, vnode_deleted(vp) ? &Zero : NULL, &UninitializeCompleteEvent);
+							WaitStatus = KeWaitForSingleObject(&UninitializeCompleteEvent.Event,
+								Executive,
+								KernelMode,
+								FALSE,
+								NULL);
+							dprintf("ok, fucked offed\n");
+							vnode_rele(vp);
+//							IrpSp->FileObject->FsContext = vp;
+							//Status = STATUS_SUCCESS;
+							//break;
+							ASSERT(WaitStatus == STATUS_SUCCESS);
+							ASSERT(IrpSp->FileObject->SectionObjectPointer->ImageSectionObject == NULL);
+							ASSERT(IrpSp->FileObject->SectionObjectPointer->DataSectionObject == NULL);
+							IrpSp->FileObject->SectionObjectPointer = NULL;
+					}
+					FsRtlTeardownPerStreamContexts(&vp->FileHeader);
+					FsRtlUninitializeFileLock(&vp->lock);
+				}
 				/* If we can release now, do so.
 				 * If the reference count for the per-file context structure reaches zero 
 				 * and both the ImageSectionObject and DataSectionObject of the SectionObjectPointers
@@ -4845,14 +4907,10 @@ fsDispatcher(
 					(IrpSp->FileObject->SectionObjectPointer->ImageSectionObject == NULL &&
 						IrpSp->FileObject->SectionObjectPointer->DataSectionObject == NULL))) {
 
-
-					/* 
-					 * Get rid of the dispatchers HOLD(hold_vp) here so we can
-					 * free things immediately. 
-					 */
-
 					/* Take hold from above, we will release in recycle */
 					hold_vp = NULL;
+
+
 
 					/* We can free memory, check if we also should delete file */
 					if (vnode_deleted(vp)) {
@@ -4873,8 +4931,8 @@ fsDispatcher(
 						// Only unmount releases root (we should check we do?)
 						// Release all non-root vnodes now.
 						if (!vnode_isvroot(vp))
-//							if (!vnode_isdir(vp)) // Comment me in if you get tired of FltSteam BSOD
-							vnode_recycle(vp);
+							if (!vnode_isdir(vp)) // Comment me in if you get tired of FltSteam BSOD
+								vnode_recycle(vp);
 						
 						Status = STATUS_SUCCESS;
 					}
