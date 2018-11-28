@@ -4701,8 +4701,7 @@ fsDispatcher(
 		ASSERT(hold_vp != NULL); // Should we abort the op if vp is gone?
 
 		// Add FO to vp, if this is the first we've heard of it
-		int added = vnode_fileobject_add(IrpSp->FileObject->FsContext, IrpSp->FileObject);
-		if (!vnode_isvroot(hold_vp)) ASSERT(added == 0);
+		vnode_fileobject_add(IrpSp->FileObject->FsContext, IrpSp->FileObject);
 
 	}
 	/* Inside VNOP handlers, we no longer need to call VN_HOLD() on *this* vp
