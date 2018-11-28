@@ -860,9 +860,11 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		// vp->v_spinlock
 
 		vp->v_mount = NULL;
-
+		KIRQL OldIrql;
+		KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 		ASSERT(avl_is_empty(&vp->v_fileobjects));
 		avl_destroy(&vp->v_fileobjects);
+		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 
 		// Free vp memory
 		kmem_free(vp, sizeof(*vp));
@@ -1065,9 +1067,12 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 			mutex_exit(&vnode_all_list_lock);
 
 			// Release the AVL tree
+			KIRQL OldIrql;
+			KeAcquireSpinLock(&rvp->v_spinlock, &OldIrql);
 			while ((node = avl_destroy_nodes(&rvp->v_fileobjects, &cookie))	!= NULL) {
 				kmem_free(node, sizeof(*node));
 			}
+			KeReleaseSpinLock(&rvp->v_spinlock, OldIrql);
 
 			isbusy = vnode_recycle_int(rvp, flags & FORCECLOSE);
 			mutex_enter(&vnode_all_list_lock);
@@ -1145,24 +1150,30 @@ int vnode_fileobject_add(vnode_t *vp, void *fo)
 {
 	vnode_fileobjects_t *node;
 	avl_index_t idx;
-
+	KIRQL OldIrql;
+	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 	// Early out to avoid memory alloc
 	vnode_fileobjects_t search;
 	search.fileobject = fo;
-	if (avl_find(&vp->v_fileobjects, &search, &idx) != NULL)
+	if (avl_find(&vp->v_fileobjects, &search, &idx) != NULL) {
+		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 		return 0;
+	}
 
 	node = kmem_alloc(sizeof(*node), KM_SLEEP);
 	node->fileobject = fo;
 
 	if (avl_find(&vp->v_fileobjects, node, &idx) == NULL) {
 		avl_insert(&vp->v_fileobjects, node, idx);
+		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 		return 1;
 	} else {
-		kmem_free(node, sizeof(*node));
+		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+		kmem_free(node, sizeof(*node));		
 		return 0;
 	}
 	// not reached.
+	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 	return 0;
 }
 
@@ -1174,12 +1185,19 @@ int vnode_fileobject_add(vnode_t *vp, void *fo)
 int vnode_fileobject_remove(vnode_t *vp, void *fo)
 {
 	vnode_fileobjects_t search, *node;
+	KIRQL OldIrql;
+	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 	search.fileobject = fo;
 	node = avl_find(&vp->v_fileobjects, &search, NULL);
-	if (node == NULL)
+	if (node == NULL) {
+		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+
 		return 0;
+	}
 	avl_remove(&vp->v_fileobjects, node);
+	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 	kmem_free(node, sizeof(*node));
+
 	return 1;
 }
 
@@ -1188,7 +1206,13 @@ int vnode_fileobject_remove(vnode_t *vp, void *fo)
  */
 int vnode_fileobject_empty(vnode_t *vp)
 {
-	return avl_is_empty(&vp->v_fileobjects);
+	KIRQL OldIrql;
+
+	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	boolean_t ret = avl_is_empty(&vp->v_fileobjects);
+	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+
+	return ret;
 }
 
 
