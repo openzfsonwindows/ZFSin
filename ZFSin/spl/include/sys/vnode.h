@@ -59,6 +59,12 @@
 #define UNLINK_DELETE_ON_CLOSE	(1 << 0) // 1
 #define UNLINK_DELETED			(1 << 1) // 2
 
+#include <sys/avl.h>
+typedef struct vnode_fileobjects {
+	avl_node_t avlnode;
+	void *fileobject;
+} vnode_fileobjects_t;
+
 
 #pragma pack(8)
 struct vnode {
@@ -91,6 +97,8 @@ struct vnode {
 	SHARE_ACCESS share_access;
 
 	list_node_t v_list; // vnode_all_list member node.
+
+	avl_tree_t v_fileobjects; // All seen FOs that point to this
 };
 typedef struct vnode vnode_t;
 #pragma pack()
@@ -521,5 +529,8 @@ int vnode_isrecycled(vnode_t *vp);
 #define NULLVP NULL
 
 int     vflush(struct mount *mp, struct vnode *skipvp, int flags);
+int vnode_fileobject_add(vnode_t *vp, void *fo);
+int vnode_fileobject_remove(vnode_t *vp, void *fo);
+int vnode_fileobject_empty(vnode_t *vp);
 
 #endif /* SPL_VNODE_H */

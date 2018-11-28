@@ -2520,7 +2520,10 @@ top:
 out:
 	zfs_dirent_unlock(dl);
 
-	VN_RELE(vp);
+	if (error == 0)
+		vnode_recycle(vp);
+	else
+		VN_RELE(vp);
 
 	if (zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
 		zil_commit(zilog, 0);

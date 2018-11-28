@@ -861,6 +861,9 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 
 		vp->v_mount = NULL;
 
+		ASSERT(avl_is_empty(&vp->v_fileobjects));
+		avl_destroy(&vp->v_fileobjects);
+
 		// Free vp memory
 		kmem_free(vp, sizeof(*vp));
 
@@ -878,6 +881,18 @@ int vnode_recycle(vnode_t *vp)
 	return vnode_recycle_int(vp, 0);
 }
 
+static int vnode_fileobject_compare(const void *arg1, const void *arg2)
+{
+	const vnode_fileobjects_t *node1 = arg1;
+	const vnode_fileobjects_t *node2 = arg2;
+	if (node1->fileobject > node2->fileobject)
+		return 1;
+	if (node1->fileobject < node2->fileobject)
+		return -1;
+	return 0;
+}
+
+
 void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode **vpp)
 {
 	*vpp = kmem_zalloc(sizeof(**vpp), KM_SLEEP);  // FIXME Change me to kmem_cache
@@ -888,6 +903,9 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	KeInitializeSpinLock(&(*vpp)->v_spinlock);
 	atomic_inc_32(&(*vpp)->v_iocount);
 	atomic_inc_64(&vnode_active);
+	avl_create(&(*vpp)->v_fileobjects, vnode_fileobject_compare,
+		sizeof(vnode_fileobjects_t), offsetof(vnode_fileobjects_t, avlnode));
+
 	if (flags & VNODE_MARKROOT)
 		(*vpp)->v_flags |= VNODE_MARKROOT;
 
@@ -1109,3 +1127,62 @@ int vnode_isrecycled(vnode_t *vp)
 {
 	return (vp->v_flags&(VNODE_MARKTERM | VNODE_DEAD));
 }
+
+/*
+ * Add a FileObject to the list of FO in the vnode.
+ * Return 1 if we actually added it
+ * Return 0 if it was already in the list.
+ */
+int vnode_fileobject_add(vnode_t *vp, void *fo)
+{
+	vnode_fileobjects_t *node;
+	avl_index_t idx;
+
+	// Early out to avoid memory alloc
+	vnode_fileobjects_t search;
+	search.fileobject = fo;
+	if (avl_find(&vp->v_fileobjects, &search, &idx) != NULL)
+		return 0;
+
+	node = kmem_alloc(sizeof(*node), KM_SLEEP);
+	node->fileobject = fo;
+
+	if (avl_find(&vp->v_fileobjects, node, &idx) == NULL) {
+		avl_insert(&vp->v_fileobjects, node, idx);
+		return 1;
+	} else {
+		kmem_free(node, sizeof(*node));
+		return 0;
+	}
+	// not reached.
+	return 0;
+}
+
+/*
+ * Remove a FileObject from the list of FO in the vnode.
+ * Return 1 if we actually removed it
+ * Return 0 if it was not in the list.
+ */
+int vnode_fileobject_remove(vnode_t *vp, void *fo)
+{
+	vnode_fileobjects_t search, *node;
+	search.fileobject = fo;
+	node = avl_find(&vp->v_fileobjects, &search, NULL);
+	if (node == NULL)
+		return 0;
+	avl_remove(&vp->v_fileobjects, node);
+	kmem_free(node, sizeof(*node));
+	return 1;
+}
+
+/*
+ * Check and make sure the list of FileObjects is empty
+ */
+int vnode_fileobject_empty(vnode_t *vp)
+{
+	return avl_is_empty(&vp->v_fileobjects);
+}
+
+
+
+
