@@ -1041,6 +1041,8 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 
 	int isbusy = 0;
 	int reclaims = 0;
+	vnode_fileobjects_t *node;
+	void *cookie = NULL;
 
 	struct vnode *rvp;
 	mutex_enter(&vnode_all_list_lock);
@@ -1061,6 +1063,12 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 						continue;
 			// We are to remove this node, even if ROOT - unmark it.
 			mutex_exit(&vnode_all_list_lock);
+
+			// Release the AVL tree
+			while ((node = avl_destroy_nodes(&rvp->v_fileobjects, &cookie))	!= NULL) {
+				kmem_free(node, sizeof(*node));
+			}
+
 			isbusy = vnode_recycle_int(rvp, flags & FORCECLOSE);
 			mutex_enter(&vnode_all_list_lock);
 			if (!isbusy) {
