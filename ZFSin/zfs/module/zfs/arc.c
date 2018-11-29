@@ -3693,9 +3693,6 @@ arc_hdr_realloc_crypt(arc_buf_hdr_t *hdr, boolean_t need_crypt)
 		bzero(hdr->b_crypt_hdr.b_mac, ZIO_DATA_MAC_LEN);
 	}
 
-	arc_space_consume(nsize, ARC_SPACE_HDRS);
-	arc_space_return(osize, ARC_SPACE_HDRS);
-
 	buf_discard_identity(hdr);
  	kmem_cache_free(ocache, hdr);
 
