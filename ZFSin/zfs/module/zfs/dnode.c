@@ -791,7 +791,7 @@ dnode_move_impl(dnode_t *odn, dnode_t *ndn)
 	dmu_zfetch_init(&ndn->dn_zfetch, NULL);
 	list_move_tail(&ndn->dn_zfetch.zf_stream, &odn->dn_zfetch.zf_stream);
 	ndn->dn_zfetch.zf_dnode = odn->dn_zfetch.zf_dnode;
-
+	
 	/*
 	 * Update back pointers. Updating the handle fixes the back pointer of
 	 * every descendant dbuf as well as the bonus dbuf.
@@ -812,6 +812,7 @@ dnode_move_impl(dnode_t *odn, dnode_t *ndn)
 	odn->dn_dbufs_count = 0;
 	odn->dn_bonus = NULL;
 	odn->dn_zfetch.zf_dnode = NULL;
+	dmu_zfetch_fini(&odn->dn_zfetch);
 
 	/*
 	 * Set the low bit of the objset pointer to ensure that dnode_move()
