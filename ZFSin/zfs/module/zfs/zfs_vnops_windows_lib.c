@@ -308,8 +308,8 @@ NTSTATUS mountmgr_get_mountpoint(
 		Status = dev_ioctl(mountmgr, IOCTL_MOUNTMGR_QUERY_POINTS, &point, sizeof(MOUNTMGR_MOUNT_POINT), ppoints, len, FALSE, NULL);
 
 	}
-	dprintf("IOCTL_MOUNTMGR_QUERY_POINTS return %x - looking for '%S'\n", Status,
-		devpath->Buffer);
+	dprintf("IOCTL_MOUNTMGR_QUERY_POINTS return %x - looking for '%wZ'\n", Status,
+		devpath);
 	if (Status == STATUS_SUCCESS) {
 		for (int Index = 0;
 			Index < ppoints->NumberOfMountPoints;
