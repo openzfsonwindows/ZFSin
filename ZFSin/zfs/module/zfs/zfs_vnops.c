@@ -1214,9 +1214,11 @@ zfs_get_done(zgd_t *zgd, int error)
 	 * allocate new vnode, we don't (ZGET_FLAG_WITHOUT_VNODE), and it is
 	 * attached after zfs_get_data() is finished (and immediately released).
 	 */
+#ifndef _WIN32
 	if (ZTOV(zp)) {
 		VN_RELE_ASYNC(ZTOV(zp), dsl_pool_vnrele_taskq(dmu_objset_pool(os)));
 	}
+#endif
 	if (error == 0 && zgd->zgd_bp)
 		zil_lwb_add_block(zgd->zgd_lwb, zgd->zgd_bp);
 

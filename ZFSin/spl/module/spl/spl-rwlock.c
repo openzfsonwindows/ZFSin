@@ -54,6 +54,9 @@ rw_init(krwlock_t *rwlp, char *name, krw_type_t type, /*__unused*/ void *arg)
 {
     ASSERT(type != RW_DRIVER);
 
+#ifdef DEBUG
+	VERIFY3U(rwlp->rw_pad, != , 0x012345678);
+#endif
 	ExInitializeResourceLite(&rwlp->rw_lock);
     rwlp->rw_owner = NULL;
     rwlp->rw_readers = 0;
@@ -67,7 +70,9 @@ void
 rw_destroy(krwlock_t *rwlp)
 {
 	// Confirm it was initialised, and is unlocked, and not already destroyed.
+#ifdef DEBUG
 	VERIFY3U(rwlp->rw_pad, == , 0x012345678);
+#endif
 	VERIFY3U(rwlp->rw_owner, ==, 0);
 	VERIFY3U(rwlp->rw_readers, ==, 0);
 

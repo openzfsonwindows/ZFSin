@@ -3989,9 +3989,10 @@ NTSTATUS flush_buffers(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION
 		return STATUS_INVALID_PARAMETER;
 
 	struct vnode *vp = FileObject->FsContext;
-	VN_HOLD(vp);
-	Status = zfs_fsync(vp, 0, NULL, NULL);
-	VN_RELE(vp);
+	if (VN_HOLD(vp) == 0) {
+		Status = zfs_fsync(vp, 0, NULL, NULL);
+		VN_RELE(vp);
+	}
 	return Status;
 }
 
@@ -4820,9 +4821,6 @@ fsDispatcher(
 
 				CcPurgeCacheSection(section, NULL, 0, FALSE);
 			}
-
-			FsRtlTeardownPerStreamContexts(&vp->FileHeader);
-			FsRtlUninitializeFileLock(&vp->lock);
 
 			if (IrpSp->FileObject->SectionObjectPointer != NULL)
 				CcUninitializeCacheMap(IrpSp->FileObject, NULL, NULL);

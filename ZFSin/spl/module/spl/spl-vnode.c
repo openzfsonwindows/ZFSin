@@ -1159,10 +1159,12 @@ int vnode_fileobject_add(vnode_t *vp, void *fo)
 		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 		return 0;
 	}
+	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 
 	node = kmem_alloc(sizeof(*node), KM_SLEEP);
 	node->fileobject = fo;
 
+	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 	if (avl_find(&vp->v_fileobjects, node, &idx) == NULL) {
 		avl_insert(&vp->v_fileobjects, node, idx);
 		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);

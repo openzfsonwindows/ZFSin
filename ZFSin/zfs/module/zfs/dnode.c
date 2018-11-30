@@ -170,6 +170,12 @@ dnode_dest(void *arg, void *unused)
 {
 	int i;
 	dnode_t *dn = arg;
+#ifdef _KERNEL
+	if (!rw_isinit(&dn->dn_struct_rwlock)) {
+		dprintf("%s: weird dnode/kmem bug\n", __func__);
+		return;
+	}
+#endif
 
 	rw_destroy(&dn->dn_struct_rwlock);
 	mutex_destroy(&dn->dn_mtx);
