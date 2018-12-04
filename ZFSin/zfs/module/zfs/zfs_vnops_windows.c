@@ -998,7 +998,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				// Did they ask for an AllocationSize
 				if (Irp->Overlay.AllocationSize.QuadPart > 0) {
 					uint64_t allocsize = Irp->Overlay.AllocationSize.QuadPart;
-					zp->z_blksz = P2ROUNDUP(allocsize, 512);
+					//zp->z_blksz = P2ROUNDUP(allocsize, 512);
 				}
 
 				IoSetShareAccess(IrpSp->Parameters.Create.SecurityContext->DesiredAccess,
@@ -1065,7 +1065,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				// Did they ask for an AllocationSize
 				if (Irp->Overlay.AllocationSize.QuadPart > 0) {
 					uint64_t allocsize = Irp->Overlay.AllocationSize.QuadPart;
-					zp->z_blksz = P2ROUNDUP(allocsize, 512);
+					//zp->z_blksz = P2ROUNDUP(allocsize, 512);
 				}
 			}
 			// Update sizes in header.
