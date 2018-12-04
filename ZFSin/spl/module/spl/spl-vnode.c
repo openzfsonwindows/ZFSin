@@ -34,6 +34,8 @@
 
 #include <sys/taskq.h>
 
+//#define DEBUG_VERBOSE
+
 /* Counter for unique vnode ID */
 static uint64_t vnode_vid_counter = 0;
 
@@ -66,7 +68,7 @@ int     vttoif_tab[9] = {
  * In a real VFS the filesystem would register the callbacks for
  * VNOP_ACTIVE and VNOP_RECLAIM - but here we just call them direct 
  */
-extern int zfs_zinactive(struct vnode *, void *, void*);
+//extern int zfs_zinactive(struct vnode *), void *, void*);
 extern int zfs_vnop_reclaim(struct vnode *);
 
 int vnode_recycle_int(vnode_t *vp, int flags);
@@ -741,6 +743,10 @@ int     vnode_isinuse(vnode_t *vp, uint64_t refcnt)
 	return 0;
 }
 
+#ifdef DEBUG_VERBOSE
+#include <sys/zfs_znode.h>
+#endif
+
 int vnode_getwithref(vnode_t *vp)
 {
 	KIRQL OldIrql;
@@ -748,8 +754,15 @@ int vnode_getwithref(vnode_t *vp)
 	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 	if ((vp->v_flags & VNODE_DEAD))
 		error = ENOENT;
-	else
+	else {
+#ifdef DEBUG_VERBOSE
+		if (vp) {
+			znode_t *zp = VTOZ(vp);
+			if (zp) dprintf("%s: Inc iocount from %u for '%s' \n", __func__, vp->v_iocount, zp->z_name_cache);
+		}
+#endif
 		atomic_inc_32(&vp->v_iocount);
+	}
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 	return error;
 }
@@ -763,8 +776,15 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 		error = ENOENT;
 	else if (id != vp->v_id)
 		error = ENOENT;
-	else
+	else {
+#ifdef DEBUG_VERBOSE
+		if (vp) {
+			znode_t *zp = VTOZ(vp);
+			if (zp) dprintf("%s: Inc iocount from %u for '%s' \n", __func__, vp->v_iocount, zp->z_name_cache);
+		}
+#endif
 		atomic_inc_32(&vp->v_iocount);
+	}
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 	return error;
 }
@@ -777,6 +797,12 @@ int vnode_put(vnode_t *vp)
 	ASSERT(!(vp->v_flags & VNODE_DEAD));
 	ASSERT(vp->v_iocount > 0);
 	ASSERT((vp->v_flags & ~VNODE_VALIDBITS) == 0);
+#ifdef DEBUG_VERBOSE
+	if (vp) {
+		znode_t *zp = VTOZ(vp);
+		if (zp) dprintf("%s: Dec iocount from %u for '%s' \n", __func__, vp->v_iocount, zp->z_name_cache);
+	}
+#endif
 	atomic_dec_32(&vp->v_iocount);
 
 	// Now idle?
@@ -823,7 +849,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		vp->v_flags |= VNODE_MARKTERM; // Mark it terminating
 		dprintf("%s: marking %p VNODE_MARKTERM\n", __func__, vp);
 	}
-//	if (!(flags & VNODE_LOCKED))
+
 	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 
 	// We will only reclaim idle nodes, and not mountpoints(ROOT)
@@ -834,8 +860,11 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 			((vp->v_flags&VNODE_MARKROOT) == 0))) {
 
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
+		vp->v_iocount = 0; 
 		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 
+		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
+		FsRtlUninitializeFileLock(&vp->lock);
 		// Call sync? If vnode_write
 		//zfs_fsync(vp, 0, NULL, NULL);
 
@@ -1015,7 +1044,12 @@ vnode_rele(vnode_t *vp)
 		atomic_inc_32(&vp->v_iocount);
 
 		zfs_inactive(vp, NULL, NULL);
-
+#ifdef DEBUG_VERBOSE
+		if (vp) {
+			znode_t *zp = VTOZ(vp);
+			if (zp) dprintf("%s: Inc iocount to %u for %s \n", __func__, vp->v_iocount, zp->z_name_cache);
+		}
+#endif
 		atomic_dec_32(&vp->v_iocount);
 		// Re-check we are still free, and recycle (markterm) was called
 		// we can reclaim now

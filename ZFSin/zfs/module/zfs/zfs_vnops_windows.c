@@ -303,8 +303,8 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 	} else {
 		// Passed in dvp is already HELD, but grab one now
 		// since we release dirs as we descend
-		VN_HOLD(dvp);
-		ASSERT(vnode_isinuse(dvp, 0));
+		dprintf("%s: passed in dvp\n", __func__);
+		if (VN_HOLD(dvp) != 0) return ESRCH;
 	}
 
 	fullstrlen = strlen(filename);
@@ -404,6 +404,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 
 	if (!word && finalpartmustnotexist && dvp && !vp) {
 		dprintf("CREATE with existing dir exit?\n");
+		VN_RELE(dvp);
 		return EEXIST;
 	}
 
@@ -475,6 +476,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	ULONG CreateDisposition;
 	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
 	int flags = 0;
+	int dvp_no_rele = 0;
 	NTSTATUS Status = STATUS_SUCCESS;
 
 	if (zfsvfs == NULL) return STATUS_OBJECT_PATH_NOT_FOUND;
@@ -657,9 +659,10 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		// We have converted the filename, continue..
 		if (FileObject->RelatedFileObject && FileObject->RelatedFileObject->FsContext) {
 			dvp = FileObject->RelatedFileObject->FsContext;
-			VN_HOLD(dvp);
-		}
 
+			// This branch here, if failure, should not release dvp
+			dvp_no_rele = 1;
+		}
 
 		// If we have dvp, it is HELD
 		error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), (CreateDisposition == FILE_CREATE), &finalname, &dvp, &vp, flags);
@@ -695,7 +698,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	if (error) {
 
-		if (dvp) VN_RELE(dvp);
+		if (dvp && !dvp_no_rele) VN_RELE(dvp);
 		if (vp) VN_RELE(vp);
 
 		if (error == STATUS_REPARSE) {
@@ -1085,7 +1088,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
  * VFS (spl-vnode.c) will hold iocount == 1, usecount == 0
  * so release associated ZFS node, and free everything
  */
-int zfs_vnop_reclaim(struct vnode *vp)
+int zfs_vnop_reclaim (struct vnode *vp)
 {
 	znode_t *zp = VTOZ(vp);
 	if (zp == NULL) {
@@ -2164,7 +2167,6 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	}
 
 	fdvp = ZTOV(dzp);
-	VN_HOLD(tdvp);
 	// "tvp" (if not NULL) and "tdvp" is held by zfs_find_dvp_vp
 
 	error = zfs_rename(fdvp, &zp->z_name_cache[zp->z_name_offset],  
@@ -4811,7 +4813,7 @@ fsDispatcher(
 			FsRtlNotifyFullChangeDirectory(zmo->NotifySync, &zmo->DirNotifyList,
 				zp, NULL, FALSE, FALSE, 0, NULL, NULL, NULL);
 
-#if 1
+#if 0
 			SECTION_OBJECT_POINTERS *section;
 			section = vnode_sectionpointer(vp);
 			//vnode_setsectionpointer(vp, NULL);
@@ -4861,7 +4863,7 @@ fsDispatcher(
 				// Mark vnode for cleanup, we grab a HOLD to make sure it isn't
 				// released right here, but marked to be released upon reaching 0 count
 				vnode_t *vp = IrpSp->FileObject->FsContext;
-
+				znode_t *zp = (VTOZ(vp));
 				/*
 				 * Get rid of the dispatchers HOLD(hold_vp) here so we can
 				 * free things immediately.
@@ -4912,8 +4914,8 @@ fsDispatcher(
 							vnode_rele(vp);
 							ASSERT(WaitStatus == STATUS_SUCCESS);
 					}
-					FsRtlTeardownPerStreamContexts(&vp->FileHeader);
-					FsRtlUninitializeFileLock(&vp->lock);
+					//FsRtlTeardownPerStreamContexts(&vp->FileHeader);
+					//FsRtlUninitializeFileLock(&vp->lock);
 				}
 
 
@@ -4931,10 +4933,13 @@ fsDispatcher(
 					(IrpSp->FileObject->SectionObjectPointer->ImageSectionObject == NULL &&
 						IrpSp->FileObject->SectionObjectPointer->DataSectionObject == NULL))) {
 
+					// I believe with the iocounts fixed, the following ASSERT can
+					// be removed, and the above "if" corrected to include iocount.
+					ASSERT(vp->v_iocount <= 1);
+
 					/* Take hold from above, we will release in recycle */
 					hold_vp = NULL;
-
-
+					
 
 					/* We can free memory, check if we also should delete file */
 					if (vnode_deleted(vp)) {
@@ -4947,6 +4952,7 @@ fsDispatcher(
 						 * Access to "vp" may be invalid after this call, so it should be
 						 * last.
 						 */
+						dprintf("delete vnode %p\n", vp);
 						Status = delete_entry(DeviceObject, Irp, IrpSp);
 
 					} else {
@@ -4954,11 +4960,13 @@ fsDispatcher(
 						/* Otherwise, just release memory. */
 						// Only unmount releases root (we should check we do?)
 						// Release all non-root vnodes now.
-						if (vnode_isvroot(vp))
+						dprintf("release memory for vp %p\n", vp);
+
+						// Release vp - vnode_recycle expects iocount==1
+						// we don't recycle root (unmount does) or RELE on recycle error
+						if (vnode_isvroot(vp) || (vnode_recycle(vp) != 0))
 							VN_RELE(vp);
-						else
-							vnode_recycle(vp);
-						
+
 						Status = STATUS_SUCCESS;
 					}
 					vp = NULL; // Paranoia, signal it is gone.
