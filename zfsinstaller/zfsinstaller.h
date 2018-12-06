@@ -33,4 +33,4 @@ int zfs_install(char *);
 int zfs_uninstall(char *);
 int installInf(const char* cmd, char *inf_path);
 void printUsage();
-void send_zfs_ioc_unregister_fs();
+int send_zfs_ioc_unregister_fs();

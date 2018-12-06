@@ -761,6 +761,10 @@ typedef enum spa_import_type {
 	SPA_IMPORT_ASSEMBLE
 } spa_import_type_t;
 
+
+// Hold module busy to stop unregister until all exported.
+extern uint64_t zfs_module_busy;
+
 /* state manipulation functions */
 extern int spa_open(const char *pool, spa_t **, void *tag);
 extern int spa_open_rewind(const char *pool, spa_t **, void *tag,

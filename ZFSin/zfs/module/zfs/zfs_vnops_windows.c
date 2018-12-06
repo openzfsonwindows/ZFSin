@@ -4328,7 +4328,9 @@ ioctlDispatcher(
 				 */
 				switch (cmd) {
 				case ZFS_IOC_UNREGISTER_FS:
-					Status = zfs_ioc_unregister_fs();
+					// We abuse returnedBytes to send back busy
+					Irp->IoStatus.Information = zfs_ioc_unregister_fs();
+					Status = STATUS_SUCCESS;
 					break;
 					/*
 					 * So to do ioctl in async mode is a hassle, we have to do the copyin/copyout

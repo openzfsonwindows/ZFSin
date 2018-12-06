@@ -99,6 +99,9 @@
 #include "zfs_prop.h"
 #include "zfs_comutil.h"
 
+// Hold module busy to stop unregister until all exported.
+uint64_t zfs_module_busy = 0;
+
 /*
  * The interval, in seconds, at which failed configuration cache file writes
  * should be retried.
@@ -1232,7 +1235,7 @@ spa_activate(spa_t *spa, int mode)
 
 #ifdef _KERNEL
     /* Lock kext in kernel while mounted */
-//    OSKextRetainKextWithLoadTag(OSKextGetCurrentLoadTag());
+	atomic_inc_64(&zfs_module_busy);
 #endif
 
 	/*
@@ -1349,7 +1352,7 @@ spa_deactivate(spa_t *spa)
 
 #ifdef _KERNEL
     /* Unlock kext in kernel */
-//    OSKextReleaseKextWithLoadTag(OSKextGetCurrentLoadTag());
+	atomic_dec_64(&zfs_module_busy);
 #endif
 
 }

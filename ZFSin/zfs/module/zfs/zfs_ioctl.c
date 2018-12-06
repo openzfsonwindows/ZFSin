@@ -5909,17 +5909,21 @@ zfs_ioctl_register_dataset_modify(zfs_ioc_t ioc, zfs_ioc_legacy_func_t *func,
 							  DATASET_NAME, B_TRUE, POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY);
 }
 
-int
-zfs_ioc_unregister_fs(void) {
+uint64_t
+zfs_ioc_unregister_fs(void) 
+{
 	//IoUnregisterFsRegistrationChange(WIN_DriverObject, DriverNotificationRoutine);
 	dprintf("%s\n", __func__);
+	if (zfs_module_busy != 0) {
+		dprintf("%s: datasets still busy: %llu pool(s)\n", __func__, zfs_module_busy);
+		return zfs_module_busy;
+	}
 	IoUnregisterFileSystem(fsDiskDeviceObject);
 	IoDeleteDevice(fsDiskDeviceObject);
 	IoDeleteDevice(ioctlDeviceObject);
 	return 0;
 }
 
-//void zfs_ioc_unregister_fs(zfs_cmd_t*);
 
 static void
 zfs_ioctl_init(void)
