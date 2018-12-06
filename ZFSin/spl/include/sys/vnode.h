@@ -344,13 +344,28 @@ static inline int vn_lock(struct vnode *vp, int fl) { return 0; }
 
 
 // KERNEL
-#define VN_HOLD(vp)     vnode_getwithref(vp)
+#define DEBUG_VERBOSE
 
+#ifdef DEBUG_VERBOSE
+#define VN_HOLD(vp)     vnode_getwithref(vp, __FILE__, __LINE__)
+#define VN_RELE(vp)                                 \
+    do {                                            \
+        if ((vp) && (vp) != DNLC_NO_VNODE)          \
+            vnode_put(vp, __FILE__, __LINE__);      \
+    } while (0)
+#define vnode_getwithvid(V, ID) vnode_debug_getwithvid((V), (ID), __FILE__, __LINE__)
+
+#else
+
+#define VN_HOLD(vp)     vnode_getwithref(vp)
 #define VN_RELE(vp)                                 \
     do {                                            \
         if ((vp) && (vp) != DNLC_NO_VNODE)          \
             vnode_put(vp);                          \
     } while (0)
+
+#endif
+
 
 
 void spl_rele_async(void *arg);
@@ -482,12 +497,19 @@ struct vnode *getrootdir(void);
 void spl_vfs_start(void);
 
 int     vnode_vfsisrdonly(vnode_t *vp);
-int     vnode_getwithvid(vnode_t *, uint64_t);
 uint64_t        vnode_vid(vnode_t *vp);
 int     vnode_isreg(vnode_t *vp);
 int     vnode_isdir(vnode_t *vp);
+#ifdef DEBUG_VERBOSE
+int     vnode_debug_getwithvid(vnode_t *, uint64_t, char *, int);
+int vnode_getwithref(vnode_t *vp, char *, int);
+int     vnode_put(vnode_t *vp, char *, int);
+#else
+int     vnode_getwithvid(vnode_t *, uint64_t);
+int vnode_getwithref(vnode_t *vp);
 int     vnode_put(vnode_t *vp);
-int     vnode_getwithref(vnode_t *vp);
+#endif
+
 
 void *vnode_fsnode(struct vnode *dvp);
 enum vtype      vnode_vtype(vnode_t *vp);

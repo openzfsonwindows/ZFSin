@@ -34,8 +34,6 @@
 
 #include <sys/taskq.h>
 
-//#define DEBUG_VERBOSE
-
 /* Counter for unique vnode ID */
 static uint64_t vnode_vid_counter = 0;
 
@@ -594,7 +592,7 @@ int spl_vn_rdwr(enum uio_rw rw,
 void spl_rele_async(void *arg)
 {
     struct vnode *vp = (struct vnode *)arg;
-    if (vp) vnode_put(vp);
+	if (vp) VN_RELE(vp);
 }
 
 void vn_rele_async(struct vnode *vp, void *taskq)
@@ -747,7 +745,11 @@ int     vnode_isinuse(vnode_t *vp, uint64_t refcnt)
 #include <sys/zfs_znode.h>
 #endif
 
+#ifdef DEBUG_VERBOSE
+int vnode_getwithref(vnode_t *vp, char *file, int line)
+#else
 int vnode_getwithref(vnode_t *vp)
+#endif
 {
 	KIRQL OldIrql;
 	int error = 0;
@@ -758,16 +760,24 @@ int vnode_getwithref(vnode_t *vp)
 #ifdef DEBUG_VERBOSE
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
-			if (zp) dprintf("%s: Inc iocount from %u for '%s' \n", __func__, vp->v_iocount, zp->z_name_cache);
+			if (zp) dprintf("%s: Inc iocount now %u for '%s' (%s:%d) \n", __func__, 
+				atomic_inc_32_nv(&vp->v_iocount),
+				zp->z_name_cache,
+				file, line);
 		}
-#endif
+#else
 		atomic_inc_32(&vp->v_iocount);
+#endif
 	}
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 	return error;
 }
 
+#ifdef DEBUG_VERBOSE
+int vnode_debug_getwithvid(vnode_t *vp, uint64_t id, char *file, int line)
+#else
 int vnode_getwithvid(vnode_t *vp, uint64_t id)
+#endif
 {
 	KIRQL OldIrql;
 	int error = 0;
@@ -780,10 +790,13 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 #ifdef DEBUG_VERBOSE
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
-			if (zp) dprintf("%s: Inc iocount from %u for '%s' \n", __func__, vp->v_iocount, zp->z_name_cache);
+			if (zp) dprintf("%s: Inc iocount now %u for '%s' (%s:%d)\n", __func__,
+				atomic_inc_32_nv(&vp->v_iocount),
+				zp->z_name_cache, file, line);
 		}
-#endif
+#else
 		atomic_inc_32(&vp->v_iocount);
+#endif
 	}
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 	return error;
@@ -791,7 +804,11 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 
 extern void zfs_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct);
 
+#ifdef DEBUG_VERBOSE
+int vnode_put(vnode_t *vp, char *file, int line)
+#else
 int vnode_put(vnode_t *vp)
+#endif
 {
 	KIRQL OldIrql;
 	ASSERT(!(vp->v_flags & VNODE_DEAD));
@@ -800,11 +817,13 @@ int vnode_put(vnode_t *vp)
 #ifdef DEBUG_VERBOSE
 	if (vp) {
 		znode_t *zp = VTOZ(vp);
-		if (zp) dprintf("%s: Dec iocount from %u for '%s' \n", __func__, vp->v_iocount, zp->z_name_cache);
+		if (zp) dprintf("%s: Dec iocount now %u for '%s' (%s:%d)\n", __func__, 
+			atomic_dec_32_nv(&vp->v_iocount),
+			zp->z_name_cache, file, line);
 	}
-#endif
+#else
 	atomic_dec_32(&vp->v_iocount);
-
+#endif
 	// Now idle?
 	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 

@@ -655,7 +655,7 @@ zfs_vnode_forget(struct vnode *vp)
 	/* copied from insmntque_stddtr */
 	if (vp) {
 		vnode_clearfsnode(vp);
-		vnode_put(vp);
+		VN_RELE(vp);
 		vnode_recycle(vp);
 	}
 }

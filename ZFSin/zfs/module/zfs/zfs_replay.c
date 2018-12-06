@@ -395,9 +395,9 @@ zfs_replay_create_acl(void *arg1, void *arg2, boolean_t byteswap)
 
 bail:
 	if (error == 0 && ip != NULL)
-		vnode_put(ip);
+		VN_RELE(ip);
 
-	vnode_put(ZTOV(dzp));
+	VN_RELE(ZTOV(dzp));
 
 	if (zfsvfs->z_fuid_replay)
 		zfs_fuid_info_free(zfsvfs->z_fuid_replay);
@@ -523,9 +523,9 @@ zfs_replay_create(void *arg1, void *arg2, boolean_t byteswap)
 
 out:
 	if (error == 0 && ip != NULL)
-		vnode_put(ip);
+		VN_RELE(ip);
 
-	vnode_put(ZTOV(dzp));
+	VN_RELE(ZTOV(dzp));
 
 	if (zfsvfs->z_fuid_replay)
 		zfs_fuid_info_free(zfsvfs->z_fuid_replay);
@@ -563,7 +563,7 @@ zfs_replay_remove(void *arg1, void *arg2, boolean_t byteswap)
 		error = SET_ERROR(ENOTSUP);
 	}
 
-	vnode_put(ZTOV(dzp));
+	VN_RELE(ZTOV(dzp));
 
 	return (error);
 }
@@ -585,7 +585,7 @@ zfs_replay_link(void *arg1, void *arg2, boolean_t byteswap)
 		return (error);
 
 	if ((error = zfs_zget(zfsvfs, lr->lr_link_obj, &zp)) != 0) {
-		vnode_put(ZTOV(dzp));
+		VN_RELE(ZTOV(dzp));
 		return (error);
 	}
 
@@ -594,8 +594,8 @@ zfs_replay_link(void *arg1, void *arg2, boolean_t byteswap)
 
 	error = zfs_link(ZTOV(dzp), ZTOV(zp), name, kcred, NULL, vflg);
 
-	vnode_put(ZTOV(zp));
-	vnode_put(ZTOV(dzp));
+	VN_RELE(ZTOV(zp));
+	VN_RELE(ZTOV(dzp));
 
 	return (error);
 }
@@ -618,7 +618,7 @@ zfs_replay_rename(void *arg1, void *arg2, boolean_t byteswap)
 		return (error);
 
 	if ((error = zfs_zget(zfsvfs, lr->lr_tdoid, &tdzp)) != 0) {
-		vnode_put(ZTOV(sdzp));
+		VN_RELE(ZTOV(sdzp));
 		return (error);
 	}
 
@@ -627,8 +627,8 @@ zfs_replay_rename(void *arg1, void *arg2, boolean_t byteswap)
 
 	error = zfs_rename(ZTOV(sdzp), sname, ZTOV(tdzp), tname, kcred, NULL,vflg);
 
-	vnode_put(ZTOV(tdzp));
-	vnode_put(ZTOV(sdzp));
+	VN_RELE(ZTOV(tdzp));
+	VN_RELE(ZTOV(sdzp));
 
 	return (error);
 }
@@ -725,7 +725,7 @@ top:
 		dmu_tx_hold_sa(tx, zp->z_sa_hdl, B_FALSE);
 		error = dmu_tx_assign(tx, TXG_WAIT);
 		if (error) {
-			vnode_put(ZTOV(zp));
+			VN_RELE(ZTOV(zp));
 			if (error == ERESTART) {
 				dmu_tx_wait(tx);
 				dmu_tx_abort(tx);
@@ -743,7 +743,7 @@ top:
 		dmu_tx_commit(tx);
 	}
 
-	vnode_put(ZTOV(zp));
+	VN_RELE(ZTOV(zp));
 
 	return (error);
 }
@@ -772,7 +772,7 @@ zfs_replay_truncate(void *arg1, void *arg2, boolean_t byteswap)
 	error = zfs_space(ZTOV(zp), F_FREESP, &fl, FWRITE | FOFFMAX,
                       lr->lr_offset, kcred, NULL);
 
-	vnode_put(ZTOV(zp));
+	VN_RELE(ZTOV(zp));
 
 	return (error);
 }
@@ -826,7 +826,7 @@ zfs_replay_setattr(void *arg1, void *arg2, boolean_t byteswap)
 
 	zfs_fuid_info_free(zfsvfs->z_fuid_replay);
 	zfsvfs->z_fuid_replay = NULL;
-	vnode_put(ZTOV(zp));
+	VN_RELE(ZTOV(zp));
 
 	return (error);
 }
@@ -858,7 +858,7 @@ zfs_replay_acl_v0(void *arg1, void *arg2, boolean_t byteswap)
 
 	error = zfs_setsecattr(ZTOV(zp), &vsa, 0, kcred, NULL);
 
-	vnode_put(ZTOV(zp));
+	VN_RELE(ZTOV(zp));
 
 	return (error);
 }
@@ -922,7 +922,7 @@ zfs_replay_acl(void *arg1, void *arg2, boolean_t byteswap)
 		zfs_fuid_info_free(zfsvfs->z_fuid_replay);
 
 	zfsvfs->z_fuid_replay = NULL;
-	vnode_put(ZTOV(zp));
+	VN_RELE(ZTOV(zp));
 
 	return (error);
 }

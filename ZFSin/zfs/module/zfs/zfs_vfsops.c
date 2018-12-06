@@ -3541,7 +3541,7 @@ dprintf("%s\n", __func__);
 		zp_gen = 1;
 
 	if (zp->z_unlinked || zp_gen != fid_gen) {
-		vnode_put(ZTOV(zp));
+		VN_RELE(ZTOV(zp));
 		error = EINVAL;
 		goto out;
 	}

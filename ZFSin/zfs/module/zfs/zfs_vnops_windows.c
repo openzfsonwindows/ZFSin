@@ -3896,7 +3896,8 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 		IrpSp->FileObject->RelatedFileObject->FsContext != NULL) {
 
 		dvp = IrpSp->FileObject->RelatedFileObject->FsContext;
-		VN_HOLD(dvp);
+		if (VN_HOLD(dvp) != 0)
+			return STATUS_INSTANCE_NOT_AVAILABLE;
 
 	} else {
 		uint64_t parent = 0;
@@ -3922,6 +3923,7 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	if (error != STATUS_SUCCESS &&
 		error != STATUS_SOME_NOT_MAPPED) {
+		VN_RELE(dvp);
 		return STATUS_ILLEGAL_CHARACTER;
 	}
 	filename[outlen] = 0;
@@ -4708,6 +4710,10 @@ fsDispatcher(
 		// Add FO to vp, if this is the first we've heard of it
 		vnode_fileobject_add(IrpSp->FileObject->FsContext, IrpSp->FileObject);
 
+		// This is useful if you have iocount leaks, and do
+		// only single-threaded operations
+		if (!vnode_isvroot(hold_vp) && vnode_isdir(hold_vp))
+			ASSERT(hold_vp->v_iocount == 1);
 	}
 	/* Inside VNOP handlers, we no longer need to call VN_HOLD() on *this* vp
 	 * (but might for dvp etc) and eventually that code will be removed, if this
