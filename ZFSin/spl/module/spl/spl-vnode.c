@@ -589,14 +589,34 @@ int spl_vn_rdwr(enum uio_rw rw,
     return (error);
 }
 
+#ifdef DEBUG_VERBOSE
+#include <sys/zfs_znode.h>
+#endif
+
 void spl_rele_async(void *arg)
 {
     struct vnode *vp = (struct vnode *)arg;
+#ifdef DEBUG_VERBOSE
+	if (vp) {
+		znode_t *zp = VTOZ(vp);
+		if (zp) dprintf("%s: Dec iocount from %u for '%s' \n", __func__,
+			&vp->v_iocount,
+			zp->z_name_cache);
+	}
+#endif
 	if (vp) VN_RELE(vp);
 }
 
 void vn_rele_async(struct vnode *vp, void *taskq)
 {
+#ifdef DEBUG_VERBOSE
+	if (vp) {
+		znode_t *zp = VTOZ(vp);
+		if (zp) dprintf("%s: Dec iocount in future, now %u for '%s' \n", __func__,
+			vp->v_iocount,
+			zp->z_name_cache);
+	}
+#endif
 	VERIFY(taskq_dispatch((taskq_t *)taskq,
 						  (task_func_t *)spl_rele_async, vp, TQ_SLEEP) != 0);
 }
@@ -741,9 +761,6 @@ int     vnode_isinuse(vnode_t *vp, uint64_t refcnt)
 	return 0;
 }
 
-#ifdef DEBUG_VERBOSE
-#include <sys/zfs_znode.h>
-#endif
 
 #ifdef DEBUG_VERBOSE
 int vnode_getwithref(vnode_t *vp, char *file, int line)
@@ -760,10 +777,10 @@ int vnode_getwithref(vnode_t *vp)
 #ifdef DEBUG_VERBOSE
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
-			if (zp) dprintf("%s: Inc iocount now %u for '%s' (%s:%d) \n", __func__, 
+			if (zp) dprintf("%s: Inc iocount now %u for '%s' (%s:%d) thread %p \n", __func__, 
 				atomic_inc_32_nv(&vp->v_iocount),
 				zp->z_name_cache,
-				file, line);
+				file, line, current_thread());
 		}
 #else
 		atomic_inc_32(&vp->v_iocount);
@@ -790,9 +807,9 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 #ifdef DEBUG_VERBOSE
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
-			if (zp) dprintf("%s: Inc iocount now %u for '%s' (%s:%d)\n", __func__,
+			if (zp) dprintf("%s: Inc iocount now %u for '%s' (%s:%d) thread %p\n", __func__,
 				atomic_inc_32_nv(&vp->v_iocount),
-				zp->z_name_cache, file, line);
+				zp->z_name_cache, file, line, current_thread());
 		}
 #else
 		atomic_inc_32(&vp->v_iocount);
@@ -817,9 +834,9 @@ int vnode_put(vnode_t *vp)
 #ifdef DEBUG_VERBOSE
 	if (vp) {
 		znode_t *zp = VTOZ(vp);
-		if (zp) dprintf("%s: Dec iocount now %u for '%s' (%s:%d)\n", __func__, 
+		if (zp) dprintf("%s: Dec iocount now %u for '%s' (%s:%d) thread %p \n", __func__, 
 			atomic_dec_32_nv(&vp->v_iocount),
-			zp->z_name_cache, file, line);
+			zp->z_name_cache, file, line, current_thread());
 	}
 #else
 	atomic_dec_32(&vp->v_iocount);
