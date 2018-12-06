@@ -1294,6 +1294,10 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 			error = dmu_read(os, object, offset, size, buf,
 			    DMU_READ_NO_PREFETCH);
 		}
+		if (ZTOV(zp)) {
+			VN_RELE_ASYNC(ZTOV(zp),
+				dsl_pool_vnrele_taskq(dmu_objset_pool(os)));
+		}
 		ASSERT(error == 0 || error == ENOENT);
 	} else { /* indirect write */
 		/*
