@@ -1214,11 +1214,11 @@ zfs_get_done(zgd_t *zgd, int error)
 	 * allocate new vnode, we don't (ZGET_FLAG_WITHOUT_VNODE), and it is
 	 * attached after zfs_get_data() is finished (and immediately released).
 	 */
-#ifndef _WIN32
-	if (ZTOV(zp)) {
+//#ifndef _WIN32
+//	if (ZTOV(zp)) {
 		VN_RELE_ASYNC(ZTOV(zp), dsl_pool_vnrele_taskq(dmu_objset_pool(os)));
-	}
-#endif
+//	}
+//#endif
 	if (error == 0 && zgd->zgd_bp)
 		zil_lwb_add_block(zgd->zgd_lwb, zgd->zgd_bp);
 
@@ -1249,11 +1249,10 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 	ASSERT3P(zio, !=, NULL);
 	ASSERT3U(size, !=, 0);
 
-	if (ZTOV(zp))
-		VN_HOLD(ZTOV(zp));
 #ifndef _WIN32
 	/*
 	 * Nothing to do if the file has been removed
+	 * This zget is moved into zil.c
 	 */
 	if (zfs_zget(zfsvfs, object, &zp) != 0)
 		return (SET_ERROR(ENOENT));
@@ -1293,10 +1292,6 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 		} else {
 			error = dmu_read(os, object, offset, size, buf,
 			    DMU_READ_NO_PREFETCH);
-		}
-		if (ZTOV(zp)) {
-			VN_RELE_ASYNC(ZTOV(zp),
-				dsl_pool_vnrele_taskq(dmu_objset_pool(os)));
 		}
 		ASSERT(error == 0 || error == ENOENT);
 	} else { /* indirect write */
@@ -1355,8 +1350,6 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 			 * in the zfs_get_done() callback.
 			 */
 			if (error == 0) {
-				if(ZTOV(zp))
-					VN_RELE_ASYNC(ZTOV(zp), dsl_pool_vnrele_taskq(dmu_objset_pool(os)));
 				return (0);
 			}
 

@@ -1553,8 +1553,9 @@ cont:
 										 so int type is ok */
 			zfsvfs_t *zfsvfs = itx->itx_private;
 
+			// Grab a zget here, released in zfs_vnops.c:zfs_get_done()
 			error = zfs_zget_ext(zfsvfs, lrw->lr_foid, &zp,
-				ZGET_FLAG_UNLINKED | ZGET_FLAG_WITHOUT_VNODE_GET );
+				ZGET_FLAG_UNLINKED );
 			if (error == 0) {
 
 				/* Attach vnode in different thread - if one is needed -
