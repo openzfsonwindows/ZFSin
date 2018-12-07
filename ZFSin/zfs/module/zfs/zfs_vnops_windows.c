@@ -399,11 +399,14 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 	} else {
 		dprintf("%s: failed to find dvp for '%s' word '%s' err %d\n", __func__, filename,
 			word?word:"(null)", error);
-		//DbgBreakPoint();
+		VN_RELE(dvp);
 		return error;
 	}
-	if (error != 0 && !vp && !finalpartmaynotexist)
+
+	if (error != 0 && !vp && !finalpartmaynotexist) {
+		VN_RELE(dvp);
 		return ENOENT;
+	}
 
 	if (!word && finalpartmustnotexist && dvp && !vp) {
 		dprintf("CREATE with existing dir exit?\n");
@@ -1080,7 +1083,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		VN_RELE(vp);
 		VN_RELE(dvp);
 	}
-
 
 	kmem_free(filename, PATH_MAX);
 	return Status;
@@ -4792,6 +4794,7 @@ fsDispatcher(
 				// Record all FO used with vp, starting with this one
 				if (IrpSp->FileObject && IrpSp->FileObject->FsContext)
 					vnode_fileobject_add(IrpSp->FileObject->FsContext, IrpSp->FileObject);
+
 			}
 		}
 		break;
@@ -5417,9 +5420,10 @@ NTSTATUS ZFSCallbackReleaseForCreateSection(
 	if (vp->FileHeader.Resource) {
 		dprintf("%s: unlocked\n", __func__);
 		ExReleaseResourceLite(vp->FileHeader.Resource);
-		VN_HOLD(vp);
-		vnode_rele(vp);
-		VN_RELE(vp);
+		if (VN_HOLD(vp) == 0) {
+			vnode_rele(vp);
+			VN_RELE(vp);
+		}
 	}
 
 	return STATUS_FSFILTER_OP_COMPLETED_SUCCESSFULLY;
