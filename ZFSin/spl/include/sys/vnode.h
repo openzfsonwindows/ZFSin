@@ -44,6 +44,10 @@
 //#include <kern/locks.h>
 #include <crt/fcntl.h>
 
+/* Enable to track all IOCOUNT */
+#define DEBUG_IOCOUNT
+
+
 /*
  * Lets define a vnode struct that will hold everything needed for Windows
  * request to be handled.
@@ -344,9 +348,8 @@ static inline int vn_lock(struct vnode *vp, int fl) { return 0; }
 
 
 // KERNEL
-#define DEBUG_VERBOSE
 
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_IOCOUNT
 #define VN_HOLD(vp)     vnode_getwithref(vp, __FILE__, __LINE__)
 #define VN_RELE(vp)                                 \
     do {                                            \
@@ -500,10 +503,11 @@ int     vnode_vfsisrdonly(vnode_t *vp);
 uint64_t        vnode_vid(vnode_t *vp);
 int     vnode_isreg(vnode_t *vp);
 int     vnode_isdir(vnode_t *vp);
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_IOCOUNT
 int     vnode_debug_getwithvid(vnode_t *, uint64_t, char *, int);
 int vnode_getwithref(vnode_t *vp, char *, int);
 int     vnode_put(vnode_t *vp, char *, int);
+void vnode_check_iocount(void);
 #else
 int     vnode_getwithvid(vnode_t *, uint64_t);
 int vnode_getwithref(vnode_t *vp);

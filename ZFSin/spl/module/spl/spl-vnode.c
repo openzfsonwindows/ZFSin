@@ -34,6 +34,10 @@
 
 #include <sys/taskq.h>
 
+#ifdef DEBUG_IOCOUNT
+#include <sys/zfs_znode.h>
+#endif
+
 /* Counter for unique vnode ID */
 static uint64_t vnode_vid_counter = 0;
 
@@ -589,14 +593,10 @@ int spl_vn_rdwr(enum uio_rw rw,
     return (error);
 }
 
-#ifdef DEBUG_VERBOSE
-#include <sys/zfs_znode.h>
-#endif
-
 void spl_rele_async(void *arg)
 {
     struct vnode *vp = (struct vnode *)arg;
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_IOCOUNT
 	if (vp) {
 		znode_t *zp = VTOZ(vp);
 		if (zp) dprintf("%s: Dec iocount from %u for '%s' \n", __func__,
@@ -609,7 +609,7 @@ void spl_rele_async(void *arg)
 
 void vn_rele_async(struct vnode *vp, void *taskq)
 {
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_IOCOUNT
 	if (vp) {
 		znode_t *zp = VTOZ(vp);
 		if (zp) dprintf("%s: Dec iocount in future, now %u for '%s' \n", __func__,
@@ -762,7 +762,7 @@ int     vnode_isinuse(vnode_t *vp, uint64_t refcnt)
 }
 
 
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_IOCOUNT
 int vnode_getwithref(vnode_t *vp, char *file, int line)
 #else
 int vnode_getwithref(vnode_t *vp)
@@ -774,7 +774,7 @@ int vnode_getwithref(vnode_t *vp)
 	if ((vp->v_flags & VNODE_DEAD))
 		error = ENOENT;
 	else {
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_IOCOUNT
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
 			if (zp) dprintf("%s: Inc iocount now %u for '%s' (%s:%d) thread %p \n", __func__, 
@@ -790,7 +790,7 @@ int vnode_getwithref(vnode_t *vp)
 	return error;
 }
 
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_IOCOUNT
 int vnode_debug_getwithvid(vnode_t *vp, uint64_t id, char *file, int line)
 #else
 int vnode_getwithvid(vnode_t *vp, uint64_t id)
@@ -804,7 +804,7 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 	else if (id != vp->v_id)
 		error = ENOENT;
 	else {
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_IOCOUNT
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
 			if (zp) dprintf("%s: Inc iocount now %u for '%s' (%s:%d) thread %p\n", __func__,
@@ -821,7 +821,7 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 
 extern void zfs_inactive(vnode_t *vp, cred_t *cr, caller_context_t *ct);
 
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_IOCOUNT
 int vnode_put(vnode_t *vp, char *file, int line)
 #else
 int vnode_put(vnode_t *vp)
@@ -831,7 +831,7 @@ int vnode_put(vnode_t *vp)
 	ASSERT(!(vp->v_flags & VNODE_DEAD));
 	ASSERT(vp->v_iocount > 0);
 	ASSERT((vp->v_flags & ~VNODE_VALIDBITS) == 0);
-#ifdef DEBUG_VERBOSE
+#ifdef DEBUG_IOCOUNT
 	if (vp) {
 		znode_t *zp = VTOZ(vp);
 		if (zp) dprintf("%s: Dec iocount now %u for '%s' (%s:%d) thread %p \n", __func__, 
@@ -1287,6 +1287,20 @@ int vnode_fileobject_empty(vnode_t *vp)
 	return ret;
 }
 
+#ifdef DEBUG_IOCOUNT
+void vnode_check_iocount(void)
+{
+	/* Iterate all vnodes, checking that iocount is zero. */
+	struct vnode *rvp;
+	mutex_enter(&vnode_all_list_lock);
+	for (rvp = list_head(&vnode_all_list);
+		rvp;
+		rvp = list_next(&vnode_all_list, rvp)) {
+		ASSERT0(rvp->v_iocount);
+	}
+	mutex_exit(&vnode_all_list_lock);
+}
+#endif
 
 
 

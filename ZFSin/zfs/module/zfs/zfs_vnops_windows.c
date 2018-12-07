@@ -83,6 +83,9 @@
 
 PDEVICE_OBJECT ioctlDeviceObject = NULL;
 PDEVICE_OBJECT fsDiskDeviceObject = NULL;
+#ifdef DEBUG_IOCOUNT
+static kmutex_t GIANT_SERIAL_LOCK;
+#endif
 
 #ifdef _KERNEL
 
@@ -4695,6 +4698,19 @@ fsDispatcher(
 	dprintf("  %s: enter: major %d: minor %d: %s fsDeviceObject\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
 		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
 
+#ifdef DEBUG_IOCOUNT
+	int skiplock = 0;
+	/*
+	 * Watch out for re-entrant calls! MJ_READ, can call CCMGR, which calls MJ_READ!
+	 * This could be a bigger issue, in that any mutex calls in the zfs_read()/zfs_write stack
+	 * could die - including rangelocks, rwlocks. Investigate. (+zfs_freesp/zfs_trunc)
+	 */
+	if (mutex_owned(&GIANT_SERIAL_LOCK))
+		skiplock = 1;
+	else
+		mutex_enter(&GIANT_SERIAL_LOCK);
+#endif
+
 	/*
 	 * Like VFS layer in upstream, we hold the "vp" here before calling into the VNOP handlers.
 	 * There is one special case, IRP_MJ_CREATE / zfs_vnop_lookup, which has no vp to start, 
@@ -4712,14 +4728,15 @@ fsDispatcher(
 
 		// This is useful if you have iocount leaks, and do
 		// only single-threaded operations
+#ifdef DEBUG_IOCOUNT
 		if (!vnode_isvroot(hold_vp) && vnode_isdir(hold_vp))
 			ASSERT(hold_vp->v_iocount == 1);
+#endif
 	}
 	/* Inside VNOP handlers, we no longer need to call VN_HOLD() on *this* vp
 	 * (but might for dvp etc) and eventually that code will be removed, if this
 	 * style works out.
 	 */
-
 
 	Status = STATUS_NOT_IMPLEMENTED;
 
@@ -5198,6 +5215,17 @@ fsDispatcher(
 		VN_RELE(hold_vp);
 	}
 
+#ifdef DEBUG_IOCOUNT
+	// Since we have serialised all fsdispatch() calls, and we are
+	// about to leave - all iocounts should be zero, check that is true.
+	// ZFSCallbackAcquireForCreateSection() can give false positives, as
+	// they are called async, outside IRP dispatcher.
+	if (!skiplock) {
+		vnode_check_iocount();
+		mutex_exit(&GIANT_SERIAL_LOCK);
+	}
+#endif
+
 	return Status;
 }
 
@@ -5407,6 +5435,9 @@ int
 zfs_vfsops_init(void)
 {
 	zfs_init();
+#ifdef DEBUG_IOCOUNT
+	mutex_init(&GIANT_SERIAL_LOCK, NULL, MUTEX_DEFAULT, NULL);
+#endif
 	return 0;
 }
 
@@ -5414,5 +5445,8 @@ int
 zfs_vfsops_fini(void)
 {
 	zfs_fini();
+#ifdef DEBUG_IOCOUNT
+	mutex_destroy(&GIANT_SERIAL_LOCK);
+#endif
 	return 0;
 }
