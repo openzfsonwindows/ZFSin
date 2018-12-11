@@ -4711,6 +4711,8 @@ fsDispatcher(
 		skiplock = 1;
 	else
 		mutex_enter(&GIANT_SERIAL_LOCK);
+
+	zfsvfs_t *zfsvfs = NULL;
 #endif
 
 	/*
@@ -4721,19 +4723,20 @@ fsDispatcher(
 	 */
 	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 		hold_vp = IrpSp->FileObject->FsContext;
-		if (VN_HOLD(hold_vp) != 0)
+		if (VN_HOLD(hold_vp) != 0) {
 			hold_vp = NULL;
-		ASSERT(hold_vp != NULL); // Should we abort the op if vp is gone?
+		} else {
+			// Add FO to vp, if this is the first we've heard of it
+			vnode_fileobject_add(IrpSp->FileObject->FsContext, IrpSp->FileObject);
 
-		// Add FO to vp, if this is the first we've heard of it
-		vnode_fileobject_add(IrpSp->FileObject->FsContext, IrpSp->FileObject);
-
-		// This is useful if you have iocount leaks, and do
-		// only single-threaded operations
+			// This is useful if you have iocount leaks, and do
+			// only single-threaded operations
 #ifdef DEBUG_IOCOUNT
-		if (!vnode_isvroot(hold_vp) && vnode_isdir(hold_vp))
-			ASSERT(hold_vp->v_iocount == 1);
+			if (!vnode_isvroot(hold_vp) && vnode_isdir(hold_vp))
+				ASSERT(hold_vp->v_iocount == 1);
+			zfsvfs = VTOZ(hold_vp)->z_zfsvfs;
 #endif
+		}
 	}
 	/* Inside VNOP handlers, we no longer need to call VN_HOLD() on *this* vp
 	 * (but might for dvp etc) and eventually that code will be removed, if this
@@ -5224,6 +5227,8 @@ fsDispatcher(
 	// ZFSCallbackAcquireForCreateSection() can give false positives, as
 	// they are called async, outside IRP dispatcher.
 	if (!skiplock) {
+		// Wait for all async_rele to finish
+		if (zfsvfs) taskq_wait(dsl_pool_vnrele_taskq(dmu_objset_pool(zfsvfs->z_os)));
 		vnode_check_iocount();
 		mutex_exit(&GIANT_SERIAL_LOCK);
 	}
@@ -5382,7 +5387,11 @@ are any writers to this file.  Note that main is acquired, so new handles cannot
 
 	if (vp->FileHeader.Resource) {
 #ifdef DEBUG_IOCOUNT
-		mutex_enter(&GIANT_SERIAL_LOCK);
+		int nolock = 0;
+		if (mutex_owned(&GIANT_SERIAL_LOCK))
+			nolock = 1;
+		else
+			mutex_enter(&GIANT_SERIAL_LOCK);
 #endif
 		if (VN_HOLD(vp) == 0) {
 			dprintf("%s: locked\n", __func__);
@@ -5391,12 +5400,14 @@ are any writers to this file.  Note that main is acquired, so new handles cannot
 			VN_RELE(vp);
 		} else {
 #ifdef DEBUG_IOCOUNT
-			mutex_exit(&GIANT_SERIAL_LOCK);
+			if (!nolock)
+				mutex_exit(&GIANT_SERIAL_LOCK);
 #endif
 			return STATUS_INVALID_PARAMETER;
 		}
 #ifdef DEBUG_IOCOUNT
-		mutex_exit(&GIANT_SERIAL_LOCK);
+		if (!nolock)
+			mutex_exit(&GIANT_SERIAL_LOCK);
 #endif
 	}
 
@@ -5430,14 +5441,19 @@ NTSTATUS ZFSCallbackReleaseForCreateSection(
 		dprintf("%s: unlocked\n", __func__);
 		ExReleaseResourceLite(vp->FileHeader.Resource);
 #ifdef DEBUG_IOCOUNT
-		mutex_enter(&GIANT_SERIAL_LOCK);
+		int nolock = 0;
+		if (mutex_owned(&GIANT_SERIAL_LOCK))
+			nolock = 1;
+		else
+			mutex_enter(&GIANT_SERIAL_LOCK);
 #endif
 		if (VN_HOLD(vp) == 0) {
 			vnode_rele(vp);
 			VN_RELE(vp);
 		}
 #ifdef DEBUG_IOCOUNT
-		mutex_exit(&GIANT_SERIAL_LOCK);
+		if (!nolock)
+			mutex_exit(&GIANT_SERIAL_LOCK);
 #endif
 	}
 
