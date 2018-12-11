@@ -5381,14 +5381,23 @@ are any writers to this file.  Note that main is acquired, so new handles cannot
 	if (vp == NULL) return STATUS_INVALID_PARAMETER;
 
 	if (vp->FileHeader.Resource) {
+#ifdef DEBUG_IOCOUNT
+		mutex_enter(&GIANT_SERIAL_LOCK);
+#endif
 		if (VN_HOLD(vp) == 0) {
 			dprintf("%s: locked\n", __func__);
 			ExAcquireResourceExclusiveLite(vp->FileHeader.Resource, TRUE);
 			vnode_ref(vp);
 			VN_RELE(vp);
 		} else {
+#ifdef DEBUG_IOCOUNT
+			mutex_exit(&GIANT_SERIAL_LOCK);
+#endif
 			return STATUS_INVALID_PARAMETER;
 		}
+#ifdef DEBUG_IOCOUNT
+		mutex_exit(&GIANT_SERIAL_LOCK);
+#endif
 	}
 
 	if (CallbackData->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) {
@@ -5420,10 +5429,16 @@ NTSTATUS ZFSCallbackReleaseForCreateSection(
 	if (vp->FileHeader.Resource) {
 		dprintf("%s: unlocked\n", __func__);
 		ExReleaseResourceLite(vp->FileHeader.Resource);
+#ifdef DEBUG_IOCOUNT
+		mutex_enter(&GIANT_SERIAL_LOCK);
+#endif
 		if (VN_HOLD(vp) == 0) {
 			vnode_rele(vp);
 			VN_RELE(vp);
 		}
+#ifdef DEBUG_IOCOUNT
+		mutex_exit(&GIANT_SERIAL_LOCK);
+#endif
 	}
 
 	return STATUS_FSFILTER_OP_COMPLETED_SUCCESSFULLY;
