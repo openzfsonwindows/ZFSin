@@ -28,9 +28,11 @@
 #include <windows.h>
 #include <SetupAPI.h>
 #include <stdio.h>
+#include <winsvc.h>
 
-int zfs_install(char *);
-int zfs_uninstall(char *);
-int installInf(const char* cmd, char *inf_path);
+DWORD zfs_install(char *);
+DWORD zfs_uninstall(char *);
+DWORD executeInfSection(const char *, char *);
+DWORD startService(char*);
 void printUsage();
-int send_zfs_ioc_unregister_fs();
+DWORD send_zfs_ioc_unregister_fs();

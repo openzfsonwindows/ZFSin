@@ -65,40 +65,45 @@ void printUsage() {
 	fprintf(stderr, "zfsinstaller uninstall [inf path]\n");
 }
 
-wchar_t *charToWchar(char * str) {
-	const size_t cSize = strlen(str) + 1;
-	wchar_t* wc = new wchar_t[cSize];
-	size_t ret;
-	mbstowcs_s(&ret, wc, cSize, str, MAX_PATH);
-	wprintf(L"%s: return %s\n", __func__, wc);
-	return wc;
-}
+DWORD zfs_install(char *inf_path) {
 
-int zfs_install(char *inf_path) {
+	DWORD error = 0;
 	// 128+4	If a reboot of the computer is necessary, ask the user for permission before rebooting.
-	return installInf("DefaultInstall 132 ", inf_path); 
+	
+	error = executeInfSection("ZFSin_Install 128 ", inf_path);
+	
+	// Start driver service if not already running
+	char serviceName[] = "ZFSin";
+	if (!error)
+		error = startService(serviceName);
+	else
+		fprintf(stderr, "Installation failed, skip starting the service");
+
+	return error;	
 }
 
-int zfs_uninstall(char *inf_path) 
+DWORD zfs_uninstall(char *inf_path)
 {
-	int ret = 0;
+	DWORD ret = 0;
 
 	ret = send_zfs_ioc_unregister_fs();
 	if (ret) return ret;
 
 	// 128+2	Always ask the users if they want to reboot.
-	ret = installInf("DefaultUninstall 130 ", inf_path);
+	ret = executeInfSection("DefaultUninstall 128 ", inf_path);
 
 	return ret;
 }
 
 
-int installInf(const char *cmd, char *inf_path) {
+DWORD executeInfSection(const char *cmd, char *inf_path) {
 
 #ifdef _DEBUG
 	system("sc query ZFSin");
 	fprintf(stderr, "\n\n");
 #endif
+	
+	DWORD error = 0;
 
 	size_t len = strlen(cmd) + strlen(inf_path) + 1;
 	size_t sz = 0;
@@ -117,11 +122,12 @@ int installInf(const char *cmd, char *inf_path) {
 		0
 	);
 
+
 #ifdef _DEBUG
 	system("sc query ZFSin");
 #endif
 	
-	return 0;
+	return error;
 	// if we want to have some more control on installation, we need to get
 	// a bit deeper into the setupapi, something like the following...
 
@@ -160,10 +166,49 @@ int installInf(const char *cmd, char *inf_path) {
 	SetupCloseInfFile(inf);*/
 }
 
+DWORD startService(char* serviceName)
+{
+	DWORD error = 0;
+	SC_HANDLE servMgrHdl;
+	SC_HANDLE zfsServHdl;
+
+	servMgrHdl = OpenSCManager(NULL, NULL, GENERIC_READ | GENERIC_EXECUTE);
+
+	if (!servMgrHdl) {
+		fprintf(stderr, "OpenSCManager failed, error %d\n", GetLastError());
+		error = GetLastError();
+		goto End;
+	}
+
+	zfsServHdl = OpenServiceA(servMgrHdl, serviceName, GENERIC_READ | GENERIC_EXECUTE);
+
+	if (!zfsServHdl) {
+		fprintf(stderr, "OpenServiceA failed, error %d\n", GetLastError());
+		error = GetLastError();
+		goto CloseMgr;
+	}
+
+	if (!StartServiceA(zfsServHdl, NULL, NULL)) {
+		if (GetLastError() == ERROR_SERVICE_ALREADY_RUNNING) {
+			fprintf(stderr, "Service is already running\n");
+		} else {
+			fprintf(stderr, "StartServiceA failed, error %d\n", GetLastError());
+			error = GetLastError();
+			goto CloseServ;
+		}
+	}
+
+CloseServ:
+	CloseServiceHandle(zfsServHdl);
+CloseMgr:
+	CloseServiceHandle(servMgrHdl);
+End:
+	return error;
+}
 
 #define ZFSIOCTL_TYPE 40000
 
-int send_zfs_ioc_unregister_fs(void) 
+DWORD send_zfs_ioc_unregister_fs(void)
 {
 	HANDLE g_fd = CreateFile(L"\\\\.\\ZFS", GENERIC_READ | GENERIC_WRITE,
 		0, NULL, OPEN_EXISTING, 0, NULL);
