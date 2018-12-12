@@ -202,6 +202,7 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="debug.c" />
     <ClCompile Include="driver.c" />
     <ClCompile Include="spl\module\spl\spl-atomic.c" />
     <ClCompile Include="spl\module\spl\spl-avl.c" />

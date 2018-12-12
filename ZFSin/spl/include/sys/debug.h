@@ -56,38 +56,48 @@
 #define _SPL_DEBUG_H
 
 #include <spl-debug.h>
+#include <stdio.h>
 
 #define panic(...) do { KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__)); DbgBreakPoint(); windows_delay(hz); } while (1)
 
+extern void printBuffer(const char *fmt, ...);
+
+#define LUDICROUS_SPEED // use circular buffer
 // xprintf is always printed
 // dprintf is printed in DEBUG builds
 // IOLog is printed in DEBUG builds (legacy from osx)
 //
 #ifdef DBG /* Debugging Disabled */
-#undef KdPrintEx
-#define KdPrintEx(_x_) DbgPrintEx _x_
-#define dprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
-#define IOLog(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
-#define xprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
-//#define dprintf(...)
-//#define IOLog(...)
-#define PANIC(fmt, ...)						\
-do {									\
-	dprintf(fmt, __VA_ARGS__); \
-	DbgBreakPoint(); \
-} while (0)
+	#ifdef LUDICROUS_SPEED 
+		#define dprintf(...) printBuffer(__VA_ARGS__)
+		#define IOLog(...) printBuffer(__VA_ARGS__)
+		#define xprintf(...) printBuffer(__VA_ARGS__)
+	#else
+		#undef KdPrintEx
+		#define KdPrintEx(_x_) DbgPrintEx _x_
+		#define dprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
+		#define IOLog(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
+		#define xprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
+		//#define dprintf(...)
+		//#define IOLog(...)
+	#endif
+		#define PANIC(fmt, ...)						\
+		do {									\
+			dprintf(fmt, __VA_ARGS__); \
+			DbgBreakPoint(); \
+		} while (0)
 #else
-//#undef KdPrintEx
-//#define KdPrintEx(_x_) DbgPrintEx _x_
-//#define dprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
-//#define IOLog(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
-#define xprintf(...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__)
-#define dprintf(...)
-#define IOLog(...)
-#define PANIC(fmt, ...)						\
-do {									\
-	dprintf(fmt, __VA_ARGS__); \
-} while (0)
+	//#undef KdPrintEx
+	//#define KdPrintEx(_x_) DbgPrintEx _x_
+	//#define dprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
+	//#define IOLog(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
+	#define xprintf(...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__)
+	#define dprintf(...)
+	#define IOLog(...)
+	#define PANIC(fmt, ...)						\
+	do {									\
+		dprintf(fmt, __VA_ARGS__); \
+	} while (0)
 #endif
 
 #ifdef DBG /* Debugging Disabled */

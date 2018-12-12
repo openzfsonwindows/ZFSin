@@ -3,6 +3,8 @@
 DRIVER_INITIALIZE DriverEntry;
 //EVT_WDF_DRIVER_DEVICE_ADD ZFSin_Init;
 
+extern int initDbgCircularBuffer(void);
+extern int finiDbgCircularBuffer(void);
 extern int spl_start(void);
 extern int spl_stop(void);
 extern int zfs_start(void);
@@ -17,6 +19,7 @@ void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
 	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "ZFSin_Fini\n"));
 	zfs_stop();
 	spl_stop();
+	finiDbgCircularBuffer();
 }
 
 NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING RegistryPath)
@@ -28,6 +31,7 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING Reg
 	WIN_DriverObject = DriverObject;
 	WIN_DriverObject->DriverUnload = ZFSin_Fini;
 
+	initDbgCircularBuffer();
 	spl_start();
 	zfs_start();
 
