@@ -2519,11 +2519,14 @@ top:
 out:
 	zfs_dirent_unlock(dl);
 
-	if (error == 0)
-		vnode_recycle(vp);
-	else
+	if (error == 0) {
+		dprintf("%s: releasing vp %p\n", __func__, vp);
+		if (vnode_recycle(vp) != 0)
+			VN_RELE(vp);
+	} else {
+		vp->v_flags &= ~VNODE_REJECT;
 		VN_RELE(vp);
-
+	}
 	if (zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
 		zil_commit(zilog, 0);
 
@@ -2863,7 +2866,16 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					ZGET_FLAG_WITHOUT_VNODE );
 #endif
 
+			if (get_zp == 99) {
+				// We got zp, but did not grab iocount
+			}
+			// If we failed to get the node (someone else might have deleted it), but we
+			// need to return the name still, so it can be removed.
+			if (get_zp != 0 && tzp == NULL)
+				tzp = zp;
+
 			// If marked deleted, skip over node.
+#if 0
 			if ((get_zp == 0) && ZTOV(tzp) && vnode_deleted(ZTOV(tzp))) {
 				skip_this_entry = 1; // FIXME
 				/* We should not show entries that are tagged deleted, which typically
@@ -2872,7 +2884,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				 */
 				VN_RELE(ZTOV(tzp));
 			}
-
+#endif
 			// Is it worth warning about failing stat here?
 			if (!skip_this_entry) {
 
@@ -2988,6 +3000,22 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 
 				}
 
+				// Release the zp
+#if 1
+				if (get_zp == 0 && tzp != NULL) {
+					VN_RELE(ZTOV(tzp));
+				}
+#else
+				if (get_zp == 0) {
+					if (ZTOV(tzp) == NULL) {
+						zfs_zinactive(tzp);
+					}
+					else {
+						VN_RELE(ZTOV(tzp));
+					}
+				}
+#endif
+
 				// If know we can't fit struct, just leave
 				if (outcount + structsize + namelenholder > bufsize) break;
 
@@ -3020,21 +3048,6 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 #if 0
 				dprintf("%s: '%.*S' -> '%s' (namelen %d bytes: structsize %d)\n", __func__,
 					namelenholder / sizeof(WCHAR), nameptr, zap.za_name, namelenholder, structsize);
-#endif
-				// Release the zp
-#if 1
-				if (get_zp == 0) {
-					VN_RELE(ZTOV(tzp));
-				}
-#else
-				if (get_zp == 0) {
-					if (ZTOV(tzp) == NULL) {
-						zfs_zinactive(tzp);
-					}
-					else {
-						VN_RELE(ZTOV(tzp));
-					}
-				}
 #endif
 
 				// If we aren't to skip, advance all pointers

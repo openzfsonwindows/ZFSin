@@ -773,6 +773,8 @@ int vnode_getwithref(vnode_t *vp)
 	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
 	if ((vp->v_flags & VNODE_DEAD))
 		error = ENOENT;
+	else if ((vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
+		error = ENOENT;
 	else {
 #ifdef DEBUG_IOCOUNT
 		if (vp) {
@@ -786,6 +788,12 @@ int vnode_getwithref(vnode_t *vp)
 		atomic_inc_32(&vp->v_iocount);
 #endif
 	}
+
+	// If we release last hold with REJECT, we will remove REJECT.
+	// It is expected it removes last hold in vnode_recycle.
+	if ((vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
+		vp->v_flags &= ~VNODE_REJECT;
+
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 	return error;
 }
@@ -803,6 +811,8 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 		error = ENOENT;
 	else if (id != vp->v_id)
 		error = ENOENT;
+	/* else if ((vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
+		error = ESRCH;*/
 	else {
 #ifdef DEBUG_IOCOUNT
 		if (vp) {
@@ -815,6 +825,12 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 		atomic_inc_32(&vp->v_iocount);
 #endif
 	}
+
+	// If we release last hold with REJECT, we will remove REJECT.
+	// It is expected it removes last hold in vnode_recycle.
+	if ((vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
+		vp->v_flags &= ~VNODE_REJECT;
+
 	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 	return error;
 }
@@ -893,9 +909,11 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 
 		((vp->v_usecount == 0) &&
 		(vp->v_iocount <= 1) &&
+			avl_is_empty(&vp->v_fileobjects) &&
 			((vp->v_flags&VNODE_MARKROOT) == 0))) {
 
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
+		vp->v_flags &= ~VNODE_REJECT;
 		vp->v_iocount = 0; 
 		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 

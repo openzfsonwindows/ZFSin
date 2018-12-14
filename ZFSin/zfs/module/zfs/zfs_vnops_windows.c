@@ -603,7 +603,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				kmem_free(filename, PATH_MAX);
 				return STATUS_OBJECT_NAME_INVALID;
 			}
-			ASSERT(error != STATUS_SOME_NOT_MAPPED);
+			//ASSERT(error != STATUS_SOME_NOT_MAPPED);
 			// Output string is only null terminated if input is, so do so now.
 			filename[outlen] = 0;
 			dprintf("%s: converted name is '%s' input len bytes %d (err %d) %s %s\n", __func__, filename, FileObject->FileName.Length, error,
@@ -650,13 +650,18 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			}
 			// Related set, return it as opened.
 			dvp = FileObject->RelatedFileObject->FsContext;
-			VN_HOLD(dvp);
-			vnode_ref(dvp); // Hold open reference, until CLOSE
-			vnode_couplefileobject(dvp, FileObject);
-			if (vnode_isdir(dvp))
-				FileObject->FsContext2 = zfs_dirlist_alloc();
-			zfs_set_security(dvp, NULL);
-			VN_RELE(dvp);
+			if (VN_HOLD(dvp) == 0) {
+				vnode_ref(dvp); // Hold open reference, until CLOSE
+				vnode_couplefileobject(dvp, FileObject);
+				if (vnode_isdir(dvp))
+					FileObject->FsContext2 = zfs_dirlist_alloc();
+				zfs_set_security(dvp, NULL);
+				VN_RELE(dvp);
+			} else {
+				kmem_free(filename, PATH_MAX);
+				Irp->IoStatus.Information = 0;
+				return STATUS_OBJECT_PATH_NOT_FOUND;
+			}
 			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = FILE_OPENED;
 			return STATUS_SUCCESS;
@@ -741,6 +746,16 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	if (OpenTargetDirectory) {
 		if (dvp) {
+
+			// If we asked for PARENT of a non-existing file, do we return error?
+			if (vp == NULL) {
+				dprintf("%s: opening PARENT directory - but file is ENOENT\n", __func__);
+				VN_RELE(dvp);
+				kmem_free(filename, PATH_MAX);
+				Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+				return STATUS_OBJECT_NAME_NOT_FOUND;
+			}
+
 			dprintf("%s: opening PARENT directory\n", __func__);
 			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 			vnode_couplefileobject(dvp, FileObject);
@@ -752,7 +767,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (Status == STATUS_SUCCESS)
 				Irp->IoStatus.Information = FILE_OPENED;
 
-			VN_RELE(vp); 
+			VN_RELE(vp); //xxx
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
 			return Status;
@@ -1113,6 +1128,7 @@ int zfs_vnop_reclaim (struct vnode *vp)
 	vnode_setsecurity(vp, NULL);
 
 	// Decouple the nodes
+	ASSERT(ZTOV(zp) != 0xdeadbeefdeadbeef);
 	ZTOV(zp) = NULL;
 	vnode_clearfsnode(vp); /* vp->v_data = NULL */
 	//vnode_removefsref(vp); /* ADDREF from vnode_create */
@@ -2342,26 +2358,27 @@ NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK
 	dprintf("   %s\n", __func__);
 	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 		struct vnode *vp = IrpSp->FileObject->FsContext;
-		VN_HOLD(vp);
-		znode_t *zp = VTOZ(vp);
-		zfsvfs_t *zfsvfs = zp->z_zfsvfs;
-		sa_bulk_attr_t bulk[3];
-		int count = 0;
-		uint64_t mtime[2];
-		uint64_t ctime[2];
-		uint64_t crtime[2];
-		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
-		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
-		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
-		sa_bulk_lookup(zp->z_sa_hdl, bulk, count);
+		if (VN_HOLD(vp) == 0) {
+			znode_t *zp = VTOZ(vp);
+			zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+			sa_bulk_attr_t bulk[3];
+			int count = 0;
+			uint64_t mtime[2];
+			uint64_t ctime[2];
+			uint64_t crtime[2];
+			SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
+			SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
+			SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
+			sa_bulk_lookup(zp->z_sa_hdl, bulk, count);
 
-		TIME_UNIX_TO_WINDOWS(mtime, basic->LastWriteTime.QuadPart);
-		TIME_UNIX_TO_WINDOWS(ctime, basic->ChangeTime.QuadPart);
-		TIME_UNIX_TO_WINDOWS(crtime, basic->CreationTime.QuadPart);
-		TIME_UNIX_TO_WINDOWS(zp->z_atime, basic->LastAccessTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(mtime, basic->LastWriteTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(ctime, basic->ChangeTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(crtime, basic->CreationTime.QuadPart);
+			TIME_UNIX_TO_WINDOWS(zp->z_atime, basic->LastAccessTime.QuadPart);
 
-		basic->FileAttributes = zfs_getwinflags(zp);
-		VN_RELE(vp);
+			basic->FileAttributes = zfs_getwinflags(zp);
+			VN_RELE(vp);
+		}
 		return STATUS_SUCCESS;
 	}
 	ASSERT(basic->FileAttributes != 0);
@@ -2552,10 +2569,10 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 
 	// Convert name, setting FileNameLength to how much we need
 	error = RtlUTF8ToUnicodeN(NULL, 0, &name->FileNameLength, strname, strlen(strname));
-	ASSERT(strlen(strname)*2 == name->FileNameLength);
+	//ASSERT(strlen(strname)*2 == name->FileNameLength);
 	dprintf("%s: remaining space %d str.len %d struct size %d\n", __func__, IrpSp->Parameters.QueryFile.Length,
 		name->FileNameLength, sizeof(FILE_NAME_INFORMATION));
-
+	// CHECK ERROR here.
 	// Calculate how much room there is for filename, after the struct and its first wchar
 	int space = IrpSp->Parameters.QueryFile.Length - FIELD_OFFSET(FILE_NAME_INFORMATION, FileName);
 	space = MIN(space, name->FileNameLength);
@@ -3929,6 +3946,7 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	if (error != STATUS_SUCCESS &&
 		error != STATUS_SOME_NOT_MAPPED) {
 		VN_RELE(dvp);
+		dprintf("%s: some illegal characters\n", __func__);
 		return STATUS_ILLEGAL_CHARACTER;
 	}
 	while (outlen > 0 && filename[outlen - 1] == '\\') outlen--;
@@ -4724,8 +4742,13 @@ fsDispatcher(
 	 */
 	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 		hold_vp = IrpSp->FileObject->FsContext;
-		if (VN_HOLD(hold_vp) != 0) {
+		if (VN_HOLD(hold_vp) != 0 || (hold_vp->v_flags & VNODE_REJECT)) {
+
+			// If we were given a vp, but can't hold the vp, we should fail this OP.
+			Irp->IoStatus.Information = 0;
 			hold_vp = NULL;
+			return STATUS_INVALID_PARAMETER;
+
 		} else {
 			// Add FO to vp, if this is the first we've heard of it
 			vnode_fileobject_add(IrpSp->FileObject->FsContext, IrpSp->FileObject);
@@ -4958,9 +4981,16 @@ fsDispatcher(
 				 * If the reference count for the per-file context structure reaches zero 
 				 * and both the ImageSectionObject and DataSectionObject of the SectionObjectPointers
 				 * field from the FILE_OBJECT is zero, the filter driver may then delete the per-file context data.
+				 *
+				 * To avoid racing with someone grabbing this vp, we grab the lock (violating VFS API, - fixme)
+				 * and tag it DEAD, this way it can not be grabbed by someone else.
 				 */
-				if (/*vp->v_iocount == 1 &&*/ vp->v_usecount == 0 &&
-					vnode_fileobject_empty(vp) &&
+				KIRQL OldIrql;
+
+				KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+				if (vp->v_iocount == 1 && vp->v_usecount == 0 &&
+					/* vnode_fileobject_empty(vp) && */
+					avl_is_empty(&vp->v_fileobjects) && !vnode_isvroot(vp) &&
 					(IrpSp->FileObject->SectionObjectPointer == NULL ||
 					(IrpSp->FileObject->SectionObjectPointer->ImageSectionObject == NULL &&
 						IrpSp->FileObject->SectionObjectPointer->DataSectionObject == NULL))) {
@@ -4972,10 +5002,12 @@ fsDispatcher(
 					/* Take hold from above, we will release in recycle */
 					hold_vp = NULL;
 					
-
 					/* We can free memory, check if we also should delete file */
 					if (vnode_deleted(vp)) {
 
+						// Mark it dead, stopping grabs
+						vp->v_flags |= VNODE_REJECT;
+						KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 						/*
 						 * This call to delete_entry may release the vp/zp in one case
 						 * So care needs to be taken. Most branches the vp/zp lives with
@@ -4986,9 +5018,12 @@ fsDispatcher(
 						 */
 						dprintf("delete vnode %p\n", vp);
 						Status = delete_entry(DeviceObject, Irp, IrpSp);
+						//if (Status != 0)
+						//	vp->v_flags &= ~VNODE_REJECT;
 
 					} else {
 
+						KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 						/* Otherwise, just release memory. */
 						// Only unmount releases root (we should check we do?)
 						// Release all non-root vnodes now.
@@ -4996,14 +5031,16 @@ fsDispatcher(
 
 						// Release vp - vnode_recycle expects iocount==1
 						// we don't recycle root (unmount does) or RELE on recycle error
-						if (vnode_isvroot(vp) || (vnode_recycle(vp) != 0))
+						if (vnode_isvroot(vp) || (vnode_recycle(vp) != 0)) {
 							VN_RELE(vp);
+						}
 
 						Status = STATUS_SUCCESS;
 					}
 					vp = NULL; // Paranoia, signal it is gone.
 
 				} else {
+					KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
 					dprintf("IRP_CLOSE but can't close yet. is_empty %d\n", vnode_fileobject_empty(vp));
 				}
 				IrpSp->FileObject->FsContext = NULL;

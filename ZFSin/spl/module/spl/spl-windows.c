@@ -114,6 +114,10 @@ int spl_system_inshutdown(void)
     return 0;
 }
 
+
+// If we want to implement this on Windows, we could probably use
+// https://stackoverflow.com/questions/590160/how-to-log-stack-frames-with-windows-x64
+// which calls RtlCaptureStackBackTrace();
 int
 getpcstack(uintptr_t *pcstack, int pcstack_limit)
 {

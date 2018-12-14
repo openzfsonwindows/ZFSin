@@ -45,7 +45,7 @@
 #include <crt/fcntl.h>
 
 /* Enable to track all IOCOUNT */
-#define DEBUG_IOCOUNT
+//#define DEBUG_IOCOUNT
 
 
 /*
@@ -57,7 +57,8 @@
 #define VNODE_NEEDINACTIVE	4
 #define VNODE_MARKROOT		8
 #define VNODE_SIZECHANGE    16
-#define VNODE_VALIDBITS		31
+#define VNODE_REJECT	    32
+#define VNODE_VALIDBITS		63
 
 /* v_unlink flags */
 #define UNLINK_DELETE_ON_CLOSE	(1 << 0) // 1

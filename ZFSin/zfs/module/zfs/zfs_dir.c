@@ -592,7 +592,7 @@ zfs_purgedir(znode_t *dzp)
 	    zap_cursor_advance(&zc)) {
 		error = zfs_zget_ext(zfsvfs,
 							 ZFS_DIRENT_OBJ(zap.za_first_integer), &xzp,
-							 ZGET_FLAG_WITHOUT_VNODE);
+							 /*ZGET_FLAG_WITHOUT_VNODE*/0);
 		if (error) {
 #ifdef _WIN32
 			if (error == EIO) {
@@ -624,7 +624,7 @@ zfs_purgedir(znode_t *dzp)
 		if (error) {
 			dmu_tx_abort(tx);
 			//VN_RELE(ZTOV(xzp)); // async
-#ifdef _WIN32
+#ifdef _WON32
 			if (ZTOV(xzp) == NULL) {
 				zfs_zinactive(xzp);
 			} else {
