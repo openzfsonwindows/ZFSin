@@ -6,6 +6,8 @@
 #define MyAppPublisher "OpenZFS"
 #define MyAppURL "http://www.openzfsonwindows.org/"
 
+#include "environment.iss"
+
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
 ; Do not use the same AppId value in installers for other applications.
@@ -29,9 +31,26 @@ Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
 OutputDir={#SourcePath}\..
+ChangesEnvironment=true
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+    if (CurStep = ssPostInstall) and IsTaskSelected('envPath')
+    then EnvAddPath(ExpandConstant('{app}'));
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+    if CurUninstallStep = usPostUninstall
+    then EnvRemovePath(ExpandConstant('{app}'));
+end;
+
+[Tasks]
+Name: envPath; Description: "Add OpenZFS to PATH variable" 
 
 [Files]
 Source: "{#SourcePath}\..\README.md"; DestDir: "{app}"; Flags: ignoreversion  
