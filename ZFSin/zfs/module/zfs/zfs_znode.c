@@ -689,6 +689,7 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	 * Defer setting z_zfsvfs until the znode is ready to be a candidate for
 	 * the zfs_znode_move() callback.
 	 */
+	ASSERT(ZTOV(zp) != 0xdeadbeefdeadbeef);
 	zp->z_vnode = NULL;
 	zp->z_sa_hdl = NULL;
 	zp->z_unlinked = 0;
@@ -732,8 +733,9 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 		if (hdl == NULL)
 			sa_handle_destroy(zp->z_sa_hdl);
 		dprintf("znode_alloc: sa_bulk_lookup failed - aborting\n");
-		zfs_vnode_forget(vp);
-		zp->z_vnode = NULL;
+		ASSERT(ZTOV(zp) != 0xdeadbeefdeadbeef);
+		//zfs_vnode_forget(vp);
+		//zp->z_vnode = NULL;
 		kmem_cache_free(znode_cache, zp);
 		return (NULL);
 	}
@@ -1281,7 +1283,7 @@ zfs_zget_ext(zfsvfs_t *zfsvfs, uint64_t obj_num, znode_t **zpp,
 	sa_handle_t	*hdl;
 	int err;
 	uint64_t        vid;
-
+	int crutch_count = 0;
 	//dprintf("+zget %lld\n", obj_num);
 
 	getnewvnode_reserve(1);
@@ -1350,25 +1352,32 @@ again:
 			return (ENOENT);
 		}
 
-		mutex_exit(&zp->z_lock);
-		sa_buf_rele(db, NULL);
-		ZFS_OBJ_HOLD_EXIT(zfsvfs, obj_num);
-
 		if ((flags & ZGET_FLAG_WITHOUT_VNODE_GET)) {
 			/* Do not increase vnode iocount */
 			*zpp = zp;
-			return 0;
+			mutex_exit(&zp->z_lock);
+			sa_buf_rele(db, NULL);
+			ZFS_OBJ_HOLD_EXIT(zfsvfs, obj_num);
+			return 99; // Special returncode to signal we did not grab iocount
 		}
 
 		/* We are racing zfs_znode_getvnode() and we got here first, we
 		 * need to let it get ahead */
 		if (!vp) {
 			static int count = 0;
+
+			mutex_exit(&zp->z_lock);
+			sa_buf_rele(db, NULL);
+			ZFS_OBJ_HOLD_EXIT(zfsvfs, obj_num);
+
 			kpreempt(KPREEMPT_SYNC);
 			dprintf("zget racing attach\n");
 			//DbgBreakPoint();
 			IOSleep(hz>>2);
-//			if (count++ > 50) DbgBreakPoint();
+			if (count++ > 50) {
+				count = 0;
+				dprintf("long time\n");
+			}
 			goto again;
 		}
 
@@ -1376,12 +1385,23 @@ again:
 		 * -> vnode_getwithvid() -> deadlock. Unsure why vnode_getwithvid()
 		 * ends up sleeping in msleep() but vnode_get() does not.
 		 */
-		if (!vp || (err=vnode_getwithvid(vp, zp->z_vid) != 0)) {
+		if (!vp || (err=vnode_getwithvid(vp, zp->z_vid)) != 0) {
 			// vid is no longer valid
-			ZTOV(zp) = NULL;
+			ASSERT(ZTOV(zp) != 0xdeadbeefdeadbeef);
+
+			mutex_exit(&zp->z_lock);
+			sa_buf_rele(db, NULL);
+			ZFS_OBJ_HOLD_EXIT(zfsvfs, obj_num);
+
+			//ZTOV(zp) = NULL;
 			dprintf("ZFS: vnode_get() returned %d\n", err);
 			kpreempt(KPREEMPT_SYNC);
 			IOSleep(hz >> 2);
+			if (crutch_count++ > 50) {
+				crutch_count = 0;
+				dprintf("long time\n");
+				//return ENOENT; // FIXME - why does this happen
+			}
 			goto again;
 		}
 
@@ -1389,18 +1409,24 @@ again:
 		 * Since we had to drop all of our locks above, make sure
 		 * that we have the vnode and znode we had before.
 		 */
-		mutex_enter(&zp->z_lock);
 		if ((vid != zp->z_vid) || (vp != ZTOV(zp))) {
-			mutex_exit(&zp->z_lock);
 			/* Release the wrong vp from vnode_getwithvid(). This
 			 * call is missing in 10a286 - lundman */
 			VN_RELE(vp);
+
+			mutex_exit(&zp->z_lock);
+			sa_buf_rele(db, NULL);
+			ZFS_OBJ_HOLD_EXIT(zfsvfs, obj_num);
+
 			dprintf("ZFS: the vids do not match part 1\n");
 			IOSleep(hz >> 2);
-			DbgBreakPoint();
+			
 			goto again;
 		}
+
 		mutex_exit(&zp->z_lock);
+		sa_buf_rele(db, NULL);
+		ZFS_OBJ_HOLD_EXIT(zfsvfs, obj_num);
 
 		*zpp = zp;
 		getnewvnode_drop_reserve();
@@ -1665,6 +1691,7 @@ zfs_znode_free(znode_t *zp)
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 
 	mutex_enter(&zfsvfs->z_znodes_lock);
+	ASSERT(ZTOV(zp) != 0xdeadbeefdeadbeef);
 	zp->z_vnode = NULL;
 	POINTER_INVALIDATE(&zp->z_zfsvfs);
 	list_remove(&zfsvfs->z_all_znodes, zp); /* XXX */
@@ -2227,7 +2254,7 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 	rootzp->z_unlinked = 0;
 	rootzp->z_atime_dirty = 0;
 	rootzp->z_is_sa = USE_SA(version, os);
-
+	ASSERT(ZTOV(rootzp) != 0xdeadbeefdeadbeef);
 	rootzp->z_vnode = NULL;
 #ifndef _WIN32
 	vnode.v_type = VDIR;
@@ -2276,6 +2303,7 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 	POINTER_INVALIDATE(&rootzp->z_zfsvfs);
 
 	sa_handle_destroy(rootzp->z_sa_hdl);
+	ASSERT(ZTOV(rootzp) != 0xdeadbeefdeadbeef);
 	rootzp->z_vnode = NULL;
 	kmem_cache_free(znode_cache, rootzp);
 

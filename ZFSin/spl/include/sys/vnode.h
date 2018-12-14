@@ -45,7 +45,7 @@
 #include <crt/fcntl.h>
 
 /* Enable to track all IOCOUNT */
-#define DEBUG_IOCOUNT
+//#define DEBUG_IOCOUNT
 
 
 /*
@@ -57,7 +57,8 @@
 #define VNODE_NEEDINACTIVE	4
 #define VNODE_MARKROOT		8
 #define VNODE_SIZECHANGE    16
-#define VNODE_VALIDBITS		31
+#define VNODE_REJECT	    32
+#define VNODE_VALIDBITS		63
 
 /* v_unlink flags */
 #define UNLINK_DELETE_ON_CLOSE	(1 << 0) // 1
@@ -80,7 +81,8 @@ struct vnode {
 	SECTION_OBJECT_POINTERS SectionObjectPointers;
 
 	// Our implementation data fields
-	KSPIN_LOCK v_spinlock;
+	// KSPIN_LOCK v_spinlock;
+	kmutex_t v_mutex;
 
 	mount_t *v_mount;
 	uint32_t v_flags;
@@ -525,6 +527,7 @@ int     vnode_islnk(vnode_t *vp);
 mount_t *vnode_mountedhere(vnode_t *vp);
 void ubc_setsize(struct vnode *, uint64_t);
 int     vnode_isinuse(vnode_t *vp, uint64_t refcnt);
+int vnode_isidle(vnode_t *vp);
 int     vnode_recycle(vnode_t *vp);
 int     vnode_isvroot(vnode_t *vp);
 mount_t *vnode_mount(vnode_t *vp);
@@ -557,6 +560,11 @@ int vnode_isrecycled(vnode_t *vp);
 int     vflush(struct mount *mp, struct vnode *skipvp, int flags);
 int vnode_fileobject_add(vnode_t *vp, void *fo);
 int vnode_fileobject_remove(vnode_t *vp, void *fo);
-int vnode_fileobject_empty(vnode_t *vp);
+int vnode_fileobject_empty(vnode_t *vp, int locked);
+
+void vnode_lock(vnode_t *vp);
+void vnode_unlock(vnode_t *vp);
+int vnode_reject(vnode_t *vp);
+void vnode_setreject(vnode_t *vp);
 
 #endif /* SPL_VNODE_H */
