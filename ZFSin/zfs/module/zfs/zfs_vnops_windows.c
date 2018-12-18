@@ -3925,12 +3925,13 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	error = RtlUnicodeToUTF8N(filename, MAXNAMELEN, &outlen,
 		IrpSp->FileObject->FileName.Buffer, IrpSp->FileObject->FileName.Length);
-
+	
 	if (error != STATUS_SUCCESS &&
 		error != STATUS_SOME_NOT_MAPPED) {
 		VN_RELE(dvp);
 		return STATUS_ILLEGAL_CHARACTER;
 	}
+	while (outlen > 0 && filename[outlen - 1] == '\\') outlen--;
 	filename[outlen] = 0;
 
 	// FIXME, use z_name_cache and offset
