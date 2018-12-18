@@ -12,7 +12,7 @@
 ; NOTE: The value of AppId uniquely identifies this application.
 ; Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={61A38ED1-4D3F-4869-A8D5-87A58A301D56}
+AppId={{61A38ED1-4D3F-4869-A8D5-87A58A301D56}
 AppName={#MyAppName}-debug
 AppVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
