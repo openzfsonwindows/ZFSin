@@ -10,7 +10,7 @@
 ; NOTE: The value of AppId uniquely identifies this application.
 ; Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={{61A38ED1-4D3F-4869-A8D5-87A58A301D56}
+AppId={0F7D8C46-52F0-4905-99FC-BDA1BAF9CEA8}
 AppName={#MyAppName}-release
 AppVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
@@ -29,9 +29,28 @@ Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
 OutputDir={#SourcePath}\..
+ChangesEnvironment=true
+WizardSmallImageFile="{#SourcePath}\Small.bmp"
+WizardImageFile="{#SourcePath}\Large.bmp"
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+    if (CurStep = ssPostInstall) and IsTaskSelected('envPath')
+    then EnvAddPath(ExpandConstant('{app}'));
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+    if CurUninstallStep = usPostUninstall
+    then EnvRemovePath(ExpandConstant('{app}'));
+end;
+
+[Tasks]
+Name: envPath; Description: "Add OpenZFS to PATH variable" 
 
 [Files]
 Source: "{#SourcePath}\..\README.md"; DestDir: "{app}"; Flags: ignoreversion  
