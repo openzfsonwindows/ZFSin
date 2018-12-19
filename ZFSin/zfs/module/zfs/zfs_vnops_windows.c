@@ -4987,7 +4987,7 @@ fsDispatcher(
 				 */
 				KIRQL OldIrql;
 
-				KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+				mutex_enter(&vp->v_mutex);
 				if (vp->v_iocount == 1 && vp->v_usecount == 0 &&
 					/* vnode_fileobject_empty(vp) && */
 					avl_is_empty(&vp->v_fileobjects) && !vnode_isvroot(vp) &&
@@ -5007,7 +5007,7 @@ fsDispatcher(
 
 						// Mark it dead, stopping grabs
 						vp->v_flags |= VNODE_REJECT;
-						KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+						mutex_exit(&vp->v_mutex);
 						/*
 						 * This call to delete_entry may release the vp/zp in one case
 						 * So care needs to be taken. Most branches the vp/zp lives with
@@ -5023,7 +5023,7 @@ fsDispatcher(
 
 					} else {
 
-						KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+						mutex_exit(&vp->v_mutex);
 						/* Otherwise, just release memory. */
 						// Only unmount releases root (we should check we do?)
 						// Release all non-root vnodes now.
@@ -5040,7 +5040,7 @@ fsDispatcher(
 					vp = NULL; // Paranoia, signal it is gone.
 
 				} else {
-					KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+					mutex_exit(&vp->v_mutex);
 					dprintf("IRP_CLOSE but can't close yet. is_empty %d\n", vnode_fileobject_empty(vp));
 				}
 				IrpSp->FileObject->FsContext = NULL;

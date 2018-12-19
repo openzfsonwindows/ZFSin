@@ -770,7 +770,7 @@ int vnode_getwithref(vnode_t *vp)
 {
 	KIRQL OldIrql;
 	int error = 0;
-	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	mutex_enter(&vp->v_mutex);
 	if ((vp->v_flags & VNODE_DEAD))
 		error = ENOENT;
 	else if ((vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
@@ -794,7 +794,7 @@ int vnode_getwithref(vnode_t *vp)
 	if ((vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
 		vp->v_flags &= ~VNODE_REJECT;
 
-	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	mutex_exit(&vp->v_mutex);
 	return error;
 }
 
@@ -806,7 +806,7 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 {
 	KIRQL OldIrql;
 	int error = 0;
-	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	mutex_enter(&vp->v_mutex);
 	if ((vp->v_flags & VNODE_DEAD))
 		error = ENOENT;
 	else if (id != vp->v_id)
@@ -831,7 +831,7 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 	if ((vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
 		vp->v_flags &= ~VNODE_REJECT;
 
-	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	mutex_exit(&vp->v_mutex);
 	return error;
 }
 
@@ -858,15 +858,15 @@ int vnode_put(vnode_t *vp)
 	atomic_dec_32(&vp->v_iocount);
 #endif
 	// Now idle?
-	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	mutex_enter(&vp->v_mutex);
 
 	if ((vp->v_usecount == 0) && (vp->v_iocount == 0)) {
 
 		if (vp->v_flags & VNODE_NEEDINACTIVE) {
 			vp->v_flags &= ~VNODE_NEEDINACTIVE;
-			KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+			mutex_exit(&vp->v_mutex);
 			zfs_inactive(vp, NULL, NULL);
-			KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+			mutex_enter(&vp->v_mutex);
 		}
 	}
 
@@ -885,7 +885,7 @@ int vnode_put(vnode_t *vp)
 	}
 #endif
 
-	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	mutex_exit(&vp->v_mutex);
 	return 0;
 }
 
@@ -902,7 +902,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		dprintf("%s: marking %p VNODE_MARKTERM\n", __func__, vp);
 	}
 
-	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	mutex_enter(&vp->v_mutex);
 
 	// We will only reclaim idle nodes, and not mountpoints(ROOT)
 	if ((flags & FORCECLOSE) ||
@@ -915,7 +915,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
 		vp->v_flags &= ~VNODE_REJECT;
 		vp->v_iocount = 0; 
-		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+		mutex_exit(&vp->v_mutex);
 
 		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
 		FsRtlUninitializeFileLock(&vp->lock);
@@ -939,15 +939,15 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		mutex_exit(&vnode_all_list_lock);
 		// mutex does not need releasing.
 
-		// There is no spinlock destroy call
-		// vp->v_spinlock
 
 		vp->v_mount = NULL;
 		KIRQL OldIrql;
-		KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+		mutex_enter(&vp->v_mutex);
 		ASSERT(avl_is_empty(&vp->v_fileobjects));
 		avl_destroy(&vp->v_fileobjects);
-		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+		mutex_exit(&vp->v_mutex);
+
+		mutex_destroy(&vp->v_mutex);
 
 		// Free vp memory
 		kmem_free(vp, sizeof(*vp));
@@ -955,7 +955,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		atomic_dec_64(&vnode_active);
 		return 0;
 	}
-	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	mutex_exit(&vp->v_mutex);
 
 	return -1;
 }
@@ -985,7 +985,8 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	(*vpp)->v_data = v_data;
 	(*vpp)->v_type = type;
 	(*vpp)->v_id = atomic_inc_64_nv(&(vnode_vid_counter));
-	KeInitializeSpinLock(&(*vpp)->v_spinlock);
+	//KeInitializeSpinLock(&(*vpp)->v_spinlock);
+	mutex_init(&(*vpp)->v_mutex, NULL, MUTEX_DEFAULT, NULL);
 	atomic_inc_32(&(*vpp)->v_iocount);
 	atomic_inc_64(&vnode_active);
 	avl_create(&(*vpp)->v_fileobjects, vnode_fileobject_compare,
@@ -1084,7 +1085,7 @@ vnode_rele(vnode_t *vp)
 	atomic_dec_32(&vp->v_usecount);
 
 	// Grab lock and inspect
-	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	mutex_enter(&vp->v_mutex);
 
 	// If we were the last usecount, but vp is still
 	// busy, we set NEEDINACTIVE
@@ -1094,7 +1095,7 @@ vnode_rele(vnode_t *vp)
 		// We are idle, call inactive, grab a hold
 		// so we can call inactive unlocked
 		vp->v_flags &= ~VNODE_NEEDINACTIVE;
-		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+		mutex_exit(&vp->v_mutex);
 		atomic_inc_32(&vp->v_iocount);
 
 		zfs_inactive(vp, NULL, NULL);
@@ -1107,16 +1108,16 @@ vnode_rele(vnode_t *vp)
 		atomic_dec_32(&vp->v_iocount);
 		// Re-check we are still free, and recycle (markterm) was called
 		// we can reclaim now
-		KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+		mutex_enter(&vp->v_mutex);
 		if ((vp->v_iocount == 0) && (vp->v_usecount == 0) &&
 			((vp->v_flags & (VNODE_MARKTERM)))) {
-			KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+			mutex_exit(&vp->v_mutex);
 			vnode_recycle_int(vp, 0);
 			return;
 		}
 	}
 
-	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	mutex_exit(&vp->v_mutex);
 }
 
 int vflush(struct mount *mp, struct vnode *skipvp, int flags)
@@ -1156,11 +1157,11 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 
 			// Release the AVL tree
 			KIRQL OldIrql;
-			KeAcquireSpinLock(&rvp->v_spinlock, &OldIrql);
+			mutex_enter(&rvp->v_mutex);
 			while ((node = avl_destroy_nodes(&rvp->v_fileobjects, &cookie))	!= NULL) {
 				kmem_free(node, sizeof(*node));
 			}
-			KeReleaseSpinLock(&rvp->v_spinlock, OldIrql);
+			mutex_exit(&rvp->v_mutex);
 
 			isbusy = vnode_recycle_int(rvp, flags & FORCECLOSE);
 			mutex_enter(&vnode_all_list_lock);
@@ -1239,31 +1240,31 @@ int vnode_fileobject_add(vnode_t *vp, void *fo)
 	vnode_fileobjects_t *node;
 	avl_index_t idx;
 	KIRQL OldIrql;
-	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	mutex_enter(&vp->v_mutex);
 	// Early out to avoid memory alloc
 	vnode_fileobjects_t search;
 	search.fileobject = fo;
 	if (avl_find(&vp->v_fileobjects, &search, &idx) != NULL) {
-		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+		mutex_exit(&vp->v_mutex);
 		return 0;
 	}
-	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	mutex_exit(&vp->v_mutex);
 
 	node = kmem_alloc(sizeof(*node), KM_SLEEP);
 	node->fileobject = fo;
 
-	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	mutex_enter(&vp->v_mutex);
 	if (avl_find(&vp->v_fileobjects, node, &idx) == NULL) {
 		avl_insert(&vp->v_fileobjects, node, idx);
-		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+		mutex_exit(&vp->v_mutex);
 		return 1;
 	} else {
-		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+		mutex_exit(&vp->v_mutex);
 		kmem_free(node, sizeof(*node));		
 		return 0;
 	}
 	// not reached.
-	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	mutex_exit(&vp->v_mutex);
 	return 0;
 }
 
@@ -1276,16 +1277,16 @@ int vnode_fileobject_remove(vnode_t *vp, void *fo)
 {
 	vnode_fileobjects_t search, *node;
 	KIRQL OldIrql;
-	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	mutex_enter(&vp->v_mutex);
 	search.fileobject = fo;
 	node = avl_find(&vp->v_fileobjects, &search, NULL);
 	if (node == NULL) {
-		KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+		mutex_exit(&vp->v_mutex);
 
 		return 0;
 	}
 	avl_remove(&vp->v_fileobjects, node);
-	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	mutex_exit(&vp->v_mutex);
 	kmem_free(node, sizeof(*node));
 
 	return 1;
@@ -1298,9 +1299,9 @@ int vnode_fileobject_empty(vnode_t *vp)
 {
 	KIRQL OldIrql;
 
-	KeAcquireSpinLock(&vp->v_spinlock, &OldIrql);
+	mutex_enter(&vp->v_mutex);
 	boolean_t ret = avl_is_empty(&vp->v_fileobjects);
-	KeReleaseSpinLock(&vp->v_spinlock, OldIrql);
+	mutex_exit(&vp->v_mutex);
 
 	return ret;
 }

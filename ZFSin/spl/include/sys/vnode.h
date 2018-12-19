@@ -81,7 +81,8 @@ struct vnode {
 	SECTION_OBJECT_POINTERS SectionObjectPointers;
 
 	// Our implementation data fields
-	KSPIN_LOCK v_spinlock;
+	// KSPIN_LOCK v_spinlock;
+	kmutex_t v_mutex;
 
 	mount_t *v_mount;
 	uint32_t v_flags;
