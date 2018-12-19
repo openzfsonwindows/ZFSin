@@ -75,7 +75,6 @@ int finiDbgCircularBuffer(void)
 
 void addbuffer(char* buf)
 {
-	mutex_enter(&cbuf_mutex);
 	unsigned long long writtenBytes = 0;
 	if (buf) {
 		unsigned long long bufLen = strlen(buf);
@@ -109,20 +108,23 @@ void addbuffer(char* buf)
 			startOff++;
 		}
 	}
-	mutex_exit(&cbuf_mutex);
+	
 }
 
 void printBuffer(const char *fmt, ...)
 {
-	do {
-		va_list args;
-		va_start(args, fmt);
-		char buf[max_line_length];
-		int tmp = _vsnprintf_s(buf, sizeof(buf), max_line_length, fmt, args);
-		if (tmp >= max_line_length) {
-			_snprintf(buf, 17, "buffer too small");
-		}
-		addbuffer(buf);
-		va_end(args);
-	} while (0);
+	mutex_enter(&cbuf_mutex);
+	va_list args;
+	va_start(args, fmt);
+	char buf[max_line_length];
+	char threadPtr[20];
+	_snprintf(threadPtr, 19, "%p: ", PsGetCurrentThread());
+	addbuffer(threadPtr);
+	int tmp = _vsnprintf_s(buf, sizeof(buf), max_line_length, fmt, args);
+	if (tmp >= max_line_length) {
+		_snprintf(buf, 17, "buffer too small");
+	}
+	addbuffer(buf);
+	va_end(args);
+	mutex_exit(&cbuf_mutex);
 }
