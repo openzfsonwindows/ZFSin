@@ -6,6 +6,8 @@
 #define MyAppPublisher "OpenZFS"
 #define MyAppURL "http://www.openzfsonwindows.org/"
 
+#include "environment.iss"
+
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
 ; Do not use the same AppId value in installers for other applications.
