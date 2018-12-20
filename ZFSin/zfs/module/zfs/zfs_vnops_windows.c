@@ -1167,6 +1167,7 @@ int zfs_vnop_reclaim (struct vnode *vp)
 	zp->z_name_len = 0x12345678; // DBG: show we have been reclaimed
 
 	fastpath = zp->z_fastpath;
+	zp->z_fastpath = B_FALSE;
 
 	// Release znode
 	/*
