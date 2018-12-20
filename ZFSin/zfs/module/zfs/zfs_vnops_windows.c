@@ -251,7 +251,7 @@ NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 
 			// We are about to deny the delete, make sure there are no
 			// rmdirs in transit
-			delay(hz); // FIXME what is going on here.
+
 			if (zp->z_size > 2) {
 
 				mutex_exit(&zp->z_lock);
@@ -427,6 +427,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		return EEXIST;
 	}
 
+#if 0
 	/* Test for deleted status */
 	if (vp != NULL && vnode_deleted(vp)) {
 		dprintf("%s: detected isdeleted, returning ENOENT\n", __func__);
@@ -434,6 +435,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		VN_RELE(dvp);
 		return ENOENT;
 	}
+#endif
 
 	if (lastname) {
 
@@ -760,6 +762,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if (OpenTargetDirectory) {
 		if (dvp) {
 
+#if 0
 			// If we asked for PARENT of a non-existing file, do we return error?
 			if (vp == NULL) {
 				dprintf("%s: opening PARENT directory - but file is ENOENT\n", __func__);
@@ -768,6 +771,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 				return STATUS_OBJECT_NAME_NOT_FOUND;
 			}
+#endif
 
 			dprintf("%s: opening PARENT directory\n", __func__);
 			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
@@ -780,7 +784,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (Status == STATUS_SUCCESS)
 				Irp->IoStatus.Information = FILE_OPENED;
 
-			VN_RELE(vp); //xxx
+			if (vp) VN_RELE(vp); //xxx
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
 			return Status;
