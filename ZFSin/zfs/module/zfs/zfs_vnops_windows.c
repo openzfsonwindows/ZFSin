@@ -197,6 +197,7 @@ void zfs_dirlist_free(zfs_dirlist_t *zccb)
  * Call vnode_setunlink if zfs_zaccess_delete() allows it
  * TODO: provide credentials
  */
+static uint64_t delete_pending = 0;
 NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 
 	NTSTATUS Status = STATUS_UNSUCCESSFUL;
@@ -245,21 +246,17 @@ NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 	// are not empty.
 	if (S_ISDIR(zp->z_mode)) {
 
-		mutex_enter(&zp->z_lock);
+		int nodeadlock = 0;
+		while (zp->z_size == 3 && delete_pending != 0) {
+			dprintf("%s: delete_pending waiting\n", __func__);
+			delay(1);
+			if (nodeadlock > 10) break;
+		}
 
 		if (zp->z_size > 2) {
-
-			// We are about to deny the delete, make sure there are no
-			// rmdirs in transit
-
-			if (zp->z_size > 2) {
-
-				mutex_exit(&zp->z_lock);
-				Status = STATUS_DIRECTORY_NOT_EMPTY;
-				goto err;
-			}
+			Status = STATUS_DIRECTORY_NOT_EMPTY;
+			goto err;
 		}
-		mutex_exit(&zp->z_lock);
 	}
 
 	int error = zfs_zaccess_delete(dzp, zp, 0);
@@ -4415,6 +4412,8 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 				/* We can free memory, check if we also should delete file */
 				if (vnode_deleted(vp)) {
 
+					atomic_inc_64(&delete_pending);
+
 					// Mark it dead, stopping grabs
 					vnode_setreject(vp);
 					vnode_unlock(vp);
@@ -4429,6 +4428,8 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 					 */
 					dprintf("delete vnode %p\n", vp);
 					Status = delete_entry(DeviceObject, Irp, IrpSp);
+
+					atomic_dec_64(&delete_pending);
 
 				} else { /* If vp is not deleted */
 

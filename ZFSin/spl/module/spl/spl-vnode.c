@@ -838,10 +838,9 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 		atomic_inc_32(&vp->v_iocount);
 #endif
 	}
-
 	// If we release last hold with REJECT, we will remove REJECT.
 	// It is expected it removes last hold in vnode_recycle.
-	if ((vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
+	if (error == 0 && (vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
 		vp->v_flags &= ~VNODE_REJECT;
 
 	mutex_exit(&vp->v_mutex);

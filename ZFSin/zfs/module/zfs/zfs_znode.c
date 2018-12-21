@@ -708,6 +708,7 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	zp->z_gid = 0;
 	zp->z_size = 0;
 	zp->z_name_cache = NULL;
+	zp->z_fastpath = B_FALSE;
 
 	vp = ZTOV(zp); /* Does nothing in OSX */
 
@@ -1394,7 +1395,7 @@ again:
 			ZFS_OBJ_HOLD_EXIT(zfsvfs, obj_num);
 
 			//ZTOV(zp) = NULL;
-			dprintf("ZFS: vnode_get() returned %d\n", err);
+			dprintf("%s: vnode_get() returned %d\n", __func__, err);
 			kpreempt(KPREEMPT_SYNC);
 			IOSleep(hz >> 2);
 			if (crutch_count++ > 50) {
