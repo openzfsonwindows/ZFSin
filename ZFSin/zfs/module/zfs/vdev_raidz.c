@@ -1912,7 +1912,7 @@ vdev_raidz_io_verify(zio_t *zio, raidz_map_t *rm, int col)
 {
 #ifdef ZFS_DEBUG
 	vdev_t *vd = zio->io_vd;
-	vdev_t *tvd = vd->vdev_top;
+	ASSERTV(vdev_t *tvd = vd->vdev_top);
 
 	range_seg_t logical_rs, physical_rs;
 	logical_rs.rs_start = zio->io_offset;

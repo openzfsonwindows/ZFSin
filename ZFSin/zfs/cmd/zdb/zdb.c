@@ -2483,6 +2483,7 @@ typedef struct zdb_nvl_stats {
 	nvlist_t        *zns_boolean;
 } zdb_nvl_stats_t;
 
+#ifdef linux
 static void
 collect_nvlist_stats(nvlist_t *nvl, zdb_nvl_stats_t *stats)
 {
@@ -2537,7 +2538,6 @@ collect_nvlist_stats(nvlist_t *nvl, zdb_nvl_stats_t *stats)
 		}
 	}
 }
-
 
 static void
 dump_nvlist_stats(nvlist_t *nvl, size_t cap)
@@ -2602,6 +2602,7 @@ dump_nvlist_stats(nvlist_t *nvl, size_t cap)
 	nvlist_free(stats.zns_uint64);
 	nvlist_free(stats.zns_boolean);
 }
+#endif
 
 typedef struct cksum_record {
 	zio_cksum_t cksum;
@@ -2609,6 +2610,7 @@ typedef struct cksum_record {
 	avl_node_t link;
 } cksum_record_t;
 
+#ifdef linux
 static int
 cksum_record_compare(const void *x1, const void *x2)
 {
@@ -2682,6 +2684,7 @@ print_label_numbers(char *prefix, cksum_record_t *rec)
                         printf("%d ", i);
         printf("\n");
 }
+#endif
 
 #define MAX_UBERBLOCK_COUNT (VDEV_UBERBLOCK_RING >> UBERBLOCK_SHIFT)
 
@@ -2711,6 +2714,7 @@ print_label_header(label_t *label, int l)
 	label->header_printed = B_TRUE;
 }
 
+#ifdef linux
 static void
 dump_config_from_label(label_t *label, size_t buflen, int l)
 {
@@ -2727,6 +2731,7 @@ dump_config_from_label(label_t *label, size_t buflen, int l)
 	if (dump_opt['l'] >= 2)
 		dump_nvlist_stats(label->config_nv, buflen);
 }
+#endif
 
 #define	ZDB_MAX_UB_HEADER_SIZE 32
 
@@ -5276,6 +5281,7 @@ zdb_embedded_block(char *thing)
 	free(buf);
 }
 
+#ifdef linux
 static boolean_t
 pool_match(nvlist_t *cfg, char *tgt)
 {
@@ -5359,6 +5365,7 @@ find_zpool(char **target, nvlist_t **configp, int dirc, char **dirv)
 
 	return (name);
 }
+#endif
 
 int
 main(int argc, char **argv)

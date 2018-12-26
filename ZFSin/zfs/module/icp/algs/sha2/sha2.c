@@ -791,7 +791,7 @@ SHA2Update(SHA2_CTX *ctx, const void *inptr, size_t input_len)
 	uint32_t	i, buf_index, buf_len, buf_limit;
 	const uint8_t	*input = inptr;
 	uint32_t	algotype = ctx->algotype;
-#if defined(__amd64)
+#if !(!defined(__amd64) || !defined(_KERNEL))
 	uint32_t	block_count;
 #endif	/* !__amd64 */
 
