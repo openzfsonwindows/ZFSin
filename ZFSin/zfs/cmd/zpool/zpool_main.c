@@ -377,7 +377,8 @@ get_usage(zpool_help_t idx) {
 	case HELP_REOPEN:
 		return (gettext("\treopen [-n] <pool>\n"));
 	case HELP_INITIALIZE:
-		return (gettext("\tinitialize [-cs] <pool> [<device> ...]\n"));
+		return (gettext("\tinitialize [-c | -s] <pool> "
+		    "[<device> ...]\n"));
 	case HELP_SCRUB:
 		return (gettext("\tscrub [-s | -p] <pool> ...\n"));
 	case HELP_RESILVER:
@@ -386,7 +387,7 @@ get_usage(zpool_help_t idx) {
 		return (gettext("\ttrim [-dp] [-r <rate>] [-c | -s] <pool> "
 		    "[<device> ...]\n"));
 	case HELP_STATUS:
-		return (gettext("\tstatus [-gLPvxD] [-T d|u] [pool] ... "
+		return (gettext("\tstatus [-giLPtvxD] [-T d|u] [pool] ... "
 		    "[interval [count]]\n"));
 	case HELP_UPGRADE:
 		return (gettext("\tupgrade\n"
@@ -7291,9 +7292,10 @@ status_callback(zpool_handle_t *zhp, void *data)
 }
 
 /*
- * zpool status [-gLPvx] [-T d|u] [pool] ... [interval [count]]
+ * zpool status [-giLPtvx] [-T d|u] [pool] ... [interval [count]]
  *
  *	-g	Display guid for individual vdev name.
+ *	-i	Display vdev initialization status.
  *	-L	Follow links when resolving vdev path name.
  *	-P	Display full path for vdev name.
  *	-v	Display complete error logs
@@ -7314,10 +7316,13 @@ zpool_do_status(int argc, char **argv)
 	status_cbdata_t cb = { 0 };
 
 	/* check options */
-	while ((c = getopt(argc, argv, "gLPvxDtT:")) != -1) {
+	while ((c = getopt(argc, argv, "giLPvxDtT:")) != -1) {
 		switch (c) {
 		case 'g':
 			cb.cb_name_flags |= VDEV_NAME_GUID;
+			break;
+		case 'i':
+			cb.cb_print_vdev_init = B_TRUE;
 			break;
 		case 'L':
 			cb.cb_name_flags |= VDEV_NAME_FOLLOW_LINKS;

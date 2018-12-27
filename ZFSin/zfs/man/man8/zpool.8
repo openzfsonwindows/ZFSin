@@ -108,7 +108,7 @@
 .Op Ar newpool
 .Nm
 .Cm initialize
-.Op Fl cs
+.Op Fl c | Fl s
 .Ar pool
 .Op Ar device Ns ...
 .Nm
@@ -181,7 +181,8 @@
 .Ar pool newpool
 .Nm
 .Cm status
-.Op Fl Dvx
+.Oo Fl c Ar SCRIPT Oc
+.Op Fl DigLpPsvx
 .Op Fl T Sy u Ns | Ns Sy d
 .Oo Ar pool Oc Ns ...
 .Op Ar interval Op Ar count
@@ -1455,7 +1456,7 @@ to fully rewind.
 .It Xo
 .Nm
 .Cm initialize
-.Op Fl cs
+.Op Fl c | Fl s
 .Ar pool
 .Op Ar device Ns ...
 .Xc
@@ -1975,7 +1976,8 @@ and automatically import it.
 .It Xo
 .Nm
 .Cm status
-.Op Fl Dvx
+.Op Fl c Op Ar SCRIPT1 Ns Oo , Ns Ar SCRIPT2 Oc Ns ...
+.Op Fl DigLpPsvx
 .Op Fl T Sy u Ns | Ns Sy d
 .Oo Ar pool Oc Ns ...
 .Op Ar interval Op Ar count
@@ -1993,6 +1995,33 @@ and the estimated time to completion.
 Both of these are only approximate, because the amount of data in the pool and
 the other workloads on the system can change.
 .Bl -tag -width Ds
+.It Fl c Op Ar SCRIPT1 Ns Oo , Ns Ar SCRIPT2 Oc Ns ...
+Run a script (or scripts) on each vdev and include the output as a new column
+in the
+.Nm zpool Cm status
+output.  See the
+.Fl c
+option of
+.Nm zpool Cm iostat
+for complete details.
+.It Fl i
+Display vdev initialization status.
+.It Fl g
+Display vdev GUIDs instead of the normal device names. These GUIDs
+can be used in place of device names for the zpool
+detach/offline/remove/replace commands.
+.It Fl L
+Display real paths for vdevs resolving all symbolic links. This can
+be used to look up the current block device name regardless of the
+.Pa /dev/disk/
+path used to open it.
+.It Fl p
+Display numbers in parsable (exact) values.
+.It Fl P
+Display full paths for vdevs instead of only the last component of
+the path. This can be used in conjunction with the
+.Fl L
+flag.
 .It Fl D
 Display a histogram of deduplication statistics, showing the allocated
 .Pq physically present on disk
