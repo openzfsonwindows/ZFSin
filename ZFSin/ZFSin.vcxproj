@@ -156,7 +156,7 @@
       </RuntimeLibrary>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>wdmsec.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -170,7 +170,7 @@
       </RuntimeLibrary>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>wdmsec.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -389,6 +389,9 @@
     <ClCompile Include="zfs\module\zfs\zfs_vnops_windows.c" />
     <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_lib.c" />
     <ClCompile Include="zfs\module\zfs\zfs_windows.c" />
+    <ClCompile Include="zfs\module\zfs\zfs_windows_zvol.c" />
+    <ClCompile Include="zfs\module\zfs\zfs_windows_zvol_scsi.c" />
+    <ClCompile Include="zfs\module\zfs\zfs_windows_zvol_wmi.c" />
     <ClCompile Include="zfs\module\zfs\zfs_znode.c" />
     <ClCompile Include="zfs\module\zfs\zil.c" />
     <ClCompile Include="zfs\module\zfs\zio.c" />

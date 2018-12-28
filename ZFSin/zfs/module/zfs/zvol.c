@@ -96,8 +96,9 @@ dev_info_t *zfs_dip = &zfs_dip_real;
 extern int zfs_major;
 extern int zfs_bmajor;
 
-int zfs_windows_zvol_create(zfs_cmd_t *zc);
-int zfs_windows_zvol_destroy(zfs_cmd_t *zc);
+void wzvol_announce_buschange(void);
+int wzvol_assign_targetid(zvol_state_t *zv);
+void wzvol_clear_targetid(uint8_t targetid);
 
 /*
  * ZFS minor numbers can refer to either a control device instance or
@@ -243,6 +244,25 @@ zvol_minor_lookup(const char *name)
 		if (zv == NULL)
 			continue;
 		if (strcmp(zv->zv_name, name) == 0)
+			return (zv);
+	}
+
+	return (NULL);
+}
+
+zvol_state_t *
+zvol_targetlun_lookup(uint8_t target, uint8_t lun)
+{
+	minor_t minor;
+	zvol_state_t *zv;
+
+	ASSERT(MUTEX_HELD(&zfsdev_state_lock));
+
+	for (minor = 1; minor <= ZFSDEV_MAX_MINOR; minor++) {
+		zv = zfsdev_get_soft_state(minor, ZSST_ZVOL);
+		if (zv == NULL)
+			continue;
+		if (zv->zv_target_id == target && zv->zv_lun_id == lun)
 			return (zv);
 	}
 
@@ -472,7 +492,7 @@ zil_replay_func_t *zvol_replay_vector[TX_MAX_TYPE] = {
 	zvol_replay_err,	/* TX_WRITE2 */
 };
 
-int
+zvol_state_t *
 zvol_name2minor(const char *name, minor_t *minor)
 {
 	zvol_state_t *zv;
@@ -482,7 +502,7 @@ zvol_name2minor(const char *name, minor_t *minor)
 	if (minor && zv)
 		*minor = zv->zv_minor;
 	mutex_exit(&zfsdev_state_lock);
-	return (zv ? 0 : -1);
+	return (zv);
 }
 
 static int
@@ -624,6 +644,10 @@ zvol_create_minor_impl(const char *name)
 	    offsetof(zvol_extent_t, ze_node));
 	zv->zv_znode.z_is_zvol = 1;
 
+	// Assign new TargetId and Lun
+	wzvol_assign_targetid(zv);
+
+
 	/* get and cache the blocksize */
 	error = dmu_object_info(os, ZVOL_OBJ, &doi);
 	ASSERT(error == 0);
@@ -647,11 +671,6 @@ zvol_create_minor_impl(const char *name)
 	mutex_exit(&zfsdev_state_lock);
 
 #ifdef _WIN32
-	/* Create the IOKit zvol while owned */
-	if ((error = zfs_windows_zvol_create(zv)) != 0) {
-		dprintf("%s zvolCreateNewDevice error %d\n",
-		    __func__, error);
-	}
 
 	/* Retake lock to disown dmu objset */
 	mutex_enter(&zfsdev_state_lock);
@@ -678,6 +697,9 @@ zvol_create_minor_impl(const char *name)
 	}
 #endif /* _WIN32 */
 
+	// Announcing new DISK - we hold the zvol open the entire time storport has it.
+	error = zvol_open_impl(zv, FWRITE, 0, NULL);
+	
 	return (0);
 }
 
@@ -702,7 +724,7 @@ zvol_remove_zv(zvol_state_t *zv)
 	minor_t minor = zv->zv_minor;
 
 	ASSERT(MUTEX_HELD(&zfsdev_state_lock));
-	if (zv->zv_total_opens != 0) {
+	if (zv->zv_total_opens > 1) { // Windows allow 1 usage
 		dprintf("ZFS: Warning, %s called but device busy. \n",
 			__func__);
 		/* Since the callers of this function currently expect
@@ -1071,11 +1093,22 @@ zvol_remove_minors_impl(const char *name)
 			// release zv while we have mutex, then drop it.
 			iokitdev = zv->zv_iokitdev;
 
+			// Close the Storport open
+			if (zv->zv_total_opens == 1) {
+				mutex_exit(&zfsdev_state_lock);
+				zvol_close_impl(zv, FWRITE, 0, NULL);
+				mutex_enter(&zfsdev_state_lock);
+				wzvol_clear_targetid(zv->zv_target_id);
+			}
+
 			(void) zvol_remove_zv(zv);
 
 		}
 	}
 	mutex_exit(&zfsdev_state_lock);
+
+	wzvol_announce_buschange();
+
 }
 
 
@@ -1231,6 +1264,8 @@ zvol_create_minors_impl(const char *name)
 	}
 
 	kmem_free(parent, MAXPATHLEN);
+
+	wzvol_announce_buschange();
 
 	return (SET_ERROR(error));
 }
@@ -2314,12 +2349,12 @@ zvol_write(dev_t dev, struct uio *uio, int p)
 }
 
 /*
- * IOKit read operations will pass IOMemoryDescriptor along here, so
- * that we can call io->writeBytes to read into IOKit zvolumes.
+ * IOKit read operations will pass void * along here, so
+ * that we can call io->writeBytes to read into zvolumes.
  */
 int
-zvol_read_iokit(zvol_state_t *zv, uint64_t position,
-    uint64_t count, struct iomem *iomem)
+zvol_read_win(zvol_state_t *zv, uint64_t position,
+    uint64_t count, void *iomem)
 {
 	uint64_t volsize;
 	rl_t *rl;
@@ -2355,7 +2390,7 @@ zvol_read_iokit(zvol_state_t *zv, uint64_t position,
 		    "zvol_read_iokit: position",
 		    position, offset, count, bytes);
 
-		error =  dmu_read_iokit_dbuf(zv->zv_dbuf, ZVOL_OBJ,
+		error =  dmu_read_win_dbuf(zv->zv_dbuf, ZVOL_OBJ,
 		    &offset, position, &bytes, iomem);
 
 		if (error) {
@@ -2373,13 +2408,13 @@ zvol_read_iokit(zvol_state_t *zv, uint64_t position,
 
 
 /*
- * IOKit write operations will pass IOMemoryDescriptor along here, so
- * that we can call io->readBytes to write into IOKit zvolumes.
+ * Win write operations will pass void* along here, so
+ * that we can call io->readBytes to write into zvolumes.
  */
 
 int
-zvol_write_iokit(zvol_state_t *zv, uint64_t position,
-    uint64_t count, struct iomem *iomem)
+zvol_write_win(zvol_state_t *zv, uint64_t position,
+    uint64_t count, void *iomem)
 {
 	uint64_t volsize;
 	rl_t *rl;
@@ -2432,7 +2467,7 @@ zvol_write_iokit(zvol_state_t *zv, uint64_t position,
 			break;
 		}
 
-		error = dmu_write_iokit_dbuf(zv->zv_dbuf, &offset,
+		error = dmu_write_win_dbuf(zv->zv_dbuf, &offset,
 		    position, &bytes, iomem, tx);
 
 		if (error == 0) {

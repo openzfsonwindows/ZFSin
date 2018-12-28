@@ -1069,7 +1069,11 @@ typedef struct ddt_histogram {
 
 #define	ZVOL_PROP_NAME		"name"
 
+#ifdef _WIN32
+#define	ZVOL_DEFAULT_BLOCKSIZE	4096
+#else
 #define	ZVOL_DEFAULT_BLOCKSIZE	131072
+#endif
 
 /*
  * zvol ioctl to get dataset name
