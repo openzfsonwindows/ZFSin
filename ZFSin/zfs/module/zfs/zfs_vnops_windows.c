@@ -5468,9 +5468,22 @@ dispatcher(
 			Status = diskDispatcher(DeviceObject, Irp, IrpSp);
 		else if (zmo && zmo->type == MOUNT_TYPE_VCB)
 			Status = fsDispatcher(DeviceObject, Irp, IrpSp);
-		else
-			DbgBreakPoint();
+		else {
+
+			extern PDRIVER_UNLOAD STOR_DriverUnload;
+			extern PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
+			if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
+				if (TopLevel) { IoSetTopLevelIrp(NULL); }
+				FsRtlExitFileSystem();
+				dprintf("Relaying IRP to STORport\n");
+				return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
+			}
+			// Got a request we don't care about?
+			Status = STATUS_INVALID_DEVICE_REQUEST;
+			Irp->IoStatus.Information = 0;
+		}
 	}
+
 
 	ASSERT(validity_check == *((uint64_t *)Irp));
 

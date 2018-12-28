@@ -62,7 +62,7 @@
 
 extern void printBuffer(const char *fmt, ...);
 
-#define LUDICROUS_SPEED // use circular buffer
+//#define LUDICROUS_SPEED // use circular buffer
 // xprintf is always printed
 // dprintf is printed in DEBUG builds
 // IOLog is printed in DEBUG builds (legacy from osx)
