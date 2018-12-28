@@ -43,7 +43,7 @@ log_must zfs create -o compress=lz4 $sendfs
 log_must zfs create -o compress=lz4 -o dedup=verify $recvfs
 typeset dir=$(get_prop mountpoint $sendfs)
 for i in {0..10}; do
-    log_must file_write -o overwrite -f $dir/file.$i -d R -b 4096 -c 1000
+    log_must $FILE_WRITE -o overwrite -f $dir/file.$i -d R -b 4096 -c 1000
 done
 log_must zfs snapshot $sendfs@snap0
 log_must eval "zfs send -c $sendfs@snap0 >$stream0"

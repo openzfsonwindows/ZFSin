@@ -64,19 +64,14 @@ log_onexit cleanup
 
 log_assert "Verify scrub, scrub -p, and scrub -s show the right status."
 
-<<<<<<< HEAD
-log_must zinject -d $DISK1 -D20:1 $TESTPOOL
-log_must $ZPOOL scrub $TESTPOOL
-=======
 # Create 1G of additional data
 mntpnt=$(get_prop mountpoint $TESTPOOL/$TESTFS)
-log_must file_write -b 1048576 -c 1024 -o create -d 0 -f $mntpnt/biggerfile
+log_must $FILE_WRITE -b 1048576 -c 1024 -o create -d 0 -f $mntpnt/biggerfile
 log_must sync
 
 log_must zinject -d $DISK1 -D50:1 $TESTPOOL
 log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_SLOW
 log_must zpool scrub $TESTPOOL
->>>>>>> d4a72f2... Sequential scrub and resilvers
 log_must is_pool_scrubbing $TESTPOOL true
 log_must $ZPOOL scrub -p $TESTPOOL
 log_must is_pool_scrub_paused $TESTPOOL true

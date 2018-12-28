@@ -51,24 +51,15 @@ verify_runnable "global"
 
 function cleanup
 {
-<<<<<<< HEAD
-       log_must zinject -c all
-=======
 	log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_DEFAULT
->>>>>>> d4a72f2... Sequential scrub and resilvers
 }
 
 log_onexit cleanup
 
 log_assert "Scrub command fails when there is already a scrub in progress"
 
-<<<<<<< HEAD
-log_must zinject -d $DISK1 -D10:1 $TESTPOOL
-log_must $ZPOOL scrub $TESTPOOL
-=======
 log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_SLOW
 log_must zpool scrub $TESTPOOL
->>>>>>> d4a72f2... Sequential scrub and resilvers
 log_must is_pool_scrubbing $TESTPOOL true
 log_mustnot $ZPOOL scrub $TESTPOOL
 log_must is_pool_scrubbing $TESTPOOL true

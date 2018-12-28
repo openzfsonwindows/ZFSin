@@ -41,8 +41,6 @@
 #	2. Detach one of devices
 #	3. Verify scrub failed until the resilver completed
 #
-<<<<<<< HEAD
-=======
 # NOTES:
 #	Artificially limit the scrub speed by setting the zfs_scan_vdev_limit
 #	low in order to ensure that the scrub does not complete early.
@@ -52,20 +50,14 @@ function cleanup
 {
 	log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_DEFAULT
 }
->>>>>>> d4a72f2... Sequential scrub and resilvers
 
 verify_runnable "global"
 
 log_assert "Resilver prevent scrub from starting until the resilver completes"
 
-<<<<<<< HEAD
-log_must $ZPOOL detach $TESTPOOL $DISK2
-log_must $ZPOOL attach $TESTPOOL $DISK1 $DISK2
-=======
 log_must set_tunable64 zfs_scan_vdev_limit $ZFS_SCAN_VDEV_LIMIT_SLOW
 log_must zpool detach $TESTPOOL $DISK2
 log_must zpool attach $TESTPOOL $DISK1 $DISK2
->>>>>>> d4a72f2... Sequential scrub and resilvers
 log_must is_pool_resilvering $TESTPOOL
 log_mustnot $ZPOOL scrub $TESTPOOL
 
