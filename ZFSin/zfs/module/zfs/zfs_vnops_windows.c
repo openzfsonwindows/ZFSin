@@ -215,9 +215,14 @@ NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 
 	if (vp && zp) {
 		zfsvfs = zp->z_zfsvfs;
-	}
-	else {
+	} else {
 		Status = STATUS_INVALID_PARAMETER;
+		goto err;
+	}
+
+	if (zfsvfs->z_rdonly || vfs_isrdonly(zfsvfs->z_vfs) ||
+		!spa_writeable(dmu_objset_spa(zfsvfs->z_os))) {
+		Status = STATUS_MEDIA_WRITE_PROTECTED;
 		goto err;
 	}
 
@@ -817,6 +822,14 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		if (TemporaryFile) 
 			return STATUS_INVALID_PARAMETER;
 
+		if (zfsvfs->z_rdonly || vfs_isrdonly(zfsvfs->z_vfs) || 
+			!spa_writeable(dmu_objset_spa(zfsvfs->z_os))) {
+			VN_RELE(dvp);
+			kmem_free(filename, PATH_MAX);
+			Irp->IoStatus.Information = 0; // ?
+			return STATUS_MEDIA_WRITE_PROTECTED;
+		}
+
 		vap.va_mask = AT_MODE | AT_TYPE ;
 		vap.va_type = VDIR;
 		vap.va_mode = 0755;
@@ -981,11 +994,29 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		}
 	}
 
-
+	// We can not DeleteOnClose if readonly filesystem
+	if (DeleteOnClose) {
+		if (zfsvfs->z_rdonly || vfs_isrdonly(zfsvfs->z_vfs) ||
+			!spa_writeable(dmu_objset_spa(zfsvfs->z_os))) {
+			VN_RELE(dvp);
+			kmem_free(filename, PATH_MAX);
+			Irp->IoStatus.Information = 0; // ?
+			return STATUS_MEDIA_WRITE_PROTECTED;
+		}
+	}
 
 	if (CreateFile && finalname) {
 		vattr_t vap = { 0 };
 		int replacing = 0;
+
+		if (zfsvfs->z_rdonly || vfs_isrdonly(zfsvfs->z_vfs) ||
+			!spa_writeable(dmu_objset_spa(zfsvfs->z_os))) {
+			if (vp) VN_RELE(vp);
+			VN_RELE(dvp);
+			kmem_free(filename, PATH_MAX);
+			Irp->IoStatus.Information = 0; // ?
+			return STATUS_MEDIA_WRITE_PROTECTED;
+		}
 
 		// Would we replace file?
 		if (vp) {
@@ -1985,6 +2016,9 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 			FILE_SUPPORTS_EXTENDED_ATTRIBUTES*/;
 		if (zfsvfs->z_case == ZFS_CASE_SENSITIVE) 
 			ffai->FileSystemAttributes |= FILE_CASE_SENSITIVE_SEARCH;
+
+		if (zfsvfs->z_rdonly) 
+			SetFlag(ffai->FileSystemAttributes, FILE_READ_ONLY_VOLUME);
 
 		ffai->MaximumComponentNameLength = MAXNAMELEN - 1;
 
@@ -5075,6 +5109,9 @@ fsDispatcher(
 					vnode_fileobject_add(IrpSp->FileObject->FsContext, IrpSp->FileObject);
 
 			}
+
+			if (Status == EROFS)
+				Status = STATUS_MEDIA_WRITE_PROTECTED;
 		}
 		break;
 

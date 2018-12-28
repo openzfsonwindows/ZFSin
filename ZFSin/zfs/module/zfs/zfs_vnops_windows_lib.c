@@ -1203,6 +1203,7 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	RtlDuplicateUnicodeString(0, &dcb->symlink_name, &vcb->symlink_name);
 	RtlDuplicateUnicodeString(0, &dcb->uuid, &vcb->uuid);
 
+	vcb->mountflags = dcb->mountflags;
 	//InitializeListHead(&vcb->DirNotifyList);
 	//FsRtlNotifyInitializeSync(&vcb->NotifySync);
 #if 0

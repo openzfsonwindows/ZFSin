@@ -40,7 +40,7 @@ void    vfs_unbusy(mount_t *mp)
 
 int     vfs_isrdonly(mount_t *mp)
 {
-	return 0;
+	return (mp->mountflags & MNT_RDONLY);
 }
 
 void *vfs_fsprivate(mount_t *mp)
@@ -55,20 +55,22 @@ void vfs_setfsprivate(mount_t *mp, void *mntdata)
 
 void    vfs_clearflags(mount_t *mp, uint64_t flags)
 {
+	mp->mountflags &= ~flags;
 }
 
 void    vfs_setflags(mount_t *mp, uint64_t flags)
 {
+	mp->mountflags |= flags;
+}
+
+uint64_t vfs_flags(mount_t *mp)
+{
+	return mp->mountflags;
 }
 
 struct vfsstatfs *      vfs_statfs(mount_t *mp)
 {
 	return NULL;
-}
-
-uint64_t vfs_flags(mount_t *mp)
-{
-	return 0;
 }
 
 void    vfs_setlocklocal(mount_t *mp)

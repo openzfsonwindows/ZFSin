@@ -103,6 +103,8 @@ struct mount
 	uint64_t volume_opens;
 	PVPB vpb;
 
+	uint64_t mountflags;
+
 	// NotifySync is used by notify directory change
 	PNOTIFY_SYNC NotifySync;
 	LIST_ENTRY DirNotifyList;

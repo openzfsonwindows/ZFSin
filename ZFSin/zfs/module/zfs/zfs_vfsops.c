@@ -460,9 +460,11 @@ readonly_changed_cb(void *arg, uint64_t newval)
         //vflush(mp, NULLVP, SKIPSYSTEM);
 
         vfs_setflags(zfsvfs->z_vfs, (uint64_t)MNT_RDONLY);
+		zfsvfs->z_rdonly = 1;
 	} else {
         // FIXME, we don't re-open mtime_vp here.
         vfs_clearflags(zfsvfs->z_vfs, (uint64_t)MNT_RDONLY);
+		zfsvfs->z_rdonly = 0;
 	}
 }
 
