@@ -340,8 +340,10 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		//dprintf("..'%s'..", word);
 
 		// If a component part name is too long
-		if (strlen(word) > MAXNAMELEN - 1)
+		if (strlen(word) > MAXNAMELEN - 1) {
+			VN_RELE(dvp);
 			return STATUS_OBJECT_NAME_INVALID;
+		}
 
 		cn.cn_nameiop = LOOKUP;
 		cn.cn_flags = ISLASTCN;
@@ -400,8 +402,12 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 			dvp = vp;
 			vp = NULL;
 		} else {
-			// We return with vp HELD
-			//VN_RELE(vp);
+			// If we aren't the final component, descending dirs, and it's a file?
+			if (brkt != NULL && *brkt != 0) {
+				dprintf("%s: not a DIR triggered '%s'\n", __func__, word);
+				VN_RELE(dvp);
+				return ENOTDIR;
+			}
 			break;
 		} // is dir or not
 
@@ -438,6 +444,14 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		return ENOENT;
 	}
 #endif
+
+	// If finalpartmaynotexist is TRUE, make sure we are looking at
+	// the finalpart, and not in the middle of descending
+	if (finalpartmaynotexist && brkt != NULL && *brkt != 0) {
+		dprintf("finalpartmaynotexist, but not at finalpart: %s\n", brkt);
+		VN_RELE(dvp);
+		return ESRCH;
+	}
 
 	if (lastname) {
 
@@ -754,6 +768,13 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = FILE_EXISTS;
 			return STATUS_OBJECT_NAME_COLLISION;
+		}
+		// A directory component did not exist, or was a file
+		if ((dvp == NULL) || (error == ENOTDIR)) {
+			dprintf("%s: failed to find dvp - or dvp is a file\n", __func__);
+			kmem_free(filename, PATH_MAX);
+			Irp->IoStatus.Information = 0;
+			return STATUS_OBJECT_PATH_NOT_FOUND;
 		}
 		dprintf("%s: failed to find vp in dvp\n", __func__);
 		kmem_free(filename, PATH_MAX);
