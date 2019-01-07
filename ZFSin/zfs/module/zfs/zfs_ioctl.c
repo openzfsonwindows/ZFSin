@@ -5912,12 +5912,12 @@ zfs_ioctl_register_dataset_modify(zfs_ioc_t ioc, zfs_ioc_legacy_func_t *func,
 uint64_t
 zfs_ioc_unregister_fs(void) 
 {
-	//IoUnregisterFsRegistrationChange(WIN_DriverObject, DriverNotificationRoutine);
 	dprintf("%s\n", __func__);
 	if (zfs_module_busy != 0) {
 		dprintf("%s: datasets still busy: %llu pool(s)\n", __func__, zfs_module_busy);
 		return zfs_module_busy;
 	}
+	IoUnregisterFsRegistrationChange(WIN_DriverObject, DriverNotificationRoutine);
 	IoUnregisterFileSystem(fsDiskDeviceObject);
 	IoDeleteDevice(fsDiskDeviceObject);
 	IoDeleteDevice(ioctlDeviceObject);
@@ -6793,8 +6793,6 @@ zfs_devfs_clone(dev_t dev, int action)
 
 
 
-
-DRIVER_FS_NOTIFICATION DriverNotificationRoutine;
 
 VOID  DriverNotificationRoutine(
 	_In_ struct _DEVICE_OBJECT *DeviceObject,

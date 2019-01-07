@@ -662,6 +662,8 @@ extern int zfs_ioctl_osx_fini(void);
 extern uint64_t zfs_ioc_unregister_fs(void);
 extern int zfs_vnop_force_formd_normalized_output;
 
+DRIVER_FS_NOTIFICATION DriverNotificationRoutine;
+
 #endif	/* _KERNEL */
 
 #ifdef	__cplusplus
