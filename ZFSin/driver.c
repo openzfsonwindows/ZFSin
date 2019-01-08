@@ -33,7 +33,6 @@ void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
 		STOR_DriverUnload(DriverObject);
 	finiDbgCircularBuffer();
 }
-DRIVER_OBJECT DOcopy;
 
 /*
  * Setup a Storage Miniport Driver, used only by ZVOL to create virtual disks. 
@@ -77,8 +76,8 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRe
 		RtlInitUnicodeString(&pwzvolDrvInfo->wzvolRegInfo.VendorId, VENDOR_ID);
 		RtlInitUnicodeString(&pwzvolDrvInfo->wzvolRegInfo.ProductId, PRODUCT_ID);
 		RtlInitUnicodeString(&pwzvolDrvInfo->wzvolRegInfo.ProductRevision, PRODUCT_REV);
-		pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA = LUNInfoMax;
-		pwzvolDrvInfo->wzvolRegInfo.VirtualDiskSize = pwzvolDrvInfo->wzvolRegInfo.PhysicalDiskSize;
+		//pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA = LUNInfoMax;
+		//pwzvolDrvInfo->wzvolRegInfo.VirtualDiskSize = pwzvolDrvInfo->wzvolRegInfo.PhysicalDiskSize;
 
 		RtlZeroMemory(&hwInitData, sizeof(VIRTUAL_HW_INITIALIZATION_DATA));
 
@@ -101,8 +100,6 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRe
 		hwInitData.SpecificLuExtensionSize = sizeof(HW_LU_EXTENSION);
 		hwInitData.SrbExtensionSize = sizeof(HW_SRB_EXTENSION);
 
-		DbgBreakPoint();
-		memcpy(&DOcopy, DriverObject, sizeof(DOcopy));
 		status = StorPortInitialize(                     // Tell StorPort we're here.
 			DriverObject,
 			pRegistryPath,

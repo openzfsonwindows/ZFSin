@@ -31,6 +31,7 @@
 #include <sys/wzvol.h>
 
 extern PDRIVER_OBJECT WIN_DriverObject;
+static pHW_HBA_EXT STOR_HBAExt = NULL;
 
 BOOLEAN
 wzvol_HwInitialize(__in pHW_HBA_EXT pHBAExt)
@@ -116,6 +117,7 @@ wzvol_HwFindAdapter(
 		pHBAExt, pConfigInfo);
 
 	pHBAExt->pwzvolDrvObj = &STOR_wzvolDriverInfo;            // Copy master object from static variable.
+	STOR_HBAExt = pHBAExt; // So we can announce
 
 	InitializeListHead(&pHBAExt->MPIOLunList);        // Initialize list head.
 	InitializeListHead(&pHBAExt->LUList);
@@ -989,6 +991,9 @@ wzvol_HwFreeAdapterResources(__in pHW_HBA_EXT pHBAExt)
 
 	ExFreePoolWithTag(pHBAExt->pDeviceList, MP_TAG_GENERAL);
 #endif
+
+
+	STOR_HBAExt = NULL;
 }
 
 /**************************************************************************************************/
@@ -1103,4 +1108,11 @@ wzvol_CompServReq(__in pHW_HBA_EXT          pHBAExt)      // Adapter device-obje
 	wzvol_QueueServiceIrp(pHBAExt, NULL);
 #endif
 }                                                     // End MpCompServReq().
+
+void wzvol_announce_buschange(void)
+{
+	dprintf("%s: \n", __func__);
+	if (STOR_HBAExt != NULL)
+		StorPortNotification(BusChangeDetected, STOR_HBAExt, 0);
+}
 

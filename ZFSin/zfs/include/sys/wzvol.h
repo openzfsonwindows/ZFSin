@@ -34,10 +34,10 @@
 
 
 
-#define VENDOR_ID                   L"OPENZFS "
-#define VENDOR_ID_ascii             "OPENZFS "
-#define PRODUCT_ID                  L"ZVOL            "
-#define PRODUCT_ID_ascii            "ZVOL            "
+#define VENDOR_ID                   L"ZVOL    "
+#define VENDOR_ID_ascii             "ZVOL    "
+#define PRODUCT_ID                  L"ZVOLNAME        "
+#define PRODUCT_ID_ascii            "ZVOLNAME        "
 #define PRODUCT_REV                 L"1234"
 #define PRODUCT_REV_ascii           "1234"
 #define MP_TAG_GENERAL              'LOVZ'

@@ -1632,12 +1632,11 @@ dmu_write_uio(objset_t *os, uint64_t object, uio_t *uio, uint64_t size,
 }
 
 /*
- * Support function for IOKit, iomem is an IOMemoryDescriptor passed back
- * into zvolIO.cpp
+ * Support function for Win, iomem is an void* passed back
  */
 int
-dmu_read_iokit(objset_t *os, uint64_t object, uint64_t *offset,
-    uint64_t position, uint64_t *size, struct iomem *iomem)
+dmu_read_win(objset_t *os, uint64_t object, uint64_t *offset,
+    uint64_t position, uint64_t *size, void *iomem)
 {
 	dmu_buf_t **dbp;
 	int numbufs, i, err = 0;
@@ -1676,6 +1675,11 @@ dmu_read_iokit(objset_t *os, uint64_t object, uint64_t *offset,
                                    (char *)db->db_data + bufoff,
                                    tocpy);
 #endif
+			RtlMoveMemory((uintptr_t)iomem + *offset,
+				(uintptr_t)db->db_data + bufoff,
+                tocpy);
+			done = tocpy;
+
             if (done > 0) {
                 (*offset) += done;
                 (*size) -= done;
@@ -1690,8 +1694,8 @@ dmu_read_iokit(objset_t *os, uint64_t object, uint64_t *offset,
 }
 
 int
-dmu_read_iokit_dbuf(dmu_buf_t *zdb, uint64_t object, uint64_t *offset,
-    uint64_t position, uint64_t *size, struct iomem *iomem)
+dmu_read_win_dbuf(dmu_buf_t *zdb, uint64_t object, uint64_t *offset,
+    uint64_t position, uint64_t *size, void *iomem)
 {
 	dmu_buf_impl_t *db = (dmu_buf_impl_t *)zdb;
 	dnode_t *dn;
@@ -1732,6 +1736,11 @@ dmu_read_iokit_dbuf(dmu_buf_t *zdb, uint64_t object, uint64_t *offset,
 							   (char *)db->db_data + bufoff,
 							   tocpy);
 #endif
+		RtlMoveMemory((uintptr_t)iomem + *offset,
+			(uintptr_t)db->db_data + bufoff,
+			tocpy);
+		done = tocpy;
+
 		if (!done) {
 			err = EIO;
 			break;
@@ -1748,8 +1757,8 @@ dmu_read_iokit_dbuf(dmu_buf_t *zdb, uint64_t object, uint64_t *offset,
 }
 
 static int
-dmu_write_iokit_dnode(dnode_t *dn, uint64_t *offset, uint64_t position,
-    uint64_t *size, struct iomem *iomem, dmu_tx_t *tx)
+dmu_write_win_dnode(dnode_t *dn, uint64_t *offset, uint64_t position,
+    uint64_t *size, void *iomem, dmu_tx_t *tx)
 {
 	dmu_buf_t **dbp;
 	int numbufs;
@@ -1794,13 +1803,12 @@ dmu_write_iokit_dnode(dnode_t *dn, uint64_t *offset, uint64_t position,
               err = uiomove((char *)db->db_data + bufoff, tocpy,
               UIO_WRITE, uio);
             */
-#if __APPLE__
-            done = zvolIO_kit_write(iomem,
-                                    *offset,
-                                    (char *)db->db_data + bufoff,
-                                    tocpy);
-#endif
-            if (tocpy == db->db_size)
+			RtlMoveMemory((uintptr_t)db->db_data + bufoff,
+				(uintptr_t)iomem + *offset,
+                tocpy);
+			done = tocpy;
+
+			if (tocpy == db->db_size)
                 dmu_buf_fill_done(db, tx);
 
             if (done > 0) {
@@ -1815,8 +1823,8 @@ dmu_write_iokit_dnode(dnode_t *dn, uint64_t *offset, uint64_t position,
 }
 
 int
-dmu_write_iokit_dbuf(dmu_buf_t *zdb, uint64_t *offset, uint64_t position,
-    uint64_t *size, struct iomem *iomem, dmu_tx_t *tx)
+dmu_write_win_dbuf(dmu_buf_t *zdb, uint64_t *offset, uint64_t position,
+    uint64_t *size, void *iomem, dmu_tx_t *tx)
 {
 	dmu_buf_impl_t *db = (dmu_buf_impl_t *)zdb;
 	dnode_t *dn;
@@ -1827,7 +1835,7 @@ dmu_write_iokit_dbuf(dmu_buf_t *zdb, uint64_t *offset, uint64_t position,
 
 	DB_DNODE_ENTER(db);
 	dn = DB_DNODE(db);
-	err = dmu_write_iokit_dnode(dn, offset, position, size, iomem, tx);
+	err = dmu_write_win_dnode(dn, offset, position, size, iomem, tx);
 	DB_DNODE_EXIT(db);
 
 	return (err);
