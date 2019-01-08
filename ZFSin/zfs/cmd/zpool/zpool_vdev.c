@@ -1322,6 +1322,34 @@ zero_label(char *path)
 	return (0);
 }
 
+static int
+get_device_number(char* device_path, STORAGE_DEVICE_NUMBER* device_number)
+{
+	HANDLE hDevice = INVALID_HANDLE_VALUE;
+	DWORD returned = 0;
+
+	hDevice = CreateFile(device_path,
+		GENERIC_READ,
+		FILE_SHARE_READ | FILE_SHARE_WRITE,
+		NULL,
+		OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
+		NULL);
+	if (hDevice == INVALID_HANDLE_VALUE) {
+		return GetLastError();
+	}
+
+	BOOL ret = DeviceIoControl(hDevice, IOCTL_STORAGE_GET_DEVICE_NUMBER, NULL, 0, (LPVOID)device_number, (DWORD)sizeof(*device_number), (LPDWORD)&returned, (LPOVERLAPPED)NULL);
+
+	CloseHandle(hDevice);
+
+	if (!ret) {
+		return ERROR_INVALID_FUNCTION;
+	}
+
+	return ERROR_SUCCESS;
+}
+
 /*
  * Go through and find any whole disks in the vdev specification, labelling them
  * as appropriate.  When constructing the vdev spec, we were unable to open this
@@ -1454,6 +1482,24 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 			}
 #endif
 		}
+		uint64_t offset;
+		uint64_t len;
+		char *end = NULL;
+
+		offset = strtoull(udevpath, &end, 10);
+		while (end && *end == '#') end++;
+		len = strtoull(end, &end, 10);
+		while (end && *end == '#') end++;
+		STORAGE_DEVICE_NUMBER deviceNumber;
+
+		int ret = get_device_number(end, &deviceNumber);
+
+		if (ret) {
+			return ERROR_INVALID_FUNCTION;
+		}
+
+		char vdev_path[MAX_PATH];
+		sprintf(vdev_path, "/dev/physicaldrive%lu", deviceNumber.DeviceNumber);
 
 		/*
 		 * Update the path to refer to the partition.  The presence of
@@ -1461,7 +1507,7 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 		 * chop off the partition number when displaying the device in
 		 * future output.
 		 */
-		verify(nvlist_add_string(nv, ZPOOL_CONFIG_PATH, "/dev/physicaldriveFAKE") == 0);
+		verify(nvlist_add_string(nv, ZPOOL_CONFIG_PATH, vdev_path) == 0);
 		verify(nvlist_add_string(nv, ZPOOL_CONFIG_PHYS_PATH, udevpath) == 0);
 
 		return (0);

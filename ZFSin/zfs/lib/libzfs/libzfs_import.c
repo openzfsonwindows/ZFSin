@@ -198,9 +198,44 @@ fix_paths(nvlist_t *nv, name_entry_t *names)
 	if (best == NULL)
 		return (0);
 
+	HANDLE hDevice = INVALID_HANDLE_VALUE;
+	DWORD returned = 0;
+
+	uint64_t offset;
+	uint64_t len;
+	char *end = NULL;
+
+	offset = strtoull(&best->ne_name[1], &end, 10);
+	while (end && *end == '#') end++;
+	len = strtoull(end, &end, 10);
+	while (end && *end == '#') end++;
+	hDevice = CreateFile(end,
+		GENERIC_READ,
+		FILE_SHARE_READ | FILE_SHARE_WRITE,
+		NULL,
+		OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
+		NULL);
+	if (hDevice == INVALID_HANDLE_VALUE) {
+		return GetLastError();
+	}
+
+	STORAGE_DEVICE_NUMBER deviceNumber;
+
+	BOOL ret = DeviceIoControl(hDevice, IOCTL_STORAGE_GET_DEVICE_NUMBER, NULL, 0, (LPVOID)&deviceNumber, (DWORD)sizeof(deviceNumber), (LPDWORD)&returned, (LPOVERLAPPED)NULL);
+
+	CloseHandle(hDevice);
+
+	if (!ret) {
+		return ERROR_INVALID_FUNCTION;
+	}
+	
+	char vdev_path[MAX_PATH];
+	sprintf(vdev_path, "/dev/physicaldrive%lu", deviceNumber.DeviceNumber);
 	// figure out how to make a pretty name here XXXPHYS
+	fprintf(stderr, "setting path here '%s'\r\n", vdev_path); fflush(stderr);
 	fprintf(stderr, "setting physpath here '%s'\r\n", best->ne_name); fflush(stderr);
-	if (nvlist_add_string(nv, ZPOOL_CONFIG_PATH, "/dev/physicaldriveFAKE") != 0)
+	if (nvlist_add_string(nv, ZPOOL_CONFIG_PATH, vdev_path) != 0)
 		return (-1);
 	if (nvlist_add_string(nv, ZPOOL_CONFIG_PHYS_PATH, best->ne_name) != 0)
 		return (-1);
