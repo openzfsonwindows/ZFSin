@@ -390,6 +390,7 @@ zfs_is_mountable(zfs_handle_t *zhp, char *buf, size_t buflen,
     zprop_source_t *source)
 {
 	char sourceloc[MAXNAMELEN];
+	char driveletter[100] = "off";
 	zprop_source_t sourcetype;
 
 	if (!zfs_prop_valid_for_type(ZFS_PROP_MOUNTPOINT, zhp->zfs_type))
@@ -401,6 +402,36 @@ zfs_is_mountable(zfs_handle_t *zhp, char *buf, size_t buflen,
 	if (strcmp(buf, ZFS_MOUNTPOINT_NONE) == 0 ||
 	    strcmp(buf, ZFS_MOUNTPOINT_LEGACY) == 0)
 		return (B_FALSE);
+#ifdef _WIN32
+	verify(zfs_prop_get(zhp, ZFS_PROP_DRIVELETTER, driveletter,
+		sizeof(driveletter), NULL, NULL, 0, B_FALSE) == 0);
+
+	if (strcmp(buf, "/") == 0 && 
+		(strcmp(driveletter, "off") == 0 || strcmp(driveletter, "-") == 0))
+		return (B_FALSE);
+
+	if (strcmp(driveletter, "off") == 0 || 
+		strcmp(driveletter, "-") == 0) {
+		// if we don't mount as driveletter, check the directory
+		// if file exists, it should be a directory and not a reparse point
+		DWORD fileAttr = GetFileAttributes(buf);
+		if (fileAttr != 0xFFFFFFFF && // file exist
+			(fileAttr & FILE_ATTRIBUTE_REPARSE_POINT ||
+			!(fileAttr & FILE_ATTRIBUTE_DIRECTORY))) 
+			return (B_FALSE);
+
+		// if we aren't root, check parent folder, it should exist
+		if (strcmp(buf, "/") != 0) {
+			char parent_path[MAX_PATH];
+			sprintf(parent_path, "%s/..", buf);
+			fileAttr = GetFileAttributes(parent_path);
+			if (fileAttr == 0xFFFFFFFF || // file doesn't exist
+				fileAttr & FILE_ATTRIBUTE_REPARSE_POINT ||
+				!(fileAttr & FILE_ATTRIBUTE_DIRECTORY))
+				return (B_FALSE);
+		}
+	}
+#endif
 
 	if (zfs_prop_get_int(zhp, ZFS_PROP_CANMOUNT) == ZFS_CANMOUNT_OFF)
 		return (B_FALSE);
@@ -753,7 +784,8 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 #endif /* __LINUX__ */
 
 	if (!zfs_is_mountable(zhp, mountpoint, sizeof (mountpoint), NULL))
-		return (0);
+		return (zfs_error_fmt(hdl, EZFS_MOUNTFAILED,
+			dgettext(TEXT_DOMAIN, "cannot mount '%s'"), mountpoint));
 
 #ifdef __LINUX__
 
