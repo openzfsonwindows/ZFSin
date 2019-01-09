@@ -3636,9 +3636,28 @@ zfs_ioc_destroy(zfs_cmd_t *zc)
 
 	if (strchr(zc->zc_name, '@'))
 		err = dsl_destroy_snapshot(zc->zc_name, zc->zc_defer_destroy);
-	else
+	else {
+
+#ifdef _WIN32
+		zvol_state_t *zv;
+		extern zvol_state_t *zvol_name2minor(const char *name, minor_t *minor);
+		extern void wzvol_clear_targetid(uint8_t targetid);
+		zv = zvol_name2minor(zc->zc_name, NULL);
+		if (zv) {
+			zvol_close_impl(zv, FWRITE, 0, NULL);
+			wzvol_clear_targetid(zv->zv_target_id);
+		}
+#endif
+
 		err = dsl_destroy_head(zc->zc_name);
 
+#if 0 // consider fixing the zvol again if the destroy failed
+		if (err != 0 && zv != NULL) {
+			zvol_open_impl(zv, FWRITE, 0, NULL);
+			wzvol_assign_targetid(zv);
+		}
+#endif
+	}
 	return (err);
 }
 

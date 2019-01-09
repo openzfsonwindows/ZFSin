@@ -42,7 +42,10 @@
 #define PRODUCT_REV_ascii           "1234"
 #define MP_TAG_GENERAL              'LOVZ'
 
-#define MAX_TARGETS                 8
+//#define WZOL_MAX_TARGETS            SCSI_MAXIMUM_TARGETS  // 8! A bit low
+#define WZOL_MAX_TARGETS            16  // 8! A bit low
+
+#define MAX_TARGETS                 WZOL_MAX_TARGETS
 #define MAX_LUNS                    24
 #define MP_MAX_TRANSFER_SIZE        (32 * 1024)
 #define TIME_INTERVAL               (1 * 1000 * 1000) //1 second.

@@ -96,9 +96,9 @@ dev_info_t *zfs_dip = &zfs_dip_real;
 extern int zfs_major;
 extern int zfs_bmajor;
 
-int zfs_windows_zvol_create(zfs_cmd_t *zc);
-int zfs_windows_zvol_destroy(zfs_cmd_t *zc);
 void wzvol_announce_buschange(void);
+int wzvol_assign_targetid(zvol_state_t *zv);
+void wzvol_clear_targetid(uint8_t targetid);
 
 /*
  * ZFS minor numbers can refer to either a control device instance or
@@ -492,7 +492,7 @@ zil_replay_func_t *zvol_replay_vector[TX_MAX_TYPE] = {
 	zvol_replay_err,	/* TX_WRITE2 */
 };
 
-int
+zvol_state_t *
 zvol_name2minor(const char *name, minor_t *minor)
 {
 	zvol_state_t *zv;
@@ -502,7 +502,7 @@ zvol_name2minor(const char *name, minor_t *minor)
 	if (minor && zv)
 		*minor = zv->zv_minor;
 	mutex_exit(&zfsdev_state_lock);
-	return (zv ? 0 : -1);
+	return (zv);
 }
 
 static int
@@ -644,10 +644,9 @@ zvol_create_minor_impl(const char *name)
 	    offsetof(zvol_extent_t, ze_node));
 	zv->zv_znode.z_is_zvol = 1;
 
+	// Assign new TargetId and Lun
+	wzvol_assign_targetid(zv);
 
-	// XXX fix me - assign new targetid and LUN
-	zv->zv_target_id = 0;
-	zv->zv_lun_id = 0;
 
 	/* get and cache the blocksize */
 	error = dmu_object_info(os, ZVOL_OBJ, &doi);
@@ -700,8 +699,6 @@ zvol_create_minor_impl(const char *name)
 
 	// Announcing new DISK - we hold the zvol open the entire time storport has it.
 	error = zvol_open_impl(zv, FWRITE, 0, NULL);
-	// XXX FIxme, handle error case.
-	wzvol_announce_buschange();
 	
 	return (0);
 }
@@ -727,7 +724,7 @@ zvol_remove_zv(zvol_state_t *zv)
 	minor_t minor = zv->zv_minor;
 
 	ASSERT(MUTEX_HELD(&zfsdev_state_lock));
-	if (zv->zv_total_opens != 0) {
+	if (zv->zv_total_opens > 1) { // Windows allow 1 usage
 		dprintf("ZFS: Warning, %s called but device busy. \n",
 			__func__);
 		/* Since the callers of this function currently expect
@@ -1096,11 +1093,22 @@ zvol_remove_minors_impl(const char *name)
 			// release zv while we have mutex, then drop it.
 			iokitdev = zv->zv_iokitdev;
 
+			// Close the Storport open
+			if (zv->zv_total_opens == 1) {
+				mutex_exit(&zfsdev_state_lock);
+				zvol_close_impl(zv, FWRITE, 0, NULL);
+				mutex_enter(&zfsdev_state_lock);
+				wzvol_clear_targetid(zv->zv_target_id);
+			}
+
 			(void) zvol_remove_zv(zv);
 
 		}
 	}
 	mutex_exit(&zfsdev_state_lock);
+
+	wzvol_announce_buschange();
+
 }
 
 
@@ -1256,6 +1264,8 @@ zvol_create_minors_impl(const char *name)
 	}
 
 	kmem_free(parent, MAXPATHLEN);
+
+	wzvol_announce_buschange();
 
 	return (SET_ERROR(error));
 }

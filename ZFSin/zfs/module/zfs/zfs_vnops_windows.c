@@ -5428,7 +5428,8 @@ dispatcher(
 	NTSTATUS Status;
 	uint64_t validity_check;
 
-	PAGED_CODE();
+	// Storport can call itself (and hence, ourselves) so this isn't always true.
+	//PAGED_CODE();
 
 	//dprintf("%s: enter\n", __func__);
 
@@ -5475,7 +5476,7 @@ dispatcher(
 			if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
 				if (TopLevel) { IoSetTopLevelIrp(NULL); }
 				FsRtlExitFileSystem();
-				dprintf("Relaying IRP to STORport\n");
+				//dprintf("Relaying IRP to STORport\n");
 				return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
 			}
 			// Got a request we don't care about?

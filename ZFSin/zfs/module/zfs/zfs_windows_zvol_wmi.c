@@ -529,17 +529,17 @@ QueryWmiDataBlock(
                 #define FCAdapterHBAAttributesNODEWWN "12345678"
                 #define VENDORID                      0x1234
                 #define PRODUCTID                     0x5678
-                #define MANUFACTURER                  L"Virtual Miniport Manufacturer"
-                #define SERIALNUMBER                  L"VirtMiniport SerialNumber"
-                #define MODEL                         L"VirtMiniport Model"
-                #define MODELDESCRIPTION              L"VirtMiniport ModelDescription"
-                #define NODESYMBOLICNAME              L"VirtMiniport NodeSymbolicName"
-                #define HARDWAREVERSION               L"VirtMiniport HardwareVersion"
-                #define DRIVERVERSION                 L"VirtMiniport DriverVersion"
-                #define OPTIONROMVERSION              L"VirtMiniport OptionROMVersion"
-                #define DRIVERNAME                    L"VirtMiniport DriverName"
-                #define FIRMWAREVERSION               L"VirtMiniport FirmwareVersion"
-                #define MFRDOMAIN                     L"VirtMiniport MfrDomain"
+                #define MANUFACTURER                  L"OpenZFS"
+                #define SERIALNUMBER                  L"ZVOL SerialNumber"
+                #define MODEL                         L"ZVOL Model"
+                #define MODELDESCRIPTION              L"ZVOL ModelDescription"
+                #define NODESYMBOLICNAME              L"ZVOL NodeSymbolicName"
+                #define HARDWAREVERSION               L"ZVOL HardwareVersion"
+                #define DRIVERVERSION                 L"ZVOL DriverVersion"
+                #define OPTIONROMVERSION              L"ZVOL OptionROMVersion"
+                #define DRIVERNAME                    L"ZVOL DriverName"
+                #define FIRMWAREVERSION               L"ZVOL FirmwareVersion"
+                #define MFRDOMAIN                     L"ZVOL MfrDomain"
                                                                           
                 //
                 // We know there is always only 1 instance for this

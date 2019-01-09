@@ -33,6 +33,11 @@
 extern PDRIVER_OBJECT WIN_DriverObject;
 static pHW_HBA_EXT STOR_HBAExt = NULL;
 
+
+// Verbose
+#undef dprintf
+#define dprintf
+
 BOOLEAN
 wzvol_HwInitialize(__in pHW_HBA_EXT pHBAExt)
 {
@@ -142,7 +147,7 @@ wzvol_HwFindAdapter(
 	pConfigInfo->MaximumTransferLength = SP_UNINITIALIZED_VALUE;      // Indicate unlimited.
 	pConfigInfo->AlignmentMask = 0x3;                         // Indicate DWORD alignment.
 	pConfigInfo->CachesData = FALSE;                       // Indicate miniport wants flush and shutdown notification.
-	pConfigInfo->MaximumNumberOfTargets = SCSI_MAXIMUM_TARGETS;        // Indicate maximum targets.
+	pConfigInfo->MaximumNumberOfTargets = WZOL_MAX_TARGETS;        // Indicate maximum targets.
 	pConfigInfo->NumberOfBuses = 1;                           // Indicate number of busses.
 	pConfigInfo->SynchronizationModel = StorSynchronizeFullDuplex;   // Indicate full-duplex.
 	pConfigInfo->ScatterGather = TRUE;                        // Indicate scatter-gather (explicit setting needed for Win2003 at least).
@@ -194,7 +199,7 @@ wzvol_HwFindAdapter(
 
 
 #define StorPortMaxWMIEventSize 0x80                  // Maximum WMIEvent size StorPort will support.
-#define InstName L"vHBA"
+#define InstName L"ZVOL"
 
 /**************************************************************************************************/
 /*                                                                                                */

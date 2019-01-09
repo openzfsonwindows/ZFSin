@@ -37,8 +37,6 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 \***************************************************************************/     
 
-#define MPScsiFile     "2.025"
-
 #include <sys/debug.h>
 #include <ntddk.h>
 #include <storport.h>
@@ -57,6 +55,54 @@
 
 //#include "trace.h"
 //#include "scsi.tmh"
+
+#include <sys/zvol.h>
+
+// Verbose SCSI output
+#undef dprintf
+#define dprintf
+
+/*
+ * We have a list of ZVOLs, and we receive incoming (Target, Lun) requests that needs to be mapped
+ * to the correct "zv" ptr. As there appears to be a upper limit on the number of Targets we can
+ * have, we use a static index list of zv ptrs. We might need to enhance this one day if people
+ * create more ZVOLs than Storports max targets.
+ *
+ * We currently only use LUN==0. In future we could look at changing this.
+ */
+
+static zvol_state_t *zv_targets[WZOL_MAX_TARGETS] = { NULL };
+
+int wzvol_assign_targetid(zvol_state_t *zv)
+{
+	void *empty = NULL;
+
+	for (int i = 0; i < WZOL_MAX_TARGETS; i++) {
+		if (atomic_cas_ptr(&zv_targets[i], NULL, zv) == NULL) {
+			zv->zv_target_id = i;
+			zv->zv_lun_id = 0;
+			return 1;
+		}
+	}
+
+	ASSERT("Unable to assign targetid - out of room, increase WZOL_MAX_TARGETS");
+	return 0;
+}
+
+static inline zvol_state_t *wzvol_find_target(uint8_t targetid, uint8_t lun)
+{
+	ASSERT(targetid < WZOL_MAX_TARGETS);
+	if (targetid >= WZOL_MAX_TARGETS) return NULL;
+	if (lun != 0) return NULL;
+	return zv_targets[targetid];
+}
+
+void wzvol_clear_targetid(uint8_t targetid)
+{
+	ASSERT(targetid < WZOL_MAX_TARGETS);
+	if (targetid < WZOL_MAX_TARGETS)
+		zv_targets[targetid] = NULL;
+}
 
 /**************************************************************************************************/     
 /*                                                                                                */     
@@ -159,32 +205,6 @@ Done:
 
 /**************************************************************************************************/     
 /*                                                                                                */     
-/* Allocate a buffer to represent the in-memory disk.                                             */     
-/*                                                                                                */     
-/**************************************************************************************************/     
-void
-ScsiAllocDiskBuf(                                                                                  
-                 __in       pHW_HBA_EXT  pHBAExt,     // Adapter device-object extension from StorPort.
-                 __in __out PUCHAR      *ppDiskBuf,
-                 __in __out PUSHORT      pMaxBlocks
-                )
-{
-    *ppDiskBuf = ExAllocatePoolWithTag(NonPagedPool, pHBAExt->pwzvolDrvObj->wzvolRegInfo.PhysicalDiskSize, MP_TAG_GENERAL);
-
-    if (!*ppDiskBuf) {
-		dprintf("DiskBuf memory allocation failed!\n");
-
-        goto Done;
-    }
-
-    *pMaxBlocks = (USHORT)(pHBAExt->pwzvolDrvObj->wzvolRegInfo.PhysicalDiskSize / MP_BLOCK_SIZE);
-
-Done:
-    return;
-}                                                     // End ScsiAllocDiskBuf.
-
-/**************************************************************************************************/     
-/*                                                                                                */     
 /* Find an MPIO-collecting LUN object for the supplied (new) LUN, or allocate one.                */     
 /*                                                                                                */     
 /**************************************************************************************************/     
@@ -247,7 +267,7 @@ ScsiGetMPIOExt(
 
         InitializeListHead(&pLUMPIOExt->LUExtList);
 
-        ScsiAllocDiskBuf(pHBAExt, &pLUMPIOExt->pDiskBuf, &pLUExt->MaxBlocks);
+        //ScsiAllocDiskBuf(pHBAExt, &pLUMPIOExt->pDiskBuf, &pLUExt->MaxBlocks);
 
         if (!pLUMPIOExt->pDiskBuf) {         
 			dprintf("Failed to allocate DiskBuf\n");
@@ -297,133 +317,6 @@ Done:
     return pLUMPIOExt;
 }                                                     // End ScsiGetMPIOExt.
 
-/**************************************************************************************************/     
-/*                                                                                                */     
-/**************************************************************************************************/     
-UCHAR
-XXXXScsiOpInquiry(
-              __in pHW_HBA_EXT          pHBAExt,      // Adapter device-object extension from StorPort.
-              __in pHW_LU_EXTENSION     pLUExt,       // LUN device-object extension from StorPort.
-              __in PSCSI_REQUEST_BLOCK  pSrb
-             )
-{
-    PINQUIRYDATA          pInqData = pSrb->DataBuffer;// Point to Inquiry buffer.
-    UCHAR                 deviceType,
-                          status = SRB_STATUS_SUCCESS;
-    PCDB                  pCdb;
-    pHW_LU_EXTENSION_MPIO pLUMPIOExt;
-#if defined(_AMD64_)
-    KLOCK_QUEUE_HANDLE    LockHandle;
-#else
-    KIRQL                 SaveIrql;
-#endif
-
-	dprintf( "Path: %d TID: %d Lun: %d\n",
-                      pSrb->PathId, pSrb->TargetId, pSrb->Lun);
-
-    RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength);
-
-    deviceType = wzvol_GetDeviceType(pHBAExt, pSrb->PathId, pSrb->TargetId, pSrb->Lun);
-
-    if (DEVICE_NOT_FOUND==deviceType) {
-       pSrb->DataTransferLength = 0;
-       status = SRB_STATUS_INVALID_LUN;
-
-       goto done;
-    }
-
-    pCdb = (PCDB)pSrb->Cdb;
-
-    if (1==pCdb->CDB6INQUIRY3.EnableVitalProductData) {
-		dprintf("Received VPD request for page 0x%x\n",
-                          pCdb->CDB6INQUIRY.PageCode);
-
-        status = ScsiOpVPD(pHBAExt, pLUExt, pSrb);
-
-        goto done;
-    }
-
-    pInqData->DeviceType = deviceType;
-    pInqData->RemovableMedia = FALSE;
-    pInqData->CommandQueue = TRUE;
-
-    RtlMoveMemory(pInqData->VendorId, pHBAExt->VendorId, 8);
-    RtlMoveMemory(pInqData->ProductId, pHBAExt->ProductId, 16);
-    RtlMoveMemory(pInqData->ProductRevisionLevel, pHBAExt->ProductRevision, 4);
-
-    if (deviceType!=DISK_DEVICE) {                    // Shouldn't happen.
-        goto done;
-    }
-
-    // Check if the device has already been seen.
-
-    if (GET_FLAG(pLUExt->LUFlags, LU_DEVICE_INITIALIZED)) {
-        // This is an existing device.
-             
-        goto done;
-    }
-
-    //
-    // A new LUN.
-    //
-
-    pLUExt->DeviceType = deviceType;
-    pLUExt->TargetId   = pSrb->TargetId;
-    pLUExt->Lun        = pSrb->Lun;
-
-    if (pHBAExt->pwzvolDrvObj->wzvolRegInfo.bCombineVirtDisks) { // MPIO support?
-        // Find the matching MPIO LUN descriptor or get a new one.
-
-        pLUMPIOExt = ScsiGetMPIOExt(pHBAExt, pLUExt, pSrb);
-
-        if (!pLUMPIOExt) {                            // A problem?
-            pSrb->DataTransferLength = 0;
-            status = SRB_STATUS_ERROR;
-
-            goto done;
-        }
-
-        SET_FLAG(pLUExt->LUFlags, LU_MPIO_MAPPED);
-    }
-    else {                                            // No MPIO support.
-        ScsiAllocDiskBuf(pHBAExt, &pLUExt->pDiskBuf, &pLUExt->MaxBlocks);  // The fake memory to hold disk. zvol_open() probably
-
-        if (!pLUExt->pDiskBuf) {
-			dprintf("Disk memory allocation failed!\n");
-
-            pSrb->DataTransferLength = 0;
-            status = SRB_STATUS_ERROR;
-
-            goto done;
-        }
-    }
-
-    SET_FLAG(pLUExt->LUFlags, LU_DEVICE_INITIALIZED);
-
-#if defined(_AMD64_)
-    KeAcquireInStackQueuedSpinLock(                   // Serialize the linked list of LUN extensions.              
-                                   &pHBAExt->LUListLock, &LockHandle);
-#else
-    KeAcquireSpinLock(&pHBAExt->LUListLock, &SaveIrql);
-#endif
-
-    InsertTailList(&pHBAExt->LUList, &pLUExt->List);  // Add LUN extension to list in HBA extension.
-
-#if defined(_AMD64_)
-    KeReleaseInStackQueuedSpinLock(&LockHandle);      
-#else
-    KeReleaseSpinLock(&pHBAExt->LUListLock, SaveIrql);
-#endif
-
-	dprintf("New device created. %d:%d:%d\n", pSrb->PathId, pSrb->TargetId, pSrb->Lun);
-
-done:
-    return status;
-}                                                     // End ScsiOpInquiry.
-
-#include <sys/zvol.h>
-extern kmutex_t zfsdev_state_lock;
-
 UCHAR
 ScsiOpInquiry(
 	__in pHW_HBA_EXT          pHBAExt,      // Adapter device-object extension from StorPort.
@@ -443,14 +336,12 @@ ScsiOpInquiry(
 #endif
 	zvol_state_t *zv;
 
-	dprintf("Path: %d TID: %d Lun: %d\n",
+	dprintf("%s: Path: %d TID: %d Lun: %d\n", __func__,
 		pSrb->PathId, pSrb->TargetId, pSrb->Lun);
 
 	RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength);
 
-	mutex_enter(&zfsdev_state_lock);
-	zv = zvol_targetlun_lookup(pSrb->TargetId, pSrb->Lun);
-	mutex_exit(&zfsdev_state_lock);
+	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
 
 	if (zv == NULL) {
 		pSrb->DataTransferLength = 0;
@@ -480,22 +371,22 @@ ScsiOpInquiry(
 	// Copy in the zvol name
 	strlcpy(pInqData->ProductId, zv->zv_name, 16);
 
-	// Check if the device has already been seen.
-	// XXX probably not needed with zvols
+	//
+	// Reply as valid LUN
+	//
+
 	if (GET_FLAG(pLUExt->LUFlags, LU_DEVICE_INITIALIZED)) {
 		// This is an existing device.
 		goto done;
 	}
-
-	//
-	// A new LUN.
-	//
 
 	pLUExt->DeviceType = DISK_DEVICE;
 	pLUExt->TargetId = pSrb->TargetId;
 	pLUExt->Lun = pSrb->Lun;
 
 	SET_FLAG(pLUExt->LUFlags, LU_DEVICE_INITIALIZED);
+
+#if 0
 
 #if defined(_AMD64_)
 	KeAcquireInStackQueuedSpinLock(                   // Serialize the linked list of LUN extensions.              
@@ -513,6 +404,8 @@ ScsiOpInquiry(
 #endif
 
 	dprintf("New device created. %d:%d:%d\n", pSrb->PathId, pSrb->TargetId, pSrb->Lun);
+
+#endif 
 
 done:
 	return status;
@@ -678,28 +571,25 @@ ScsiOpReadCapacity(
     RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength );
 
     // Claim 512-byte blocks (big-endian).
+	// Ask ZVOL about block size
+    //blockSize = MP_BLOCK_SIZE;
+	zvol_state_t *zv;
+	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
 
-    blockSize = MP_BLOCK_SIZE;
+	if (zv == NULL) {
+		pSrb->DataTransferLength = 0;
+		return SRB_STATUS_INVALID_REQUEST;
+	}
+
+	blockSize = zv->zv_volblocksize;
 
     readCapacity->BytesPerBlock =
       (((PUCHAR)&blockSize)[0] << 24) |  (((PUCHAR)&blockSize)[1] << 16) |
       (((PUCHAR)&blockSize)[2] <<  8) | ((PUCHAR)&blockSize)[3];
 
-	dprintf("Block Size: 0x%x\n", blockSize);
+	maxBlocks = zv->zv_volsize / blockSize;
 
-    maxBlocks = (pHBAExt->pwzvolDrvObj->wzvolRegInfo.VirtualDiskSize/MP_BLOCK_SIZE)-1;
-
-	zvol_state_t *zv;
-
-	mutex_enter(&zfsdev_state_lock);
-	zv = zvol_targetlun_lookup(pSrb->TargetId, pSrb->Lun);
-	mutex_exit(&zfsdev_state_lock);
-
-	if (zv != NULL) {
-		maxBlocks = zv->zv_volsize / blockSize;
-	}
-
-	dprintf("Max Blocks: 0x%x\n", maxBlocks);
+	dprintf("Block Size: 0x%x Total Blocks: 0x%x\n", blockSize, maxBlocks);
 
     readCapacity->LogicalBlockAddress =
       (((PUCHAR)&maxBlocks)[0] << 24) | (((PUCHAR)&maxBlocks)[1] << 16) |
@@ -770,7 +660,8 @@ ScsiReadWriteSetup(
     ASSERT(pLUExt != NULL);
 
     *pResult = ResultDone;                            // Assume no queuing.
-        
+
+#if 0
     startingSector = pCdb->CDB10.LogicalBlockByte3       |
                      pCdb->CDB10.LogicalBlockByte2 << 8  |
                      pCdb->CDB10.LogicalBlockByte1 << 16 |
@@ -785,6 +676,7 @@ ScsiReadWriteSetup(
     //    dprintf( "*** ScsiReadWriteSetup Starting sector: %d, number of blocks: %d\n", startingSector, numBlocks);
 	//   return SRB_STATUS_INVALID_REQUEST;   
     //}
+#endif
 
     pWkRtnParms =                                     // Allocate parm area for work routine.
       (pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPool, sizeof(MP_WorkRtnParms), MP_TAG_GENERAL);
@@ -865,13 +757,16 @@ ScsiOpReportLuns(
 
         pHBAExt->bReportAdapterDone = TRUE;
     }
+	
+	zvol_state_t *zv;
 
-    if (
-        0==pSrb->PathId && 0==pSrb->TargetId          // Handle only if 0.0.x    
-          &&                                          //   and
-        !pHBAExt->bDontReport                         //     if not prevented for the HBA.
-       ) {
-        RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength);
+	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
+
+	if (zv != NULL &&
+		pSrb->PathId == 0 &&
+		!pHBAExt->bDontReport) {
+
+		RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength);
 
         pLunList->LunListLength[3] =                  // Set length needed for LUNs.
             (UCHAR)(8*pHBAExt->NbrLUNsperHBA);
@@ -906,12 +801,21 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	PVOID                     pX = NULL;
 	UCHAR                     status;
 
+	zvol_state_t *zv;
+
+	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
+
+	if (zv == NULL) {
+		status = SRB_STATUS_ERROR;
+		goto Done;
+	}
+
 	startingSector = pCdb->CDB10.LogicalBlockByte3 |
 		pCdb->CDB10.LogicalBlockByte2 << 8 |
 		pCdb->CDB10.LogicalBlockByte1 << 16 |
 		pCdb->CDB10.LogicalBlockByte0 << 24;
 
-	sectorOffset = startingSector * MP_BLOCK_SIZE;
+	sectorOffset = startingSector * zv->zv_volblocksize;
 
 	dprintf("MpWkRtn Action: %X, starting sector: 0x%X, sector offset: 0x%X\n", pWkRtnParms->Action, startingSector, sectorOffset);
 	dprintf("MpWkRtn pSrb: 0x%p, pSrb->DataBuffer: 0x%p\n", pSrb, pSrb->DataBuffer);
@@ -931,16 +835,6 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 		goto Done;
 	}
 
-	zvol_state_t *zv;
-
-	mutex_enter(&zfsdev_state_lock);
-	zv = zvol_targetlun_lookup(pSrb->TargetId, pSrb->Lun);
-	mutex_exit(&zfsdev_state_lock);
-
-	if (zv == NULL) {
-		status = SRB_STATUS_ERROR;
-		goto Done;
-	}
 
 	if (sectorOffset >= zv->zv_volsize) {      // Starting sector beyond the bounds?
 		dprintf("%s: invalid starting sector: %d\n", __func__, startingSector);
@@ -948,13 +842,10 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 		goto Done;
 	}
 
-	//dprintf("MpWkRtn Using pX=0x%p\n", pX);
 
-	if (ActionRead == pWkRtnParms->Action) {            // Read?
-		//RtlMoveMemory(pX, &pLUExt->pDiskBuf[sectorOffset], pSrb->DataTransferLength);
+	if (ActionRead == pWkRtnParms->Action) {           
 		status = zvol_read_win(zv, sectorOffset, pSrb->DataTransferLength, pX);
-	} else {                                            // Write.
-		//RtlMoveMemory(&pLUExt->pDiskBuf[sectorOffset], pX, pSrb->DataTransferLength);
+	} else {                                           
 		status = zvol_write_win(zv, sectorOffset, pSrb->DataTransferLength, pX);
 	}
 
