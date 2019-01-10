@@ -226,8 +226,8 @@ uint64_t
 dmu_object_alloc(objset_t *os, dmu_object_type_t ot, int blocksize,
     dmu_object_type_t bonustype, int bonuslen, dmu_tx_t *tx)
 {
-	return (dmu_object_alloc_impl(os, ot, blocksize, 0, bonustype,
-			bonuslen, 0, NULL, NULL, tx));
+	return dmu_object_alloc_impl(os, ot, blocksize, 0, bonustype,
+	    bonuslen, 0, NULL, NULL, tx);
 }
 
 uint64_t
@@ -235,8 +235,8 @@ dmu_object_alloc_ibs(objset_t *os, dmu_object_type_t ot, int blocksize,
     int indirect_blockshift, dmu_object_type_t bonustype, int bonuslen,
     dmu_tx_t *tx)
 {
-	return (dmu_object_alloc_impl(os, ot, blocksize, indirect_blockshift,
-			bonustype, bonuslen, 0, NULL, NULL, tx));
+	return dmu_object_alloc_impl(os, ot, blocksize, indirect_blockshift,
+	    bonustype, bonuslen, 0, NULL, NULL, tx);
 }
 
 uint64_t
@@ -244,7 +244,7 @@ dmu_object_alloc_dnsize(objset_t *os, dmu_object_type_t ot, int blocksize,
     dmu_object_type_t bonustype, int bonuslen, int dnodesize, dmu_tx_t *tx)
 {
 	return (dmu_object_alloc_impl(os, ot, blocksize, 0, bonustype,
-			bonuslen, dnodesize, NULL, NULL, tx));
+	    bonuslen, dnodesize, NULL, NULL, tx));
 }
 
 /*
@@ -258,7 +258,7 @@ dmu_object_alloc_hold(objset_t *os, dmu_object_type_t ot, int blocksize,
     int dnodesize, dnode_t **allocated_dnode, void *tag, dmu_tx_t *tx)
 {
 	return (dmu_object_alloc_impl(os, ot, blocksize, indirect_blockshift,
-            bonustype, bonuslen, dnodesize, allocated_dnode, tag, tx));
+	    bonustype, bonuslen, dnodesize, allocated_dnode, tag, tx));
 }
 
 int
@@ -478,12 +478,3 @@ dmu_object_free_zapified(objset_t *mos, uint64_t object, dmu_tx_t *tx)
 	VERIFY0(dmu_object_free(mos, object, tx));
 }
 
-#if defined(_KERNEL) && defined(HAVE_SPL)
-EXPORT_SYMBOL(dmu_object_alloc);
-EXPORT_SYMBOL(dmu_object_claim);
-EXPORT_SYMBOL(dmu_object_reclaim);
-EXPORT_SYMBOL(dmu_object_free);
-EXPORT_SYMBOL(dmu_object_next);
-EXPORT_SYMBOL(dmu_object_zapify);
-EXPORT_SYMBOL(dmu_object_free_zapified);
-#endif
