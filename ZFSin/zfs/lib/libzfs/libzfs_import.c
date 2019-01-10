@@ -217,6 +217,7 @@ fix_paths(nvlist_t *nv, name_entry_t *names)
 		FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
 		NULL);
 	if (hDevice == INVALID_HANDLE_VALUE) {
+		fprintf(stderr, "CreateFile returned INVALID_HANDLE_VALUE, abort\n"); fflush(stderr);
 		return GetLastError();
 	}
 
@@ -227,6 +228,7 @@ fix_paths(nvlist_t *nv, name_entry_t *names)
 	CloseHandle(hDevice);
 
 	if (!ret) {
+		fprintf(stderr, "DeviceIoControl returned, abort\n"); fflush(stderr);
 		return ERROR_INVALID_FUNCTION;
 	}
 	

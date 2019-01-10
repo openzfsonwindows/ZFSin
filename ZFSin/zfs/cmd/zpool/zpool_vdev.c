@@ -1336,6 +1336,7 @@ get_device_number(char* device_path, STORAGE_DEVICE_NUMBER* device_number)
 		FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
 		NULL);
 	if (hDevice == INVALID_HANDLE_VALUE) {
+		fprintf(stderr, "invalid handle value\n"); fflush(stderr);
 		return GetLastError();
 	}
 
@@ -1344,6 +1345,7 @@ get_device_number(char* device_path, STORAGE_DEVICE_NUMBER* device_number)
 	CloseHandle(hDevice);
 
 	if (!ret) {
+		fprintf(stderr, "DeviceIoControl returned error\n"); fflush(stderr);
 		return ERROR_INVALID_FUNCTION;
 	}
 
@@ -1485,16 +1487,19 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 		uint64_t offset;
 		uint64_t len;
 		char *end = NULL;
-
-		offset = strtoull(udevpath, &end, 10);
-		while (end && *end == '#') end++;
-		len = strtoull(end, &end, 10);
-		while (end && *end == '#') end++;
+		end = udevpath;
+		for (int i = 0; i < 3; i++) {
+			while (end && *end != '#') {
+				end++;
+			}
+			end++;
+		}
 		STORAGE_DEVICE_NUMBER deviceNumber;
 
 		int ret = get_device_number(end, &deviceNumber);
 
 		if (ret) {
+			fprintf(stderr, "get_device_number failed, return\n"); fflush(stderr);
 			return ERROR_INVALID_FUNCTION;
 		}
 
