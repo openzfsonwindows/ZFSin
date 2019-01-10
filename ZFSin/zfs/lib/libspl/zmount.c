@@ -378,6 +378,34 @@ zunmount(zfs_handle_t *zhp, const char *dir, int mflag)
 
 	ret = zfs_ioctl(zhp->zfs_hdl, ZFS_IOC_UNMOUNT, &zc);
 
+	if (!ret) {
+		// if mountpoint is a folder, we need to turn it back from JUNCTION
+		// to a real folder
+		char mtpt_prop[ZFS_MAXPROPLEN];
+		char driveletter[MAX_PATH];
+		verify(zfs_prop_get(zhp, ZFS_PROP_MOUNTPOINT, mtpt_prop,
+			sizeof(mtpt_prop), NULL, NULL, 0, B_FALSE) == 0);
+		verify(zfs_prop_get(zhp, ZFS_PROP_DRIVELETTER, driveletter,
+			sizeof(driveletter), NULL, NULL, 0, B_FALSE) == 0);
+		// if mountpoint starts with '/' we assume that it is a path to a directory 
+		// make sure we didn't mount as driveletter
+		if (mtpt_prop && mtpt_prop[0] == '/' && 
+			(strstr(driveletter, "-") != 0 || strstr(driveletter, "off") != 0) &&
+			(dir && strstr(dir, ":\\") == 0)) {
+			fprintf(stderr, "recreate mointpoint %s\n", mtpt_prop); fflush(stderr);
+			BOOL val = RemoveDirectoryA(mtpt_prop);
+			if (!val) {
+				fprintf(stderr, "RemoveDirectoryA returns false, last error %lu\n", GetLastError()); fflush(stderr);
+			} else {
+				val = CreateDirectoryA(mtpt_prop, NULL);
+				if (!val) 
+					fprintf(stderr, "CreateDirectoryA returns false, last error %lu\n", GetLastError()); fflush(stderr);
+			}
+			
+		}
+			
+	}
+
 	fprintf(stderr, "zunmount(%s,%s) returns %d\n",
 		zhp->zfs_name, dir, ret);
 
