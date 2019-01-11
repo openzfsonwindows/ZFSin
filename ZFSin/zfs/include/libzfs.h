@@ -314,6 +314,9 @@ extern nvlist_t *zpool_find_vdev_by_physpath(zpool_handle_t *, const char *,
 extern int zpool_label_disk_wait(char *, int);
 extern int zpool_label_disk(libzfs_handle_t *, zpool_handle_t *, const char *);
 
+extern int remove_partition_offset_hack(char* hacked_path, char* out_dev_path);
+extern int get_device_number(char* device_path, STORAGE_DEVICE_NUMBER* device_number);
+
 /*
  * Functions to manage pool properties
  */
