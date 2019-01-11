@@ -115,25 +115,13 @@ spl_cv_wait(kcondvar_t *cvp, kmutex_t *mp, int flags, const char *msg)
 #endif
 	KIRQL oldIrq;
 //	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	atomic_inc_32(&cvp->waiters_count);
+	// If we are the first waiter, make sure to clear the broadcast event
+	if (atomic_inc_32_nv(&cvp->waiters_count) == 1)
+		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
 //	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
 	mutex_exit(mp);
 	void *locks[CV_MAX_EVENTS] = { &cvp->kevent[CV_SIGNAL], &cvp->kevent[CV_BROADCAST] };
 	result = KeWaitForMultipleObjects(2, locks, WaitAny, Executive, KernelMode, FALSE, NULL, NULL);
-
-//	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	// If last listener, clear BROADCAST event. (Even if it was SIGNAL
-	// overclearing will not hurt?)
-	if (atomic_dec_32_nv(&cvp->waiters_count) == 0)
-		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
-
-	//int last_waiter =
-	//	result == STATUS_WAIT_0 + CV_BROADCAST
-	//	&& cvp->waiters_count == 0;
-//	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
-
-	//if (last_waiter)
-	//	KeClearEvent(&cvp->kevent[CV_BROADCAST]);
 
 	mutex_enter(mp);
 
@@ -184,7 +172,9 @@ spl_cv_timedwait(kcondvar_t *cvp, kmutex_t *mp, clock_t tim, int flags,
 #endif
 	KIRQL oldIrq;
 //	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	atomic_inc_32(&cvp->waiters_count);
+	// If we are the first waiter, make sure to clear the broadcast event
+	if (atomic_inc_32_nv(&cvp->waiters_count) == 1)
+		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
 //	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
 	mutex_exit(mp);
 
@@ -193,13 +183,7 @@ spl_cv_timedwait(kcondvar_t *cvp, kmutex_t *mp, clock_t tim, int flags,
 
 //	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
 	atomic_dec_32(&cvp->waiters_count);
-	int last_waiter =
-		result == STATUS_WAIT_0 + CV_BROADCAST
-		&& cvp->waiters_count == 0;
 //	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
-
-	if (last_waiter)
-		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
 
 	mutex_enter(mp);
 
@@ -248,7 +232,11 @@ cv_timedwait_hires(kcondvar_t *cvp, kmutex_t *mp, hrtime_t tim,
 #endif
 	KIRQL oldIrq;
 //	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	atomic_inc_32(&cvp->waiters_count);
+
+	// If we are the first waiter, make sure to clear the broadcast event
+	if (atomic_inc_32_nv(&cvp->waiters_count) == 1)
+		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
+
 //	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
 	mutex_exit(mp);
 
@@ -257,13 +245,7 @@ cv_timedwait_hires(kcondvar_t *cvp, kmutex_t *mp, hrtime_t tim,
 
 //	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
 	atomic_dec_32(&cvp->waiters_count);
-	int last_waiter =
-		result == STATUS_WAIT_0 + CV_BROADCAST
-		&& cvp->waiters_count == 0;
 //	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
-
-	if (last_waiter)
-		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
 
 	mutex_enter(mp);
 
