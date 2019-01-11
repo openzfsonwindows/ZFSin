@@ -1322,6 +1322,7 @@ zero_label(char *path)
 	return (0);
 }
 
+
 /*
  * Go through and find any whole disks in the vdev specification, labelling them
  * as appropriate.  When constructing the vdev spec, we were unable to open this
@@ -1455,13 +1456,34 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 #endif
 		}
 
+		// Build a pretty vdev_path here
+
+		char *end = NULL;
+		STORAGE_DEVICE_NUMBER deviceNumber;
+		int ret = remove_partition_offset_hack(udevpath, &end);
+		if (ret) {
+			fprintf(stderr, "remove_partition_offset_hack failed, return\n"); fflush(stderr);
+			return ret;
+		}
+
+		ret = get_device_number(end, &deviceNumber);
+
+		if (ret) {
+			fprintf(stderr, "get_device_number failed, return\n"); fflush(stderr);
+			return ret;
+		}
+
+		char vdev_path[MAX_PATH];
+		sprintf(vdev_path, "/dev/physicaldrive%lu", deviceNumber.DeviceNumber);
+
 		/*
 		 * Update the path to refer to the partition.  The presence of
 		 * the 'whole_disk' field indicates to the CLI that we should
 		 * chop off the partition number when displaying the device in
 		 * future output.
 		 */
-		verify(nvlist_add_string(nv, ZPOOL_CONFIG_PATH, udevpath) == 0);
+		verify(nvlist_add_string(nv, ZPOOL_CONFIG_PATH, vdev_path) == 0);
+		verify(nvlist_add_string(nv, ZPOOL_CONFIG_PHYS_PATH, udevpath) == 0);
 
 		return (0);
 	}

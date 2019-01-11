@@ -122,6 +122,53 @@ get_devid(const char *path)
 	return (ret);
 }
 
+int
+get_device_number(char* device_path, STORAGE_DEVICE_NUMBER* device_number)
+{
+	HANDLE hDevice = INVALID_HANDLE_VALUE;
+	DWORD returned = 0;
+
+	hDevice = CreateFile(device_path,
+		GENERIC_READ,
+		FILE_SHARE_READ | FILE_SHARE_WRITE,
+		NULL,
+		OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
+		NULL);
+	if (hDevice == INVALID_HANDLE_VALUE) {
+		fprintf(stderr, "invalid handle value\n"); fflush(stderr);
+		return GetLastError();
+	}
+
+	BOOL ret = DeviceIoControl(hDevice, IOCTL_STORAGE_GET_DEVICE_NUMBER, NULL, 0, (LPVOID)device_number, (DWORD)sizeof(*device_number), (LPDWORD)&returned, (LPOVERLAPPED)NULL);
+
+	CloseHandle(hDevice);
+
+	if (!ret) {
+		fprintf(stderr, "DeviceIoControl returned error\n"); fflush(stderr);
+		return ERROR_INVALID_FUNCTION;
+	}
+
+	return ERROR_SUCCESS;
+}
+
+
+int
+remove_partition_offset_hack(char *hacked_path, char **out_dev_path)
+{
+	uint64_t offset;
+	uint64_t len;
+	char *end = NULL;
+	end = hacked_path;
+	for (int i = 0; i < 3; i++) {
+		while (end && *end != '#') {
+			end++;
+		}
+		end++;
+	}
+	*out_dev_path = end;
+	return 0;
+}
 
 /*
  * Go through and fix up any path and/or devid information for the given vdev
@@ -198,7 +245,29 @@ fix_paths(nvlist_t *nv, name_entry_t *names)
 	if (best == NULL)
 		return (0);
 
-	if (nvlist_add_string(nv, ZPOOL_CONFIG_PATH, best->ne_name) != 0)
+	// Build a pretty vdev_path here
+	char *end = NULL;
+	STORAGE_DEVICE_NUMBER deviceNumber;
+	int ret = remove_partition_offset_hack(best->ne_name, &end);
+	if (ret) {
+		fprintf(stderr, "remove_partition_offset_hack failed, return\n"); fflush(stderr);
+		return ret;
+	}
+
+	ret = get_device_number(end, &deviceNumber);
+	if (ret) {
+		fprintf(stderr, "get_device_number failed, return\n"); fflush(stderr);
+		return ret;
+	}
+
+	char vdev_path[MAX_PATH];
+	sprintf(vdev_path, "/dev/physicaldrive%lu", deviceNumber.DeviceNumber);
+	
+	fprintf(stderr, "setting path here '%s'\r\n", vdev_path); fflush(stderr);
+	fprintf(stderr, "setting physpath here '%s'\r\n", best->ne_name); fflush(stderr);
+	if (nvlist_add_string(nv, ZPOOL_CONFIG_PATH, vdev_path) != 0)
+		return (-1);
+	if (nvlist_add_string(nv, ZPOOL_CONFIG_PHYS_PATH, best->ne_name) != 0)
 		return (-1);
 
 	if ((devid = get_devid(best->ne_name)) == NULL) {
