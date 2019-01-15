@@ -202,6 +202,9 @@ extern int metaslab_preload_limit;
 extern boolean_t zfs_compressed_arc_enabled;
 extern boolean_t zfs_abd_scatter_enabled;
 extern boolean_t zfs_force_some_double_word_sm_entries;
+extern unsigned long zio_decompress_fail_fraction;
+extern unsigned long zfs_reconstruct_indirect_damage_fraction;
+
 
 static ztest_shared_opts_t *ztest_shared_opts;
 static ztest_shared_opts_t ztest_opts;
@@ -352,7 +355,6 @@ ztest_func_t ztest_split_pool;
 ztest_func_t ztest_reguid;
 ztest_func_t ztest_spa_upgrade;
 ztest_func_t ztest_device_removal;
-ztest_func_t ztest_remap_blocks;
 ztest_func_t ztest_spa_checkpoint_create_discard;
 ztest_func_t ztest_initialize;
 
@@ -402,7 +404,6 @@ ztest_info_t ztest_info[] = {
 	ZTI_INIT(ztest_vdev_add_remove, 1, &ztest_opts.zo_vdevtime),
 	ZTI_INIT(ztest_vdev_aux_add_remove, 1, &ztest_opts.zo_vdevtime),
 	ZTI_INIT(ztest_device_removal, 1, &zopt_sometimes),
-	ZTI_INIT(ztest_remap_blocks, 1, &zopt_sometimes),
 	ZTI_INIT(ztest_spa_checkpoint_create_discard, 1, &zopt_rarely),
 	ZTI_INIT(ztest_initialize, 1, &zopt_sometimes),
 };
@@ -5244,20 +5245,6 @@ ztest_dsl_prop_get_set(ztest_ds_t *zd, uint64_t id)
 
 	VERIFY0(ztest_dsl_prop_set_uint64(zd->zd_name, ZFS_PROP_RECORDSIZE,
 	    ztest_random_blocksize(), (int)ztest_random(2)));
-
-	(void) rw_unlock(&ztest_name_lock);
-}
-
-/* ARGSUSED */
-void
-ztest_remap_blocks(ztest_ds_t *zd, uint64_t id)
-{
-	(void) rw_rdlock(&ztest_name_lock);
-
-	int error = dmu_objset_remap_indirects(zd->zd_name);
-	if (error == ENOSPC)
-		error = 0;
-	ASSERT0(error);
 
 	(void) rw_unlock(&ztest_name_lock);
 }

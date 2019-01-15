@@ -856,6 +856,24 @@ libzfs_run_process(const char *path, char *argv[], int flags)
 }
 
 /*
+ * Returns 1 if environment variable is set to "YES", "yes", "ON", "on", or
+ * a non-zero number.
+ *
+ * Returns 0 otherwise.
+ */
+int
+libzfs_envvar_is_set(char *envvar)
+{
+	char *env = getenv(envvar);
+	if (env && (strtoul(env, NULL, 0) > 0 ||
+            (!strncasecmp(env, "YES", 3) && strnlen(env, 4) == 3) ||
+            (!strncasecmp(env, "ON", 2) && strnlen(env, 3) == 2)))
+		return (1);
+
+	return (0);
+}
+
+/*
  * Verify the required ZFS_DEV device is available and optionally attempt
  * to load the ZFS modules.  Under normal circumstances the modules
  * should already have been loaded by some external mechanism.

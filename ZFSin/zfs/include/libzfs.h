@@ -852,6 +852,8 @@ extern int zfs_nicestrtonum(libzfs_handle_t *, const char *, uint64_t *);
 
 int libzfs_run_process(const char *, char **, int flags);
 
+int libzfs_envvar_is_set(char *envvar);
+
 /*
  * Given a device or file, determine if it is part of a pool.
  */
