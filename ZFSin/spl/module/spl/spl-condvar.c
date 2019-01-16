@@ -124,8 +124,10 @@ spl_cv_wait(kcondvar_t *cvp, kmutex_t *mp, int flags, const char *msg)
 //	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
 	// If last listener, clear BROADCAST event. (Even if it was SIGNAL
 	// overclearing will not hurt?)
-	if (atomic_dec_32_nv(&cvp->waiters_count) == 0)
+	if (&cvp->waiters_count == 1)
 		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
+
+	atomic_dec_32(&cvp->waiters_count);
 
 	//int last_waiter =
 	//	result == STATUS_WAIT_0 + CV_BROADCAST
@@ -192,14 +194,16 @@ spl_cv_timedwait(kcondvar_t *cvp, kmutex_t *mp, clock_t tim, int flags,
 	result = KeWaitForMultipleObjects(2, locks, WaitAny, Executive, KernelMode, FALSE, &timeout, NULL);
 
 //	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	atomic_dec_32(&cvp->waiters_count);
+	
 	int last_waiter =
 		result == STATUS_WAIT_0 + CV_BROADCAST
-		&& cvp->waiters_count == 0;
+		&& cvp->waiters_count == 1;
 //	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
 
 	if (last_waiter)
 		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
+
+	atomic_dec_32(&cvp->waiters_count);
 
 	mutex_enter(mp);
 
@@ -256,14 +260,16 @@ cv_timedwait_hires(kcondvar_t *cvp, kmutex_t *mp, hrtime_t tim,
 	result = KeWaitForMultipleObjects(2, locks, WaitAny, Executive, KernelMode, FALSE, &timeout, NULL);
 
 //	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
-	atomic_dec_32(&cvp->waiters_count);
+	
 	int last_waiter =
 		result == STATUS_WAIT_0 + CV_BROADCAST
-		&& cvp->waiters_count == 0;
+		&& cvp->waiters_count == 1;
 //	KeReleaseSpinLock(&cvp->waiters_count_lock, oldIrq);
 
 	if (last_waiter)
 		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
+	
+	atomic_dec_32(&cvp->waiters_count);
 
 	mutex_enter(mp);
 
