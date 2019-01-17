@@ -79,6 +79,9 @@ DWORD zfs_install(char *inf_path) {
 	else
 		fprintf(stderr, "Installation failed, skip starting the service");
 
+	if (!error)
+		error = installRootDevice(inf_path);
+
 	return error;	
 }
 
@@ -87,10 +90,13 @@ DWORD zfs_uninstall(char *inf_path)
 	DWORD ret = 0;
 
 	ret = send_zfs_ioc_unregister_fs();
-	if (ret) return ret;
 
 	// 128+2	Always ask the users if they want to reboot.
-	ret = executeInfSection("DefaultUninstall 128 ", inf_path);
+	if (ret == 0)
+		ret = executeInfSection("DefaultUninstall 128 ", inf_path);
+
+	if (ret == 0)
+		ret = uninstallRootDevice(inf_path);
 
 	return ret;
 }
@@ -232,9 +238,244 @@ DWORD send_zfs_ioc_unregister_fs(void)
 	if (!ret) return (1);
 
 	if (bytesReturned != 0) {
-		fprintf(stderr, "ZFS: Unable to uninstall until all pools are exported: %llu pool(s)\r\n", bytesReturned);
+		fprintf(stderr, "ZFS: Unable to uninstall until all pools are exported: %lu pool(s)\r\n", bytesReturned);
 		return (2);
 	}
 
 	return (0);
 }
+
+#include <strsafe.h>
+#include <cfgmgr32.h>
+#include <newdev.h>
+
+#define ZFS_ROOTDEV "ROOT\\ZFSin"
+// DevCon uses LoadLib() - but lets just static link
+#pragma comment(lib, "Newdev.lib")
+
+HDEVINFO openDeviceInfo(char *inf, GUID *ClassGUID, char *ClassName, int namemax)
+{
+	HDEVINFO DeviceInfoSet = INVALID_HANDLE_VALUE;
+	char InfPath[MAX_PATH];
+
+	// Inf must be a full pathname
+	if (GetFullPathNameA(inf, MAX_PATH, InfPath, NULL) >= MAX_PATH) {
+		// inf pathname too long
+		goto final;
+	}
+
+	// Use the INF File to extract the Class GUID.
+	if (!SetupDiGetINFClassA(InfPath, ClassGUID, ClassName, sizeof(ClassName) / sizeof(ClassName[0]), 0)) {
+		goto final;
+	}
+
+	// Create the container for the to-be-created Device Information Element.
+	DeviceInfoSet = SetupDiCreateDeviceInfoList(ClassGUID, 0);
+	if (DeviceInfoSet == INVALID_HANDLE_VALUE) {
+		goto final;
+	}
+
+	return DeviceInfoSet;
+
+final:
+	return NULL;
+}
+
+
+
+DWORD installRootDevice(char *inf)
+{
+	HDEVINFO DeviceInfoSet = INVALID_HANDLE_VALUE;
+	SP_DEVINFO_DATA DeviceInfoData;
+	char hwIdList[LINE_LEN + 4];
+	GUID ClassGUID;
+	char ClassName[MAX_CLASS_NAME_LEN];
+	int failcode = 12;
+
+	DWORD flags = INSTALLFLAG_FORCE;
+	BOOL reboot = FALSE;
+
+	DeviceInfoSet = openDeviceInfo(inf, &ClassGUID, ClassName, MAX_CLASS_NAME_LEN);
+
+	ZeroMemory(hwIdList, sizeof(hwIdList));
+	if (FAILED(StringCchCopyA(hwIdList, LINE_LEN, ZFS_ROOTDEV))) {
+		goto final;
+	}
+
+	// Now create the element.
+	// Use the Class GUID and Name from the INF file.
+	DeviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+	if (!SetupDiCreateDeviceInfoA(DeviceInfoSet,
+		ClassName,
+		&ClassGUID,
+		NULL,
+		0,
+		DICD_GENERATE_ID,
+		&DeviceInfoData)) {
+		goto final;
+	}
+
+	// Add the HardwareID to the Device's HardwareID property.
+	if (!SetupDiSetDeviceRegistryPropertyA(DeviceInfoSet,
+		&DeviceInfoData,
+		SPDRP_HARDWAREID,
+		(LPBYTE)hwIdList,
+		(DWORD) (strlen(hwIdList) + 1 + 1) * sizeof(char) )) {
+		goto final;
+	}
+
+	// Transform the registry element into an actual devnode
+	// in the PnP HW tree.
+	if (!SetupDiCallClassInstaller(DIF_REGISTERDEVICE,
+		DeviceInfoSet,
+		&DeviceInfoData)) {
+		goto final;
+	}
+
+	failcode = 0;
+
+	// According to devcon we also have to Update now as well.
+	UpdateDriverForPlugAndPlayDevicesA(NULL, ZFS_ROOTDEV, inf, flags, &reboot);
+
+	if (reboot) printf("Windows indicated a Reboot is required.\n");
+
+final:
+
+	if (DeviceInfoSet != INVALID_HANDLE_VALUE) {
+		SetupDiDestroyDeviceInfoList(DeviceInfoSet);
+	}
+	printf("%s: exit %d:0x%x\n", __func__, failcode, failcode);
+
+	return failcode;
+}
+
+DWORD uninstallRootDevice(char *inf)
+{
+	int failcode = 13;
+	HDEVINFO DeviceInfoSet = INVALID_HANDLE_VALUE;
+	SP_DEVINFO_DATA DeviceInfoData;
+	DWORD DataT;
+	char *p, *buffer = NULL;
+	DWORD buffersize = 0;
+
+	printf("%s: \n", __func__);
+
+	DeviceInfoSet = SetupDiGetClassDevs(NULL, // All Classes
+		0, 0, DIGCF_ALLCLASSES | DIGCF_PRESENT); // All devices present on system
+	if (DeviceInfoSet == INVALID_HANDLE_VALUE)
+		goto final;
+
+	printf("%s: open\n", __func__);
+
+	DeviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+	for (int i = 0; SetupDiEnumDeviceInfo(DeviceInfoSet, i, &DeviceInfoData); i++)
+	{
+		// Call once to get buffersize
+		while (!SetupDiGetDeviceRegistryPropertyA(
+			DeviceInfoSet,
+			&DeviceInfoData,
+			SPDRP_HARDWAREID,
+			&DataT,
+			(PBYTE)buffer,
+			buffersize,
+			&buffersize)) {
+
+			if (GetLastError() == ERROR_INVALID_DATA) {
+				// May be a Legacy Device with no HardwareID. Continue.
+				break;
+			} else if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+				// We need to change the buffer size.
+				if (buffer)
+					free(buffer);
+				buffer = (char *)malloc(buffersize);
+				if (buffer) ZeroMemory(buffer, buffersize);
+			} else {
+				// Unknown Failure.
+				goto final;
+			}
+		}
+
+		if (GetLastError() == ERROR_INVALID_DATA)
+			continue;
+
+		// Compare each entry in the buffer multi-sz list with our HardwareID.
+		for (p = buffer; *p && (p < &buffer[buffersize]); p += strlen(p) + sizeof(char)) {
+			//printf("%s: comparing '%s' with '%s'\n", __func__, "ROOT\\ZFSin", p);
+			if (!strcmp(ZFS_ROOTDEV, p)) {
+
+				printf("%s: device found, removing ... \n", __func__);
+
+				// Worker function to remove device.
+				if (SetupDiCallClassInstaller(DIF_REMOVE,
+						DeviceInfoSet,
+						&DeviceInfoData)) {
+						failcode = 0;
+					}
+					break;
+			}
+		}
+
+		if (buffer) free(buffer);
+		buffer = NULL;
+		buffersize = 0;
+	}
+
+final:
+
+	if (DeviceInfoSet != INVALID_HANDLE_VALUE) {
+		SetupDiDestroyDeviceInfoList(DeviceInfoSet);
+	}
+	printf("%s: exit %d:0x%x\n", __func__, failcode, failcode);
+
+	return failcode;
+}
+
+#if 0
+
+
+
+
+	ZeroMemory(hwIdList, sizeof(hwIdList));
+	if (FAILED(StringCchCopyA(hwIdList, LINE_LEN, "ROOT\\ZFSin"))) {
+			goto final;
+	}
+
+	printf("%s: CchCopy\n", __func__);
+
+	// Now create the element.
+	// Use the Class GUID and Name from the INF file.
+	DeviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+	if (!SetupDiCreateDeviceInfoA(DeviceInfoSet,
+		ClassName,
+		&ClassGUID,
+		NULL,
+		0,
+		DICD_GENERATE_ID,
+		&DeviceInfoData)) {
+		goto final;
+	}
+
+	printf("%s: SetupDiCreateDeviceInfoA\n", __func__);
+
+	rmdParams.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+	rmdParams.ClassInstallHeader.InstallFunction = DIF_REMOVE;
+	rmdParams.Scope = DI_REMOVEDEVICE_GLOBAL;
+	rmdParams.HwProfile = 0;
+	if (!SetupDiSetClassInstallParamsA(DeviceInfoSet, &DeviceInfoData, &rmdParams.ClassInstallHeader, sizeof(rmdParams)) ||
+		!SetupDiCallClassInstaller(DIF_REMOVE, DeviceInfoSet, &DeviceInfoData)) {
+
+		// failed to invoke DIF_REMOVE
+		failcode = 14;
+		goto final;
+	} 
+
+	failcode = 0;
+
+final:
+	if (DeviceInfoSet != INVALID_HANDLE_VALUE) {
+		SetupDiDestroyDeviceInfoList(DeviceInfoSet);
+	}
+	printf("%s: exit %d:0x%x\n", __func__, failcode, failcode);
+	return failcode;
+}
+#endif

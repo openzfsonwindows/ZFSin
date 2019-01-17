@@ -45,7 +45,9 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRe
 
 	// Setup global so zfs_ioctl.c can setup devnode
 	WIN_DriverObject = DriverObject;
-	WIN_DriverObject->DriverUnload = ZFSin_Fini;
+
+	initDbgCircularBuffer();
+	spl_start();
 
 	// Initialise storport for the ZVOL virtual disks.
 	{
@@ -100,6 +102,11 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRe
 		hwInitData.SpecificLuExtensionSize = sizeof(HW_LU_EXTENSION);
 		hwInitData.SrbExtensionSize = sizeof(HW_SRB_EXTENSION);
 
+		hwInitData.TaggedQueuing = TRUE;
+		hwInitData.AutoRequestSense = TRUE;
+		hwInitData.MultipleRequestPerLu = TRUE;
+		hwInitData.ReceiveEvent = TRUE;
+
 		status = StorPortInitialize(                     // Tell StorPort we're here.
 			DriverObject,
 			pRegistryPath,
@@ -116,9 +123,8 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRe
 			STOR_DriverUnload = NULL;
 		}
 	}
+	WIN_DriverObject->DriverUnload = ZFSin_Fini;
 
-	initDbgCircularBuffer();
-	spl_start();
 	zfs_start();
 	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "ZFSin: Started\n"));
 	return STATUS_SUCCESS;

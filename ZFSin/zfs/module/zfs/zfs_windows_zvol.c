@@ -35,8 +35,8 @@ static pHW_HBA_EXT STOR_HBAExt = NULL;
 
 
 // Verbose
-#undef dprintf
-#define dprintf
+//#undef dprintf
+//#define dprintf
 
 BOOLEAN
 wzvol_HwInitialize(__in pHW_HBA_EXT pHBAExt)
