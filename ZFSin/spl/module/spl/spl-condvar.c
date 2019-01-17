@@ -124,7 +124,7 @@ spl_cv_wait(kcondvar_t *cvp, kmutex_t *mp, int flags, const char *msg)
 //	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
 	// If last listener, clear BROADCAST event. (Even if it was SIGNAL
 	// overclearing will not hurt?)
-	if (&cvp->waiters_count == 1)
+	if (cvp->waiters_count == 1)
 		KeClearEvent(&cvp->kevent[CV_BROADCAST]);
 
 	atomic_dec_32(&cvp->waiters_count);
