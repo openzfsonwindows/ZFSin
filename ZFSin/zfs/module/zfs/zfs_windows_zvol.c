@@ -35,8 +35,8 @@ static pHW_HBA_EXT STOR_HBAExt = NULL;
 
 
 // Verbose
-#undef dprintf
-#define dprintf
+//#undef dprintf
+//#define dprintf
 
 
 int zvol_start(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING pRegistryPath)

@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "OpenZFS On Windows"
-#define MyAppVersion "0.099"
+#define MyAppVersion "0.15"
 #define MyAppPublisher "OpenZFS"
 #define MyAppURL "http://www.openzfsonwindows.org/"
 
@@ -63,6 +63,7 @@ Source: "{#SourcePath}\..\x64\Debug\ZFSin.cer"; DestDir: "{app}"; Flags: ignorev
 Source: "{#SourcePath}\..\ZFSin\ZFSin.inf"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\HowToDebug.txt"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\x64\Debug\*.pdb"; DestDir: "{app}\symbols"; Flags: ignoreversion  
+Source: "{#SourcePath}\..\vcruntime140.dll"; DestDir: "{app}"; Flags: ignoreversion  
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]

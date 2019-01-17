@@ -187,7 +187,7 @@ Windows Updates run, you can disable those in gpedit.msc
 
   ✅ zfs send / recv, file and pipe.
 
-  ❎ ZVOL support
+  ✅ ZVOL support
 
   ✅ git clone ZFS repo on ZFS mounted fs
 
@@ -252,7 +252,7 @@ Latest binary files are available on GitHub:
 
 https://github.com/openzfsonwindows/ZFSin/releases
 
-Download your preferred package.
+Download your preferred package. Either debug, or release.
 
 Enable unsigned drivers:
 
@@ -263,10 +263,11 @@ corner of the screen.
 
 After that either 
 
-* Right click on ZFSin.INF file
-* Select "Install"
+* Run OpenZFSOnWindows.exe installer to install.
+* Windows should popup the "Windows can't verify the publisher of this driver software"
+* Click "Install this driver software anyway"
 
-Or run this command:
+If you do not want to run the Installer, run this command by hand from elevated CMD:
 ```
 zfsinstaller.exe install .\ZFSin.inf
 ```
@@ -283,8 +284,6 @@ Success would be:
 ```
 No pools available
 ```
-
-![InstallGuide](https://raw.githubusercontent.com/OpenZFSonWindows/ZFSin/master/ZFSin_InstallGuide.png)
 
 ---
 
@@ -338,6 +337,22 @@ VMware, VMware Virtual S SCSI Disk Device  \\.\PHYSICALDRIVE2  VMware, VMware Vi
 # zpool create tank \\.\PHYSICALDRIVE2
 ```
 
+# Creating a ZVOL virtual hard disk
+
+Creating a virtual hard disk (ZVOL) is done by passing "-V <size>" to the "zfs create" command.
+```
+# zfs create -V 2g tank/hello
+```
+
+Which would create a disk of 2GB in size, called "tank/hello". 
+Confirm it was created with:
+
+```
+# wmic diskdrive list brief
+Caption                           DeviceID            Model                            Partitions  Size
+ZVOL tank/hello SCSI Disk Device  \\.\PHYSICALDRIVE2  ZVOL tank/hello SCSI DiskDevice  0           2105671680
+```
+
 
 # Exporting the pool
 
@@ -361,7 +376,13 @@ recognize the pool and will fail with "no pools available to import".
 
 # Uninstalling the driver
 
-The driver can be uninstalled like this:
+If you used the Installer, you can browse to "C:\Program Files (x86)\OpenZFS On Windows"
+and run the "uninst000.exe" Uninstaller program.
+
+You can also use "Add Remove Programs" from the Settings menu, and
+click on "OpenZFS On Windows-debug version x.xx" and select Uninstall.
+
+If you did not use the Installer, you can manually uninstall it:
 
 ```
 zfsinstaller uninstall .\ZFSin.inf

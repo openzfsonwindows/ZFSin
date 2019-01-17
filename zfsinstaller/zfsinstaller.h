@@ -36,3 +36,5 @@ DWORD executeInfSection(const char *, char *);
 DWORD startService(char*);
 void printUsage();
 DWORD send_zfs_ioc_unregister_fs();
+DWORD installRootDevice(char *inf_path);
+DWORD uninstallRootDevice(char *inf_path);

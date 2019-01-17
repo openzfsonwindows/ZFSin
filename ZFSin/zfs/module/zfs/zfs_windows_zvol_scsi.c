@@ -59,8 +59,8 @@
 #include <sys/zvol.h>
 
 // Verbose SCSI output
-#undef dprintf
-#define dprintf
+//#undef dprintf
+//#define dprintf
 
 /*
  * We have a list of ZVOLs, and we receive incoming (Target, Lun) requests that needs to be mapped
