@@ -1060,8 +1060,13 @@ zfs_write(vnode_t *vp, uio_t *uio, int ioflag, cred_t *cr, caller_context_t *ct)
 				xuio_stat_wbuf_copied();
 			} else {
 				ASSERT(xuio || tx_bytes == max_blksz);
-				dmu_assign_arcbuf_by_dbuf(
+				error = dmu_assign_arcbuf_by_dbuf(
 				    sa_get_db(zp->z_sa_hdl), woff, abuf, tx);
+				if (error != 0) {
+					dmu_return_arcbuf(abuf);
+					dmu_tx_commit(tx);
+					break;
+				}
 			}
 			ASSERT(tx_bytes <= uio_resid(uio));
 			uioskip(uio, tx_bytes);
