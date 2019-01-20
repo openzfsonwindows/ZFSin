@@ -349,6 +349,16 @@ USB device before unplugging it.
 # zpool export tank
 ```
 
+# Importing a pool
+
+If a zpool has been created on a disk partition from a different system make
+sure the partition label contains "zfs". Otherwise `zpool import` won't
+recognize the pool and will fail with "no pools available to import".
+
+```
+# zpool import tank
+```
+
 # Uninstalling the driver
 
 The driver can be uninstalled like this:
