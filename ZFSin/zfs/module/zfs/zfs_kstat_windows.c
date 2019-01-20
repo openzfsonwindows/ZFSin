@@ -68,6 +68,7 @@ osx_kstat_t osx_kstat = {
 	{ "create_negatives",			KSTAT_DATA_UINT64 },
 	{ "force_formd_normalized",		KSTAT_DATA_UINT64 },
 	{ "skip_unlinked_drain",		KSTAT_DATA_UINT64 },
+	{ "use_system_sync",			KSTAT_DATA_UINT64 },
 
 	{ "zfs_arc_max",				KSTAT_DATA_UINT64 },
 	{ "zfs_arc_min",				KSTAT_DATA_UINT64 },
@@ -156,7 +157,7 @@ osx_kstat_t osx_kstat = {
 	{"zfs_send_set_freerecords_bit",KSTAT_DATA_UINT64  },
 
 	{"zfs_write_implies_delete_child",KSTAT_DATA_UINT64  },
-	{"zfs_send_holes_without_birth_time",KSTAT_DATA_UINT64  },
+	{"zfs_send_holes_without_brth_tme",KSTAT_DATA_UINT64  },
 
 	{"dbuf_cache_max_bytes",KSTAT_DATA_UINT64  },
 
@@ -191,6 +192,7 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		zfs_vnop_create_negatives = ks->win32_create_negatives.value.ui64;
 		zfs_vnop_force_formd_normalized_output = ks->win32_force_formd_normalized.value.ui64;
 		zfs_vnop_skip_unlinked_drain = ks->win32_skip_unlinked_drain.value.ui64;
+		zfs_vfs_sync_paranoia = ks->win32_use_system_sync.value.ui64;
 
 		/* ARC */
 		arc_kstat_update(ksp, rw);
@@ -357,6 +359,7 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		ks->win32_create_negatives.value.ui64       = zfs_vnop_create_negatives;
 		ks->win32_force_formd_normalized.value.ui64 = zfs_vnop_force_formd_normalized_output;
 		ks->win32_skip_unlinked_drain.value.ui64    = zfs_vnop_skip_unlinked_drain;
+		ks->win32_use_system_sync.value.ui64 = zfs_vfs_sync_paranoia;
 
 		/* ARC */
 		arc_kstat_update(ksp, rw);
