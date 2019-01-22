@@ -21,7 +21,7 @@
 
 /*
  *
- * Copyright (C) 2017 Jorgen Lundman <lundman@lundman.net>
+ * Copyright (C) 2018 Jorgen Lundman <lundman@lundman.net>
  *
  */
 
@@ -114,6 +114,12 @@ int spl_system_inshutdown(void)
     return 0;
 }
 
+void
+hrt2ts(hrtime_t hrt, timespec_t *tsp)
+{
+	tsp->tv_sec = (time_t)(hrt / NANOSEC);
+	tsp->tv_nsec = (hrt % NANOSEC);
+}
 
 // If we want to implement this on Windows, we could probably use
 // https://stackoverflow.com/questions/590160/how-to-log-stack-frames-with-windows-x64
@@ -121,9 +127,8 @@ int spl_system_inshutdown(void)
 int
 getpcstack(uintptr_t *pcstack, int pcstack_limit)
 {
-	return 0;
+	return RtlCaptureStackBackTrace(1, pcstack_limit, (PVOID *)pcstack, NULL);
 }
-
 
 int
 ddi_copyin(const void *from, void *to, uint32_t len, int flags)
