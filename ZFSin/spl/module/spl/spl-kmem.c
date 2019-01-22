@@ -654,7 +654,7 @@ static spl_stats_t spl_stats = {
 	{"vmem_conditional_allocs", KSTAT_DATA_UINT64},
 	{"vmem_conditional_alloc_bytes", KSTAT_DATA_UINT64},
 	{"vmem_conditional_alloc_deny", KSTAT_DATA_UINT64},
-	{"vmem_conditional_alloc_deny_bytes", KSTAT_DATA_UINT64},
+	{"vmem_conditional_alloc_deny_bts", KSTAT_DATA_UINT64},
 
 	{"spl_xat_success", KSTAT_DATA_UINT64},
 	{"spl_xat_late_success", KSTAT_DATA_UINT64},
@@ -692,7 +692,7 @@ static spl_stats_t spl_stats = {
 	{"spl_vmem_frag_walk_cnt", KSTAT_DATA_UINT64},
 	{"spl_arc_reclaim_avoided", KSTAT_DATA_UINT64},
 
-	{"kmem_free_to_slab_when_fragmented", KSTAT_DATA_UINT64},
+	{"kmem_free_to_slab_when_frgmnted", KSTAT_DATA_UINT64},
 };
 
 static kstat_t *spl_ksp = 0;
@@ -1010,23 +1010,27 @@ kmem_error(int error, kmem_cache_t *cparg, void *bufarg)
 	if (bcp != NULL && (cp->cache_flags & KMF_AUDIT) &&
 		error != KMERR_BADBUFCTL) {
 		int d;
-//		timestruc_t ts = {0, 0};
+		timestruc_t ts = {0, 0};
 		kmem_bufctl_audit_t *bcap = (kmem_bufctl_audit_t *)bcp;
 
-//		hrt2ts(kmem_panic_info.kmp_timestamp - bcap->bc_timestamp, &ts);
+		hrt2ts(kmem_panic_info.kmp_timestamp - bcap->bc_timestamp, &ts);
 		dprintf("SPL: previous transaction on buffer %p:\n", buf);
-//		dprintf("SPL: thread=%p  time=T-%ld.%09ld  slab=%p  cache: %s\n",
-//			   (void *)bcap->bc_thread, ts.tv_sec, ts.tv_nsec,
-//			   (void *)sp, cp->cache_name);
-//		for (d = 0; d < MIN(bcap->bc_depth, KMEM_STACK_DEPTH); d++) {
-#ifdef APPLE
-			print_symbol(bcap->bc_stack[d]);
-#else
-//			ulong_t off;
-//			char *sym = kobj_getsymname(bcap->bc_stack[d], &off);
-	//		dprintf("%s+%lx\n", sym ? sym : "?", off);
-#endif
-//		}
+		dprintf("SPL: thread=%p  time=T-%ld.%09ld  slab=%p  cache: %s\n",
+			   (void *)bcap->bc_thread, ts.tv_sec, ts.tv_nsec,
+			   (void *)sp, cp->cache_name);
+
+//#include <../um/DbgHelp.h>
+//#pragma comment(lib, "Dbghelp.lib")
+//		HANDLE         process;
+//		process = GetCurrentProcess();
+//		SymInitialize(process, NULL, TRUE);
+//		SYMBOL_INFO  symbol;
+
+		for (d = 0; d < MIN(bcap->bc_depth, KMEM_STACK_DEPTH); d++) {
+
+//			SymFromAddr(process, (DWORD64)(bcap->bc_stack[d]), 0, NULL);
+			dprintf("   : %p\n, ", bcap->bc_stack[d]);
+		}
 	}
 
 	if (kmem_panic > 0) {
