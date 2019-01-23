@@ -4450,7 +4450,7 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			 * and tag it REJECT, this way it can not be grabbed by someone else.
 			 */
 
-			vnode_lock(vp);
+			vnode_wait_lock(vp);
 			if (vnode_isidle(vp) &&
 				vnode_fileobject_empty(vp, 1) && !vnode_isvroot(vp) &&
 				(IrpSp->FileObject->SectionObjectPointer == NULL ||

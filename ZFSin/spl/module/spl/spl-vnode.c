@@ -901,6 +901,10 @@ int vnode_put(vnode_t *vp)
 	}
 #endif
 
+	// We might have waiters, so wake them up.
+	if (vnode_deleted(vp))
+		cv_broadcast(&vp->v_iocount_cv);
+
 	mutex_exit(&vp->v_mutex);
 	return 0;
 }
@@ -964,6 +968,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		mutex_exit(&vp->v_mutex);
 
 		mutex_destroy(&vp->v_mutex);
+		cv_destroy(&vp->v_iocount_cv);
 
 		// Free vp memory
 		kmem_free(vp, sizeof(*vp));
@@ -1003,6 +1008,7 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	(*vpp)->v_id = atomic_inc_64_nv(&(vnode_vid_counter));
 	//KeInitializeSpinLock(&(*vpp)->v_spinlock);
 	mutex_init(&(*vpp)->v_mutex, NULL, MUTEX_DEFAULT, NULL);
+	cv_init(&(*vpp)->v_iocount_cv, NULL, CV_DEFAULT, NULL);
 	atomic_inc_32(&(*vpp)->v_iocount);
 	atomic_inc_64(&vnode_active);
 	avl_create(&(*vpp)->v_fileobjects, vnode_fileobject_compare,
@@ -1249,6 +1255,24 @@ int vnode_isrecycled(vnode_t *vp)
 void vnode_lock(vnode_t *vp)
 {
 	mutex_enter(&vp->v_mutex);
+}
+
+/*
+ * Here we grab a lock, and wait for iocount to drain, if vp
+ * has been marked for deletion.
+ * We expect caller to hold iocount, so we wait for iocount==1.
+ * Does this even need to be separate from vnode_lock() ?
+ */
+void vnode_wait_lock(vnode_t *vp)
+{
+	mutex_enter(&vp->v_mutex);
+	while (vnode_deleted(vp) &&
+		vp->v_usecount != 0 &&
+		vp->v_iocount != 1) {
+		// Wait for vnode_put to wake us up.
+		cv_wait(&vp->v_iocount_cv, &vp->v_mutex);
+	}
+
 }
 
 //int vnode_trylock(vnode_t *vp);

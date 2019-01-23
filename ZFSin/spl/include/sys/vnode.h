@@ -92,6 +92,7 @@ struct vnode {
 	uint32_t v_unlink;
 	uint32_t v_unused;
 	void *v_data;
+	kcondvar_t v_iocount_cv; // Used with deletes.
 	uint64_t v_id;
 
 	// Other Windows entries
@@ -563,6 +564,7 @@ int vnode_fileobject_remove(vnode_t *vp, void *fo);
 int vnode_fileobject_empty(vnode_t *vp, int locked);
 
 void vnode_lock(vnode_t *vp);
+void vnode_wait_lock(vnode_t *vp);
 void vnode_unlock(vnode_t *vp);
 int vnode_reject(vnode_t *vp);
 void vnode_setreject(vnode_t *vp);
