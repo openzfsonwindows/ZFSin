@@ -137,8 +137,6 @@ typedef struct _HW_HBA_EXT {                          // Adapter device-object e
 	LIST_ENTRY                     MPIOLunList;
 	pwzvolDriverInfo               pwzvolDrvObj;
 	PDRIVER_OBJECT                 pDrvObj;
-	pMP_DEVICE_LIST                pDeviceList;
-	pMP_DEVICE_LIST                pPrevDeviceList;
 	SCSI_WMILIB_CONTEXT            WmiLibContext;
 	PIRP                           pReverseCallIrp;
 	KSPIN_LOCK                     WkItemsLock;
@@ -445,6 +443,7 @@ wzvol_CompServReq(
 	__in pHW_HBA_EXT pDevExt
 );
 
+extern int zvol_start(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING pRegistryPath);
 
 
 #endif

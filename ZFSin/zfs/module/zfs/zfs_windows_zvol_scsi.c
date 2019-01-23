@@ -85,6 +85,7 @@ int wzvol_assign_targetid(zvol_state_t *zv)
 		}
 	}
 
+	dprintf("ZFS: Unable to assign targetid - out of room, increase WZOL_MAX_TARGETS\n");
 	ASSERT("Unable to assign targetid - out of room, increase WZOL_MAX_TARGETS");
 	return 0;
 }
@@ -386,27 +387,6 @@ ScsiOpInquiry(
 
 	SET_FLAG(pLUExt->LUFlags, LU_DEVICE_INITIALIZED);
 
-#if 0
-
-#if defined(_AMD64_)
-	KeAcquireInStackQueuedSpinLock(                   // Serialize the linked list of LUN extensions.              
-		&pHBAExt->LUListLock, &LockHandle);
-#else
-	KeAcquireSpinLock(&pHBAExt->LUListLock, &SaveIrql);
-#endif
-
-	InsertTailList(&pHBAExt->LUList, &pLUExt->List);  // Add LUN extension to list in HBA extension.
-
-#if defined(_AMD64_)
-	KeReleaseInStackQueuedSpinLock(&LockHandle);
-#else
-	KeReleaseSpinLock(&pHBAExt->LUListLock, SaveIrql);
-#endif
-
-	dprintf("New device created. %d:%d:%d\n", pSrb->PathId, pSrb->TargetId, pSrb->Lun);
-
-#endif 
-
 done:
 	return status;
 }                                                     // End ScsiOpInquiry.
@@ -417,136 +397,130 @@ done:
 /**************************************************************************************************/     
 UCHAR
 ScsiOpVPD(
-          __in pHW_HBA_EXT          pHBAExt,          // Adapter device-object extension from StorPort.
-          __in pHW_LU_EXTENSION     pLUExt,           // LUN device-object extension from StorPort.
-          __in PSCSI_REQUEST_BLOCK  pSrb
-         )
+	__in pHW_HBA_EXT          pHBAExt,          // Adapter device-object extension from StorPort.
+	__in pHW_LU_EXTENSION     pLUExt,           // LUN device-object extension from StorPort.
+	__in PSCSI_REQUEST_BLOCK  pSrb
+)
 {
-    UCHAR                  status;
-    ULONG                  len;
-    struct _CDB6INQUIRY3 * pVpdInquiry = (struct _CDB6INQUIRY3 *)&pSrb->Cdb;;
+	UCHAR                  status;
+	ULONG                  len;
+	struct _CDB6INQUIRY3 * pVpdInquiry = (struct _CDB6INQUIRY3 *)&pSrb->Cdb;;
 
-    ASSERT(pLUExt != NULL);
-    ASSERT(pSrb->DataTransferLength>0);
+	ASSERT(pLUExt != NULL);
+	ASSERT(pSrb->DataTransferLength > 0);
 
-    if (0==pSrb->DataTransferLength) {
-		dprintf("pSrb->DataTransferLength = 0\n");
+	if (0 == pSrb->DataTransferLength) {
+		return SRB_STATUS_DATA_OVERRUN;
+	}
 
-        return SRB_STATUS_DATA_OVERRUN;
-      }
+	RtlZeroMemory((PUCHAR)pSrb->DataBuffer,           // Clear output buffer.
+		pSrb->DataTransferLength);
 
-    RtlZeroMemory((PUCHAR)pSrb->DataBuffer,           // Clear output buffer.
-                  pSrb->DataTransferLength);
+	if (VPD_SUPPORTED_PAGES == pVpdInquiry->PageCode) { // Inquiry for supported pages?
+		PVPD_SUPPORTED_PAGES_PAGE pSupportedPages;
 
-    if (VPD_SUPPORTED_PAGES==pVpdInquiry->PageCode) { // Inquiry for supported pages?
-      PVPD_SUPPORTED_PAGES_PAGE pSupportedPages;
+		len = sizeof(VPD_SUPPORTED_PAGES_PAGE) + 8;
 
-      len = sizeof(VPD_SUPPORTED_PAGES_PAGE) + 8;
+		if (pSrb->DataTransferLength < len) {
+			return SRB_STATUS_DATA_OVERRUN;
+		}
 
-      if (pSrb->DataTransferLength < len) {
-        return SRB_STATUS_DATA_OVERRUN;
-      }
+		pSupportedPages = pSrb->DataBuffer;             // Point to output buffer.
 
-      pSupportedPages = pSrb->DataBuffer;             // Point to output buffer.
+		pSupportedPages->DeviceType = DISK_DEVICE;
+		pSupportedPages->DeviceTypeQualifier = 0;
+		pSupportedPages->PageCode = VPD_SERIAL_NUMBER;
+		pSupportedPages->PageLength = 8;                // Enough space for 4 VPD values.
+		pSupportedPages->SupportedPageList[0] =         // Show page 0x80 supported.
+			VPD_SERIAL_NUMBER;
+		pSupportedPages->SupportedPageList[1] =         // Show page 0x83 supported.
+			VPD_DEVICE_IDENTIFIERS;
 
-      pSupportedPages->DeviceType = DISK_DEVICE;
-      pSupportedPages->DeviceTypeQualifier = 0;
-      pSupportedPages->PageCode = VPD_SERIAL_NUMBER;
-      pSupportedPages->PageLength = 8;                // Enough space for 4 VPD values.
-      pSupportedPages->SupportedPageList[0] =         // Show page 0x80 supported.
-        VPD_SERIAL_NUMBER;
-      pSupportedPages->SupportedPageList[1] =         // Show page 0x83 supported.
-        VPD_DEVICE_IDENTIFIERS;
+		status = SRB_STATUS_SUCCESS;
 
-      status = SRB_STATUS_SUCCESS;
-    }
-    else
-    if (VPD_SERIAL_NUMBER==pVpdInquiry->PageCode) {   // Inquiry for serial number?
-      PVPD_SERIAL_NUMBER_PAGE pVpd;
 
-      len = sizeof(VPD_SERIAL_NUMBER_PAGE) + 8 + 32;
-      if (pSrb->DataTransferLength < len) {
-        return SRB_STATUS_DATA_OVERRUN;
-      }
+	} else if (VPD_SERIAL_NUMBER == pVpdInquiry->PageCode) {   // Inquiry for serial number?
 
-      pVpd = pSrb->DataBuffer;                        // Point to output buffer.
+		PVPD_SERIAL_NUMBER_PAGE pVpd;
 
-      pVpd->DeviceType = DISK_DEVICE;
-      pVpd->DeviceTypeQualifier = 0;
-      pVpd->PageCode = VPD_SERIAL_NUMBER;                
-      pVpd->PageLength = 8 + 32;
+		len = sizeof(VPD_SERIAL_NUMBER_PAGE) + 8 + 32;
+		if (pSrb->DataTransferLength < len) {
+			return SRB_STATUS_DATA_OVERRUN;
+		}
 
-      if (pHBAExt->pwzvolDrvObj->wzvolRegInfo.bCombineVirtDisks) { // MPIO support?
-          /* Generate a constant serial number. */
-//        sprintf((char *)pVpd->SerialNumber, "000%02d%03d0123456789abcdefghijABCDEFGHIJxx\n", 
-//                pLUExt->TargetId, pLUExt->Lun);
-      }
-      else {
-          /* Generate a changing serial number. */
-//        sprintf((char *)pVpd->SerialNumber, "%03d%02d%03d0123456789abcdefghijABCDEFGHIJxx\n", 
-//                pHBAExt->pwzvolDrvObj->DrvInfoNbrMPHBAObj, pLUExt->TargetId, pLUExt->Lun);
-      }
+		pVpd = pSrb->DataBuffer;                        // Point to output buffer.
 
-	  dprintf(
-                        "ScsiOpVPD:  VPD Page: %d Serial No.: %s", pVpd->PageCode, (const char *)pVpd->SerialNumber);
+		pVpd->DeviceType = DISK_DEVICE;
+		pVpd->DeviceTypeQualifier = 0;
+		pVpd->PageCode = VPD_SERIAL_NUMBER;
+		pVpd->PageLength = 8 + 32;
 
-      status = SRB_STATUS_SUCCESS;
-    }
-    else
-    if (VPD_DEVICE_IDENTIFIERS==pVpdInquiry->PageCode) { // Inquiry for device ids?
-        PVPD_IDENTIFICATION_PAGE pVpid;
-        PVPD_IDENTIFICATION_DESCRIPTOR pVpidDesc;
+		if (pHBAExt->pwzvolDrvObj->wzvolRegInfo.bCombineVirtDisks) { // MPIO support?
+			/* Generate a constant serial number. */
+  //        sprintf((char *)pVpd->SerialNumber, "000%02d%03d0123456789abcdefghijABCDEFGHIJxx\n", 
+  //                pLUExt->TargetId, pLUExt->Lun);
+		} else {
+			/* Generate a changing serial number. */
+  //        sprintf((char *)pVpd->SerialNumber, "%03d%02d%03d0123456789abcdefghijABCDEFGHIJxx\n", 
+  //                pHBAExt->pwzvolDrvObj->DrvInfoNbrMPHBAObj, pLUExt->TargetId, pLUExt->Lun);
+		}
 
-        #define VPIDNameSize 32
-        #define VPIDName     "PSSLUNxxx"
+		dprintf(
+			"ScsiOpVPD:  VPD Page: %d Serial No.: %s", pVpd->PageCode, (const char *)pVpd->SerialNumber);
 
-        len = sizeof(VPD_IDENTIFICATION_PAGE) + sizeof(VPD_IDENTIFICATION_DESCRIPTOR) + VPIDNameSize;
+		status = SRB_STATUS_SUCCESS;
+	} else if (VPD_DEVICE_IDENTIFIERS == pVpdInquiry->PageCode) { // Inquiry for device ids?
+		PVPD_IDENTIFICATION_PAGE pVpid;
+		PVPD_IDENTIFICATION_DESCRIPTOR pVpidDesc;
 
-        if (pSrb->DataTransferLength < len) {
-          return SRB_STATUS_DATA_OVERRUN;
-        }
+#define VPIDNameSize 32
+#define VPIDName     "PSSLUNxxx"
 
-        pVpid = pSrb->DataBuffer;                     // Point to output buffer.
+		len = sizeof(VPD_IDENTIFICATION_PAGE) + sizeof(VPD_IDENTIFICATION_DESCRIPTOR) + VPIDNameSize;
 
-        pVpid->PageCode = VPD_DEVICE_IDENTIFIERS;
+		if (pSrb->DataTransferLength < len) {
+			return SRB_STATUS_DATA_OVERRUN;
+		}
 
-        pVpidDesc =                                   // Point to first (and only) descriptor.
-            (PVPD_IDENTIFICATION_DESCRIPTOR)pVpid->Descriptors;
+		pVpid = pSrb->DataBuffer;                     // Point to output buffer.
 
-        pVpidDesc->CodeSet = VpdCodeSetAscii;         // Identifier contains ASCII.
-        pVpidDesc->IdentifierType =                   // 
-            VpdIdentifierTypeFCPHName;
+		pVpid->PageCode = VPD_DEVICE_IDENTIFIERS;
 
-        if (pHBAExt->pwzvolDrvObj->wzvolRegInfo.bCombineVirtDisks) { // MPIO support?
-            /* Generate a constant serial number. */
-            sprintf((char *)pVpidDesc->Identifier, "000%02d%03d0123456789abcdefghij\n", 
-                    pLUExt->TargetId, pLUExt->Lun);
-        }
-        else {
-            /* Generate a changing serial number. */
-            sprintf((char *)pVpidDesc->Identifier, "%03d%02d%03d0123456789abcdefghij\n", 
-                    pHBAExt->pwzvolDrvObj->DrvInfoNbrMPHBAObj, pLUExt->TargetId, pLUExt->Lun);
-        }
+		pVpidDesc =                                   // Point to first (and only) descriptor.
+			(PVPD_IDENTIFICATION_DESCRIPTOR)pVpid->Descriptors;
 
-        pVpidDesc->IdentifierLength =                 // Size of Identifier.
-            (UCHAR)strlen((const char *)pVpidDesc->Identifier) - 1;
-        pVpid->PageLength =                           // Show length of remainder.
-            (UCHAR)(FIELD_OFFSET(VPD_IDENTIFICATION_PAGE, Descriptors) + 
-                    FIELD_OFFSET(VPD_IDENTIFICATION_DESCRIPTOR, Identifier) + 
-                    pVpidDesc->IdentifierLength);
+		pVpidDesc->CodeSet = VpdCodeSetAscii;         // Identifier contains ASCII.
+		pVpidDesc->IdentifierType =                   // 
+			VpdIdentifierTypeFCPHName;
+
+		if (pHBAExt->pwzvolDrvObj->wzvolRegInfo.bCombineVirtDisks) { // MPIO support?
+			/* Generate a constant serial number. */
+			sprintf((char *)pVpidDesc->Identifier, "000%02d%03d0123456789abcdefghij\n",
+				pLUExt->TargetId, pLUExt->Lun);
+		} else {
+			/* Generate a changing serial number. */
+			sprintf((char *)pVpidDesc->Identifier, "%03d%02d%03d0123456789abcdefghij\n",
+				pHBAExt->pwzvolDrvObj->DrvInfoNbrMPHBAObj, pLUExt->TargetId, pLUExt->Lun);
+		}
+
+		pVpidDesc->IdentifierLength =                 // Size of Identifier.
+			(UCHAR)strlen((const char *)pVpidDesc->Identifier) - 1;
+		pVpid->PageLength =                           // Show length of remainder.
+			(UCHAR)(FIELD_OFFSET(VPD_IDENTIFICATION_PAGE, Descriptors) +
+				FIELD_OFFSET(VPD_IDENTIFICATION_DESCRIPTOR, Identifier) +
+				pVpidDesc->IdentifierLength);
 
 		dprintf("ScsiOpVPD:  VPD Page 0x83");
 
-        status = SRB_STATUS_SUCCESS;
-    }
-    else {
-      status = SRB_STATUS_INVALID_REQUEST;
-      len = 0;
-    }
+		status = SRB_STATUS_SUCCESS;
+	} else {
+		status = SRB_STATUS_INVALID_REQUEST;
+		len = 0;
+	}
 
-    pSrb->DataTransferLength = len;
+	pSrb->DataTransferLength = len;
 
-    return status;
+	return status;
 }                                                     // End ScsiOpVPD().
 
 /**************************************************************************************************/     
@@ -644,73 +618,56 @@ ScsiOpWrite(
 /**************************************************************************************************/     
 UCHAR
 ScsiReadWriteSetup(
-                   __in pHW_HBA_EXT          pHBAExt, // Adapter device-object extension from StorPort.
-                   __in pHW_LU_EXTENSION     pLUExt,  // LUN device-object extension from StorPort.        
-                   __in PSCSI_REQUEST_BLOCK  pSrb,
-                   __in MpWkRtnAction        WkRtnAction,
-                   __in PUCHAR               pResult
-                  )
+	__in pHW_HBA_EXT          pHBAExt, // Adapter device-object extension from StorPort.
+	__in pHW_LU_EXTENSION     pLUExt,  // LUN device-object extension from StorPort.        
+	__in PSCSI_REQUEST_BLOCK  pSrb,
+	__in MpWkRtnAction        WkRtnAction,
+	__in PUCHAR               pResult
+)
 {
-    PCDB                         pCdb = (PCDB)pSrb->Cdb;
-    ULONG                        startingSector,
-                                 sectorOffset;
-    USHORT                       numBlocks;
-    pMP_WorkRtnParms             pWkRtnParms;
+	PCDB                         pCdb = (PCDB)pSrb->Cdb;
+	ULONG                        startingSector,
+		sectorOffset;
+	USHORT                       numBlocks;
+	pMP_WorkRtnParms             pWkRtnParms;
 
-    ASSERT(pLUExt != NULL);
+	ASSERT(pLUExt != NULL);
 
-    *pResult = ResultDone;                            // Assume no queuing.
+	*pResult = ResultDone;                            // Assume no queuing.
 
-#if 0
-    startingSector = pCdb->CDB10.LogicalBlockByte3       |
-                     pCdb->CDB10.LogicalBlockByte2 << 8  |
-                     pCdb->CDB10.LogicalBlockByte1 << 16 |
-                     pCdb->CDB10.LogicalBlockByte0 << 24;
-    numBlocks      = (USHORT)(pSrb->DataTransferLength/MP_BLOCK_SIZE);
-    sectorOffset   = startingSector * MP_BLOCK_SIZE;
+	pWkRtnParms =                                     // Allocate parm area for work routine.
+		(pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPool, sizeof(MP_WorkRtnParms), MP_TAG_GENERAL);
 
-	dprintf("ScsiReadWriteSetup action: %X, starting sector: 0x%X, number of blocks: 0x%X\n", WkRtnAction, startingSector, numBlocks);
-	dprintf("ScsiReadWriteSetup pSrb: 0x%p, pSrb->DataBuffer: 0x%p\n", pSrb, pSrb->DataBuffer);
-
-    //if ( startingSector >= pLUExt->MaxBlocks ) {      // Starting sector beyond the bounds?
-    //    dprintf( "*** ScsiReadWriteSetup Starting sector: %d, number of blocks: %d\n", startingSector, numBlocks);
-	//   return SRB_STATUS_INVALID_REQUEST;   
-    //}
-#endif
-
-    pWkRtnParms =                                     // Allocate parm area for work routine.
-      (pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPool, sizeof(MP_WorkRtnParms), MP_TAG_GENERAL);
-
-    if (NULL==pWkRtnParms) {
+	if (NULL == pWkRtnParms) {
 		dprintf("ScsiReadWriteSetup Failed to allocate work parm structure\n");
 
-      return SRB_STATUS_ERROR;
-    }
+		return SRB_STATUS_ERROR;
+	}
 
-    RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms)); 
+	RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
 
-    pWkRtnParms->pHBAExt     = pHBAExt;
-    pWkRtnParms->pLUExt      = pLUExt;
-    pWkRtnParms->pSrb        = pSrb;
-    pWkRtnParms->Action      = ActionRead==WkRtnAction ? ActionRead : ActionWrite;
+	pWkRtnParms->pHBAExt = pHBAExt;
+	pWkRtnParms->pLUExt = pLUExt;
+	pWkRtnParms->pSrb = pSrb;
+	pWkRtnParms->Action = ActionRead == WkRtnAction ? ActionRead : ActionWrite;
 
-    pWkRtnParms->pQueueWorkItem = IoAllocateWorkItem((PDEVICE_OBJECT)pHBAExt->pDrvObj);
+	pWkRtnParms->pQueueWorkItem = IoAllocateWorkItem((PDEVICE_OBJECT)pHBAExt->pDrvObj);
 
-    if (NULL==pWkRtnParms->pQueueWorkItem) {
+	if (NULL == pWkRtnParms->pQueueWorkItem) {
 		dprintf("ScsiReadWriteSetup: Failed to allocate work item\n");
 
-      ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
+		ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
 
-      return SRB_STATUS_ERROR;
-    }
+		return SRB_STATUS_ERROR;
+	}
 
-    // Queue work item, which will run in the System process.
+	// Queue work item, which will run in the System process.
 
-    IoQueueWorkItem(pWkRtnParms->pQueueWorkItem, wzvol_GeneralWkRtn, DelayedWorkQueue, pWkRtnParms);
+	IoQueueWorkItem(pWkRtnParms->pQueueWorkItem, wzvol_GeneralWkRtn, DelayedWorkQueue, pWkRtnParms);
 
-    *pResult = ResultQueued;                          // Indicate queuing.
+	*pResult = ResultQueued;                          // Indicate queuing.
 
-    return SRB_STATUS_SUCCESS;
+	return SRB_STATUS_SUCCESS;
 }                                                     // End ScsiReadWriteSetup.
 
 /**************************************************************************************************/     
@@ -842,7 +799,7 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 		goto Done;
 	}
 
-
+	/* Call ZFS to read/write data */
 	if (ActionRead == pWkRtnParms->Action) {           
 		status = zvol_read_win(zv, sectorOffset, pSrb->DataTransferLength, pX);
 	} else {                                           

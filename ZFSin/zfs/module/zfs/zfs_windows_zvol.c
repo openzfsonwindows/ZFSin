@@ -19,7 +19,7 @@
  * CDDL HEADER END
  */
 /*
- * Copyright (c) 2017 Jorgen Lundman <lundman@lundman.net>
+ * Copyright (c) 2019 Jorgen Lundman <lundman@lundman.net>
  */
 
 #include <sys/debug.h>
@@ -38,6 +38,74 @@ static pHW_HBA_EXT STOR_HBAExt = NULL;
 //#undef dprintf
 //#define dprintf
 
+
+int zvol_start(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING pRegistryPath)
+{
+	pwzvolDriverInfo pwzvolDrvInfo;
+	NTSTATUS status;
+	VIRTUAL_HW_INITIALIZATION_DATA hwInitData;
+
+	pwzvolDrvInfo = &STOR_wzvolDriverInfo;
+
+	RtlZeroMemory(pwzvolDrvInfo, sizeof(wzvolDriverInfo));  // Set pwzvolDrvInfo's storage to a known state.
+
+	pwzvolDrvInfo->pDriverObj = DriverObject;               // Save pointer to driver object.
+
+	KeInitializeSpinLock(&pwzvolDrvInfo->DrvInfoLock);   // Initialize spin lock.
+	KeInitializeSpinLock(&pwzvolDrvInfo->MPIOExtLock);   //   "
+
+	InitializeListHead(&pwzvolDrvInfo->ListMPHBAObj);    // Initialize list head.
+	InitializeListHead(&pwzvolDrvInfo->ListMPIOExt);
+
+	pwzvolDrvInfo->wzvolRegInfo.BreakOnEntry = DEFAULT_BREAK_ON_ENTRY;
+	pwzvolDrvInfo->wzvolRegInfo.DebugLevel = DEFAULT_DEBUG_LEVEL;
+	pwzvolDrvInfo->wzvolRegInfo.InitiatorID = DEFAULT_INITIATOR_ID;
+	pwzvolDrvInfo->wzvolRegInfo.PhysicalDiskSize = DEFAULT_PHYSICAL_DISK_SIZE;
+	pwzvolDrvInfo->wzvolRegInfo.VirtualDiskSize = DEFAULT_VIRTUAL_DISK_SIZE;
+	pwzvolDrvInfo->wzvolRegInfo.NbrVirtDisks = DEFAULT_NbrVirtDisks;
+	pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA = DEFAULT_NbrLUNsperHBA;
+	pwzvolDrvInfo->wzvolRegInfo.bCombineVirtDisks = DEFAULT_bCombineVirtDisks;
+
+	RtlInitUnicodeString(&pwzvolDrvInfo->wzvolRegInfo.VendorId, VENDOR_ID);
+	RtlInitUnicodeString(&pwzvolDrvInfo->wzvolRegInfo.ProductId, PRODUCT_ID);
+	RtlInitUnicodeString(&pwzvolDrvInfo->wzvolRegInfo.ProductRevision, PRODUCT_REV);
+
+	RtlZeroMemory(&hwInitData, sizeof(VIRTUAL_HW_INITIALIZATION_DATA));
+
+	hwInitData.HwInitializationDataSize = sizeof(VIRTUAL_HW_INITIALIZATION_DATA);
+
+	hwInitData.HwInitialize = wzvol_HwInitialize;       // Required.
+	hwInitData.HwStartIo = wzvol_HwStartIo;          // Required.
+	hwInitData.HwFindAdapter = wzvol_HwFindAdapter;      // Required.
+	hwInitData.HwResetBus = wzvol_HwResetBus;         // Required.
+	hwInitData.HwAdapterControl = wzvol_HwAdapterControl;   // Required.
+	hwInitData.HwFreeAdapterResources = wzvol_HwFreeAdapterResources;
+	hwInitData.HwInitializeTracing = wzvol_TracingInit;
+	hwInitData.HwCleanupTracing = wzvol_TracingCleanup;
+	hwInitData.HwProcessServiceRequest = wzvol_ProcServReq;
+	hwInitData.HwCompleteServiceIrp = wzvol_CompServReq;
+
+	hwInitData.AdapterInterfaceType = Internal;
+
+	hwInitData.DeviceExtensionSize = sizeof(HW_HBA_EXT);
+	hwInitData.SpecificLuExtensionSize = sizeof(HW_LU_EXTENSION);
+	hwInitData.SrbExtensionSize = sizeof(HW_SRB_EXTENSION);
+
+	hwInitData.TaggedQueuing = TRUE;
+	hwInitData.AutoRequestSense = TRUE;
+	hwInitData.MultipleRequestPerLu = TRUE;
+	hwInitData.ReceiveEvent = TRUE;
+
+	status = StorPortInitialize(                     // Tell StorPort we're here.
+		DriverObject,
+		pRegistryPath,
+		(PHW_INITIALIZATION_DATA)&hwInitData,     // Note: Have to override type!
+		NULL
+	);
+
+	return status;
+}
+
 BOOLEAN
 wzvol_HwInitialize(__in pHW_HBA_EXT pHBAExt)
 {
@@ -46,46 +114,6 @@ wzvol_HwInitialize(__in pHW_HBA_EXT pHBAExt)
 	dprintf("%s: entry\n", __func__);
 	return TRUE;
 }
-
-/**************************************************************************************************/
-/*                                                                                                */
-/* Create list of LUNs for specified HBA extension.                                               */
-/*                                                                                                */
-/**************************************************************************************************/
-NTSTATUS
-wzvol_CreateDeviceList(
-	__in       pHW_HBA_EXT    pHBAExt,
-	__in       ULONG          NbrLUNs
-)
-{
-	NTSTATUS status = STATUS_SUCCESS;
-	ULONG    i,
-		len = FIELD_OFFSET(MP_DEVICE_LIST, DeviceInfo) + (NbrLUNs * sizeof(MP_DEVICE_INFO));
-
-	dprintf("%s: entry\n", __func__);
-
-	if (pHBAExt->pDeviceList) {
-		ExFreePoolWithTag(pHBAExt->pDeviceList, MP_TAG_GENERAL);
-	}
-
-	pHBAExt->pDeviceList = ExAllocatePoolWithTag(NonPagedPool, len, MP_TAG_GENERAL);
-
-	if (!pHBAExt->pDeviceList) {
-		status = STATUS_INSUFFICIENT_RESOURCES;
-		goto done;
-	}
-
-	RtlZeroMemory(pHBAExt->pDeviceList, len);
-
-	pHBAExt->pDeviceList->DeviceCount = NbrLUNs;
-
-	for (i = 0; i < NbrLUNs; i++) {
-		pHBAExt->pDeviceList->DeviceInfo[i].LunID = (UCHAR)i;
-	}
-
-done:
-	return status;
-}                                                     // End MpCreateDeviceList().
 
 ULONG
 wzvol_HwFindAdapter(
@@ -135,12 +163,6 @@ wzvol_HwFindAdapter(
 	pHBAExt->HostTargetId = (UCHAR)pHBAExt->pwzvolDrvObj->wzvolRegInfo.InitiatorID;
 
 	pHBAExt->pDrvObj = pHBAExt->pwzvolDrvObj->pDriverObj;
-
-	wzvol_CreateDeviceList(pHBAExt, pHBAExt->pwzvolDrvObj->wzvolRegInfo.NbrLUNsperHBA);
-
-	if (!pHBAExt->pPrevDeviceList) {
-		pHBAExt->pPrevDeviceList = pHBAExt->pDeviceList;
-	}
 
 	pConfigInfo->VirtualDevice = TRUE;                        // Inidicate no real hardware.
 	pConfigInfo->WmiDataProvider = TRUE;                        // Indicate WMI provider.
@@ -880,46 +902,6 @@ wzvol_StopAdapter(__in pHW_HBA_EXT pHBAExt)               // Adapter device-obje
 
 /**************************************************************************************************/
 /*                                                                                                */
-/* Return device type for specified device on specified HBA extension.                            */
-/*                                                                                                */
-/**************************************************************************************************/
-UCHAR
-wzvol_GetDeviceType(
-		__in pHW_HBA_EXT          pHBAExt,    // Adapter device-object extension from StorPort.
-		__in UCHAR                PathId,
-		__in UCHAR                TargetId,
-		__in UCHAR                Lun
-	)
-{
-	pMP_DEVICE_LIST pDevList = pHBAExt->pDeviceList;
-	ULONG           i;
-	UCHAR           type = DEVICE_NOT_FOUND;
-
-	UNREFERENCED_PARAMETER(PathId);
-
-	dprintf("%s: entry\n", __func__);
-
-	if (!pDevList || 0 == pDevList->DeviceCount) {
-		goto done;
-	}
-
-	for (i = 0; i < pDevList->DeviceCount; i++) {    // Find the matching LUN (if any).
-		if (
-			TargetId == pDevList->DeviceInfo[i].TargetID
-			&&
-			Lun == pDevList->DeviceInfo[i].LunID
-			) {
-			type = pDevList->DeviceInfo[i].DeviceType;
-			goto done;
-		}
-	}
-
-done:
-	return type;
-}
-
-/**************************************************************************************************/
-/*                                                                                                */
 /* MPTracingInit.                                                                                 */
 /*                                                                                                */
 /**************************************************************************************************/
@@ -939,6 +921,7 @@ wzvol_TracingInit(
 /* This is called when the driver is being unloaded.                                              */
 /*                                                                                                */
 /**************************************************************************************************/
+
 VOID
 wzvol_TracingCleanup(__in PVOID pArg1)
 {
@@ -994,7 +977,6 @@ wzvol_HwFreeAdapterResources(__in pHW_HBA_EXT pHBAExt)
 	KeReleaseSpinLock(&pHBAExt->pwzvolDrvObj->DrvInfoLock, SaveIrql);
 #endif
 
-	ExFreePoolWithTag(pHBAExt->pDeviceList, MP_TAG_GENERAL);
 #endif
 
 
