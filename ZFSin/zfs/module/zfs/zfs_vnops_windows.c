@@ -4449,6 +4449,11 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			 * To avoid racing with someone grabbing this vp, we grab the lock
 			 * and tag it REJECT, this way it can not be grabbed by someone else.
 			 */
+			
+			while (vnode_fileobject_empty(vp, 1) && vp->v_iocount > 1 && vp->v_wait) {
+				dprintf("ride the busy loop!\n");
+				delay(1 * hz);
+			}
 
 			vnode_lock(vp);
 			if (vnode_isidle(vp) &&
@@ -4460,7 +4465,6 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 				// I believe with the iocounts fixed, the following ASSERT can
 				// be removed, and the above "if" corrected to include iocount.
 				ASSERT(vp->v_iocount <= 1);
-
 				/* Take hold from above, we will release in recycle */
 				*hold_vp = NULL;
 
@@ -4487,7 +4491,7 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 					atomic_dec_64(&delete_pending);
 
 				} else { /* If vp is not deleted */
-
+					vp->v_wait = 1;
 					vnode_unlock(vp);
 					/* Otherwise, just release memory. */
 					// Only unmount releases root 
@@ -4498,6 +4502,7 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 					// we don't recycle root (unmount does) or RELE on recycle error
 					if (vnode_isvroot(vp) || (vnode_recycle(vp) != 0)) {
 						VN_RELE(vp);
+						vp->v_wait = 0;
 					}
 
 					Status = STATUS_SUCCESS;

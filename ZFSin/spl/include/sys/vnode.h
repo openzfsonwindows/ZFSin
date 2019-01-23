@@ -93,6 +93,7 @@ struct vnode {
 	uint32_t v_unused;
 	void *v_data;
 	uint64_t v_id;
+	uint8_t v_wait;
 
 	// Other Windows entries
 	// Must be 8byte aligned
