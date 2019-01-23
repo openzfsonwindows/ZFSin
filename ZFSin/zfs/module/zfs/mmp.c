@@ -211,15 +211,14 @@ mmp_random_leaf_impl(vdev_t *vd, int *fail_mask)
 {
 	int child_idx;
 
-	if (!vdev_writeable(vd)) {
-		*fail_mask |= MMP_FAIL_NOT_WRITABLE;
-		return (NULL);
-	}
 
 	if (vd->vdev_ops->vdev_op_leaf) {
 		vdev_t *ret;
 
-		if (vd->vdev_mmp_pending != 0) {
+		if (!vdev_writeable(vd)) {
+			*fail_mask |= MMP_FAIL_NOT_WRITABLE;
+			ret = NULL;
+		} else if (vd->vdev_mmp_pending != 0) {
 			*fail_mask |= MMP_FAIL_WRITE_PENDING;
 			ret = NULL;
 		} else {
@@ -228,6 +227,9 @@ mmp_random_leaf_impl(vdev_t *vd, int *fail_mask)
 
 		return (ret);
 	}
+
+	if (vd->vdev_children == 0)
+		return (NULL);
 
 	child_idx = spa_get_random(vd->vdev_children);
 	for (int offset = vd->vdev_children; offset > 0; offset--) {
@@ -479,7 +481,7 @@ mmp_thread(spa_t *spa)
 	 * with fake, but reasonable, default non-zero values.
 	 */
 	mmp->mmp_delay = MSEC2NSEC(MAX(zfs_multihost_interval,
-	    MMP_MIN_INTERVAL)) / vdev_count_leaves(spa);
+		    MMP_MIN_INTERVAL)) / MAX(vdev_count_leaves(spa), 1);
 	mmp->mmp_last_write = gethrtime() - mmp->mmp_delay;
 
 	while (!mmp->mmp_thread_exiting) {
@@ -595,4 +597,3 @@ mmp_signal_all_threads(void)
 	}
 	mutex_exit(&spa_namespace_lock);
 }
-
