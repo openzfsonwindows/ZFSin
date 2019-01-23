@@ -151,7 +151,7 @@ zprop_compare(const void *arg1, const void *arg2)
 	p1ro = (p1->pd_attr == PROP_READONLY);
 	p2ro = (p2->pd_attr == PROP_READONLY);
 
-	if (p1ro == p2ro)
+	if (p1ro == p2ro && p1->pd_name && p2->pd_name)
 		return (strcmp(p1->pd_name, p2->pd_name));
 
 	return (p1ro ? -1 : 1);
