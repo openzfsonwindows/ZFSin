@@ -555,6 +555,7 @@ int vnode_isrecycled(vnode_t *vp);
 #define WRITECLOSE      0x0004          /* vflush: only close writeable files */
 #define SKIPSWAP        0x0008          /* vflush: skip vnodes marked VSWAP */
 #define SKIPROOT        0x0010          /* vflush: skip root vnodes marked VROOT */
+#define VNODELOCKED     0x0100          /* vflush: vnode already locked call to recycle */
 #define NULLVP NULL
 
 int     vflush(struct mount *mp, struct vnode *skipvp, int flags);
@@ -564,7 +565,6 @@ int vnode_fileobject_empty(vnode_t *vp, int locked);
 
 void vnode_lock(vnode_t *vp);
 void vnode_unlock(vnode_t *vp);
-int vnode_reject(vnode_t *vp);
-void vnode_setreject(vnode_t *vp);
+int vnode_drain_delayclose(int);
 
 #endif /* SPL_VNODE_H */
