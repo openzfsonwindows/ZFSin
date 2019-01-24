@@ -40,6 +40,12 @@ AM_PROG_AS
 PREFIX=`/bin/pwd`
 AC_SUBST(PREFIX)
 
+# Let's be nice, define expected paths for ZFS commands
+# - top	of build tree (ZFSin/zpool.exe)
+# - build output dir (ZFSin/x64/Debug/zpool.exe)
+# If installer was used, PATH is already updated.
+AC_SUBST(PATH,"$PATH:$(PWD)/../../..":"$PATH:$(PWD)/../../../x64/Debug":"$PATH:\$(PWD)/../../../x64/Release")
+
 m4_include(config/system.m4)
 m4_include(config/commands-common.m4)
 m4_include(config/commands-linux.m4)
