@@ -151,7 +151,7 @@ export ZONENAME="@ZONENAME@"
 export ZPOOL="@ZPOOL@"
 
 #export LINUX="@LINUX@"
-export OSX="OSX"
+export WINDOWS="WINDOWS"
 export MKFILE_SPARSE="-n"
 export DF_FS_TYPE="T"
 export DF_LOCAL_FS_ONLY=""

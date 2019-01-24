@@ -55,6 +55,7 @@ AC_CONFIG_FILES([
 	zfs-tests/cmd/readmmap/Makefile
 	zfs-tests/cmd/file_write/Makefile
 	zfs-tests/cmd/randfree_file/Makefile
+	zfs-tests/cmd/randwritecomp/Makefile
 	zfs-tests/cmd/mktree/Makefile
 	zfs-tests/cmd/file_check/Makefile
 	zfs-tests/cmd/rm_lnkcnt_zero_file/Makefile
@@ -65,7 +66,7 @@ AC_CONFIG_FILES([
 	zfs-tests/tests/functional/exec/Makefile
 	zfs-tests/tests/functional/ctime/Makefile
 	zfs-tests/include/commands.cfg
-	zfs-tests/runfiles/osx.run
+	zfs-tests/runfiles/windows.run
 	zfs-tests/include/default.cfg
 ])
 
