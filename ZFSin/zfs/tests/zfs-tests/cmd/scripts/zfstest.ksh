@@ -70,6 +70,8 @@ function find_runfile
 		distro=linux
 	elif [[ -n "$OSX" ]]; then
 		distro=osx
+	elif [[ -n "$WINDOWS" ]]; then
+		distro=windows
 	fi
 
 	[[ -n $distro && -f "$STF_SUITE/runfiles/$distro.run" ]] && \
