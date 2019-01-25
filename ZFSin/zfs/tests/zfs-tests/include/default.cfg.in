@@ -137,9 +137,7 @@ export SPA_MINDEVSIZE=$((64 * 1024 * 1024))
 export ISCSITGTFILE=/tmp/iscsitgt_file
 export ISCSITGT_FMRI=svc:/system/iscsitgt:default
 
-[[ -z "$LINUX" && -z "$OSX" ]] && \
-export AUTO_SNAP=$($SVCS -a | $GREP auto-snapshot | $GREP online | $AWK \
-    '{print $3}')
+export AUTO_SNAP=""
 
 #
 # finally, if we're running in a local zone

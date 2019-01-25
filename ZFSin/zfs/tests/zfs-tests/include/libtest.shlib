@@ -1067,7 +1067,7 @@ function is_shared
 			esac
 		fi
 	fi
-
+	echo "HERE and $OSX it is."
 	if [[ -n "$LINUX" ]]; then
 		for mtpt in `$SHARE -v | $AWK '{print $1}'` ; do
 			if [[ $mtpt == $fs ]] ; then
@@ -1088,7 +1088,7 @@ function is_shared
 		done
 
 		typeset stat=$(/sbin/nfsd status)
-		if ! [[ $stat =~ "enabled" ]]; then
+		if ! [[ $stat == "enabled" ]]; then
 			log_note "Current nfs/server status: $stat"
 		fi
 	else

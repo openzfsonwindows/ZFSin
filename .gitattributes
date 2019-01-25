@@ -2,4 +2,6 @@
 *.ksh		text eol=lf
 *.shlib		text eol=lf
 *.cfg		text eol=lf
+*.cfg.in	text eol=lf
+run		text eol=lf
 *.vcproj	text eol=crlf -diff
