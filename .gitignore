@@ -243,3 +243,14 @@ ModelManifest.xml
 
 *.am
 
+Makefile
+Makefile.in
+*.exe
+.deps
+aclocal.m4
+config.status
+compile
+missing
+configure
+windows.run
+

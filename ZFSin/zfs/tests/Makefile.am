@@ -59,11 +59,11 @@ test_verify:
 	@# -------------------------------------------------------------------
 	@( if ! id zfs-tests > /dev/null 2>&1; then \
 		echo "ERROR: You must create a 'zfs-tests' user to run the test as."; \
-		exit 1; \
+		echo exit 1; \
 	   fi; \
 	   if ! su - zfs-tests -c "sudo ls" > /dev/null 2>&1; then \
 		echo "ERROR: User zfs-tests is not allowed to run sudo without password."; \
-		exit 1; \
+		echo exit 1; \
 	   fi)
 
 zfs-tests/cmd:
