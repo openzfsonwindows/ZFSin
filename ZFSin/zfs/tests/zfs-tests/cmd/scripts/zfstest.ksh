@@ -80,12 +80,12 @@ function find_runfile
 
 function verify_id
 {
-	[[ $(id -u) = "0" ]] && fail "This script must not be run as root."
+	#[[ $(id -u) = "0" ]] && fail "This script must not be run as root."
 
 	sudo -n id >/dev/null 2>&1
 	[[ $? -eq 0 ]] || fail "User must be able to sudo without a password."
 
-	if [[ -z "$LINUX" && -z "$OSX" ]]; then
+	if [[ -z "$LINUX" && -z "$OSX" && -z "$WINDOWS" ]]; then
 	    typeset -i priv_cnt=$($PPRIV $$ | $EGREP -v \
 		": basic$|	L:| <none>|$$:" | wc -l)
 	    [[ $priv_cnt -ne 0 ]] && fail "User must only have basic privileges."
@@ -94,7 +94,7 @@ function verify_id
 
 function verify_disks
 {
-	[[ -n "$LINUX" || -n "$OSX" ]] && return 0
+	[[ -n "$LINUX" || -n "$OSX" || -n "$WINDOWS" ]] && return 0
 
 	typeset disk
 	for disk in $DISKS; do
