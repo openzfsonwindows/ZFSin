@@ -112,7 +112,7 @@ class Output(object):
 
 
 class Cmd(object):
-    verified_users = []
+    verified_users = ['root']
 
     def __init__(self, pathname, outputdir=None, timeout=None, user=None):
         self.pathname = pathname
