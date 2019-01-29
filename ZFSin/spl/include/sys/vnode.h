@@ -565,6 +565,6 @@ int vnode_fileobject_empty(vnode_t *vp, int locked);
 
 void vnode_lock(vnode_t *vp);
 void vnode_unlock(vnode_t *vp);
-void vnode_drain_delayclose(void);
+int vnode_drain_delayclose(int);
 
 #endif /* SPL_VNODE_H */

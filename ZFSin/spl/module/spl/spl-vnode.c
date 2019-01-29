@@ -44,10 +44,8 @@ static uint64_t vnode_vid_counter = 0;
 /* Total number of active vnodes */
 static uint64_t vnode_active = 0;
 
-/* Maximum allowed active vnodes */
-uint64_t vnode_max = 300;
-/* When max is hit, decrease until watermark, 2% of max */
-#define vnode_max_watermark (vnode_max - (vnode_max * 2ULL / 100ULL))
+/* The kmem cache for vnodes */
+static kmem_cache_t *vnode_cache = NULL;
 
 /* List of all vnodes */
 static kmutex_t vnode_all_list_lock;
@@ -388,8 +386,42 @@ void dnlc_update(struct vnode *vp, char *name, struct vnode *tp)
 	return;
 }
 
+static int vnode_fileobject_compare(const void *arg1, const void *arg2)
+{
+	const vnode_fileobjects_t *node1 = arg1;
+	const vnode_fileobjects_t *node2 = arg2;
+	if (node1->fileobject > node2->fileobject)
+		return 1;
+	if (node1->fileobject < node2->fileobject)
+		return -1;
+	return 0;
+}
 
+static int
+zfs_vnode_cache_constructor(void *buf, void *arg, int kmflags)
+{
+	vnode_t *vp = buf;
 
+	// So the Windows structs have to be zerod, even though we call
+	// their setup functions.
+	memset(vp, 0, sizeof(*vp));
+
+	mutex_init(&vp->v_mutex, NULL, MUTEX_DEFAULT, NULL);
+	avl_create(&vp->v_fileobjects, vnode_fileobject_compare,
+		sizeof(vnode_fileobjects_t), offsetof(vnode_fileobjects_t, avlnode));
+
+	return 0;
+}
+
+static void
+zfs_vnode_cache_destructor(void *buf, void *arg)
+{
+	vnode_t *vp = buf;
+
+	avl_destroy(&vp->v_fileobjects);
+	mutex_destroy(&vp->v_mutex);
+
+}
 
 int spl_vnode_init(void)
 {
@@ -399,6 +431,13 @@ int spl_vnode_init(void)
 	mutex_init(&vnode_all_list_lock, NULL, MUTEX_DEFAULT, NULL);
 	list_create(&vnode_all_list, sizeof(struct vnode),
 		offsetof(struct vnode, v_list));
+
+	vnode_cache = kmem_cache_create("zfs_vnode_cache",
+		sizeof(vnode_t), 0,
+		zfs_vnode_cache_constructor,
+		zfs_vnode_cache_destructor, NULL, NULL,
+		NULL, 0);
+
 	return 0;
 }
 
@@ -408,6 +447,10 @@ void spl_vnode_fini(void)
 	list_destroy(&vnode_all_list);
 	mutex_destroy(&spl_getf_lock);
 	list_destroy(&spl_getf_list);
+
+	if (vnode_cache)
+		kmem_cache_destroy(vnode_cache);
+	vnode_cache = NULL;
 }
 
 #include <sys/file.h>
@@ -884,7 +927,7 @@ int vnode_put(vnode_t *vp)
 
 	// Temporarily - should perhaps be own thread?
 	if (calldrain)
-		vnode_drain_delayclose();
+		vnode_drain_delayclose(0);
 
 	return 0;
 }
@@ -948,13 +991,10 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		KIRQL OldIrql;
 		mutex_enter(&vp->v_mutex);
 		ASSERT(avl_is_empty(&vp->v_fileobjects));
-		avl_destroy(&vp->v_fileobjects);
 		mutex_exit(&vp->v_mutex);
 
-		mutex_destroy(&vp->v_mutex);
-
 		// Free vp memory
-		kmem_free(vp, sizeof(*vp));
+		kmem_cache_free(vnode_cache, vp);
 
 		atomic_dec_64(&vnode_active);
 		return 0;
@@ -974,33 +1014,26 @@ int vnode_recycle(vnode_t *vp)
 	return vnode_recycle_int(vp, 0);
 }
 
-static int vnode_fileobject_compare(const void *arg1, const void *arg2)
-{
-	const vnode_fileobjects_t *node1 = arg1;
-	const vnode_fileobjects_t *node2 = arg2;
-	if (node1->fileobject > node2->fileobject)
-		return 1;
-	if (node1->fileobject < node2->fileobject)
-		return -1;
-	return 0;
-}
-
-
 void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode **vpp)
 {
 	struct vnode *vp;
-	vp = kmem_zalloc(sizeof(struct vnode), KM_SLEEP);  // FIXME Change me to kmem_cache
+	// cache_alloc does not zero the struct, we need to
+	// make sure that those things that need clearing is
+	// done here.
+	vp = kmem_cache_alloc(vnode_cache, KM_SLEEP);
 	*vpp = vp;
+	vp->v_flags = 0;
 	vp->v_mount = mp;
 	vp->v_data = v_data;
 	vp->v_type = type;
 	vp->v_id = atomic_inc_64_nv(&(vnode_vid_counter));
-	mutex_init(&vp->v_mutex, NULL, MUTEX_DEFAULT, NULL);
-	atomic_inc_32(&vp->v_iocount);
+	vp->v_iocount = 1;
+	vp->v_usecount = 0;
+	vp->v_unlink = 0;
 	atomic_inc_64(&vnode_active);
-	avl_create(&vp->v_fileobjects, vnode_fileobject_compare,
-		sizeof(vnode_fileobjects_t), offsetof(vnode_fileobjects_t, avlnode));
+
 	list_link_init(&vp->v_list);
+	ASSERT(vnode_fileobject_empty(vp, 1)); // lying about locked is ok. 
 
 	if (flags & VNODE_MARKROOT)
 		vp->v_flags |= VNODE_MARKROOT;
@@ -1119,19 +1152,25 @@ vnode_rele(vnode_t *vp)
 	mutex_exit(&vp->v_mutex);
 }
 
-void vnode_drain_delayclose(void)
+/*
+ * Periodically walk through list and release vnodes that are now idle.
+ * Set force=1 to perform check now.
+ * Will return number of vnodes with delete set, but not yet reclaimed.
+ */
+int vnode_drain_delayclose(int force)
 {
 	struct vnode *vp, *next = NULL;
-	int ret;
+	int ret = 0;
+	int candidate = 0;
 	static hrtime_t last = 0;
 	const hrtime_t interval = SEC2NSEC(2);
 	const hrtime_t curtime = gethrtime();
 
 	mutex_enter(&vnode_all_list_lock);
 	// This should probably be its own thread, but for now, run once every 2s
-	if (curtime - last < interval) {
+	if (!force && curtime - last < interval) {
 		mutex_exit(&vnode_all_list_lock);
-		return;
+		return 0;
 	}
 	last = curtime;
 
@@ -1145,6 +1184,14 @@ void vnode_drain_delayclose(void)
 
 		// Make sure everything about the vp has been released.
 		vnode_lock(vp);
+
+		// If we see a deleted node awaiting recycle, signal return code
+		if ((vp->v_flags & VNODE_MARKTERM) &&
+			vnode_deleted(vp))
+			candidate = 1;
+		else
+			candidate = 0;
+
 		if ((vp->v_flags & VNODE_MARKTERM) &&
 			!(vp->v_flags & VNODE_DEAD) &&
 			(vp->v_iocount == 0) &&
@@ -1157,14 +1204,19 @@ void vnode_drain_delayclose(void)
 			dprintf("%s: drain %vp\n", __func__, vp);
 
 			// Pass VNODELOCKED as we hold vp, recycle will unlock.
-			ret = vnode_recycle_int(vp, VNODELOCKED);
+			if (vnode_recycle_int(vp, VNODELOCKED) == 0)
+				candidate = 0; // If recycle was ok, this isnt a node we wait for
+
 			// If successful, vp is freed. Do not use vp from here:
 
 		} else {
 			vnode_unlock(vp);
 		}
+
+		if (candidate) ret++;
 	}
 	mutex_exit(&vnode_all_list_lock);
+	return ret;
 }
 
 int vflush(struct mount *mp, struct vnode *skipvp, int flags)
@@ -1220,9 +1272,6 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 		// If the end of the list was reached, stop entirely
 		if (!rvp) break;
 
-		// If reclaiming (mp is NULL) stop at low watermark
-		if (mp == NULL && vnode_active <= vnode_max_watermark) 
-			break;
 	}
 
 	if (mp == NULL && reclaims > 0) {

@@ -252,11 +252,17 @@ NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 	if (S_ISDIR(zp->z_mode)) {
 
 		int nodeadlock = 0;
-		while (zp->z_size == 3 && delete_pending != 0) {
+		// We might have some files being removed awaiting reclaim
+		// delayclose() will return 1 as long as there exists vnodes with
+		// unlinked set but not yet reclaimed.
+		// We could optionally drop our iocount here, and try to take it again
+		// handling the case where it may have been deleted after drain.
+		while (zp->z_size >= 3 && 
+			vnode_drain_delayclose(1) >= 1) {
 			dprintf("%s: delete_pending waiting\n", __func__);
-			//vnode_drain?
-			delay(1);
-			if (nodeadlock > 10) break;
+			delay(11);
+			// This crutch should not be needed, in theory
+			//if (nodeadlock++ > 10) break;
 		}
 
 		if (zp->z_size > 2) {
@@ -4032,24 +4038,11 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	filename[outlen] = 0;
 
 	// FIXME, use z_name_cache and offset
-	char *finalname;
+	char *finalname = NULL;
 	if ((finalname = strrchr(filename, '\\')) != NULL)
 		finalname = &finalname[1];
 	else
 		finalname = filename;
-
-	// Keep a copy of the name, so we can send notifications after.
-	int namecopylen = zp->z_name_len;
-
-	// Why can namecopylen be zero here?
-	char *namecopy = NULL;
-	int namecopyoffset = 0;
-
-	if (namecopylen != 0) {
-		namecopy = kmem_alloc(namecopylen, KM_SLEEP);
-		memcpy(namecopy, zp->z_name_cache, namecopylen);
-		namecopyoffset = zp->z_name_offset;
-	}
 
 	// Release final HOLD on item, ready for deletion
 	int isdir = vnode_isdir(vp);
@@ -4065,25 +4058,11 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 		if (error == ENOTEMPTY)
 			error = STATUS_DIRECTORY_NOT_EMPTY;
 
-		if (!error && namecopylen != 0) {
-			dprintf("sending DIR notify: '%s' name '%s'\n", namecopy, &namecopy[namecopyoffset]);
-			zfs_send_notify(zfsvfs, namecopy, namecopyoffset,
-				FILE_NOTIFY_CHANGE_DIR_NAME,
-				FILE_ACTION_REMOVED);
-		}
 	} else {
 
 		error = zfs_remove(dvp, finalname, NULL, NULL, 0);
 
-		if (!error && namecopylen != 0) {
-			dprintf("sending FILE notify: '%s' name '%s'\n", namecopy, &namecopy[namecopyoffset]);
-			zfs_send_notify(zfsvfs, namecopy, namecopyoffset,
-				FILE_NOTIFY_CHANGE_FILE_NAME,
-				FILE_ACTION_REMOVED);
-		}
 	}
-	if (namecopylen != 0) 
-		kmem_free(namecopy, namecopylen);
 
 	// Release parent.
 	VN_RELE(dvp);
@@ -4318,6 +4297,7 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 		VN_HOLD(vp);
 		znode_t *zp = VTOZ(vp); // zp for notify removal
+		zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 
 		vnode_rele(vp); // Release longterm hold finally.
 
@@ -4332,32 +4312,6 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		// we have attached. 
 		zmo = DeviceObject->DeviceExtension;
 		VERIFY(zmo->type == MOUNT_TYPE_VCB);
-		/* The use of "zp" is only used as identity, not referenced. */
-		if (isdir) {
-			dprintf("Removing all notifications for directory: %p\n", zp);
-			FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, zp);
-		}
-		// Finish with Notifications
-		dprintf("Removing notifications for file\n");
-		FsRtlNotifyFullChangeDirectory(zmo->NotifySync, &zmo->DirNotifyList,
-			zp, NULL, FALSE, FALSE, 0, NULL, NULL, NULL);
-
-#if 0
-		SECTION_OBJECT_POINTERS *section;
-		section = vnode_sectionpointer(vp);
-		//vnode_setsectionpointer(vp, NULL);
-		if (/*(IrpSp->FileObject->Flags & FO_CACHE_SUPPORTED) &&*/ section && section->DataSectionObject) {
-			IO_STATUS_BLOCK iosb;
-			CcFlushCache(IrpSp->FileObject->SectionObjectPointer, NULL, 0, &iosb);
-
-			CcPurgeCacheSection(section, NULL, 0, FALSE);
-		}
-
-		if (IrpSp->FileObject->SectionObjectPointer != NULL)
-			CcUninitializeCacheMap(IrpSp->FileObject, NULL, NULL);
-
-		IrpSp->FileObject->Flags |= FO_CLEANUP_COMPLETE;
-#endif
 
 		/* Technically, this should only be called on the FileObject which
 		 * opened the file with DELETE_ON_CLOSE - in fastfat, that is stored
@@ -4369,7 +4323,29 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 			// Mark it as deleted, zfs_vnop_lookup() will return error now.
 			vnode_setdeleted(vp);
 
+			if (isdir) {
+				dprintf("sending DIR notify: '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
+				zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+					FILE_NOTIFY_CHANGE_DIR_NAME,
+					FILE_ACTION_REMOVED);
+			} else {
+				dprintf("sending FILE notify: '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
+				zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+					FILE_NOTIFY_CHANGE_FILE_NAME,
+					FILE_ACTION_REMOVED);
+			}
 		}
+
+		/* The use of "zp" is only used as identity, not referenced. */
+		if (isdir) {
+			dprintf("Removing all notifications for directory: %p\n", zp);
+			FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, zp);
+		}
+		// Finish with Notifications
+		dprintf("Removing notifications for file\n");
+		FsRtlNotifyFullChangeDirectory(zmo->NotifySync, &zmo->DirNotifyList,
+			zp, NULL, FALSE, FALSE, 0, NULL, NULL, NULL);
+
 		VN_RELE(vp);
 		Status = STATUS_SUCCESS;
 	}
@@ -4462,8 +4438,6 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			 *
 			 */
 
-			vnode_lock(vp);
-
 			if (!vnode_isvroot(vp)) {
 
 				/* Take hold from above, we will release in recycle */
@@ -4473,9 +4447,6 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 				if (vnode_deleted(vp)) {
 
 					atomic_inc_64(&delete_pending);
-
-					// Mark it dead, stopping grabs
-					vnode_unlock(vp);
 
 					/*
 					 * This call to delete_entry may release the vp/zp in one case
@@ -4492,11 +4463,6 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 
 				} else { /* If vp is not deleted */
 
-					vnode_unlock(vp);
-					/* Otherwise, just release memory. */
-					// Only unmount releases root 
-					// Release all non-root vnodes now.
-
 					// Release vp - vnode_recycle expects iocount==1
 					// we don't recycle root (unmount does) or RELE on recycle error
 					if (vnode_isvroot(vp) || (vnode_recycle(vp) != 0)) {
@@ -4509,7 +4475,7 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 
 			} else { /* if vp is not idle */
 				dprintf("IRP_CLOSE but can't close yet. is_empty %d\n", vnode_fileobject_empty(vp, 1));
-				vnode_unlock(vp);
+				Status = STATUS_SUCCESS;
 			}
 			IrpSp->FileObject->FsContext = NULL;
 		}
