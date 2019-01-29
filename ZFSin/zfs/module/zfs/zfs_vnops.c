@@ -2875,14 +2875,16 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				tzp = zp;
 
 			// If marked deleted, skip over node.
-#if 0
+#if 1
 			if ((get_zp == 0) && ZTOV(tzp) && vnode_deleted(ZTOV(tzp))) {
 				skip_this_entry = 1; // FIXME
 				/* We should not show entries that are tagged deleted, which typically
 				 * happens for deleted .exe files (as CCmgr hold on to it).
 				 * Insert code here after finding a clean way to handle it:)
 				 */
-				VN_RELE(ZTOV(tzp));
+				if (get_zp == 0 && tzp != NULL) {
+					VN_RELE(ZTOV(tzp));
+				}
 			}
 #endif
 			// Is it worth warning about failing stat here?

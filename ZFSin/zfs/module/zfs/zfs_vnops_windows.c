@@ -254,6 +254,7 @@ NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 		int nodeadlock = 0;
 		while (zp->z_size == 3 && delete_pending != 0) {
 			dprintf("%s: delete_pending waiting\n", __func__);
+			//vnode_drain?
 			delay(1);
 			if (nodeadlock > 10) break;
 		}
@@ -353,8 +354,13 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		error = zfs_lookup(dvp, word,
 			&vp, &cn, cn.cn_nameiop, NULL, flags);
 
-		if (error != 0) {
-
+		if (error != 0 || vnode_deleted(vp)) {
+			if (vp && vnode_deleted(vp)) {
+				dprintf("deleted, simulating ENOENT\n");
+				error = (vnode_isdir(vp) ? ESRCH : ENOENT);
+				VN_RELE(vp);
+				vp = NULL;
+			}
 			// If we are creating a file, or looking up parent,
 			// allow it not to exist
 			if (finalpartmaynotexist) break;
@@ -4034,9 +4040,16 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	// Keep a copy of the name, so we can send notifications after.
 	int namecopylen = zp->z_name_len;
-	char *namecopy = kmem_alloc(namecopylen, KM_SLEEP);
-	memcpy(namecopy, zp->z_name_cache, namecopylen);
-	int namecopyoffset = zp->z_name_offset;
+
+	// Why can namecopylen be zero here?
+	char *namecopy = NULL;
+	int namecopyoffset = 0;
+
+	if (namecopylen != 0) {
+		namecopy = kmem_alloc(namecopylen, KM_SLEEP);
+		memcpy(namecopy, zp->z_name_cache, namecopylen);
+		namecopyoffset = zp->z_name_offset;
+	}
 
 	// Release final HOLD on item, ready for deletion
 	int isdir = vnode_isdir(vp);
@@ -4052,7 +4065,7 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 		if (error == ENOTEMPTY)
 			error = STATUS_DIRECTORY_NOT_EMPTY;
 
-		if (!error) {
+		if (!error && namecopylen != 0) {
 			dprintf("sending DIR notify: '%s' name '%s'\n", namecopy, &namecopy[namecopyoffset]);
 			zfs_send_notify(zfsvfs, namecopy, namecopyoffset,
 				FILE_NOTIFY_CHANGE_DIR_NAME,
@@ -4062,14 +4075,15 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 		error = zfs_remove(dvp, finalname, NULL, NULL, 0);
 
-		if (error == 0) {
+		if (!error && namecopylen != 0) {
 			dprintf("sending FILE notify: '%s' name '%s'\n", namecopy, &namecopy[namecopyoffset]);
 			zfs_send_notify(zfsvfs, namecopy, namecopyoffset,
 				FILE_NOTIFY_CHANGE_FILE_NAME,
 				FILE_ACTION_REMOVED);
 		}
 	}
-	kmem_free(namecopy, namecopylen);
+	if (namecopylen != 0) 
+		kmem_free(namecopy, namecopylen);
 
 	// Release parent.
 	VN_RELE(dvp);
@@ -4446,20 +4460,11 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			 * and both the ImageSectionObject and DataSectionObject of the SectionObjectPointers
 			 * field from the FILE_OBJECT is zero, the filter driver may then delete the per-file context data.
 			 *
-			 * To avoid racing with someone grabbing this vp, we grab the lock
-			 * and tag it REJECT, this way it can not be grabbed by someone else.
 			 */
 
-			vnode_wait_lock(vp);
-			if (vnode_isidle(vp) &&
-				vnode_fileobject_empty(vp, 1) && !vnode_isvroot(vp) &&
-				(IrpSp->FileObject->SectionObjectPointer == NULL ||
-				(IrpSp->FileObject->SectionObjectPointer->ImageSectionObject == NULL &&
-					IrpSp->FileObject->SectionObjectPointer->DataSectionObject == NULL))) {
+			vnode_lock(vp);
 
-				// I believe with the iocounts fixed, the following ASSERT can
-				// be removed, and the above "if" corrected to include iocount.
-				ASSERT(vp->v_iocount <= 1);
+			if (!vnode_isvroot(vp)) {
 
 				/* Take hold from above, we will release in recycle */
 				*hold_vp = NULL;
@@ -4470,7 +4475,6 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 					atomic_inc_64(&delete_pending);
 
 					// Mark it dead, stopping grabs
-					vnode_setreject(vp);
 					vnode_unlock(vp);
 
 					/*
@@ -4492,7 +4496,6 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 					/* Otherwise, just release memory. */
 					// Only unmount releases root 
 					// Release all non-root vnodes now.
-					dprintf("release memory for vp %p\n", vp);
 
 					// Release vp - vnode_recycle expects iocount==1
 					// we don't recycle root (unmount does) or RELE on recycle error
@@ -5048,14 +5051,6 @@ fsDispatcher(
 			return STATUS_INVALID_PARAMETER;
 
 		} else {
-
-			if (vnode_reject(hold_vp)) {
-				// If we were given a vp, and its marked as REJECT, fail this OP.
-				VN_RELE(hold_vp);
-				Irp->IoStatus.Information = 0;
-				hold_vp = NULL;
-				return STATUS_INVALID_PARAMETER;
-			}
 
 			// Add FO to vp, if this is the first we've heard of it
 			vnode_fileobject_add(IrpSp->FileObject->FsContext, IrpSp->FileObject);

@@ -92,7 +92,6 @@ struct vnode {
 	uint32_t v_unlink;
 	uint32_t v_unused;
 	void *v_data;
-	kcondvar_t v_iocount_cv; // Used with deletes.
 	uint64_t v_id;
 
 	// Other Windows entries
@@ -556,6 +555,7 @@ int vnode_isrecycled(vnode_t *vp);
 #define WRITECLOSE      0x0004          /* vflush: only close writeable files */
 #define SKIPSWAP        0x0008          /* vflush: skip vnodes marked VSWAP */
 #define SKIPROOT        0x0010          /* vflush: skip root vnodes marked VROOT */
+#define VNODELOCKED     0x0100          /* vflush: vnode already locked call to recycle */
 #define NULLVP NULL
 
 int     vflush(struct mount *mp, struct vnode *skipvp, int flags);
@@ -564,9 +564,7 @@ int vnode_fileobject_remove(vnode_t *vp, void *fo);
 int vnode_fileobject_empty(vnode_t *vp, int locked);
 
 void vnode_lock(vnode_t *vp);
-void vnode_wait_lock(vnode_t *vp);
 void vnode_unlock(vnode_t *vp);
-int vnode_reject(vnode_t *vp);
-void vnode_setreject(vnode_t *vp);
+void vnode_drain_delayclose(void);
 
 #endif /* SPL_VNODE_H */

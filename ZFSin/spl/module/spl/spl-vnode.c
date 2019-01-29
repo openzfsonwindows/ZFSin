@@ -768,17 +768,6 @@ int vnode_isidle(vnode_t *vp)
 	return 0;
 }
 
-int vnode_reject(vnode_t *vp)
-{
-	return (vp->v_flags & VNODE_REJECT);
-}
-
-void vnode_setreject(vnode_t *vp)
-{
-	vp->v_flags |= VNODE_REJECT;
-}
-
-
 #ifdef DEBUG_IOCOUNT
 int vnode_getwithref(vnode_t *vp, char *file, int line)
 #else
@@ -789,8 +778,6 @@ int vnode_getwithref(vnode_t *vp)
 	int error = 0;
 	mutex_enter(&vp->v_mutex);
 	if ((vp->v_flags & VNODE_DEAD))
-		error = ENOENT;
-	else if ((vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
 		error = ENOENT;
 	else {
 #ifdef DEBUG_IOCOUNT
@@ -824,8 +811,6 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 		error = ENOENT;
 	else if (id != vp->v_id)
 		error = ENOENT;
-	/* else if ((vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
-		error = ESRCH;*/
 	else {
 #ifdef DEBUG_IOCOUNT
 		if (vp) {
@@ -838,10 +823,6 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 		atomic_inc_32(&vp->v_iocount);
 #endif
 	}
-	// If we release last hold with REJECT, we will remove REJECT.
-	// It is expected it removes last hold in vnode_recycle.
-	if (error == 0 && (vp->v_flags & VNODE_REJECT) && (vp->v_iocount == 0))
-		vp->v_flags &= ~VNODE_REJECT;
 
 	mutex_exit(&vp->v_mutex);
 	return error;
@@ -856,6 +837,7 @@ int vnode_put(vnode_t *vp)
 #endif
 {
 	KIRQL OldIrql;
+	int calldrain = 0;
 	ASSERT(!(vp->v_flags & VNODE_DEAD));
 	ASSERT(vp->v_iocount > 0);
 	ASSERT((vp->v_flags & ~VNODE_VALIDBITS) == 0);
@@ -874,9 +856,7 @@ int vnode_put(vnode_t *vp)
 
 	if (vp->v_iocount == 0) {
 
-		// If we release last hold with REJECT, we will remove REJECT.
-		// It is expected it removes last hold in vnode_recycle.
-		vp->v_flags &= ~VNODE_REJECT;
+		calldrain = 1;
 
 		if (vp->v_flags & VNODE_NEEDINACTIVE) {
 			vp->v_flags &= ~VNODE_NEEDINACTIVE;
@@ -900,12 +880,12 @@ int vnode_put(vnode_t *vp)
 		}
 	}
 #endif
-
-	// We might have waiters, so wake them up.
-	if (vnode_deleted(vp))
-		cv_broadcast(&vp->v_iocount_cv);
-
 	mutex_exit(&vp->v_mutex);
+
+	// Temporarily - should perhaps be own thread?
+	if (calldrain)
+		vnode_drain_delayclose();
+
 	return 0;
 }
 
@@ -922,7 +902,11 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		dprintf("%s: marking %p VNODE_MARKTERM\n", __func__, vp);
 	}
 
-	mutex_enter(&vp->v_mutex);
+	// Already locked calling in...
+	if (!(flags & VNODELOCKED)) {
+		mutex_enter(&vnode_all_list_lock);
+		mutex_enter(&vp->v_mutex);
+	}
 
 	// We will only reclaim idle nodes, and not mountpoints(ROOT)
 	if ((flags & FORCECLOSE) ||
@@ -933,9 +917,15 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 			((vp->v_flags&VNODE_MARKROOT) == 0))) {
 
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
-		vp->v_flags &= ~VNODE_REJECT;
-		vp->v_iocount = 0; 
+		vp->v_iocount = 0;
+
+		list_remove(&vnode_all_list, vp);
+
 		mutex_exit(&vp->v_mutex);
+
+		if (!(flags & VNODELOCKED)) {
+			mutex_exit(&vnode_all_list_lock);
+		}
 
 		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
 		FsRtlUninitializeFileLock(&vp->lock);
@@ -954,12 +944,6 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 			panic("vnode_recycle: cannot reclaim\n"); // My fav panic from OSX
 
 
-		mutex_enter(&vnode_all_list_lock);
-		list_remove(&vnode_all_list, vp);
-		mutex_exit(&vnode_all_list_lock);
-		// mutex does not need releasing.
-
-
 		vp->v_mount = NULL;
 		KIRQL OldIrql;
 		mutex_enter(&vp->v_mutex);
@@ -968,7 +952,6 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		mutex_exit(&vp->v_mutex);
 
 		mutex_destroy(&vp->v_mutex);
-		cv_destroy(&vp->v_iocount_cv);
 
 		// Free vp memory
 		kmem_free(vp, sizeof(*vp));
@@ -976,7 +959,11 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		atomic_dec_64(&vnode_active);
 		return 0;
 	}
+
 	mutex_exit(&vp->v_mutex);
+	if (!(flags & VNODELOCKED)) {
+		mutex_exit(&vnode_all_list_lock);
+	}
 
 	return -1;
 }
@@ -1001,48 +988,38 @@ static int vnode_fileobject_compare(const void *arg1, const void *arg2)
 
 void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode **vpp)
 {
-	*vpp = kmem_zalloc(sizeof(**vpp), KM_SLEEP);  // FIXME Change me to kmem_cache
-	(*vpp)->v_mount = mp;
-	(*vpp)->v_data = v_data;
-	(*vpp)->v_type = type;
-	(*vpp)->v_id = atomic_inc_64_nv(&(vnode_vid_counter));
-	//KeInitializeSpinLock(&(*vpp)->v_spinlock);
-	mutex_init(&(*vpp)->v_mutex, NULL, MUTEX_DEFAULT, NULL);
-	cv_init(&(*vpp)->v_iocount_cv, NULL, CV_DEFAULT, NULL);
-	atomic_inc_32(&(*vpp)->v_iocount);
+	struct vnode *vp;
+	vp = kmem_zalloc(sizeof(struct vnode), KM_SLEEP);  // FIXME Change me to kmem_cache
+	*vpp = vp;
+	vp->v_mount = mp;
+	vp->v_data = v_data;
+	vp->v_type = type;
+	vp->v_id = atomic_inc_64_nv(&(vnode_vid_counter));
+	mutex_init(&vp->v_mutex, NULL, MUTEX_DEFAULT, NULL);
+	atomic_inc_32(&vp->v_iocount);
 	atomic_inc_64(&vnode_active);
-	avl_create(&(*vpp)->v_fileobjects, vnode_fileobject_compare,
+	avl_create(&vp->v_fileobjects, vnode_fileobject_compare,
 		sizeof(vnode_fileobjects_t), offsetof(vnode_fileobjects_t, avlnode));
+	list_link_init(&vp->v_list);
 
 	if (flags & VNODE_MARKROOT)
-		(*vpp)->v_flags |= VNODE_MARKROOT;
+		vp->v_flags |= VNODE_MARKROOT;
 
 	mutex_enter(&vnode_all_list_lock);
-	list_insert_tail(&vnode_all_list, *vpp);
+	list_insert_tail(&vnode_all_list, vp);
 	mutex_exit(&vnode_all_list_lock);
 
 	// Initialise the Windows specific data.
-	ExInitializeFastMutex(&(*vpp)->AdvancedFcbHeaderMutex);
-	FsRtlSetupAdvancedHeader(&(*vpp)->FileHeader, &(*vpp)->AdvancedFcbHeaderMutex);
+	ExInitializeFastMutex(&vp->AdvancedFcbHeaderMutex);
+	FsRtlSetupAdvancedHeader(&vp->FileHeader, &vp->AdvancedFcbHeaderMutex);
 
-	FsRtlInitializeFileLock(&(*vpp)->lock, NULL, NULL);
-	(*vpp)->FileHeader.Resource = &(*vpp)->resource;
-	(*vpp)->FileHeader.PagingIoResource = &(*vpp)->pageio_resource;
-	ExInitializeResourceLite((*vpp)->FileHeader.Resource);
-	ExInitializeResourceLite((*vpp)->FileHeader.PagingIoResource);
-	ASSERT0(((uint64_t)(*vpp)->FileHeader.Resource) & 7);
+	FsRtlInitializeFileLock(&vp->lock, NULL, NULL);
+	vp->FileHeader.Resource = &vp->resource;
+	vp->FileHeader.PagingIoResource = &vp->pageio_resource;
+	ExInitializeResourceLite(vp->FileHeader.Resource);
+	ExInitializeResourceLite(vp->FileHeader.PagingIoResource);
+	ASSERT0(((uint64_t)vp->FileHeader.Resource) & 7);
 
-#if 0
-	// Release vnodes if needed
-	if (vnode_active >= vnode_max) {
-		uint64_t reclaims = 0;
-		int isbusy = 0;
-
-		dprintf("%s: vnode_max reclaim processing\n", __func__);
-
-		vflush(NULL, NULL, SKIPROOT|SKIPSYSTEM);
-	}
-#endif
 }
 
 int     vnode_isvroot(vnode_t *vp)
@@ -1142,6 +1119,54 @@ vnode_rele(vnode_t *vp)
 	mutex_exit(&vp->v_mutex);
 }
 
+void vnode_drain_delayclose(void)
+{
+	struct vnode *vp, *next = NULL;
+	int ret;
+	static hrtime_t last = 0;
+	const hrtime_t interval = SEC2NSEC(2);
+	const hrtime_t curtime = gethrtime();
+
+	mutex_enter(&vnode_all_list_lock);
+	// This should probably be its own thread, but for now, run once every 2s
+	if (curtime - last < interval) {
+		mutex_exit(&vnode_all_list_lock);
+		return;
+	}
+	last = curtime;
+
+	dprintf("%s: scanning\n", __func__);
+
+	for (vp = list_head(&vnode_all_list);
+		vp;
+		vp = next) {
+
+		next = list_next(&vnode_all_list, vp);
+
+		// Make sure everything about the vp has been released.
+		vnode_lock(vp);
+		if ((vp->v_flags & VNODE_MARKTERM) &&
+			!(vp->v_flags & VNODE_DEAD) &&
+			(vp->v_iocount == 0) &&
+			(vp->v_usecount == 0) &&
+			vnode_fileobject_empty(vp, /* locked */ 1) && 
+			!vnode_isvroot(vp) &&
+			(vp->SectionObjectPointers.ImageSectionObject == NULL) &&
+			(vp->SectionObjectPointers.DataSectionObject == NULL)) {
+			// We are ready to let go
+			dprintf("%s: drain %vp\n", __func__, vp);
+
+			// Pass VNODELOCKED as we hold vp, recycle will unlock.
+			ret = vnode_recycle_int(vp, VNODELOCKED);
+			// If successful, vp is freed. Do not use vp from here:
+
+		} else {
+			vnode_unlock(vp);
+		}
+	}
+	mutex_exit(&vnode_all_list_lock);
+}
+
 int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 {
 	// Iterate the vnode list and call reclaim
@@ -1183,9 +1208,9 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 			while ((node = avl_destroy_nodes(&rvp->v_fileobjects, &cookie))	!= NULL) {
 				kmem_free(node, sizeof(*node));
 			}
-			mutex_exit(&rvp->v_mutex);
 
-			isbusy = vnode_recycle_int(rvp, flags & FORCECLOSE);
+			// Keep lock on vp for recycle, recycle will release.
+			isbusy = vnode_recycle_int(rvp, (flags & FORCECLOSE) | VNODELOCKED);
 			mutex_enter(&vnode_all_list_lock);
 			if (!isbusy) {
 				reclaims++;
@@ -1255,24 +1280,6 @@ int vnode_isrecycled(vnode_t *vp)
 void vnode_lock(vnode_t *vp)
 {
 	mutex_enter(&vp->v_mutex);
-}
-
-/*
- * Here we grab a lock, and wait for iocount to drain, if vp
- * has been marked for deletion.
- * We expect caller to hold iocount, so we wait for iocount==1.
- * Does this even need to be separate from vnode_lock() ?
- */
-void vnode_wait_lock(vnode_t *vp)
-{
-	mutex_enter(&vp->v_mutex);
-	while (vnode_deleted(vp) &&
-		vp->v_usecount != 0 &&
-		vp->v_iocount != 1) {
-		// Wait for vnode_put to wake us up.
-		cv_wait(&vp->v_iocount_cv, &vp->v_mutex);
-	}
-
 }
 
 //int vnode_trylock(vnode_t *vp);

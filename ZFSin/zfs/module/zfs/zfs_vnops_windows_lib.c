@@ -2734,7 +2734,7 @@ int zfs_build_path(znode_t *start_zp, znode_t *start_parent, char **fullpath, ui
 		*start_zp_offset = *start_zp_offset - index;
 	if (returnsize)
 		*returnsize = size;
-
+	ASSERT(size != 0);
 	*fullpath = kmem_alloc(size, KM_SLEEP);
 	memmove(*fullpath, &work[index], size);
 	kmem_free(work, MAXPATHLEN * 2);
