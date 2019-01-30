@@ -1448,6 +1448,27 @@ int vnode_fileobject_empty(vnode_t *vp, int locked)
 	return ret;
 }
 
+// Get cached EA size, returns 1 is it is cached, 0 if not.
+int vnode_easize(struct vnode *vp, uint64_t *size)
+{
+	if (vp->v_flags & VNODE_EASIZE) {
+		*size = vp->v_easize;
+		return 1;
+	}
+	return 0;
+}
+
+void vnode_set_easize(struct vnode *vp, uint64_t size)
+{
+	vp->v_easize = size;
+	vp->v_flags |= VNODE_EASIZE;
+}
+
+void vnode_clear_easize(struct vnode *vp)
+{
+	vp->v_flags &= ~VNODE_EASIZE;
+}
+
 #ifdef DEBUG_IOCOUNT
 void vnode_check_iocount(void)
 {

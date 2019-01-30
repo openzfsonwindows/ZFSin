@@ -2524,7 +2524,6 @@ out:
 		if (vnode_recycle(vp) != 0)
 			VN_RELE(vp);
 	} else {
-		vp->v_flags &= ~VNODE_REJECT;
 		VN_RELE(vp);
 	}
 	if (zfsvfs->z_os->os_sync == ZFS_SYNC_ALWAYS)
@@ -2918,7 +2917,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					TIME_UNIX_TO_WINDOWS(ctime, eodp->ChangeTime.QuadPart);
 					TIME_UNIX_TO_WINDOWS(crtime, eodp->CreationTime.QuadPart);
 					TIME_UNIX_TO_WINDOWS(tzp->z_atime, eodp->LastAccessTime.QuadPart);
-					eodp->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0; // Magic code to change dir icon to link
+					eodp->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : xattr_getsize(ZTOV(tzp)); // Magic code to change dir icon to link
 					eodp->FileAttributes = zfs_getwinflags(tzp);
 					nameptr = eodp->FileName;
 					eodp->FileNameLength = namelenholder;
@@ -2937,7 +2936,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					TIME_UNIX_TO_WINDOWS(ctime, fibdi->ChangeTime.QuadPart);
 					TIME_UNIX_TO_WINDOWS(crtime, fibdi->CreationTime.QuadPart);
 					TIME_UNIX_TO_WINDOWS(tzp->z_atime, fibdi->LastAccessTime.QuadPart);
-					fibdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0;
+					fibdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : xattr_getsize(ZTOV(tzp));
 					fibdi->FileAttributes = zfs_getwinflags(tzp);
 					fibdi->FileId.QuadPart = objnum;
 					fibdi->FileIndex = offset;
@@ -2959,7 +2958,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					TIME_UNIX_TO_WINDOWS(ctime, fbdi->ChangeTime.QuadPart);
 					TIME_UNIX_TO_WINDOWS(crtime, fbdi->CreationTime.QuadPart);
 					TIME_UNIX_TO_WINDOWS(tzp->z_atime, fbdi->LastAccessTime.QuadPart);
-					fbdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : 0;
+					fbdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : xattr_getsize(ZTOV(tzp));
 					fbdi->FileAttributes = zfs_getwinflags(tzp);
 					fbdi->FileIndex = offset;
 					fbdi->ShortNameLength = 0;
