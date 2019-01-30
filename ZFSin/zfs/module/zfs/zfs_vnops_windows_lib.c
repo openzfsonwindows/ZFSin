@@ -1978,13 +1978,12 @@ zfs_obtain_xattr(znode_t *dzp, const char *name, mode_t mode, cred_t *cr,
                  vnode_t **vpp, int flag)
 {
 	int error=0;
-#if 0
 	znode_t  *xzp = NULL;
 	zfsvfs_t  *zfsvfs = dzp->z_zfsvfs;
 	zilog_t  *zilog;
 	zfs_dirlock_t  *dl;
 	dmu_tx_t  *tx;
-	struct vnode_attr  vattr;
+	struct vnode_attr  vattr = { 0 };
 	pathname_t cn = { 0 };
 	zfs_acl_ids_t	acl_ids;
 
@@ -1994,9 +1993,9 @@ zfs_obtain_xattr(znode_t *dzp, const char *name, mode_t mode, cred_t *cr,
     ZFS_VERIFY_ZP(dzp);
     zilog = zfsvfs->z_log;
 
-	VATTR_INIT(&vattr);
-	VATTR_SET(&vattr, va_type, VREG);
-	VATTR_SET(&vattr, va_mode, mode & ~S_IFMT);
+	vattr.va_type = VREG;
+	vattr.va_mode = mode & ~S_IFMT;
+	vattr.va_mask = AT_TYPE | AT_MODE;
 
 	if ((error = zfs_acl_ids_create(dzp, 0,
                                     &vattr, cr, NULL, &acl_ids)) != 0) {
@@ -2065,13 +2064,12 @@ zfs_obtain_xattr(znode_t *dzp, const char *name, mode_t mode, cred_t *cr,
 
 	/* The REPLACE error if doesn't exist is ENOATTR */
 	if ((flag & ZEXISTS) && (error == ENOENT))
-		error = ENOATTR;
+		error = STATUS_NO_EAS_ON_FILE;
 
 	if (xzp)
 		*vpp = ZTOV(xzp);
 
     ZFS_EXIT(zfsvfs);
-#endif
 	return (error);
 }
 
@@ -2962,4 +2960,87 @@ err:
 		zfs_freesid(usersid);
 	if (groupsid != NULL)
 		zfs_freesid(groupsid);
+}
+
+// return true if a XATTR name should be skipped
+int xattr_protected(char *name)
+{
+	return 0;
+}
+
+// return true if xattr is a stream (name ends with ":$DATA")
+int xattr_stream(char *name)
+{
+	char tail[] = ":$DATA";
+	int taillen = sizeof(tail);
+	int len;
+
+	if (name == NULL)
+		return 0;
+	len = strlen(name);
+	if (len < taillen)
+		return 0;
+
+	if (strcmp(&name[len - taillen + 1], tail) == 0)
+		return 1;
+
+	return 0;
+}
+
+// Get the size needed for EA, check first if it is
+// cached in vnode. Otherwise, compute it and set.
+uint64_t xattr_getsize(struct vnode *vp)
+{
+	uint64_t ret = 0;
+	struct vnode *xdvp = NULL, *xvp = NULL;
+	znode_t *zp;
+	zfsvfs_t *zfsvfs;
+	zap_cursor_t  zc;
+	zap_attribute_t  za;
+	objset_t  *os;
+
+	if (vp == NULL) return 0;
+
+	// Cached? Easy, use it
+	if (vnode_easize(vp, &ret))
+		return ret;
+
+	zp = VTOZ(vp);
+	zfsvfs = zp->z_zfsvfs;
+
+	/*
+	 * Iterate through all the xattrs, adding up namelengths and value sizes.
+	 * There was some suggestion that this should be 4 + (5 + name + valuelen)
+	 * but that no longer appears to be true. The returned value is used directly
+	 * with IRP_MJ_QUERY_EA and we will have to return short.
+	 * We will return the true space needed.
+	 */
+	if (zfs_get_xattrdir(zp, &xdvp, NULL, 0) != 0) {
+		goto out;
+	}
+
+	os = zfsvfs->z_os;
+
+	for (zap_cursor_init(&zc, os, VTOZ(xdvp)->z_id);
+		zap_cursor_retrieve(&zc, &za) == 0; zap_cursor_advance(&zc)) {
+
+		if (xattr_protected(za.za_name))
+			continue;	 /* skip */
+		if (xattr_stream(za.za_name))
+			continue;	 /* skip */
+
+		if (zfs_dirlook(VTOZ(xdvp), za.za_name, &xvp, 0, NULL, NULL) == 0) {
+			ret = ((ret + 3) & ~3); // aligned to 4 bytes.
+			ret += offsetof(FILE_FULL_EA_INFORMATION, EaName) + strlen(za.za_name) + 1 + VTOZ(xvp)->z_size;
+			VN_RELE(xvp);
+		}
+	}
+	zap_cursor_fini(&zc);
+	VN_RELE(xdvp);
+
+out:
+	// Cache result, even if failure (cached as 0).
+	vnode_set_easize(vp, ret);
+
+	return ret;
 }

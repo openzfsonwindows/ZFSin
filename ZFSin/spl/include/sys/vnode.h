@@ -57,7 +57,7 @@
 #define VNODE_NEEDINACTIVE	4
 #define VNODE_MARKROOT		8
 #define VNODE_SIZECHANGE    16
-#define VNODE_REJECT	    32
+#define VNODE_EASIZE	    32
 #define VNODE_VALIDBITS		63
 
 /* v_unlink flags */
@@ -93,6 +93,7 @@ struct vnode {
 	uint32_t v_unused;
 	void *v_data;
 	uint64_t v_id;
+	uint64_t v_easize;
 	hrtime_t v_age;      // How long since entered DEAD
 
 	// Other Windows entries
@@ -567,5 +568,8 @@ int vnode_fileobject_empty(vnode_t *vp, int locked);
 void vnode_lock(vnode_t *vp);
 void vnode_unlock(vnode_t *vp);
 int vnode_drain_delayclose(int);
+int vnode_easize(struct vnode *vp, uint64_t *size);
+void vnode_set_easize(struct vnode *vp, uint64_t size);
+void vnode_clear_easize(struct vnode *vp);
 
 #endif /* SPL_VNODE_H */

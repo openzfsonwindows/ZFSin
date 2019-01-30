@@ -144,7 +144,7 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 
 	PAGED_CODE();
 
-	xprintf("%s: open of '%s' (physpath '%s')\n", __func__, vd->vdev_path, vd->vdev_physpath ? vd->vdev_physpath : "");
+	dprintf("%s: open of '%s' (physpath '%s')\n", __func__, vd->vdev_path, vd->vdev_physpath ? vd->vdev_physpath : "");
 	/*
 	* We must have a pathname, and it must be absolute.
 	* It can also start with # for partition encoded paths
@@ -373,7 +373,7 @@ skip_open:
 	if (!pbsize) pbsize = DEV_BSIZE;
 
 	*ashift = highbit64(MAX(pbsize, SPA_MINBLOCKSIZE)) - 1;
-	xprintf("%s: picked ashift %llu for device\n", __func__, *ashift);
+	dprintf("%s: picked ashift %llu for device\n", __func__, *ashift);
 
 	/*
 	* Clear the nowritecache bit, so that on a vdev_reopen() we will
