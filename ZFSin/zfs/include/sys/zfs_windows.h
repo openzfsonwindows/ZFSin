@@ -42,8 +42,9 @@ DECLARE_GLOBAL_CONST_UNICODE_STRING(ZFSVolumeName, VOLUME_LABEL);
 #define ZFS_DIRLIST_MAGIC 0x6582feac
 struct zfs_dirlist {
 	uint32_t magic;				// Identifier
-	uint64_t uio_offset;		// Directory list offset
 	uint32_t dir_eof;			// Directory listing completed?
+	uint64_t uio_offset;		// Directory list offset
+	uint64_t ea_index;			// EA list offset
 	int ContainsWildCards;      // searchname has wildcards
 	UNICODE_STRING searchname;  // Search pattern
 };
@@ -70,5 +71,9 @@ uint64_t zfs_blksz(znode_t *zp);
 int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp);
 
 int zfs_build_path(znode_t *start_zp, znode_t *start_parent, char **fullpath, uint32_t *returnsize, uint32_t *start_zp_offset);
+
+
+int xattr_protected(char *name);
+int xattr_stream(char *name);
 
 #endif

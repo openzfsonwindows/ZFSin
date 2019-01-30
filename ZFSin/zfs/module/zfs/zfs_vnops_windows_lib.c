@@ -1978,13 +1978,12 @@ zfs_obtain_xattr(znode_t *dzp, const char *name, mode_t mode, cred_t *cr,
                  vnode_t **vpp, int flag)
 {
 	int error=0;
-#if 0
 	znode_t  *xzp = NULL;
 	zfsvfs_t  *zfsvfs = dzp->z_zfsvfs;
 	zilog_t  *zilog;
 	zfs_dirlock_t  *dl;
 	dmu_tx_t  *tx;
-	struct vnode_attr  vattr;
+	struct vnode_attr  vattr = { 0 };
 	pathname_t cn = { 0 };
 	zfs_acl_ids_t	acl_ids;
 
@@ -1994,9 +1993,9 @@ zfs_obtain_xattr(znode_t *dzp, const char *name, mode_t mode, cred_t *cr,
     ZFS_VERIFY_ZP(dzp);
     zilog = zfsvfs->z_log;
 
-	VATTR_INIT(&vattr);
-	VATTR_SET(&vattr, va_type, VREG);
-	VATTR_SET(&vattr, va_mode, mode & ~S_IFMT);
+	vattr.va_type = VREG;
+	vattr.va_mode = mode & ~S_IFMT;
+	vattr.va_mask = AT_TYPE | AT_MODE;
 
 	if ((error = zfs_acl_ids_create(dzp, 0,
                                     &vattr, cr, NULL, &acl_ids)) != 0) {
@@ -2065,13 +2064,12 @@ zfs_obtain_xattr(znode_t *dzp, const char *name, mode_t mode, cred_t *cr,
 
 	/* The REPLACE error if doesn't exist is ENOATTR */
 	if ((flag & ZEXISTS) && (error == ENOENT))
-		error = ENOATTR;
+		error = STATUS_NO_EAS_ON_FILE;
 
 	if (xzp)
 		*vpp = ZTOV(xzp);
 
     ZFS_EXIT(zfsvfs);
-#endif
 	return (error);
 }
 
@@ -2962,4 +2960,29 @@ err:
 		zfs_freesid(usersid);
 	if (groupsid != NULL)
 		zfs_freesid(groupsid);
+}
+
+// return true if a XATTR name should be skipped
+int xattr_protected(char *name)
+{
+	return 0;
+}
+
+// return true if xattr is a stream (name ends with ":$DATA")
+int xattr_stream(char *name)
+{
+	char tail[] = ":$DATA";
+	int taillen = sizeof(tail);
+	int len;
+
+	if (name == NULL)
+		return 0;
+	len = strlen(name);
+	if (len < taillen)
+		return 0;
+
+	if (strcmp(&name[len - taillen + 1], tail) == 0)
+		return 1;
+
+	return 0;
 }
