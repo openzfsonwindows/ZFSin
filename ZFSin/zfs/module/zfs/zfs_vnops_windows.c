@@ -4323,16 +4323,18 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 			// Mark it as deleted, zfs_vnop_lookup() will return error now.
 			vnode_setdeleted(vp);
 
-			if (isdir) {
-				dprintf("sending DIR notify: '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
-				zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
-					FILE_NOTIFY_CHANGE_DIR_NAME,
-					FILE_ACTION_REMOVED);
-			} else {
-				dprintf("sending FILE notify: '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
-				zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
-					FILE_NOTIFY_CHANGE_FILE_NAME,
-					FILE_ACTION_REMOVED);
+			if (zp->z_name_cache != NULL) {
+				if (isdir) {
+					dprintf("sending DIR notify: '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
+					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+						FILE_NOTIFY_CHANGE_DIR_NAME,
+						FILE_ACTION_REMOVED);
+				} else {
+					dprintf("sending FILE notify: '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
+					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+						FILE_NOTIFY_CHANGE_FILE_NAME,
+						FILE_ACTION_REMOVED);
+				}
 			}
 		}
 

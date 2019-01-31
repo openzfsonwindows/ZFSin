@@ -93,6 +93,7 @@ struct vnode {
 	uint32_t v_unused;
 	void *v_data;
 	uint64_t v_id;
+	hrtime_t v_age;      // How long since entered DEAD
 
 	// Other Windows entries
 	// Must be 8byte aligned
