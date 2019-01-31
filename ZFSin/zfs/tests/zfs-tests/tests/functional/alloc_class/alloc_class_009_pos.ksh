@@ -47,7 +47,7 @@ do
 		special_args="${CLASS_DISK0}"
 	fi
 
-	log_must zpool create $TESTPOOL $type $ZPOOL_DISKS \
+	log_must zpool create -f $TESTPOOL $type $ZPOOL_DISKS \
 	    special $stype $sdisks
 	log_must zpool export $TESTPOOL
 	log_must zpool import -d $TEST_BASE_DIR -s $TESTPOOL

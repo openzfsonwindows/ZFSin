@@ -24,7 +24,7 @@
 
 verify_runnable "global"
 
-claim= "Removing a special device from a pool succeeds."
+claim="Removing a special device from a pool succeeds."
 
 log_assert $claim
 log_onexit cleanup
@@ -46,7 +46,7 @@ typeset -l blocks=25
 log_must zfs create -o special_small_blocks=32K -o recordsize=32K \
 	$TESTPOOL/$TESTFS
 for i in 1 2 3 4; do
-	log_must dd if=/dev/urandom of=/$TESTPOOL/$TESTFS/testfile.$i bs=1M \
+	log_must dd if=/dev/urandom of=/$TESTPOOL/$TESTFS/testfile.$i bs=1048576 \
 	    count=$blocks
 	((blocks = blocks + 25))
 done
@@ -66,7 +66,7 @@ sleep 5
 log_must sync_pool $TESTPOOL
 sleep 1
 
-log_must zdb -bbcc $TESTPOOL
+# log_must zdb -bbcc $TESTPOOL
 log_must zpool destroy -f "$TESTPOOL"
 
 log_pass $claim

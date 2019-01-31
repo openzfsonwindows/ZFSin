@@ -19,8 +19,8 @@
 
 function disk_setup
 {
-	truncate -s $ZPOOL_DEVSIZE $ZPOOL_DISKS
-	truncate -s $CLASS_DEVSIZE $CLASS_DISKS
+	$TRUNCATE -s $ZPOOL_DEVSIZE $ZPOOL_DISKS
+	$TRUNCATE -s $CLASS_DEVSIZE $CLASS_DISKS
 }
 
 function disk_cleanup

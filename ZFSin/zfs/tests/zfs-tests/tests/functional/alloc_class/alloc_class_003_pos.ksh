@@ -42,7 +42,7 @@ do
 		log_must zpool iostat -H $TESTPOOL $CLASS_DISK1
 		log_must zpool iostat -H $TESTPOOL $CLASS_DISK2
 	elif [ "$type" = "raidz" ]; then
-		log_must zpool add $TESTPOOL special mirror \
+		log_must zpool add -f $TESTPOOL special mirror \
 		    $CLASS_DISK0 $CLASS_DISK1
 		log_must zpool iostat -H $TESTPOOL $CLASS_DISK0
 		log_must zpool iostat -H $TESTPOOL $CLASS_DISK1

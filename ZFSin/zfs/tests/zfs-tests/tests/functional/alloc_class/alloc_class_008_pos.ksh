@@ -46,9 +46,9 @@ do
 		create_disks="${CLASS_DISK0}"
 		added_disks="${CLASS_DISK1}"
 	fi
-	log_must zpool create $TESTPOOL $type $ZPOOL_DISKS \
+	log_must zpool create -f $TESTPOOL $type $ZPOOL_DISKS \
 	    special $special_type $create_disks
-	log_must zpool add $TESTPOOL special $special_type $added_disks
+	log_must zpool add -f $TESTPOOL special $special_type $added_disks
 	log_must zpool iostat $TESTPOOL $added_disks
 	log_must zpool destroy -f $TESTPOOL
 done

@@ -31,7 +31,7 @@ log_assert $claim
 log_onexit cleanup
 
 log_must disk_setup
-log_must zpool create $TESTPOOL raidz $ZPOOL_DISKS special mirror \
+log_must zpool create -f $TESTPOOL raidz $ZPOOL_DISKS special mirror \
     $CLASS_DISK0 $CLASS_DISK1
 log_must display_status "$TESTPOOL"
 log_must zpool destroy -f "$TESTPOOL"

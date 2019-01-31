@@ -49,11 +49,11 @@ do
 		sdisks="${CLASS_DISK0}"
 	fi
 
-	log_must zpool create $TESTPOOL $type $ZPOOL_DISKS \
+	log_must zpool create -f $TESTPOOL $type $ZPOOL_DISKS \
 	    special $stype $sdisks
 
-	ac_value="$(zpool get all -H -o property,value | \
-	    egrep allocation_classes | nawk '{print $2}')"
+	ac_value="$(zpool get -H -o property,value all | \
+	    egrep allocation_classes | $NAWK '{print $2}')"
 	if [ "$ac_value" = "active" ]; then
 		log_note "feature@allocation_classes is active"
 	else

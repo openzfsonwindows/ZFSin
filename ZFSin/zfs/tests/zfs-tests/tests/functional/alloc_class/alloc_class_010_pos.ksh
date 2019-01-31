@@ -32,7 +32,7 @@ log_onexit cleanup
 
 log_must disk_setup
 
-log_must zpool create $TESTPOOL raidz $ZPOOL_DISKS special mirror \
+log_must zpool create -f $TESTPOOL raidz $ZPOOL_DISKS special mirror \
 	$CLASS_DISK0 $CLASS_DISK1
 
 for value in 0 512 1024 2048 4096 8192 16384 32768 65536 131072
