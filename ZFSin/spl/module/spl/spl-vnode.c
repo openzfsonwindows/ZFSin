@@ -38,6 +38,10 @@
 #include <sys/zfs_znode.h>
 #endif
 
+
+//#define FIND_MAF
+
+
 /* Counter for unique vnode ID */
 static uint64_t vnode_vid_counter = 0;
 
@@ -819,6 +823,10 @@ int vnode_getwithref(vnode_t *vp)
 {
 	KIRQL OldIrql;
 	int error = 0;
+#ifdef FIND_MAF
+	ASSERT(!(vp->v_flags & 0x8000));
+#endif
+
 	mutex_enter(&vp->v_mutex);
 	if ((vp->v_flags & VNODE_DEAD))
 		error = ENOENT;
@@ -848,6 +856,10 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 {
 	KIRQL OldIrql;
 	int error = 0;
+
+#ifdef FIND_MAF
+	ASSERT(!(vp->v_flags & 0x8000));
+#endif
 
 	mutex_enter(&vp->v_mutex);
 	if ((vp->v_flags & VNODE_DEAD))
@@ -962,8 +974,6 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
 		vp->v_iocount = 0;
 
-		list_remove(&vnode_all_list, vp);
-
 		mutex_exit(&vp->v_mutex);
 
 		if (!(flags & VNODELOCKED)) {
@@ -993,10 +1003,20 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		ASSERT(avl_is_empty(&vp->v_fileobjects));
 		mutex_exit(&vp->v_mutex);
 
-		// Free vp memory
-		kmem_cache_free(vnode_cache, vp);
+#ifdef FIND_MAF
+		vp->v_flags |= 0x8000;
+#endif
 
-		atomic_dec_64(&vnode_active);
+		/*
+		 * Windows has a habit of copying FsContext (vp) without our knowledge and attempt
+		 * To call fsDispatcher. We notice in vnode_getwithref(), which calls mutex_enter
+		 * so we can not free the vp right here like we want to, or that would be a MAF.
+		 * So we let it linger and age, there is no great way to know for sure that it
+		 * has finished trying.
+		 */
+		dprintf("vp %p left on DEAD list\n", vp);
+		vp->v_age = gethrtime();
+
 		return 0;
 	}
 
@@ -1196,7 +1216,7 @@ int vnode_drain_delayclose(int force)
 			!(vp->v_flags & VNODE_DEAD) &&
 			(vp->v_iocount == 0) &&
 			(vp->v_usecount == 0) &&
-			vnode_fileobject_empty(vp, /* locked */ 1) && 
+			vnode_fileobject_empty(vp, /* locked */ 1) &&
 			!vnode_isvroot(vp) &&
 			(vp->SectionObjectPointers.ImageSectionObject == NULL) &&
 			(vp->SectionObjectPointers.DataSectionObject == NULL)) {
@@ -1208,6 +1228,22 @@ int vnode_drain_delayclose(int force)
 				candidate = 0; // If recycle was ok, this isnt a node we wait for
 
 			// If successful, vp is freed. Do not use vp from here:
+
+		} else if ((vp->v_flags & VNODE_DEAD) &&
+					(vp->v_age != 0) &&
+					(curtime - vp->v_age > SEC2NSEC(5))) { 
+			// Arbitrary time! fixme? It would be nice to know when Windows really wont try this vp again.
+			// fastfat seems to clear up the cache of the parent directory, perhaps this is the missing
+			// bit. It is non-trivial to get parent from here though.
+			
+			//dprintf("age is %llu %d\n", (curtime - vp->v_age), NSEC2SEC(curtime - vp->v_age));
+
+			// Finally free vp.
+			list_remove(&vnode_all_list, vp);
+			vnode_unlock(vp);
+			dprintf("%s: freeing DEAD vp %p\n", __func__, vp);
+			kmem_cache_free(vnode_cache, vp); // Holding all_list_lock, that OK?
+			atomic_dec_64(&vnode_active);
 
 		} else {
 			vnode_unlock(vp);
