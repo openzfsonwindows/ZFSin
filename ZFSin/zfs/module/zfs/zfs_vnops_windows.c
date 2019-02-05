@@ -3068,8 +3068,12 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 		// file_name_information sets FileNameLength, so update size to be ALL struct not NAME struct
 		// However, there is room for one char in the struct, so subtract that from total.
-		Irp->IoStatus.Information = FIELD_OFFSET(FILE_ALL_INFORMATION, NameInformation) + usedspace;
-		//Irp->IoStatus.Information = sizeof(FILE_ALL_INFORMATION) + usedspace - 2;
+		Irp->IoStatus.Information = 
+			FIELD_OFFSET(FILE_ALL_INFORMATION, NameInformation) +
+			FIELD_OFFSET(FILE_NAME_INFORMATION, FileName) + 
+			usedspace;
+		//FIELD_OFFSET(FILE_ALL_INFORMATION, NameInformation.FileName) + usedspace;
+
 		dprintf("Struct size 0x%x FileNameLen 0x%x Information retsize 0x%x\n",
 			sizeof(FILE_ALL_INFORMATION),
 			all->NameInformation.FileNameLength,
