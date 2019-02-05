@@ -786,6 +786,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			dprintf("%s: failed to find dvp - or dvp is a file\n", __func__);
 			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = 0;
+			return STATUS_OBJECT_NAME_NOT_FOUND;
 			return STATUS_OBJECT_PATH_NOT_FOUND;
 		}
 		dprintf("%s: failed to find vp in dvp\n", __func__);
