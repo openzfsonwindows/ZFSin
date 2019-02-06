@@ -4002,27 +4002,16 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	ASSERT(zp != NULL);
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 
-	// If we are given a DVP, use it, if not, look up parent.
-	// both cases come out with dvp held.
-	if (IrpSp->FileObject->RelatedFileObject != NULL &&
-		IrpSp->FileObject->RelatedFileObject->FsContext != NULL) {
+	uint64_t parent = 0;
+	znode_t *dzp;
 
-		dvp = IrpSp->FileObject->RelatedFileObject->FsContext;
-		if (VN_HOLD(dvp) != 0)
-			return STATUS_INSTANCE_NOT_AVAILABLE;
-
-	} else {
-		uint64_t parent = 0;
-		znode_t *dzp;
-
-		// No dvp, lookup parent
-		VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zp->z_zfsvfs),
-			&parent, sizeof(parent)) == 0);
-		error = zfs_zget(zp->z_zfsvfs, parent, &dzp);
-		if (error)
-			return STATUS_INSTANCE_NOT_AVAILABLE;  // FIXME 
-		dvp = ZTOV(dzp);
-	}
+	// No dvp, lookup parent
+	VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zp->z_zfsvfs),
+		&parent, sizeof(parent)) == 0);
+	error = zfs_zget(zp->z_zfsvfs, parent, &dzp);
+	if (error)
+		return STATUS_INSTANCE_NOT_AVAILABLE;  // FIXME 
+	dvp = ZTOV(dzp);
 
 	// Unfortunately, filename is littered with "\", clean it up,
 	// or search based on ID to get name?
