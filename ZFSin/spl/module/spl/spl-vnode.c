@@ -959,7 +959,6 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 
 	// Already locked calling in...
 	if (!(flags & VNODELOCKED)) {
-		mutex_enter(&vnode_all_list_lock);
 		mutex_enter(&vp->v_mutex);
 	}
 
@@ -975,10 +974,6 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		vp->v_iocount = 0;
 
 		mutex_exit(&vp->v_mutex);
-
-		if (!(flags & VNODELOCKED)) {
-			mutex_exit(&vnode_all_list_lock);
-		}
 
 		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
 		FsRtlUninitializeFileLock(&vp->lock);
@@ -1021,9 +1016,6 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 	}
 
 	mutex_exit(&vp->v_mutex);
-	if (!(flags & VNODELOCKED)) {
-		mutex_exit(&vnode_all_list_lock);
-	}
 
 	return -1;
 }
@@ -1224,8 +1216,11 @@ int vnode_drain_delayclose(int force)
 			dprintf("%s: drain %vp\n", __func__, vp);
 
 			// Pass VNODELOCKED as we hold vp, recycle will unlock.
+			// We have to give up all_list due to recycle -> reclaim -> rmnode -> purgedir -> zget -> vnode_create
+			mutex_exit(&vnode_all_list_lock);
 			if (vnode_recycle_int(vp, VNODELOCKED) == 0)
 				candidate = 0; // If recycle was ok, this isnt a node we wait for
+			mutex_enter(&vnode_all_list_lock);
 
 			// If successful, vp is freed. Do not use vp from here:
 
