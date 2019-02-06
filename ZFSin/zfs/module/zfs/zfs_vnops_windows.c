@@ -879,7 +879,10 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 			return STATUS_OBJECT_NAME_NOT_FOUND;
 		}
-		vnode_setsecurity(dvp, vp);
+
+		if(vnode_security(dvp))
+			vnode_setsecurity(vp, dvp);
+
 		VN_RELE(vp);
 		vp = NULL;
 		int direntflags = 0; // To detect ED_CASE_CONFLICT
@@ -4683,7 +4686,7 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	// If we are given a DVP, use it, if not, look up parent.
 	// both cases come out with dvp held.
-	if (IrpSp->FileObject->RelatedFileObject != NULL &&
+	if (0 && IrpSp->FileObject->RelatedFileObject != NULL &&
 		IrpSp->FileObject->RelatedFileObject->FsContext != NULL) {
 
 		dvp = IrpSp->FileObject->RelatedFileObject->FsContext;
