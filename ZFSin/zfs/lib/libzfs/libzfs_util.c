@@ -307,6 +307,8 @@ libzfs_error_description(libzfs_handle_t *hdl)
 	case EZFS_TRIM_NOTSUP:
 		return (dgettext(TEXT_DOMAIN, "trim operations are not "
 		    "supported by this device"));
+	case EZFS_WRONG_PARENT:
+		return (dgettext(TEXT_DOMAIN, "invalid parent dataset"));
 	case EZFS_UNKNOWN:
 		return (dgettext(TEXT_DOMAIN, "unknown error"));
 	default:
@@ -487,6 +489,9 @@ zfs_standard_error_fmt(libzfs_handle_t *hdl, int error, const char *fmt, ...)
 	case ZFS_ERR_IOC_ARG_REQUIRED:
 	case ZFS_ERR_IOC_ARG_BADTYPE:
 		zfs_verror(hdl, EZFS_IOC_NOTSUPPORTED, fmt, ap);
+		break;
+	case ZFS_ERR_WRONG_PARENT:
+		zfs_verror(hdl, EZFS_WRONG_PARENT, fmt, ap);
 		break;
 	default:
 		zfs_error_aux(hdl, strerror(error));
