@@ -2759,8 +2759,9 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	} else {
 
 		if (zp->z_name_cache != NULL) {
-			strlcpy(strname, normalize ? 
-				zp->z_name_cache : &zp->z_name_cache[ zp->z_name_offset],
+			// Apparently we always reply with fullname. 
+			// Normalize seems to mean; do-not-use-short-8x3-names
+			strlcpy(strname, zp->z_name_cache,
 				MAXPATHLEN);
 		} else {
 			// Should never be used, in theory
@@ -3782,6 +3783,10 @@ NTSTATUS user_fs_request(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		break;
 	case FSCTL_IS_VOLUME_MOUNTED:
 		dprintf("    FSCTL_IS_VOLUME_MOUNTED\n");
+		Status = STATUS_SUCCESS;
+		break;
+	case FSCTL_SET_COMPRESSION:
+		dprintf("    FSCTL_SET_COMPRESSION\n");
 		Status = STATUS_SUCCESS;
 		break;
 	case FSCTL_IS_PATHNAME_VALID:
