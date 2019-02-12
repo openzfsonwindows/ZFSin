@@ -95,6 +95,19 @@ zfs_release_sa_handle(sa_handle_t *hdl, dmu_buf_t *db, void *tag);
  */
 krwlock_t zfsvfs_lock;
 
+/*
+ * This is used by the test suite so that it can delay znodes from being
+ * freed in order to inspect the unlinked set.
+ */
+int zfs_unlink_suspend_progress = 0;
+
+/*
+ * This callback is invoked when acquiring a RL_WRITER or RL_APPEND lock on
+ * z_rangelock. It will modify the offset and length of the lock to reflect
+ * znode-specific information, and convert RL_APPEND to RL_WRITER.  This is
+ * called with the rangelock_t's rl_lock held, which avoids races.
+ */
+
 kmem_cache_t *znode_cache = NULL;
 
 /*ARGSUSED*/
@@ -1676,7 +1689,7 @@ zfs_zinactive(znode_t *zp)
 	 */
 	if (zp->z_unlinked) {
 		ASSERT(!zfsvfs->z_issnap);
-		if (!(vfs_isrdonly(zfsvfs->z_vfs))) {
+		if (!(vfs_isrdonly(zfsvfs->z_vfs)) && !zfs_unlink_suspend_progress) {
 			mutex_exit(&zp->z_lock);
 			ZFS_OBJ_HOLD_EXIT(zfsvfs, z_id);
 			zfs_rmnode(zp);

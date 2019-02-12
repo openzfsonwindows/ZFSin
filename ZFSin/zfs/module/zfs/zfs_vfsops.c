@@ -1321,6 +1321,9 @@ zfsvfs_create_impl(zfsvfs_t **zfvp, zfsvfs_t *zfsvfs, objset_t *os)
 	for (int i = 0; i != ZFS_OBJ_MTX_SZ; i++)
 		mutex_init(&zfsvfs->z_hold_mtx[i], NULL, MUTEX_DEFAULT, NULL);
 
+	mutex_init(&zfsvfs->z_drain_lock, NULL, MUTEX_DEFAULT, NULL);
+    cv_init(&zfsvfs->z_drain_cv, NULL, CV_DEFAULT, NULL);
+
 	error = zfsvfs_init(zfsvfs, os);
 	if (error != 0) {
 		*zfvp = NULL;
@@ -1447,6 +1450,8 @@ zfsvfs_free(zfsvfs_t *zfsvfs)
 
 	zfs_fuid_destroy(zfsvfs);
 
+    cv_destroy(&zfsvfs->z_drain_cv);
+    mutex_destroy(&zfsvfs->z_drain_lock);
 	mutex_destroy(&zfsvfs->z_znodes_lock);
 	mutex_destroy(&zfsvfs->z_lock);
 	list_destroy(&zfsvfs->z_all_znodes);
@@ -2963,7 +2968,9 @@ zfsvfs_teardown(zfsvfs_t *zfsvfs, boolean_t unmounting)
      * the full issue.
      */
 
- 	/*
+	zfs_unlinked_drain_stop_wait(zfsvfs);
+
+	/*
 	 * If someone has not already unmounted this file system,
 	 * drain the iput_taskq to ensure all active references to the
 	 * zfs_sb_t have been handled only then can it be safely destroyed.
@@ -3074,6 +3081,17 @@ zfs_vfs_unmount(struct mount *mp, int mntflags, vfs_context_t *context)
 	int ret;
 
     dprintf("+unmount\n");
+
+	zfs_unlinked_drain_stop_wait(zfsvfs);
+
+	/*
+	 * We might skip the sync called in the unmount path, since
+	 * zfs_vfs_sync() is generally ignoring xnu's calls, and alas,
+	 * mount_isforce() is set AFTER that sync call, so we can not
+	 * detect unmount is inflight. But why not just sync now, it
+	 * is safe. Optionally, sync if (mount_isforce());
+	 */
+	spa_sync_allpools();
 
 #ifndef _WIN32
 	/*XXX NOEL: delegation admin stuffs, add back if we use delg. admin */
@@ -3427,8 +3445,6 @@ zfs_vget_internal(zfsvfs_t *zfsvfs, ino64_t ino, vnode_t **vpp)
 
 	kmem_free(name, MAXPATHLEN + 2);
 
-
-
  out:
     /*
      * We do not release the vp here in vget, if we do, we panic with io_count
@@ -3440,6 +3456,7 @@ zfs_vget_internal(zfsvfs_t *zfsvfs, ino64_t ino, vnode_t **vpp)
 		VN_RELE(ZTOV(zp));
 		*vpp = NULL;
 	}
+
     dprintf("vget return %d\n", err);
 #endif
 	return (err);
@@ -3694,6 +3711,15 @@ zfs_resume_fs(zfsvfs_t *zfsvfs, dsl_dataset_t *ds)
 		}
 	}
 	mutex_exit(&zfsvfs->z_znodes_lock);
+
+	if (!vfs_isrdonly(zfsvfs->z_vfs) && !zfsvfs->z_unmounted) {
+		/*
+		 * zfs_suspend_fs() could have interrupted freeing
+		 * of dnodes. We need to restart this freeing so
+		 * that we don't "leak" the space.
+		 */
+		zfs_unlinked_drain(zfsvfs);
+	}
 
 bail:
 	/* release the VFS ops */

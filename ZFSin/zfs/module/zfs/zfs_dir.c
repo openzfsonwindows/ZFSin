@@ -484,7 +484,6 @@ zfs_unlinked_add(znode_t *zp, dmu_tx_t *tx)
 	ASSERT(zp->z_unlinked);
 	ASSERT(zp->z_links == 0);
 
-
 	if (( err = zap_add_int(zfsvfs->z_os, zfsvfs->z_unlinkedobj, zp->z_id, tx))
 		!= 0) {
 		zfs_panic_recover("zfs: zfs_unlinked_add(id %llu) failed to add to unlinked list: %d\n",
@@ -493,72 +492,113 @@ zfs_unlinked_add(znode_t *zp, dmu_tx_t *tx)
 	}
 }
 
+/*
+ * Clean up any znodes that had no links when we either crashed or
+ * (force) umounted the file system.
+ */
+static void
+zfs_unlinked_drain_task(void *arg)
+{
+	zfsvfs_t *zfsvfs = arg;
+	zap_cursor_t	zc;
+	zap_attribute_t zap;
+	dmu_object_info_t doi;
+	znode_t		*zp;
+	int		error;
 
+	/*
+	 * Iterate over the contents of the unlinked set.
+	 */
+    for (zap_cursor_init(&zc, zfsvfs->z_os, zfsvfs->z_unlinkedobj);
+		 zap_cursor_retrieve(&zc, &zap) == 0 &&
+			 /* Only checking for a shutdown request, so no locking reqd. */
+			 zfsvfs->z_drain_state == ZFS_DRAIN_RUNNING;
+		 zap_cursor_advance(&zc)) {
+
+		/*
+		 * See what kind of object we have in list
+		 */
+
+		error = dmu_object_info(zfsvfs->z_os,
+			zap.za_first_integer, &doi);
+		if (error != 0)
+			continue;
+
+		ASSERT((doi.doi_type == DMU_OT_PLAIN_FILE_CONTENTS) ||
+			(doi.doi_type == DMU_OT_DIRECTORY_CONTENTS));
+		/*
+		 * We need to re-mark these list entries for deletion,
+		 * so we pull them back into core and set zp->z_unlinked.
+		 */
+		error = zfs_zget(zfsvfs, zap.za_first_integer, &zp);
+
+		/*
+		 * We may pick up znodes that are already marked for deletion.
+		 * This could happen during the purge of an extended attribute
+		 * directory.  All we need to do is skip over them, since they
+		 * are already in the system marked z_unlinked.
+		 */
+		if (error != 0)
+			continue;
+
+		zp->z_unlinked = B_TRUE;
+
+		/*
+		 * iput() is Linux's equivalent to illumos' VN_RELE(). It will
+		 * decrement the inode's ref count and may cause the inode to be
+		 * synchronously freed. We interrupt freeing of this inode, by
+		 * checking the return value of dmu_objset_zfs_unmounting() in
+		 * dmu_free_long_range(), when an unmount is requested.
+		 */
+		VN_RELE(ZTOV(zp));
+
+		ASSERT3B(zfsvfs->z_unmounted, ==, B_FALSE);
+	}
+	zap_cursor_fini(&zc);
+
+    mutex_enter(&zfsvfs->z_drain_lock);
+    zfsvfs->z_drain_state = ZFS_DRAIN_SHUTDOWN;
+    cv_broadcast(&zfsvfs->z_drain_cv);
+    mutex_exit(&zfsvfs->z_drain_lock);
+}
 
 /*
-* Clean up any znodes that had no links when we either crashed or
-* (force) umounted the file system.
-*/
+ * Sets z_draining then tries to dispatch async unlinked drain.
+ * If that fails executes synchronous unlinked drain.
+ */
 void
 zfs_unlinked_drain(zfsvfs_t *zfsvfs)
 {
-        zap_cursor_t        zc;
-        zap_attribute_t zap;
-        dmu_object_info_t doi;
-        znode_t                *zp;
-        int                error;
-		uint64_t entries=0;
+	ASSERT3B(zfsvfs->z_unmounted, ==, B_FALSE);
 
-        for (zap_cursor_init(&zc, zfsvfs->z_os, zfsvfs->z_unlinkedobj);
-			 zap_cursor_retrieve(&zc, &zap) == 0;
-         zap_cursor_advance(&zc)) {
+    mutex_enter(&zfsvfs->z_drain_lock);
+    ASSERT(zfsvfs->z_drain_state == ZFS_DRAIN_SHUTDOWN);
+    zfsvfs->z_drain_state = ZFS_DRAIN_RUNNING;
+    mutex_exit(&zfsvfs->z_drain_lock);
 
-                /*
-                 * See what kind of object we have in list
-                 */
+	if (taskq_dispatch(
+	    dsl_pool_unlinked_drain_taskq(dmu_objset_pool(zfsvfs->z_os)),
+	    zfs_unlinked_drain_task, zfsvfs, TQ_SLEEP) == 0) {
+		zfs_dbgmsg("async zfs_unlinked_drain dispatch failed");
+		zfs_unlinked_drain_task(zfsvfs);
+	}
+}
 
-                error = dmu_object_info(zfsvfs->z_os,
-                 zap.za_first_integer, &doi);
-                if (error != 0) {
-					continue;
-				}
-                ASSERT((doi.doi_type == DMU_OT_PLAIN_FILE_CONTENTS) ||
-                 (doi.doi_type == DMU_OT_DIRECTORY_CONTENTS));
-                /*
-                 * We need to re-mark these list entries for deletion,
-                 * so we pull them back into core and set zp->z_unlinked.
-                 */
-                error = zfs_zget(zfsvfs, zap.za_first_integer, &zp);
+/*
+ * Wait for the unlinked drain taskq task to stop. This will interrupt the
+ * unlinked set processing if it is in progress.
+ */
+void
+zfs_unlinked_drain_stop_wait(zfsvfs_t *zfsvfs)
+{
+	ASSERT3B(zfsvfs->z_unmounted, ==, B_FALSE);
 
-                /*
-                 * We may pick up znodes that are already marked for deletion.
-                 * This could happen during the purge of an extended attribute
-                 * directory. All we need to do is skip over them, since they
-                 * are already in the system marked z_unlinked.
-                 */
-                if (error != 0) continue;
-
-				entries++;
-                zp->z_unlinked = B_TRUE;
-
-                VN_RELE(ZTOV(zp));
-
-#ifdef __OPPLE__
-				/* Call vnop_reclaim now to keep the unlinked order */
-				vnode_recycle(ZTOV(zp));
-#endif
-
-				if (!(entries % 10000))
-					dprintf("ZFS: unlinked drain progress (%llu)\n", entries);
-
-				/* Check if unmount is attempted, if so, abort to exit */
-				if (zfsvfs->z_unmounted) break;
-
-
-        }
-        zap_cursor_fini(&zc);
-        if (entries) dprintf("ZFS: unlinked drain completed (%llu).\n", entries);
-
+	mutex_enter(&zfsvfs->z_drain_lock);
+	while (zfsvfs->z_drain_state != ZFS_DRAIN_SHUTDOWN) {
+		zfsvfs->z_drain_state = ZFS_DRAIN_SHUTDOWN_REQ;
+		cv_wait(&zfsvfs->z_drain_cv, &zfsvfs->z_drain_lock);
+	}
+	mutex_exit(&zfsvfs->z_drain_lock);
 }
 
 

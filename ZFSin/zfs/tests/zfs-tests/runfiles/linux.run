@@ -611,7 +611,8 @@ tests = ['mmp_on_thread', 'mmp_on_uberblocks', 'mmp_on_off', 'mmp_interval',
 tags = ['functional', 'mmp']
 
 [tests/functional/mount]
-tests = ['umount_001']
+tests = ['umount_001', 'umount_unlinked_drain', 'umountall_001']
+tags = ['functional', 'mount']
 
 [tests/functional/mv_files]
 tests = ['mv_files_001_pos', 'mv_files_002_pos']

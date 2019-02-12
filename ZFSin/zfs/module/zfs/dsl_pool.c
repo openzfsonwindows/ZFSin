@@ -223,6 +223,10 @@ dsl_pool_open_impl(spa_t *spa, uint64_t txg)
 		minclsyspri, max_ncpus * 8, INT_MAX,
 		TASKQ_PREPOPULATE | TASKQ_DYNAMIC);
 
+	dp->dp_unlinked_drain_taskq = taskq_create("z_unlinked_drain",
+	    max_ncpus, defclsyspri, max_ncpus, INT_MAX,
+	    TASKQ_PREPOPULATE | TASKQ_DYNAMIC);
+
 	return (dp);
 }
 
@@ -405,7 +409,17 @@ dsl_pool_close(dsl_pool_t *dp)
 	mutex_destroy(&dp->dp_lock);
 
 	cv_destroy(&dp->dp_spaceavail_cv);
+
+#ifdef __WIN32__
+	// As we vflush for umount, we might create more attach taskq, so
+	// we need to wait twice. (One wait is in taskq_destroy)
+	taskq_wait(dp->dp_vnrele_taskq);
+#endif
 	taskq_destroy(dp->dp_vnrele_taskq);
+	dp->dp_vnrele_taskq = NULL;
+
+	taskq_destroy(dp->dp_unlinked_drain_taskq);
+
 	if (dp->dp_blkstats != NULL) {
 		mutex_destroy(&dp->dp_blkstats->zab_lock);
 		kmem_free(dp->dp_blkstats, sizeof (zfs_all_blkstats_t));
@@ -1096,6 +1110,12 @@ taskq_t *
 dsl_pool_vnrele_taskq(dsl_pool_t *dp)
 {
 	return (dp->dp_vnrele_taskq);
+}
+
+taskq_t *
+dsl_pool_unlinked_drain_taskq(dsl_pool_t *dp)
+{
+	return (dp->dp_unlinked_drain_taskq);
 }
 
 /*

@@ -50,6 +50,15 @@ struct znode;
 #define HIDE_TRIVIAL_ACL 1
 #endif
 
+/*
+ * Status of the zfs_unlinked_drain thread.
+ */
+typedef enum drain_state {
+	ZFS_DRAIN_SHUTDOWN = 0,
+	ZFS_DRAIN_RUNNING,
+    ZFS_DRAIN_SHUTDOWN_REQ
+} drain_state_t;
+
 
 typedef struct zfsvfs zfsvfs_t;
 
@@ -92,29 +101,32 @@ struct zfsvfs {
         uint64_t        z_shares_dir;   /* hidden shares dir */
         kmutex_t	    z_lock;
 
-#ifdef _WIN32
-	dev_t		z_rdev;		/* proxy device for mount */
-	boolean_t	z_rdonly;	/* is mount read-only? */
-        time_t          z_mount_time;           /* mount timestamp (for Spotlight) */
-        time_t          z_last_unmount_time;    /* unmount timestamp (for Spotlight) */
-        boolean_t       z_xattr;        /* enable atimes mount option */
+		dev_t           z_rdev;         /* proxy device for mount */
+		boolean_t       z_rdonly;       /* is mount read-only? */
+		time_t          z_mount_time;           /* mount timestamp (for Spotlight) */
+		time_t          z_last_unmount_time;    /* unmount timestamp (for Spotlight) */
+		boolean_t       z_xattr;        /* enable atimes mount option */
 
-	    avl_tree_t   	z_hardlinks;    /* linkid hash avl tree for vget */
-	    avl_tree_t   	z_hardlinks_linkid; /* same tree, sorted on linkid */
-	    krwlock_t	    z_hardlinks_lock;	/* lock to access z_hardlinks */
+		avl_tree_t          z_hardlinks;    /* linkid hash avl tree for vget */
+		avl_tree_t          z_hardlinks_linkid; /* same tree, sorted on linkid */
+		krwlock_t       z_hardlinks_lock;   /* lock to access z_hardlinks */
 
-	    uint64_t	    z_notification_conditions; /* HFSIOC_VOLUME_STATUS */
-	    uint64_t	    z_freespace_notify_warninglimit; /* HFSIOC_ - number of free blocks */
-	    uint64_t	    z_freespace_notify_dangerlimit; /* HFSIOC_ - number of free blocks */
-	    uint64_t	    z_freespace_notify_desiredlevel; /* HFSIOC_ - number of free blocks */
+		uint64_t        z_notification_conditions; /* HFSIOC_VOLUME_STATUS */
+		uint64_t        z_freespace_notify_warninglimit; /* HFSIOC_ - number of free blocks */
+		uint64_t        z_freespace_notify_dangerlimit; /* HFSIOC_ - number of free blocks */
+		uint64_t        z_freespace_notify_desiredlevel; /* HFSIOC_ - number of free blocks */
 
 #ifdef APPLE_SA_RECOVER
-	    uint64_t        z_recover_parent;/* Temporary holder until SA corruption are gone */
+		uint64_t        z_recover_parent;/* Temporary holder until SA corruption are gone */
 #endif /* APPLE_SA_RECOVER */
 
-	    uint64_t        z_findernotify_space;
+		uint64_t        z_findernotify_space;
 
-#endif
+        /* for controlling async zfs_unlinked_drain */
+        kmutex_t		z_drain_lock;
+        kcondvar_t		z_drain_cv;
+        drain_state_t	z_drain_state;
+
     	uint64_t	    z_userquota_obj;
         uint64_t	    z_groupquota_obj;
         uint64_t	    z_replay_eof;	/* New end of file - replay only */

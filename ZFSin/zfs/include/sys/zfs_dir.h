@@ -79,6 +79,7 @@ extern boolean_t zfs_dirempty(znode_t *);
 extern void zfs_unlinked_add(znode_t *, dmu_tx_t *);
     //extern void zfs_unlinked_drain(zfs_sb_t *);
 extern void zfs_unlinked_drain(zfsvfs_t *zfsvfs);
+extern void zfs_unlinked_drain_stop_wait(zfsvfs_t *zfsvfs);
 extern int zfs_sticky_remove_access(znode_t *, znode_t *, cred_t *cr);
 extern int zfs_make_xattrdir(znode_t *zp, vattr_t *vap, vnode_t **xvpp, cred_t *cr);
     //extern int zfs_get_xattrdir(znode_t *, struct inode **, cred_t *, int);
