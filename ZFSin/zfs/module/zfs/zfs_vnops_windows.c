@@ -579,6 +579,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	int flags = 0;
 	int dvp_no_rele = 0;
 	char *stream_name = NULL;
+	boolean_t UndoShareAccess = FALSE;
 	NTSTATUS Status = STATUS_SUCCESS;
 
 	if (zfsvfs == NULL) return STATUS_OBJECT_PATH_NOT_FOUND;
@@ -1118,9 +1119,12 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			granted_access = 0;
 		}
 
+		// Io*ShareAccess(): X is not an atomic operation. Therefore, drivers calling this routine must protect the shared file object
+		vnode_lock(vp ? vp : dvp);
 		if (vnode_isinuse(vp ? vp : dvp, 0)) {  // 0 is we are the only (usecount added below), 1+ if already open.
 			Status = IoCheckShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, vp ? &vp->share_access : &dvp->share_access, FALSE);
 			if (!NT_SUCCESS(Status)) {
+				vnode_unlock(vp ? vp : dvp);
 				if (vp) VN_RELE(vp);
 				VN_RELE(dvp);
 				kmem_free(filename, PATH_MAX);
@@ -1131,12 +1135,25 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		} else {
 			IoSetShareAccess(granted_access, IrpSp->Parameters.Create.ShareAccess, FileObject, vp ? &vp->share_access : &dvp->share_access);
 		}
+		// Since we've updated ShareAccess here, if we cancel the open we need to undo it.
+		UndoShareAccess = TRUE;
+		vnode_unlock(vp ? vp : dvp);
 	}
+
+#define UNDO_SHARE_ACCESS(vp) \
+	if ((vp) && UndoShareAccess) {    \
+		vnode_lock((vp));     \
+		IoRemoveShareAccess(FileObject, &(vp)->share_access); \
+		vnode_unlock((vp));   \
+	}
+
 
 	// We can not DeleteOnClose if readonly filesystem
 	if (DeleteOnClose) {
 		if (zfsvfs->z_rdonly || vfs_isrdonly(zfsvfs->z_vfs) ||
 			!spa_writeable(dmu_objset_spa(zfsvfs->z_os))) {
+			UNDO_SHARE_ACCESS(vp);
+			if (vp) VN_RELE(vp);
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = 0; // ?
@@ -1150,6 +1167,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 		if (zfsvfs->z_rdonly || vfs_isrdonly(zfsvfs->z_vfs) ||
 			!spa_writeable(dmu_objset_spa(zfsvfs->z_os))) {
+			UNDO_SHARE_ACCESS(vp);
 			if (vp) VN_RELE(vp);
 			VN_RELE(dvp);
 			kmem_free(filename, PATH_MAX);
@@ -1206,10 +1224,12 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 					//zp->z_blksz = P2ROUNDUP(allocsize, 512);
 				}
 
+				vnode_lock(vp);
 				IoSetShareAccess(IrpSp->Parameters.Create.SecurityContext->DesiredAccess,
 					IrpSp->Parameters.Create.ShareAccess,
 					FileObject,
 					&vp->share_access);
+				vnode_unlock(vp);
 
 				if (stream_name == NULL)
 					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
@@ -1226,6 +1246,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		else
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 
+		UNDO_SHARE_ACCESS(dvp);
 		VN_RELE(dvp);
 		kmem_free(filename, PATH_MAX);
 		return STATUS_OBJECT_NAME_COLLISION; // create file error
@@ -1243,7 +1264,16 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			Status = zfs_setunlink(vp, dvp);
 
 		if(Status == STATUS_SUCCESS) {
-			IoUpdateShareAccess(FileObject, &dvp->share_access);
+			if (UndoShareAccess == FALSE) {
+				vnode_lock(dvp);
+				IoSetShareAccess(IrpSp->Parameters.Create.SecurityContext->DesiredAccess,
+					IrpSp->Parameters.Create.ShareAccess,
+					FileObject,
+					&dvp->share_access);
+				vnode_unlock(dvp);
+			}
+		} else {
+			UNDO_SHARE_ACCESS(dvp);
 		}
 		VN_RELE(dvp);
 	} else {
@@ -1278,7 +1308,17 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			vp->FileHeader.AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zp->z_blksz);
 			vp->FileHeader.FileSize.QuadPart = zp->z_size;
 			vp->FileHeader.ValidDataLength.QuadPart = zp->z_size;
-			IoUpdateShareAccess(FileObject, &vp->share_access);
+			// If we created something new, add this permission
+			if (UndoShareAccess == FALSE) {
+				vnode_lock(vp);
+				IoSetShareAccess(IrpSp->Parameters.Create.SecurityContext->DesiredAccess,
+					IrpSp->Parameters.Create.ShareAccess,
+					FileObject,
+					&vp->share_access);
+				vnode_unlock(vp);
+			}
+		} else {
+			UNDO_SHARE_ACCESS(vp);
 		}
 		VN_RELE(vp);
 		VN_RELE(dvp);
@@ -4947,7 +4987,9 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		dprintf("IRP_MJ_CLEANUP: '%s' iocount %u usecount %u\n",
 			zp && zp->z_name_cache ? zp->z_name_cache : "", vp->v_iocount, vp->v_usecount);
 
+		vnode_lock(vp);
 		IoRemoveShareAccess(IrpSp->FileObject, &vp->share_access);
+		vnode_unlock(vp);
 
 		int isdir = vnode_isdir(vp);
 
