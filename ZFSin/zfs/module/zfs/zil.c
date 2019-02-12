@@ -1546,6 +1546,7 @@ cont:
 				dbuf = NULL;
 			}
 
+			if (lrw->lr_length > 0) {
 #if defined (_WIN32) && defined (_KERNEL)
 			/* to avoid deadlock, grab necessary range lock before hold the txg */
 			uint64_t off = lrw->lr_offset;
@@ -1553,71 +1554,72 @@ cont:
 										 so int type is ok */
 			zfsvfs_t *zfsvfs = itx->itx_private;
 
-			// Grab a zget here, released in zfs_vnops.c:zfs_get_done()
-			error = zfs_zget_ext(zfsvfs, lrw->lr_foid, &zp,
-				ZGET_FLAG_UNLINKED );
-			if (error == 0) {
+				// Grab a zget here, released in zfs_vnops.c:zfs_get_done()
+				error = zfs_zget_ext(zfsvfs, lrw->lr_foid, &zp,
+					ZGET_FLAG_UNLINKED);
+				if (error == 0) {
 
-				/* Attach vnode in different thread - if one is needed -
-				 * since zil_lwb_commit is called multiple times for the same zp
-				 * we only spawn the attach thread once.
-				 */
-				if (!ZTOV(zp)) {
-					dprintf("ZFS: zil is NULL case\n");
-				}
-
-				if (dlen) {                     /* immediate write */
-					rl = zfs_range_lock(zp, off, len, RL_READER);
-				} else {
-					uint64_t boff; /* block starting offset */
-
-					/*
-					 * Have to lock the whole block to ensure when it's
-					 * written out and it's checksum is being calculated
-					 * that no one can change the data. We need to re-check
-					 * blocksize after we get the lock in case it's changed!
+					/* Attach vnode in different thread - if one is needed -
+					 * since zil_lwb_commit is called multiple times for the same zp
+					 * we only spawn the attach thread once.
 					 */
-					for (;;) {
-						if (ISP2(zp->z_blksz)) {
-							boff = P2ALIGN_TYPED(off, zp->z_blksz,
-								uint64_t);
-						} else {
-							boff = 0;
-						}
-						len = zp->z_blksz;
-						rl = zfs_range_lock(zp, boff, len, RL_READER);
-						if (zp->z_blksz == len)
-							break;
-						zfs_range_unlock(rl);
+					if (!ZTOV(zp)) {
+						dprintf("ZFS: zil is NULL case\n");
 					}
-				} /* if (dlen) ... else */
-			} /* if (error == 0) */
+
+					if (dlen) {                     /* immediate write */
+						rl = zfs_range_lock(zp, off, len, RL_READER);
+					} else {
+						uint64_t boff; /* block starting offset */
+
+						/*
+						 * Have to lock the whole block to ensure when it's
+						 * written out and it's checksum is being calculated
+						 * that no one can change the data. We need to re-check
+						 * blocksize after we get the lock in case it's changed!
+						 */
+						for (;;) {
+							if (ISP2(zp->z_blksz)) {
+								boff = P2ALIGN_TYPED(off, zp->z_blksz,
+									uint64_t);
+							} else {
+								boff = 0;
+							}
+							len = zp->z_blksz;
+							rl = zfs_range_lock(zp, boff, len, RL_READER);
+							if (zp->z_blksz == len)
+								break;
+							zfs_range_unlock(rl);
+						}
+					} /* if (dlen) ... else */
+				} /* if (error == 0) */
 
 #endif
 
-			if (error == 0) {
-				/* if error is not 0, the zfs_zget already failed,
-				 * no need to proceed */
+				if (error == 0) {
+					/* if error is not 0, the zfs_zget already failed,
+					 * no need to proceed */
 
 #if defined (_WIN32) && defined (_KERNEL)
-				error = zilog->zl_get_data(
-					itx->itx_private, lrwb, dbuf, lwb, lwb->lwb_write_zio,
-					zp, rl);
+					error = zilog->zl_get_data(
+						itx->itx_private, lrwb, dbuf, lwb, lwb->lwb_write_zio,
+						zp, rl);
 #else
-				error = zilog->zl_get_data(
-					itx->itx_private, lrwb, dbuf, lwb, lwb->lwb_write_zio, 
-					NULL, NULL);
+					error = zilog->zl_get_data(
+						itx->itx_private, lrwb, dbuf, lwb, lwb->lwb_write_zio,
+						NULL, NULL);
 #endif
-			}
+				}
 
-			if (error == EIO) {
-				txg_wait_synced(zilog->zl_dmu_pool, txg);
-				return (lwb);
-			}
-			if (error != 0) {
-				ASSERT(error == ENOENT || error == EEXIST ||
-					error == EALREADY);
-				return (lwb);
+				if (error == EIO) {
+					txg_wait_synced(zilog->zl_dmu_pool, txg);
+					return (lwb);
+				}
+				if (error != 0) {
+					ASSERT(error == ENOENT || error == EEXIST ||
+						error == EALREADY);
+					return (lwb);
+				}
 			}
 		}
 	}
