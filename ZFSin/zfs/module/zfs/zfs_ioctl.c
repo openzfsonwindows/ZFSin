@@ -6708,7 +6708,8 @@ end:
 	* Darwin ioctl does the actual copyout, and that we use FKIOCTL here.
 	* So we can change it directly.
 	*/
-	((zfs_cmd_t *)arg)->zc_ioc_error = error;  // We checked OutbufLen is == zfs_cmd_t
+	if (arg)
+		((zfs_cmd_t *)arg)->zc_ioc_error = error;  // We checked OutbufLen is == zfs_cmd_t
 
 
 	dprintf("ioctl out result %d\n", error);
