@@ -334,7 +334,7 @@ First, locate disk name
 ```
 # wmic diskdrive list brief
 VMware, VMware Virtual S SCSI Disk Device  \\.\PHYSICALDRIVE2  VMware, VMware Virtual S SCSI Disk Device  0           5362882560
-# zpool create tank \\.\PHYSICALDRIVE2
+# zpool create tank PHYSICALDRIVE2
 ```
 
 # Creating a ZVOL virtual hard disk
