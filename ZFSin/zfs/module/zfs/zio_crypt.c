@@ -905,7 +905,6 @@ zio_crypt_copy_dnode_bonus(abd_t *src_abd, uint8_t *dst, uint_t datalen)
 	ddnp = (dnode_phys_t *)dst;
 
 	for (i = 0; i < max_dnp; i += sdnp[i].dn_extra_slots + 1) {
-		VERIFY0(sdnp[i].dn_extra_slots);
 		dnp = &sdnp[i];
 		if (dnp->dn_type != DMU_OT_NONE &&
 		    DMU_OT_IS_ENCRYPTED(dnp->dn_bonustype) &&
@@ -1596,7 +1595,6 @@ zio_crypt_init_uios_dnode(boolean_t encrypt, uint64_t version,
 	 * counting the number of bonus buffers that need to be encrypted.
 	 */
 	for (i = 0; i < max_dnp; i += sdnp[i].dn_extra_slots + 1) {
-		VERIFY0(sdnp[i].dn_extra_slots);
 		/*
 		 * This block may still be byteswapped. However, all of the
 		 * values we use are either uint8_t's (for which byteswapping
@@ -1644,7 +1642,6 @@ zio_crypt_init_uios_dnode(boolean_t encrypt, uint64_t version,
 	 * authenticate onto aadbuf.
 	 */
 	for (i = 0; i < max_dnp; i += sdnp[i].dn_extra_slots + 1) {
-		VERIFY0(sdnp[i].dn_extra_slots);
 		dnp = &sdnp[i];
 
 		/* copy over the core fields and blkptrs (kept as plaintext) */

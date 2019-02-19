@@ -713,6 +713,11 @@ dsl_scan(dsl_pool_t *dp, pool_scan_func_t func)
 	spa->spa_scrub_reopen = B_FALSE;
 	(void) spa_vdev_state_exit(spa, NULL, 0);
 
+	if (func == POOL_SCAN_RESILVER) {
+		dsl_resilver_restart(spa->spa_dsl_pool, 0);
+		return (0);
+	}
+
 	if (func == POOL_SCAN_SCRUB && dsl_scan_is_paused_scrub(scn)) {
 		/* got scrub start cmd, resume paused scrub */
 		int err = dsl_scrub_set_pause_resume(scn->scn_dp,
@@ -1671,8 +1676,8 @@ dsl_scan_recurse(dsl_scan_t *scn, dsl_dataset_t *ds, dmu_objset_type_t ostype,
 			return (err);
 		}
 		for (i = 0, cdnp = buf->b_data; i < epb;
-		    i += cdnp->dn_extra_slots + 1,
-		    cdnp += cdnp->dn_extra_slots + 1) {
+			 i += cdnp->dn_extra_slots + 1,
+				 cdnp += cdnp->dn_extra_slots + 1) {
 			dsl_scan_visitdnode(scn, ds, ostype,
 			    cdnp, zb->zb_blkid * epb + i, tx);
 		}
@@ -1735,7 +1740,7 @@ dsl_scan_visitdnode(dsl_scan_t *scn, dsl_dataset_t *ds,
 		zbookmark_phys_t czb;
 		SET_BOOKMARK(&czb, ds ? ds->ds_object : 0, object,
 		    0, DMU_SPILL_BLKID);
-		dsl_scan_visitbp(&dnp->dn_spill,
+		dsl_scan_visitbp(DN_SPILL_BLKPTR(dnp),
 		    &czb, dnp, ds, scn, ostype, tx);
 	}
 }
@@ -2967,6 +2972,19 @@ dsl_scan_need_resilver(spa_t *spa, const dva_t *dva, size_t psize,
 {
 	vdev_t *vd;
 
+	vd = vdev_lookup_top(spa, DVA_GET_VDEV(dva));
+
+	if (vd->vdev_ops == &vdev_indirect_ops) {
+		/*
+		 * The indirect vdev can point to multiple
+		 * vdevs.  For simplicity, always create
+		 * the resilver zio_t. zio_vdev_io_start()
+		 * will bypass the child resilver i/o's if
+		 * they are on vdevs that don't have DTL's.
+		 */
+		return (B_TRUE);
+	}
+
 	if (DVA_GET_GANG(dva)) {
 		/*
 		 * Gang members may be spread across multiple
@@ -2978,8 +2996,6 @@ dsl_scan_need_resilver(spa_t *spa, const dva_t *dva, size_t psize,
 		 */
 		return (B_TRUE);
 	}
-
-	vd = vdev_lookup_top(spa, DVA_GET_VDEV(dva));
 
 	/*
 	 * Check if the txg falls within the range which must be

@@ -140,6 +140,12 @@ dmu_objset_id(objset_t *os)
 	return (ds ? ds->ds_object : 0);
 }
 
+uint64_t
+dmu_objset_dnodesize(objset_t *os)
+{
+	return (os->os_dnodesize);
+}
+
 zfs_sync_type_t
 dmu_objset_syncprop(objset_t *os)
 {
@@ -269,7 +275,20 @@ redundant_metadata_changed_cb(void *arg, uint64_t newval)
 	os->os_redundant_metadata = newval;
 }
 
-#ifdef linux
+static void
+smallblk_changed_cb(void *arg, uint64_t newval)
+{
+	objset_t *os = arg;
+
+	/*
+	 * Inheritance and range checking should have been done by now.
+	 */
+	ASSERT(newval <= SPA_OLD_MAXBLOCKSIZE);
+	ASSERT(ISP2(newval));
+
+	os->os_zpl_special_smallblock = newval;
+}
+
 static void
 dnodesize_changed_cb(void *arg, uint64_t newval)
 {
@@ -296,21 +315,6 @@ dnodesize_changed_cb(void *arg, uint64_t newval)
 		os->os_dnodesize = newval;
 		break;
 	}
-}
-#endif
-
-static void
-smallblk_changed_cb(void *arg, uint64_t newval)
-{
-	objset_t *os = arg;
-
-	/*
-	 * Inheritance and range checking should have been done by now.
-	 */
-	ASSERT(newval <= SPA_OLD_MAXBLOCKSIZE);
-	ASSERT(ISP2(newval));
-
-	os->os_zpl_special_smallblock = newval;
 }
 
 static void
@@ -533,9 +537,14 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 			}
 			if (err == 0) {
 				err = dsl_prop_register(ds,
+				    zfs_prop_to_name(ZFS_PROP_DNODESIZE),
+				    dnodesize_changed_cb, os);
+			}
+			if (err == 0) {
+				err = dsl_prop_register(ds,
 				    zfs_prop_to_name(
-				    ZFS_PROP_SPECIAL_SMALL_BLOCKS),
-				    smallblk_changed_cb, os);
+					    ZFS_PROP_SPECIAL_SMALL_BLOCKS),
+					smallblk_changed_cb, os);
 			}
 		}
 		if (needlock)
@@ -557,6 +566,7 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 		os->os_sync = ZFS_SYNC_STANDARD;
 		os->os_primary_cache = ZFS_CACHE_ALL;
 		os->os_secondary_cache = ZFS_CACHE_ALL;
+		os->os_dnodesize = DNODE_MIN_SIZE;
 	}
 	/*
 	 * These properties will be filled in by the logic in zfs_get_zplprop()
@@ -587,6 +597,9 @@ dmu_objset_open_impl(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 	mutex_init(&os->os_userused_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&os->os_obj_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&os->os_user_ptr_lock, NULL, MUTEX_DEFAULT, NULL);
+	os->os_obj_next_percpu_len = max_ncpus;
+	os->os_obj_next_percpu = kmem_zalloc(os->os_obj_next_percpu_len *
+	    sizeof (os->os_obj_next_percpu[0]), KM_SLEEP);
 
 	dnode_special_open(os, &os->os_phys->os_meta_dnode,
 	    DMU_META_DNODE_OBJECT, &os->os_meta_dnode);
@@ -924,6 +937,9 @@ dmu_objset_evict_done(objset_t *os)
 	rw_enter(&os_lock, RW_READER);
 	rw_exit(&os_lock);
 
+	kmem_free(os->os_obj_next_percpu,
+	    os->os_obj_next_percpu_len * sizeof (os->os_obj_next_percpu[0]));
+
 	mutex_destroy(&os->os_lock);
 	mutex_destroy(&os->os_userused_lock);
 	mutex_destroy(&os->os_obj_lock);
@@ -962,8 +978,8 @@ dmu_objset_create_impl_dnstats(spa_t *spa, dsl_dataset_t *ds, blkptr_t *bp,
 
 	mdn = DMU_META_DNODE(os);
 
-	dnode_allocate(mdn, DMU_OT_DNODE, blksz, DN_MAX_INDBLKSHIFT,
-	    DMU_OT_NONE, 0, tx);
+	dnode_allocate(mdn, DMU_OT_DNODE, DNODE_BLOCK_SIZE, DN_MAX_INDBLKSHIFT,
+	    DMU_OT_NONE, 0, DNODE_MIN_SLOTS, tx);
 
 	/*
 	 * We don't want to have to increase the meta-dnode's nlevels
@@ -1761,7 +1777,7 @@ do_userquota_update(userquota_cache_t *cache, uint64_t used, uint64_t flags,
     uint64_t user, uint64_t group, boolean_t subtract)
 {
 	if ((flags & DNODE_FLAG_USERUSED_ACCOUNTED)) {
-		int64_t delta = DNODE_SIZE + used;
+		int64_t delta = DNODE_MIN_SIZE + used;
 		if (subtract)
 			delta = -delta;
 
