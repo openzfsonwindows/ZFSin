@@ -50,13 +50,19 @@ function cleanup
 
 	rm -f $TEST_STREAM
 	rm -f $TEST_STREAMINCR
+
+sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.metadata.mds.plist
 }
 
 log_onexit cleanup
 
 log_assert "zfs send stream with large dnodes accepted by new pool"
 
+# Using zfs diff, we need to disable spotlight or its files differ
+sudo launchctl unload -w /System/Library/LaunchDaemons/com.apple.metadata.mds.plist
+
 log_must zfs create -o dnodesize=1k $TEST_SEND_FS
+log_must eval "rm -rf /$TEST_SEND_FS/.Trashes"
 log_must touch /$TEST_SEND_FS/$TEST_FILE
 log_must zfs snap $TEST_SNAP
 log_must zfs send $TEST_SNAP > $TEST_STREAM

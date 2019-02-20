@@ -66,7 +66,7 @@ for ((i=0; i < ${#prop_values[*]}; i++)) ; do
 	xattr_size=${xattr_sizes[$i]}
 	log_must zfs set dnsize=$prop_val $TEST_FS
 	log_must mkdir $dir
-	log_must xattrtest -R -y -s $xattr_size -f 1024 -p $dir
+	log_must $XATTRTEST -R -y -s $xattr_size -f 1024 -p $dir
 done
 
 log_pass

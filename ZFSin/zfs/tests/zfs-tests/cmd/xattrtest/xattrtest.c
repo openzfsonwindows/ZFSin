@@ -42,9 +42,19 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#ifdef __APPLE__
+#include <limits.h>
+/* Technically, we should pathconf(_PC_XATTR_SIZE_BITS) to get XATTRMAX - but
+ * lets go with Linux's smaller value.
+ */
+#define XATTR_SIZE_MAX 65536
+#define XATTR_NAME_MAX XATTR_MAXNAMELEN
+#define program_invocation_short_name getprogname()
+#else
 #include <linux/limits.h>
-
 extern char *program_invocation_short_name;
+#endif
+
 
 #define	ERROR(fmt, ...)                                                 \
 	fprintf(stderr, "%s: %s:%d: %s: " fmt "\n",                     \
@@ -94,7 +104,11 @@ static int value_is_random = 0;
 static int keep_files = 0;
 static int phase = PHASE_ALL;
 static char path[PATH_MAX] = "/tmp/xattrtest";
+#ifdef __APPLE__
+static char script[PATH_MAX] = "/usr/bin/true";
+#else
 static char script[PATH_MAX] = "/bin/true";
+#endif
 static char xattrbytes[XATTR_SIZE_MAX];
 
 static int
@@ -498,7 +512,11 @@ setxattrs(void)
 			memcpy(value + shift, xattrbytes,
 			    sizeof (xattrbytes) - shift);
 
+#ifdef __APPLE__
+			rc = setxattr(file, name, value, rnd_size, 0, 0);
+#else
 			rc = lsetxattr(file, name, value, rnd_size, 0);
+#endif
 			if (rc == -1) {
 				ERROR("Error %d: lsetxattr(%s, %s, ..., %d)\n",
 				    errno, file, name, rnd_size);
@@ -581,7 +599,11 @@ getxattrs(void)
 		for (j = 1; j <= xattrs; j++) {
 			(void) sprintf(name, "user.%d", j);
 
+#ifdef __APPLE__
+			rc = getxattr(file, name, value, XATTR_SIZE_MAX, 0, 0);
+#else
 			rc = lgetxattr(file, name, value, XATTR_SIZE_MAX);
+#endif
 			if (rc == -1) {
 				ERROR("Error %d: lgetxattr(%s, %s, ..., %d)\n",
 				    errno, file, name, XATTR_SIZE_MAX);
