@@ -44,6 +44,7 @@ extern "C" {
  */
 #define	UBERBLOCK_MAGIC		0x00bab10c		/* oo-ba-bloc!	*/
 #define	UBERBLOCK_SHIFT		10			/* up to 1K	*/
+#define	MMP_MAGIC		0xa11cea11		/* all-see-all  */
 
 struct uberblock {
 	uint64_t	ub_magic;	/* UBERBLOCK_MAGIC		*/
@@ -56,10 +57,10 @@ struct uberblock {
 	/* highest SPA_VERSION supported by software that wrote this txg */
 	uint64_t	ub_software_version;
 
-	/* These fields are reserved for features that are under development: */
-	uint64_t	ub_mmp_magic;
-	uint64_t	ub_mmp_delay;
-	uint64_t	ub_mmp_seq;
+	/* Maybe missing in uberblocks we read, but always written */
+	uint64_t	ub_mmp_magic;	/* MMP_MAGIC			*/
+	uint64_t	ub_mmp_delay;	/* nanosec since last MMP write	*/
+	uint64_t	ub_mmp_seq;	/* reserved for sequence number	*/
 
 	/*
 	 * ub_checkpoint_txg indicates two things about the current uberblock:
@@ -82,7 +83,7 @@ struct uberblock {
 	 * checkpoint. Specifically, if blk_birth > ub_checkpoint_txg, then
 	 * the ZIL block is not allocated [see uses of spa_min_claim_txg()].
 	 */
-	uint64_t	ub_checkpoint_txg;
+	uint64_t        ub_checkpoint_txg;
 };
 
 #ifdef	__cplusplus

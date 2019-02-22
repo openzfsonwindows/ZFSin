@@ -124,6 +124,7 @@ export TAR="@TAR@"
 export TOUCH="@TOUCH@"
 export TR="@TR@"
 export TRUE="@TRUE@"
+export TRUNCATE="@TRUNCATE@"
 export TUNEFS="@TUNEFS@"
 export UFSDUMP="@UFSDUMP@"
 export UFSRESTORE="@UFSRESTORE@"
@@ -154,5 +155,3 @@ export OSX="OSX"
 export MKFILE_SPARSE="-n"
 export DF_FS_TYPE="T"
 export DF_LOCAL_FS_ONLY=""
-
-

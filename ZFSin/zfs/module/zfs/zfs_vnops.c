@@ -3136,7 +3136,8 @@ zfs_fsync(vnode_t *vp, int syncflag, cred_t *cr, caller_context_t *ct)
 
 	(void) tsd_set(zfs_fsyncer_key, (void *)zfs_fsync_sync_cnt);
 
-	if (zfsvfs->z_os->os_sync != ZFS_SYNC_DISABLED) {
+	if (zfsvfs->z_os->os_sync != ZFS_SYNC_DISABLED &&
+			!vnode_isrecycled(vp)) {
 		ZFS_ENTER(zfsvfs);
 		ZFS_VERIFY_ZP(zp);
 		zil_commit(zfsvfs->z_log, zp->z_id);

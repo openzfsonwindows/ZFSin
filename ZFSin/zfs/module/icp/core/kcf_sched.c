@@ -1071,17 +1071,31 @@ kcf_sched_destroy(void)
 	if (kcf_misc_kstat)
 		kstat_delete(kcf_misc_kstat);
 
-	if (kcfpool)
+	if (kcfpool) {
+		mutex_destroy(&kcfpool->kp_thread_lock);
+		cv_destroy(&kcfpool->kp_nothr_cv);
+		mutex_destroy(&kcfpool->kp_user_lock);
+		cv_destroy(&kcfpool->kp_user_cv);
+
 		kmem_free(kcfpool, sizeof (kcf_pool_t));
+	}
+
+	mutex_destroy(&ntfy_list_lock);
+	cv_destroy(&ntfy_list_cv);
 
 	for (i = 0; i < REQID_TABLES; i++) {
-		if (kcf_reqid_table[i])
+		if (kcf_reqid_table[i]) {
+			mutex_destroy(&kcf_reqid_table[i]->rt_lock);
 			kmem_free(kcf_reqid_table[i],
 				sizeof (kcf_reqid_table_t));
+		}
 	}
 
 	if (gswq)
 		kmem_free(gswq, sizeof (kcf_global_swq_t));
+
+	mutex_destroy(&gswq->gs_lock);
+	cv_destroy(&gswq->gs_cv);
 
 	if (kcf_context_cache)
 		kmem_cache_destroy(kcf_context_cache);

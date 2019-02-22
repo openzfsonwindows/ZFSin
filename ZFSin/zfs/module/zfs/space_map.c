@@ -727,7 +727,7 @@ void
 space_map_write(space_map_t *sm, range_tree_t *rt, maptype_t maptype,
     uint64_t vdev_id, dmu_tx_t *tx)
 {
-	objset_t *os = sm->sm_os;
+	ASSERTV(objset_t *os = sm->sm_os);
 
 	ASSERT(dsl_pool_sync_context(dmu_objset_pool(os)));
 	VERIFY3U(space_map_object(sm), !=, 0);

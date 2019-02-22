@@ -114,6 +114,8 @@ int lzc_channel_program_nosync(const char *, const char *, uint64_t,
 int lzc_sync(const char *, nvlist_t *, nvlist_t **);
 int lzc_reopen(const char *, boolean_t);
 
+int lzc_sync(const char *, nvlist_t *, nvlist_t **);
+
 #ifdef	__cplusplus
 }
 #endif

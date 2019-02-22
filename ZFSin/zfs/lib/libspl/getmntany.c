@@ -481,19 +481,19 @@ getmntany(FILE *fd, struct mnttab *mgetp, struct mnttab *mrefp)
 		return (error);
 
 	for (i = 0; i < allfs; i++) {
-		if (mrefp->mnt_special != NULL &&
-		    strcmp(mrefp->mnt_special, gsfs[i].f_mntfromname) != 0) {
-			continue;
-		}
-		if (mrefp->mnt_mountp != NULL &&
-		    strcmp(mrefp->mnt_mountp, gsfs[i].f_mntonname) != 0) {
-			continue;
-		}
-		if (mrefp->mnt_fstype != NULL &&
-		    strcmp(mrefp->mnt_fstype, gsfs[i].f_fstypename) != 0) {
-			continue;
-		}
 		statfs2mnttab(&gsfs[i], mgetp);
+		if (mrefp->mnt_special != NULL && mgetp->mnt_special != NULL &&
+		    strcmp(mrefp->mnt_special, mgetp->mnt_special) != 0) {
+			continue;
+		}
+		if (mrefp->mnt_mountp != NULL && mgetp->mnt_mountp != NULL &&
+		    strcmp(mrefp->mnt_mountp, mgetp->mnt_mountp) != 0) {
+			continue;
+		}
+		if (mrefp->mnt_fstype != NULL && mgetp->mnt_fstype != NULL &&
+		    strcmp(mrefp->mnt_fstype, mgetp->mnt_fstype) != 0) {
+			continue;
+		}
 		return (0);
 	}
 	return (-1);

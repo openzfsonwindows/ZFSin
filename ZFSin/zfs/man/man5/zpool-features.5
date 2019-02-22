@@ -459,8 +459,7 @@ DEPENDENCIES	device_removal
 This feature is an enhancement of device_removal, which will over time
 reduce the memory used to track removed devices.  When indirect blocks
 are freed or remapped, we note that their part of the indirect mapping
-is "obsolete", i.e. no longer needed.  See also the \fBzfs remap\fR
-subcommand in \fBzfs\fR(1M).
+is "obsolete", i.e. no longer needed.
 
 This feature becomes \fBactive\fR when the "zpool remove" command is
 used on a top-level vdev, and will never return to being \fBenabled\fR.
@@ -661,6 +660,28 @@ This feature enables the creation and management of natively encrypted datasets.
 This feature becomes \fBactive\fR when an encrypted dataset is created
 and will be returned to the \fBenabled\fR state when all datasets that
 use this feature are destroyed.
+
+.RE
+
+.sp
+.ne 2
+.na
+\fB\fBallocation_classes\fR\fR
+.ad
+.RS 4n
+.TS
+l l .
+GUID	org.zfsonlinux:allocation_classes
+READ\-ONLY COMPATIBLE	yes
+DEPENDENCIES	none
+.TE
+
+This feature enables support for separate allocation classes.
+
+This feature becomes \fBactive\fR when a dedicated allocation class vdev
+(dedup or special) is created with zpool create or zpool add. With device
+removal, it can be returned to the \fBenabled\fR state if all the top-level
+vdevs from an allocation class are removed.
 
 .RE
 

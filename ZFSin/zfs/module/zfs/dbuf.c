@@ -448,7 +448,7 @@ dbuf_is_metadata(dmu_buf_impl_t *db)
   /*
    * Consider indirect blocks and spill blocks to be meta data.
    */
-        if (db->db_level > 0 || db->db_blkid == DMU_SPILL_BLKID) {
+	if (db->db_level > 0 || db->db_blkid == DMU_SPILL_BLKID) {
 	  return (B_TRUE);
 	} else {
 		boolean_t is_metadata;
@@ -637,6 +637,13 @@ dbuf_evict_thread(void *unused)
  * If the dbuf cache is at its high water mark, then evict a dbuf from the
  * dbuf cache using the callers context.
  */
+
+#if defined(__APPLE__) && defined(_KERNEL)
+static _Atomic int16_t dbuf_directly_evicting_threads = 0;
+extern void IOSleep(unsigned milliseconds);
+extern void IODelay(unsigned microseconds);
+#endif
+
 static void
 dbuf_evict_notify(void)
 {
@@ -670,8 +677,43 @@ dbuf_evict_notify(void)
 	 */
 	if (refcount_count(&dbuf_caches[DB_DBUF_CACHE].size) >
 	    dbuf_cache_max_bytes) {
+#if defined(__APPLE__) && defined(_KERNEL)
+		/*
+		 * On macOS, we will contend over an atomic count of directly evicting threads, which
+		 * drives the decision on whether or not to yield to the other hyperthread
+		 * on this CPU (if there are other threads directly evicting but fewer than
+		 * half max_ncpus) or to deschedule this thread for a millisecond (if there
+		 * are more direct evictors than that).    The latter can happen given
+		 * a large number of concurrent zfs list operations, for example.  This
+		 * thread should not contribute to stealing all the CPU resources from userland
+		 * and other lower priority kernel threads.
+		 */
+		if (dbuf_cache_above_hiwater()) {
+			if (dbuf_directly_evicting_threads++ > (max_ncpus / 2)) {
+				IOSleep(1);
+				/*
+				 * we could in principle recheck here, at the cost
+				 * of further contention of the dbuf size variable;
+				 * kstat instrumentation would be useful in that
+				 * case.   Just evicting anyway is a reasonable-seeming
+				 * tradeoff.
+				 */
+			} else if (dbuf_directly_evicting_threads > 1) {
+				IODelay(1);
+				/*
+				 * With this small a wait, rechecking is probably
+				 * not useful; at worst we evict one buffer we would
+				 * not have had to evict.
+				 */
+			}
+			dbuf_evict_one();
+			dbuf_directly_evicting_threads--;
+			ASSERT3S(dbuf_directly_evicting_threads, >=, 0);
+		}
+#else
 		if (dbuf_cache_above_hiwater())
 			dbuf_evict_one();
+#endif
 		cv_signal(&dbuf_evict_cv);
 	}
 }
@@ -1026,7 +1068,8 @@ dbuf_whichblock(dnode_t *dn, int64_t level, uint64_t offset)
 }
 
 static void
-dbuf_read_done(zio_t *zio, int err, arc_buf_t *buf, void *vdb)
+dbuf_read_done(zio_t *zio, const zbookmark_phys_t *zb, const blkptr_t *bp,
+    arc_buf_t *buf, void *vdb)
 {
 	dmu_buf_impl_t *db = vdb;
 
@@ -2659,7 +2702,8 @@ dbuf_issue_final_prefetch(dbuf_prefetch_arg_t *dpa, blkptr_t *bp)
  * prefetch if the next block down is our target.
  */
 static void
-dbuf_prefetch_indirect_done(zio_t *zio, int err, arc_buf_t *abuf, void *private)
+dbuf_prefetch_indirect_done(zio_t *zio, const zbookmark_phys_t *zb,
+    const blkptr_t *iobp, arc_buf_t *abuf, void *private)
 {
 	dbuf_prefetch_arg_t *dpa = private;
 
@@ -2705,12 +2749,17 @@ dbuf_prefetch_indirect_done(zio_t *zio, int err, arc_buf_t *abuf, void *private)
 		dbuf_rele(db, FTAG);
 	}
 
-	dpa->dpa_curlevel--;
+	if (abuf == NULL) {
+		kmem_free(dpa, sizeof (*dpa));
+		return;
+	}
 
+	dpa->dpa_curlevel--;
 	uint64_t nextblkid = dpa->dpa_zb.zb_blkid >>
 		(dpa->dpa_epbs * (dpa->dpa_curlevel - dpa->dpa_zb.zb_level));
 	blkptr_t *bp = ((blkptr_t *)abuf->b_data) +
 	    P2PHASE(nextblkid, 1ULL << dpa->dpa_epbs);
+
 	if (BP_IS_HOLE(bp)) {
 		kmem_free(dpa, sizeof (*dpa));
 	} else if (dpa->dpa_curlevel == dpa->dpa_zb.zb_level) {

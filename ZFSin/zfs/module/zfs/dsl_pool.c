@@ -50,6 +50,7 @@
 #include <sys/zil_impl.h>
 #include <sys/dsl_userhold.h>
 #include <sys/trace_txg.h>
+#include <sys/mmp.h>
 
 /*
  * ZFS Write Throttle
@@ -192,6 +193,7 @@ dsl_pool_open_impl(spa_t *spa, uint64_t txg)
 	dp->dp_meta_rootbp = *bp;
 	rrw_init(&dp->dp_config_rwlock, B_TRUE);
 	txg_init(dp, txg);
+	mmp_init(spa);
 
 	txg_list_create(&dp->dp_dirty_datasets,
 	    offsetof(dsl_dataset_t, ds_dirty_link));
@@ -394,15 +396,20 @@ dsl_pool_close(dsl_pool_t *dp)
 	 */
 	arc_flush(dp->dp_spa, FALSE);
 
+	mmp_fini(dp->dp_spa);
 	txg_fini(dp);
 	dsl_scan_fini(dp);
 	dmu_buf_user_evict_wait();
 
 	rrw_destroy(&dp->dp_config_rwlock);
 	mutex_destroy(&dp->dp_lock);
+
+	cv_destroy(&dp->dp_spaceavail_cv);
 	taskq_destroy(dp->dp_vnrele_taskq);
-	if (dp->dp_blkstats != NULL)
+	if (dp->dp_blkstats != NULL) {
+		mutex_destroy(&dp->dp_blkstats->zab_lock);
 		kmem_free(dp->dp_blkstats, sizeof (zfs_all_blkstats_t));
+	}
 	kmem_free(dp, sizeof (dsl_pool_t));
 }
 

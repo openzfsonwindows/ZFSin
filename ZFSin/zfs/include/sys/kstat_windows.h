@@ -37,6 +37,7 @@ typedef struct osx_kstat {
 	kstat_named_t win32_create_negatives;
 	kstat_named_t win32_force_formd_normalized;
 	kstat_named_t win32_skip_unlinked_drain;
+	kstat_named_t win32_use_system_sync;
 
 	kstat_named_t arc_zfs_arc_max;
 	kstat_named_t arc_zfs_arc_min;
@@ -113,11 +114,6 @@ typedef struct osx_kstat {
 	kstat_named_t l2arc_feed_again;
 	kstat_named_t l2arc_norw;
 
-	kstat_named_t zfs_top_maxinflight;
-	kstat_named_t zfs_resilver_delay;
-	kstat_named_t zfs_scrub_delay;
-	kstat_named_t zfs_scan_idle;
-
 	kstat_named_t zfs_recover;
 
 	kstat_named_t zfs_free_bpobj_enabled;
@@ -149,6 +145,7 @@ extern unsigned int zfs_vnop_ignore_negatives;
 extern unsigned int zfs_vnop_ignore_positives;
 extern unsigned int zfs_vnop_create_negatives;
 extern unsigned int zfs_vnop_skip_unlinked_drain;
+extern uint64_t zfs_vfs_sync_paranoia;
 extern uint64_t vnop_num_vnodes;
 extern uint64_t vnop_num_reclaims;
 

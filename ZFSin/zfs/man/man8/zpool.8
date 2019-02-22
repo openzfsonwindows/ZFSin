@@ -33,7 +33,7 @@
 .Nd configure ZFS storage pools
 .Sh SYNOPSIS
 .Nm
-.Fl \?
+.Fl ?
 .Nm
 .Cm add
 .Op Fl fn
@@ -173,6 +173,9 @@
 .Oo Ar pool Oc Ns ...
 .Op Ar interval Op Ar count
 .Nm
+.Cm sync
+.Oo Ar pool Oc Ns ...
+.Nm
 .Cm upgrade
 .Nm
 .Cm upgrade
@@ -263,6 +266,21 @@ Log devices can be mirrored.
 However, raidz vdev types are not supported for the intent log.
 For more information, see the
 .Sx Intent Log
+section.
+.It Sy dedup
+A device dedicated solely for allocating dedup data.
+The redundancy of this device should match the redundancy of the other normal
+devices in the pool. If more than one dedup device is specified, then
+allocations are load-balanced between devices.
+.It Sy special
+A device dedicated solely for allocating various kinds of internal metadata,
+and optionally small file data.
+The redundancy of this device should match the redundancy of the other normal
+devices in the pool. If more than one special device is specified, then
+allocations are load-balanced between devices.
+.Pp
+For more information on special allocations, see the
+.Sx Special Allocation Class
 section.
 .It Sy cache
 A device used to cache storage pool data.
@@ -505,6 +523,29 @@ zfs properties) may be unenforceable while a checkpoint exists, because the
 checkpoint is allowed to consume the dataset's reservation.
 Finally, data that is part of the checkpoint but has been freed in the
 current state of the pool won't be scanned during a scrub.
+.Ss Special Allocation Class
+The allocations in the special class are dedicated to specific block types.
+By default this includes all metadata, the indirect blocks of user data, and
+any dedup data.  The class can also be provisioned to accept a limited
+percentage of small file data blocks.
+.Pp
+A pool must always have at least one general (non-specified) vdev before
+other devices can be assigned to the special class. If the special class
+becomes full, then allocations intended for it will spill back into the
+normal class.
+.Pp
+Dedup data can be excluded from the special class by setting the
+.Sy zfs_ddt_data_is_special
+zfs module parameter to false (0).
+.Pp
+Inclusion of small file blocks in the special class is opt-in. Each dataset
+can control the size of small file blocks allowed in the special class by
+setting the
+.Sy special_small_blocks
+dataset property. It defaults to zero so you must opt-in by setting it to a
+non-zero value. See
+.Xr zfs 8
+for more info on setting this property.
 .Ss Properties
 Each pool has several properties associated with it.
 Some properties are read-only statistics while others are configurable and
@@ -727,6 +768,25 @@ The default value is
 .Sy off .
 This property can also be referred to by its shortened name,
 .Sy listsnaps .
+.It Sy multihost Ns = Ns Sy on Ns | Ns Sy off
+Controls whether a pool activity check should be performed during
+.Nm zpool Cm import .
+When a pool is determined to be active it cannot be imported, even with the
+.Fl f
+option.  This property is intended to be used in failover configurations
+where multiple hosts have access to a pool on shared storage.  When this
+property is on, periodic writes to storage occur to show the pool is in use.
+See
+.Sy zfs_multihost_interval
+in the
+.Xr zfs-module-parameters 5
+man page.  In order to enable this property each host must set a unique hostid.
+See
+.Xr genhostid 1
+and
+.Xr spl-module-paramters 5
+for additional details.  The default value is
+.Sy off .
 .It Sy version Ns = Ns Ar version
 The current on-disk version of the pool.
 This can be increased, but never decreased.
@@ -749,7 +809,7 @@ The following subcommands are supported:
 .Bl -tag -width Ds
 .It Xo
 .Nm
-.Fl \?
+.Fl ?
 .Xc
 Displays a help message.
 .It Xo
@@ -1784,6 +1844,18 @@ Warnings about pools not using the latest on-disk format will not be included.
 .El
 .It Xo
 .Nm
+.Cm sync
+.Oo Ar pool Oc Ns ...
+.Xc
+This command forces all in-core dirty data to be written to the primary pool
+storage and not the ZIL.
+It will also update administrative information including quota reporting.
+Without arguments,
+.Sx zpool sync
+will sync all pools on the system.
+Otherwise, it will sync only the specified pool(s).
+.It Xo
+.Nm
 .Cm upgrade
 .Xc
 Displays pools which do not have all supported features enabled and pools
@@ -2027,6 +2099,8 @@ data        23.9G  14.6G  9.30G    48%         -    61%  1.00x  ONLINE  -
 .Sh INTERFACE STABILITY
 .Sy Evolving
 .Sh SEE ALSO
-.Xr zfs 1M ,
-.Xr attributes 5 ,
+.Xr zed 8 ,
+.Xr zfs 8 ,
+.Xr zfs-events 5 ,
+.Xr zfs-module-parameters 5 ,
 .Xr zpool-features 5

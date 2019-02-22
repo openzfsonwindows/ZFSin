@@ -23,11 +23,15 @@
  * Copyright (c) 2005, 2010, Oracle and/or its affiliates. All rights reserved.
  * Copyright (c) 2011, 2018 by Delphix. All rights reserved.
  * Copyright 2011 Nexenta Systems, Inc. All rights reserved.
+ * Copyright (c) 2011, 2018 by Delphix. All rights reserved.
  * Copyright (c) 2012 by Frederik Wessels. All rights reserved.
  * Copyright (c) 2012 by Cyril Plisko. All rights reserved.
  * Copyright (c) 2013 by Prasad Joshi (sTec). All rights reserved.
  * Copyright 2016 Nexenta Systems, Inc.
+ * Copyright 2016 Igor Kozhukhov <ikozhukhov@gmail.com>.
  * Copyright (c) 2017 Datto Inc.
+ * Copyright (c) 2017 Open-E, Inc. All Rights Reserved.
+ * Copyright (c) 2017, Intel Corporation.
  */
 
 #include <assert.h>
@@ -55,6 +59,8 @@
 #include <sys/fm/protocol.h>
 #include <sys/zfs_ioctl.h>
 #include <sys/mount.h>
+#include <sys/sysmacros.h>
+
 #include <math.h>
 #include <sys/stropts.h>
 
@@ -109,6 +115,8 @@ static int zpool_do_events(int, char **);
 static int zpool_do_get(int, char **);
 static int zpool_do_set(int, char **);
 
+static int zpool_do_sync(int, char **);
+
 /*
  * These libumem hooks provide a reasonable set of defaults for the allocator's
  * debugging facilities.
@@ -154,6 +162,7 @@ typedef enum {
 	HELP_GET,
 	HELP_SET,
 	HELP_SPLIT,
+	HELP_SYNC,
 	HELP_REGUID,
 	HELP_REOPEN
 } zpool_help_t;
@@ -286,9 +295,12 @@ static zpool_command_t command_table[] = {
 	{ NULL },
 	{ "get",	zpool_do_get,		HELP_GET		},
 	{ "set",	zpool_do_set,		HELP_SET		},
+	{ "sync",	zpool_do_sync,		HELP_SYNC		},
 };
 
 #define	NCOMMAND	(ARRAY_SIZE(command_table))
+
+#define	VDEV_ALLOC_CLASS_LOGS	"logs"
 
 static zpool_command_t *current_command;
 static char history_str[HIS_MAX_RECORD_LEN];
@@ -376,6 +388,8 @@ get_usage(zpool_help_t idx) {
 		    "[<device> ...]\n"));
 	case HELP_REGUID:
 		return (gettext("\treguid <pool>\n"));
+	case HELP_SYNC:
+		return (gettext("\tsync [pool] ...\n"));
 	}
 
 	abort();
@@ -391,7 +405,7 @@ print_prop_cb(int prop, void *cb)
 {
 	FILE *fp = cb;
 
-	(void) fprintf(fp, "\t%-15s  ", zpool_prop_to_name(prop));
+	(void) fprintf(fp, "\t%-19s  ", zpool_prop_to_name(prop));
 
 	if (zpool_prop_readonly(prop))
 		(void) fprintf(fp, "  NO   ");
@@ -443,14 +457,14 @@ usage(boolean_t requested)
 		(void) fprintf(fp,
 		    gettext("\nthe following properties are supported:\n"));
 
-		(void) fprintf(fp, "\n\t%-15s  %s   %s\n\n",
+		(void) fprintf(fp, "\n\t%-19s  %s   %s\n\n",
 		    "PROPERTY", "EDIT", "VALUES");
 
 		/* Iterate over all properties */
 		(void) zprop_iter(print_prop_cb, fp, B_FALSE, B_TRUE,
 		    ZFS_TYPE_POOL);
 
-		(void) fprintf(fp, "\t%-15s   ", "feature@...");
+		(void) fprintf(fp, "\t%-19s   ", "feature@...");
 		(void) fprintf(fp, "YES   disabled | enabled | active\n");
 
 		(void) fprintf(fp, gettext("\nThe feature@ properties must be "
@@ -467,32 +481,45 @@ usage(boolean_t requested)
 	exit(requested ? 0 : 2);
 }
 
-void
+/*
+ * print a pool vdev config for dry runs
+ */
+static void
 print_vdev_tree(zpool_handle_t *zhp, const char *name, nvlist_t *nv, int indent,
-    boolean_t print_logs, int name_flags)
+    const char *match, int name_flags)
 {
 	nvlist_t **child;
 	uint_t c, children;
 	char *vname;
-
-	if (name != NULL)
-		(void) printf("\t%*s%s\n", indent, "", name);
+	boolean_t printed = B_FALSE;
 
 	if (nvlist_lookup_nvlist_array(nv, ZPOOL_CONFIG_CHILDREN,
-	    &child, &children) != 0)
+	    &child, &children) != 0) {
+		if (name != NULL)
+			(void) printf("\t%*s%s\n", indent, "", name);
 		return;
+	}
 
 	for (c = 0; c < children; c++) {
 		uint64_t is_log = B_FALSE;
+		char *class = "";
 
 		(void) nvlist_lookup_uint64(child[c], ZPOOL_CONFIG_IS_LOG,
 		    &is_log);
-		if ((is_log && !print_logs) || (!is_log && print_logs))
+		if (is_log)
+			class = VDEV_ALLOC_BIAS_LOG;
+		(void) nvlist_lookup_string(child[c],
+		    ZPOOL_CONFIG_ALLOCATION_BIAS, &class);
+		if (strcmp(match, class) != 0)
 			continue;
 
+		if (!printed && name != NULL) {
+			(void) printf("\t%*s%s\n", indent, "", name);
+			printed = B_TRUE;
+		}
 		vname = zpool_vdev_name(g_zfs, zhp, child[c], name_flags);
-		print_vdev_tree(zhp, vname, child[c], indent + 2,
-		    B_FALSE, name_flags);
+		print_vdev_tree(zhp, vname, child[c], indent + 2, "",
+		    name_flags);
 		free(vname);
 	}
 }
@@ -717,20 +744,25 @@ zpool_do_add(int argc, char **argv)
 		    "configuration:\n"), zpool_get_name(zhp));
 
 		/* print original main pool and new tree */
-		print_vdev_tree(zhp, poolname, poolnvroot, 0, B_FALSE,
-		    name_flags);
-		print_vdev_tree(zhp, NULL, nvroot, 0, B_FALSE, name_flags);
+		print_vdev_tree(zhp, poolname, poolnvroot, 0, "",
+		    name_flags | VDEV_NAME_TYPE_ID);
+		print_vdev_tree(zhp, NULL, nvroot, 0, "", name_flags);
 
-		/* Do the same for the logs */
-		if (num_logs(poolnvroot) > 0) {
-			print_vdev_tree(zhp, "logs", poolnvroot, 0, B_TRUE,
-			    name_flags);
-			print_vdev_tree(zhp, NULL, nvroot, 0, B_TRUE,
-			    name_flags);
-		} else if (num_logs(nvroot) > 0) {
-			print_vdev_tree(zhp, "logs", nvroot, 0, B_TRUE,
-			    name_flags);
-		}
+		/* print other classes: 'dedup', 'special', and 'log' */
+		print_vdev_tree(zhp, "dedup", poolnvroot, 0,
+		    VDEV_ALLOC_BIAS_DEDUP, name_flags);
+		print_vdev_tree(zhp, NULL, nvroot, 0, VDEV_ALLOC_BIAS_DEDUP,
+		    name_flags);
+
+		print_vdev_tree(zhp, "special", poolnvroot, 0,
+		    VDEV_ALLOC_BIAS_SPECIAL, name_flags);
+		print_vdev_tree(zhp, NULL, nvroot, 0, VDEV_ALLOC_BIAS_SPECIAL,
+		    name_flags);
+
+		print_vdev_tree(zhp, "logs", poolnvroot, 0, VDEV_ALLOC_BIAS_LOG,
+		    name_flags);
+		print_vdev_tree(zhp, NULL, nvroot, 0, VDEV_ALLOC_BIAS_LOG,
+		    name_flags);
 
 		/* Do the same for the caches */
 		if (nvlist_lookup_nvlist_array(poolnvroot, ZPOOL_CONFIG_L2CACHE,
@@ -1282,9 +1314,13 @@ zpool_do_create(int argc, char **argv)
 		(void) printf(gettext("would create '%s' with the "
 		    "following layout:\n\n"), poolname);
 
-		print_vdev_tree(NULL, poolname, nvroot, 0, B_FALSE, 0);
-		if (num_logs(nvroot) > 0)
-			print_vdev_tree(NULL, "logs", nvroot, 0, B_TRUE, 0);
+		print_vdev_tree(NULL, poolname, nvroot, 0, "", 0);
+		print_vdev_tree(NULL, "dedup", nvroot, 0,
+		    VDEV_ALLOC_BIAS_DEDUP, 0);
+		print_vdev_tree(NULL, "special", nvroot, 0,
+		    VDEV_ALLOC_BIAS_SPECIAL, 0);
+		print_vdev_tree(NULL, "logs", nvroot, 0,
+		    VDEV_ALLOC_BIAS_LOG, 0);
 
 		ret = 0;
 	} else {
@@ -1598,12 +1634,24 @@ find_spare(zpool_handle_t *zhp, void *data)
 	return (0);
 }
 
+typedef struct status_cbdata {
+	int		cb_count;
+	int		cb_name_flags;
+	int		cb_namewidth;
+	boolean_t	cb_allpools;
+	boolean_t	cb_verbose;
+	boolean_t	cb_explain;
+	boolean_t	cb_first;
+	boolean_t	cb_dedup_stats;
+	boolean_t	cb_print_status;
+} status_cbdata_t;
+
 /*
  * Print out configuration state as requested by status_callback.
  */
 static void
-print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
-    int namewidth, int depth, boolean_t isspare, int name_flags)
+print_status_config(zpool_handle_t *zhp, status_cbdata_t *cb, const char *name,
+    nvlist_t *nv, int depth, boolean_t isspare)
 {
 	nvlist_t **child;
 	uint_t c, children;
@@ -1612,9 +1660,9 @@ print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 	char rbuf[6], wbuf[6], cbuf[6];
 	char *vname;
 	uint64_t notpresent;
-	spare_cbdata_t cb;
-	const char *state;
 	char *type;
+	spare_cbdata_t spare_cb;
+	const char *state;
 
 	if (nvlist_lookup_nvlist_array(nv, ZPOOL_CONFIG_CHILDREN,
 	    &child, &children) != 0)
@@ -1640,7 +1688,7 @@ print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 			state = "AVAIL";
 	}
 
-	(void) printf("\t%*s%-*s  %-8s", depth, "", namewidth - depth,
+	(void) printf("\t%*s%-*s  %-8s", depth, "", cb->cb_namewidth - depth,
 	    name, state);
 
 	if (!isspare) {
@@ -1681,17 +1729,17 @@ print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 
 		case VDEV_AUX_SPARED:
 			verify(nvlist_lookup_uint64(nv, ZPOOL_CONFIG_GUID,
-			    &cb.cb_guid) == 0);
-			if (zpool_iter(g_zfs, find_spare, &cb) == 1) {
-				if (strcmp(zpool_get_name(cb.cb_zhp),
+			    &spare_cb.cb_guid) == 0);
+			if (zpool_iter(g_zfs, find_spare, &spare_cb) == 1) {
+				if (strcmp(zpool_get_name(spare_cb.cb_zhp),
 				    zpool_get_name(zhp)) == 0)
 					(void) printf(gettext("currently in "
 					    "use"));
 				else
 					(void) printf(gettext("in use by "
 					    "pool '%s'"),
-					    zpool_get_name(cb.cb_zhp));
-				zpool_close(cb.cb_zhp);
+					    zpool_get_name(spare_cb.cb_zhp));
+				zpool_close(spare_cb.cb_zhp);
 			} else {
 				(void) printf(gettext("currently in use"));
 			}
@@ -1721,6 +1769,10 @@ print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 			(void) printf(gettext("all children offline"));
 			break;
 
+		case VDEV_AUX_ACTIVE:
+			(void) printf(gettext("currently in use"));
+			break;
+
 		default:
 			(void) printf(gettext("corrupted data"));
 			break;
@@ -1730,7 +1782,7 @@ print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 	(void) nvlist_lookup_uint64_array(nv, ZPOOL_CONFIG_SCAN_STATS,
 	    (uint64_t **)&ps, &c);
 
-	if (ps && ps->pss_state == DSS_SCANNING &&
+	if (ps != NULL && ps->pss_state == DSS_SCANNING &&
 	    vs->vs_scan_processed != 0 && children == 0) {
 		(void) printf(gettext("  (%s)"),
 		    (ps->pss_func == POOL_SCAN_RESILVER) ?
@@ -1786,10 +1838,14 @@ print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 		    &ishole);
 		if (islog || ishole)
 			continue;
+		/* Only print normal classes here */
+		if (nvlist_exists(child[c], ZPOOL_CONFIG_ALLOCATION_BIAS))
+			continue;
+
 		vname = zpool_vdev_name(g_zfs, zhp, child[c],
-		    name_flags | VDEV_NAME_TYPE_ID);
-		print_status_config(zhp, vname, child[c],
-		    namewidth, depth + 2, isspare, name_flags);
+		    cb->cb_name_flags | VDEV_NAME_TYPE_ID);
+		print_status_config(zhp, cb, vname, child[c], depth + 2,
+		    isspare);
 		free(vname);
 	}
 
@@ -1800,8 +1856,8 @@ print_status_config(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
  * pool, printing out the name and status for each one.
  */
 static void
-print_import_config(const char *name, nvlist_t *nv, int namewidth, int depth,
-    int name_flags)
+print_import_config(status_cbdata_t *cb, const char *name, nvlist_t *nv,
+    int depth)
 {
 	nvlist_t **child;
 	uint_t c, children;
@@ -1816,7 +1872,7 @@ print_import_config(const char *name, nvlist_t *nv, int namewidth, int depth,
 	verify(nvlist_lookup_uint64_array(nv, ZPOOL_CONFIG_VDEV_STATS,
 	    (uint64_t **)&vs, &c) == 0);
 
-	(void) printf("\t%*s%-*s", depth, "", namewidth - depth, name);
+	(void) printf("\t%*s%-*s", depth, "", cb->cb_namewidth - depth, name);
 	(void) printf("  %s", zpool_state_to_name(vs->vs_state, vs->vs_aux));
 
 	if (vs->vs_aux != 0) {
@@ -1851,6 +1907,10 @@ print_import_config(const char *name, nvlist_t *nv, int namewidth, int depth,
 			(void) printf(gettext("all children offline"));
 			break;
 
+		case VDEV_AUX_ACTIVE:
+			(void) printf(gettext("currently in use"));
+			break;
+
 		default:
 			(void) printf(gettext("corrupted data"));
 			break;
@@ -1869,11 +1929,12 @@ print_import_config(const char *name, nvlist_t *nv, int namewidth, int depth,
 		    &is_log);
 		if (is_log)
 			continue;
+		if (nvlist_exists(child[c], ZPOOL_CONFIG_ALLOCATION_BIAS))
+			continue;
 
 		vname = zpool_vdev_name(g_zfs, NULL, child[c],
-		    name_flags | VDEV_NAME_TYPE_ID);
-		print_import_config(vname, child[c], namewidth, depth + 2,
-		    name_flags);
+		    cb->cb_name_flags | VDEV_NAME_TYPE_ID);
+		print_import_config(cb, vname, child[c], depth + 2);
 		free(vname);
 	}
 
@@ -1882,7 +1943,7 @@ print_import_config(const char *name, nvlist_t *nv, int namewidth, int depth,
 		(void) printf(gettext("\tcache\n"));
 		for (c = 0; c < children; c++) {
 			vname = zpool_vdev_name(g_zfs, NULL, child[c],
-			    name_flags);
+			    cb->cb_name_flags);
 			(void) printf("\t  %s\n", vname);
 			free(vname);
 		}
@@ -1893,7 +1954,7 @@ print_import_config(const char *name, nvlist_t *nv, int namewidth, int depth,
 		(void) printf(gettext("\tspares\n"));
 		for (c = 0; c < children; c++) {
 			vname = zpool_vdev_name(g_zfs, NULL, child[c],
-			    name_flags);
+			    cb->cb_name_flags);
 			(void) printf("\t  %s\n", vname);
 			free(vname);
 		}
@@ -1901,42 +1962,62 @@ print_import_config(const char *name, nvlist_t *nv, int namewidth, int depth,
 }
 
 /*
- * Print log vdevs.
- * Logs are recorded as top level vdevs in the main pool child array
- * but with "is_log" set to 1. We use either print_status_config() or
- * print_import_config() to print the top level logs then any log
- * children (eg mirrored slogs) are printed recursively - which
- * works because only the top level vdev is marked "is_log"
+ * Print specialized class vdevs.
+ *
+ * These are recorded as top level vdevs in the main pool child array
+ * but with "is_log" set to 1 or an "alloc_bias" string. We use either
+ * print_status_config() or print_import_config() to print the top level
+ * class vdevs then any of their children (eg mirrored slogs) are printed
+ * recursively - which works because only the top level vdev is marked.
  */
 static void
-print_logs(zpool_handle_t *zhp, nvlist_t *nv, int namewidth, boolean_t verbose,
-    int name_flags)
+print_class_vdevs(zpool_handle_t *zhp, status_cbdata_t *cb, nvlist_t *nv,
+    const char *class)
 {
 	uint_t c, children;
 	nvlist_t **child;
+	boolean_t printed = B_FALSE;
+
+	assert(zhp != NULL || !cb->cb_verbose);
 
 	if (nvlist_lookup_nvlist_array(nv, ZPOOL_CONFIG_CHILDREN, &child,
 	    &children) != 0)
 		return;
 
-	(void) printf(gettext("\tlogs\n"));
-
 	for (c = 0; c < children; c++) {
 		uint64_t is_log = B_FALSE;
-		char *name;
+		char *bias = NULL;
+		char *type = NULL;
 
 		(void) nvlist_lookup_uint64(child[c], ZPOOL_CONFIG_IS_LOG,
 		    &is_log);
-		if (!is_log)
+
+		if (is_log) {
+			bias = VDEV_ALLOC_CLASS_LOGS;
+		} else {
+			(void) nvlist_lookup_string(child[c],
+			    ZPOOL_CONFIG_ALLOCATION_BIAS, &bias);
+			(void) nvlist_lookup_string(child[c],
+			    ZPOOL_CONFIG_TYPE, &type);
+		}
+
+		if (bias == NULL || strcmp(bias, class) != 0)
 			continue;
-		name = zpool_vdev_name(g_zfs, zhp, child[c],
-		    name_flags | VDEV_NAME_TYPE_ID);
-		if (verbose)
-			print_status_config(zhp, name, child[c], namewidth,
-			    2, B_FALSE, name_flags);
+		if (!is_log && strcmp(type, VDEV_TYPE_INDIRECT) == 0)
+			continue;
+
+		if (!printed) {
+			(void) printf("\t%s\t\n", gettext(class));
+			printed = B_TRUE;
+		}
+
+		char *name = zpool_vdev_name(g_zfs, zhp, child[c],
+		    cb->cb_name_flags | VDEV_NAME_TYPE_ID);
+		if (cb->cb_print_status)
+			print_status_config(zhp, cb, name, child[c], 2,
+			    B_FALSE);
 		else
-			print_import_config(name, child[c], namewidth, 2,
-			    name_flags);
+			print_import_config(cb, name, child[c], 2);
 		free(name);
 	}
 
@@ -1952,14 +2033,16 @@ show_import(nvlist_t *config)
 	vdev_stat_t *vs;
 	char *name;
 	uint64_t guid;
+	uint64_t hostid = 0;
 	char *msgid;
-	nvlist_t *nvroot;
+	char *hostname = "unknown";
+	nvlist_t *nvroot, *nvinfo;
 	zpool_status_t reason;
 	zpool_errata_t errata;
 	const char *health;
 	uint_t vsc;
-	int namewidth;
 	char *comment;
+	status_cbdata_t cb = { 0 };
 
 	verify(nvlist_lookup_string(config, ZPOOL_CONFIG_POOL_NAME,
 	    &name) == 0);
@@ -2039,6 +2122,17 @@ show_import(nvlist_t *config)
 		    "accessed in read-write mode because it uses the "
 		    "following\n\tfeature(s) not supported on this system:\n"));
 		zpool_print_unsup_feat(config);
+		break;
+
+	case ZPOOL_STATUS_HOSTID_ACTIVE:
+		(void) printf(gettext(" status: The pool is currently "
+		    "imported by another system.\n"));
+		break;
+
+	case ZPOOL_STATUS_HOSTID_REQUIRED:
+		(void) printf(gettext(" status: The pool has the "
+		    "multihost property on.  It cannot\n\tbe safely imported "
+		    "when the system hostid is not set.\n"));
 		break;
 
 	case ZPOOL_STATUS_HOSTID_MISMATCH:
@@ -2163,6 +2257,27 @@ show_import(nvlist_t *config)
 			    "imported. Attach the missing\n\tdevices and try "
 			    "again.\n"));
 			break;
+		case ZPOOL_STATUS_HOSTID_ACTIVE:
+			VERIFY0(nvlist_lookup_nvlist(config,
+			    ZPOOL_CONFIG_LOAD_INFO, &nvinfo));
+
+			if (nvlist_exists(nvinfo, ZPOOL_CONFIG_MMP_HOSTNAME))
+				hostname = fnvlist_lookup_string(nvinfo,
+				    ZPOOL_CONFIG_MMP_HOSTNAME);
+
+			if (nvlist_exists(nvinfo, ZPOOL_CONFIG_MMP_HOSTID))
+				hostid = fnvlist_lookup_uint64(nvinfo,
+				    ZPOOL_CONFIG_MMP_HOSTID);
+
+			(void) printf(gettext(" action: The pool must be "
+			    "exported from %s (hostid=%lx)\n\tbefore it "
+			    "can be safely imported.\n"), hostname,
+			    (unsigned long) hostid);
+			break;
+		case ZPOOL_STATUS_HOSTID_REQUIRED:
+			(void) printf(gettext(" action: Set a unique system "
+			    "hostid with the genhostid(1) command.\n"));
+			break;
 		default:
 			(void) printf(gettext(" action: The pool cannot be "
 			    "imported due to damaged devices or data.\n"));
@@ -2195,19 +2310,46 @@ show_import(nvlist_t *config)
 
 	(void) printf(gettext(" config:\n\n"));
 
-	namewidth = max_width(NULL, nvroot, 0, 0, 0);
-	if (namewidth < 10)
-		namewidth = 10;
+	cb.cb_namewidth = max_width(NULL, nvroot, 0, 0, 0);
+	if (cb.cb_namewidth < 10)
+		cb.cb_namewidth = 10;
 
-	print_import_config(name, nvroot, namewidth, 0, 0);
-	if (num_logs(nvroot) > 0)
-		print_logs(NULL, nvroot, namewidth, B_FALSE, 0);
+	print_import_config(&cb, name, nvroot, 0);
+
+	print_class_vdevs(NULL, &cb, nvroot, VDEV_ALLOC_BIAS_DEDUP);
+	print_class_vdevs(NULL, &cb, nvroot, VDEV_ALLOC_BIAS_SPECIAL);
+	print_class_vdevs(NULL, &cb, nvroot, VDEV_ALLOC_CLASS_LOGS);
 
 	if (reason == ZPOOL_STATUS_BAD_GUID_SUM) {
 		(void) printf(gettext("\n\tAdditional devices are known to "
 		    "be part of this pool, though their\n\texact "
 		    "configuration cannot be determined.\n"));
 	}
+}
+
+static boolean_t
+zfs_force_import_required(nvlist_t *config)
+{
+	uint64_t state;
+	uint64_t hostid = 0;
+	nvlist_t *nvinfo;
+
+	state = fnvlist_lookup_uint64(config, ZPOOL_CONFIG_POOL_STATE);
+	(void) nvlist_lookup_uint64(config, ZPOOL_CONFIG_HOSTID, &hostid);
+
+	if (state != POOL_STATE_EXPORTED && hostid != get_system_hostid())
+		return (B_TRUE);
+
+	nvinfo = fnvlist_lookup_nvlist(config, ZPOOL_CONFIG_LOAD_INFO);
+	if (nvlist_exists(nvinfo, ZPOOL_CONFIG_MMP_STATE)) {
+		mmp_state_t mmp_state = fnvlist_lookup_uint64(nvinfo,
+		    ZPOOL_CONFIG_MMP_STATE);
+
+		if (mmp_state != MMP_STATE_INACTIVE)
+			return (B_TRUE);
+	}
+
+	return (B_FALSE);
 }
 
 /*
@@ -2225,45 +2367,72 @@ do_import(nvlist_t *config, const char *newname, const char *mntopts,
 	uint64_t state;
 	uint64_t version;
 
-	verify(nvlist_lookup_string(config, ZPOOL_CONFIG_POOL_NAME,
-	    &name) == 0);
+	name = fnvlist_lookup_string(config, ZPOOL_CONFIG_POOL_NAME);
+	state = fnvlist_lookup_uint64(config, ZPOOL_CONFIG_POOL_STATE);
+	version = fnvlist_lookup_uint64(config, ZPOOL_CONFIG_VERSION);
 
-	verify(nvlist_lookup_uint64(config,
-	    ZPOOL_CONFIG_POOL_STATE, &state) == 0);
-	verify(nvlist_lookup_uint64(config,
-	    ZPOOL_CONFIG_VERSION, &version) == 0);
 	if (!SPA_VERSION_IS_SUPPORTED(version)) {
 		(void) fprintf(stderr, gettext("cannot import '%s': pool "
 		    "is formatted using an unsupported ZFS version\n"), name);
 		return (1);
-	} else if (state != POOL_STATE_EXPORTED &&
+	} else if (zfs_force_import_required(config) &&
 	    !(flags & ZFS_IMPORT_ANY_HOST)) {
-		uint64_t hostid = 0;
-		unsigned long system_hostid = get_system_hostid();
+		mmp_state_t mmp_state = MMP_STATE_INACTIVE;
+		nvlist_t *nvinfo;
 
-		(void) nvlist_lookup_uint64(config, ZPOOL_CONFIG_HOSTID,
-		    &hostid);
+		nvinfo = fnvlist_lookup_nvlist(config, ZPOOL_CONFIG_LOAD_INFO);
+		if (nvlist_exists(nvinfo, ZPOOL_CONFIG_MMP_STATE))
+			mmp_state = fnvlist_lookup_uint64(nvinfo,
+			    ZPOOL_CONFIG_MMP_STATE);
 
-		if (hostid != 0 && (unsigned long)hostid != system_hostid) {
-			char *hostname;
-			uint64_t timestamp;
-			time_t t;
+		if (mmp_state == MMP_STATE_ACTIVE) {
+			char *hostname = "<unknown>";
+			uint64_t hostid = 0;
 
-			verify(nvlist_lookup_string(config,
-			    ZPOOL_CONFIG_HOSTNAME, &hostname) == 0);
-			verify(nvlist_lookup_uint64(config,
-			    ZPOOL_CONFIG_TIMESTAMP, &timestamp) == 0);
-			t = timestamp;
-			(void) fprintf(stderr, gettext("cannot import "
-			    "'%s': pool may be in use from other "
-			    "system, it was last accessed by %s "
-			    "(hostid: 0x%lx) on %s"), name, hostname,
-			    (unsigned long)hostid,
-			    asctime(localtime(&t)));
-			(void) fprintf(stderr, gettext("use '-f' to "
-			    "import anyway\n"));
-			return (1);
+			if (nvlist_exists(nvinfo, ZPOOL_CONFIG_MMP_HOSTNAME))
+				hostname = fnvlist_lookup_string(nvinfo,
+				    ZPOOL_CONFIG_MMP_HOSTNAME);
+
+			if (nvlist_exists(nvinfo, ZPOOL_CONFIG_MMP_HOSTID))
+				hostid = fnvlist_lookup_uint64(nvinfo,
+				    ZPOOL_CONFIG_MMP_HOSTID);
+
+			(void) fprintf(stderr, gettext("cannot import '%s': "
+			    "pool is imported on %s (hostid: "
+			    "0x%lx)\nExport the pool on the other system, "
+			    "then run 'zpool import'.\n"),
+			    name, hostname, (unsigned long) hostid);
+		} else if (mmp_state == MMP_STATE_NO_HOSTID) {
+			(void) fprintf(stderr, gettext("Cannot import '%s': "
+			    "pool has the multihost property on and the\n"
+			    "system's hostid is not set. Set a unique hostid "
+			    "with the genhostid(1) command.\n"), name);
+		} else {
+			char *hostname = "<unknown>";
+			uint64_t timestamp = 0;
+			uint64_t hostid = 0;
+
+			if (nvlist_exists(config, ZPOOL_CONFIG_HOSTNAME))
+				hostname = fnvlist_lookup_string(config,
+				    ZPOOL_CONFIG_HOSTNAME);
+
+			if (nvlist_exists(config, ZPOOL_CONFIG_TIMESTAMP))
+				timestamp = fnvlist_lookup_uint64(config,
+				    ZPOOL_CONFIG_TIMESTAMP);
+
+			if (nvlist_exists(config, ZPOOL_CONFIG_HOSTID))
+				hostid = fnvlist_lookup_uint64(config,
+				    ZPOOL_CONFIG_HOSTID);
+
+			(void) fprintf(stderr, gettext("cannot import '%s': "
+			    "pool was previously in use from another system.\n"
+			    "Last accessed by %s (hostid=%lx) at %s"
+			    "The pool can be imported, use 'zpool import -f' "
+			    "to import the pool.\n"), name, hostname,
+			    (unsigned long)hostid, ctime((time_t *)&timestamp));
 		}
+
+		return (1);
 	}
 
 	if (zpool_import_props(g_zfs, config, newname, props, flags) != 0)
@@ -2867,6 +3036,45 @@ error:
 		free(envdup);
 
 	return (err ? 1 : 0);
+}
+
+/*
+ * zpool sync [-f] [pool] ...
+ *
+ * -f (undocumented) force uberblock (and config including zpool cache file)
+ *    update.
+ *
+ * Sync the specified pool(s).
+ * Without arguments "zpool sync" will sync all pools.
+ * This command initiates TXG sync(s) and will return after the TXG(s) commit.
+ *
+ */
+static int
+zpool_do_sync(int argc, char **argv)
+{
+	int ret;
+	boolean_t force = B_FALSE;
+
+	/* check options */
+	while ((ret  = getopt(argc, argv, "f")) != -1) {
+		switch (ret) {
+		case 'f':
+			force = B_TRUE;
+			break;
+		case '?':
+			(void) fprintf(stderr, gettext("invalid option '%c'\n"),
+			    optopt);
+			usage(B_FALSE);
+		}
+	}
+
+	argc -= optind;
+	argv += optind;
+
+	/* if argc == 0 we will execute zpool_sync_one on all pools */
+	ret = for_each_pool(argc, argv, B_FALSE, NULL, zpool_sync_one, &force);
+
+	return (ret);
 }
 
 typedef struct iostat_cbdata {
@@ -3588,6 +3796,12 @@ print_iostat_default(vdev_stat_t *vs, iostat_cbdata_t *cb, double scale)
 	    format, column_width, cb->cb_scripted);
 }
 
+static const char *class_name[] = {
+	VDEV_ALLOC_BIAS_DEDUP,
+	VDEV_ALLOC_BIAS_SPECIAL,
+	VDEV_ALLOC_CLASS_LOGS
+};
+
 /*
  * Print out all the statistics for the given vdev.  This can either be the
  * toplevel configuration, or called recursively.  If 'name' is NULL, then this
@@ -3595,7 +3809,7 @@ print_iostat_default(vdev_stat_t *vs, iostat_cbdata_t *cb, double scale)
  *
  * Returns the number of stat lines printed.
  */
-unsigned int
+static unsigned int
 print_vdev_stats(zpool_handle_t *zhp, const char *name, nvlist_t *oldnv,
     nvlist_t *newnv, iostat_cbdata_t *cb, int depth)
 {
@@ -3708,6 +3922,9 @@ children:
 	    &oldchild, &c) != 0)
 		return (ret);
 
+	/*
+	 * print normal top-level devices
+	 */
 	for (c = 0; c < children; c++) {
 		uint64_t ishole = B_FALSE, islog = B_FALSE;
 
@@ -3720,6 +3937,9 @@ children:
 		if (ishole || islog)
 			continue;
 
+		if (nvlist_exists(newchild[c], ZPOOL_CONFIG_ALLOCATION_BIAS))
+			continue;
+
 		vname = zpool_vdev_name(g_zfs, zhp, newchild[c],
 		    cb->cb_name_flags);
 		ret += print_vdev_stats(zhp, vname, oldnv ? oldchild[c] : NULL,
@@ -3728,30 +3948,47 @@ children:
 	}
 
 	/*
-	 * Log device section
+	 * print all other top-level devices
 	 */
-
-	if (num_logs(newnv) > 0) {
-		if ((!(cb->cb_flags & IOS_ANYHISTO_M)) && !cb->cb_scripted &&
-		    !cb->cb_vdev_names) {
-			print_iostat_dashes(cb, 0, "logs");
-		}
+	for (uint_t n = 0; n < 3; n++) {
+		boolean_t printed = B_FALSE;
 
 		for (c = 0; c < children; c++) {
 			uint64_t islog = B_FALSE;
+			char *bias = NULL;
+			char *type = NULL;
+
 			(void) nvlist_lookup_uint64(newchild[c],
 			    ZPOOL_CONFIG_IS_LOG, &islog);
-
 			if (islog) {
-				vname = zpool_vdev_name(g_zfs, zhp, newchild[c],
-				    cb->cb_name_flags);
-				ret += print_vdev_stats(zhp, vname, oldnv ?
-				    oldchild[c] : NULL, newchild[c],
-				    cb, depth + 2);
-				free(vname);
+				bias = VDEV_ALLOC_CLASS_LOGS;
+			} else {
+				(void) nvlist_lookup_string(newchild[c],
+				    ZPOOL_CONFIG_ALLOCATION_BIAS, &bias);
+				(void) nvlist_lookup_string(newchild[c],
+				    ZPOOL_CONFIG_TYPE, &type);
 			}
-		}
+			if (bias == NULL || strcmp(bias, class_name[n]) != 0)
+				continue;
+			if (!islog && strcmp(type, VDEV_TYPE_INDIRECT) == 0)
+				continue;
 
+			if (!printed) {
+				if ((!(cb->cb_flags & IOS_ANYHISTO_M)) &&
+				    !cb->cb_scripted && !cb->cb_vdev_names) {
+					print_iostat_dashes(cb, 0,
+					    class_name[n]);
+				}
+				printf("\n");
+				printed = B_TRUE;
+			}
+
+			vname = zpool_vdev_name(g_zfs, zhp, newchild[c],
+			    cb->cb_name_flags);
+			ret += print_vdev_stats(zhp, vname, oldnv ?
+			    oldchild[c] : NULL, newchild[c], cb, depth + 2);
+			free(vname);
+		}
 	}
 
 	/*
@@ -4573,6 +4810,7 @@ typedef struct list_cbdata {
 	boolean_t	cb_literal;
 } list_cbdata_t;
 
+
 /*
  * Given a list of columns to display, output appropriate headers for each one.
  */
@@ -4627,7 +4865,7 @@ print_header(list_cbdata_t *cb)
 
 /*
  * Given a pool and a list of properties, print out all the properties according
- * to the described layout.
+ * to the described layout. Used by zpool_do_list().
  */
 static void
 print_pool(zpool_handle_t *zhp, list_cbdata_t *cb)
@@ -4719,8 +4957,10 @@ print_one_column(zpool_prop_t prop, uint64_t value, boolean_t scripted,
 		}
 		break;
 	case ZPOOL_PROP_CAPACITY:
-		(void) snprintf(propval, sizeof (propval), "%llu%%",
-		    (unsigned long long)value);
+		/* capacity value is in parts-per-10,000 (aka permyriad) */
+		(void) snprintf(propval, sizeof (propval),
+		    value < 1000 ? "%1.2f%%" : value < 10000 ?
+		    "%2.1f%%" : "%3.0f%%", value / 100.0);
 		break;
 	default:
 		zfs_nicenum(value, propval, sizeof (propval));
@@ -4735,6 +4975,10 @@ print_one_column(zpool_prop_t prop, uint64_t value, boolean_t scripted,
 		(void) printf("  %*s", (int)width, propval);
 }
 
+/*
+ * print static default line per vdev
+ * not compatible with '-o' <proplist> option
+ */
 void
 print_list_stats(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
     list_cbdata_t *cb, int depth)
@@ -4745,7 +4989,6 @@ print_list_stats(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 	char *vname;
 	boolean_t scripted = cb->cb_scripted;
 	uint64_t islog = B_FALSE;
-	boolean_t haslog = B_FALSE;
 	char *dashes = "%-*s      -      -      -         -      -      -\n";
 
 	verify(nvlist_lookup_uint64_array(nv, ZPOOL_CONFIG_VDEV_STATS,
@@ -4786,7 +5029,7 @@ print_list_stats(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 		    vs->vs_fragmentation, scripted,
 		    (vs->vs_fragmentation != ZFS_FRAG_INVALID && toplevel));
 		cap = (vs->vs_space == 0) ? 0 :
-		    (vs->vs_alloc * 100 / vs->vs_space);
+		    (vs->vs_alloc * 10000 / vs->vs_space);
 		print_one_column(ZPOOL_PROP_CAPACITY, cap, scripted, toplevel);
 		(void) printf("\n");
 	}
@@ -4795,6 +5038,7 @@ print_list_stats(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 	    &child, &children) != 0)
 		return;
 
+	/* list the normal vdevs first */
 	for (c = 0; c < children; c++) {
 		uint64_t ishole = B_FALSE;
 
@@ -4803,10 +5047,11 @@ print_list_stats(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 			continue;
 
 		if (nvlist_lookup_uint64(child[c],
-		    ZPOOL_CONFIG_IS_LOG, &islog) == 0 && islog) {
-			haslog = B_TRUE;
+		    ZPOOL_CONFIG_IS_LOG, &islog) == 0 && islog)
 			continue;
-		}
+
+		if (nvlist_exists(child[c], ZPOOL_CONFIG_ALLOCATION_BIAS))
+			continue;
 
 		vname = zpool_vdev_name(g_zfs, zhp, child[c],
 		    cb->cb_name_flags);
@@ -4814,13 +5059,34 @@ print_list_stats(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 		free(vname);
 	}
 
-	if (haslog == B_TRUE) {
-		/* LINTED E_SEC_PRINTF_VAR_FMT */
-		(void) printf(dashes, cb->cb_namewidth, "log");
+	/* list the classes: 'logs', 'dedup', and 'special' */
+	for (uint_t n = 0; n < 3; n++) {
+		boolean_t printed = B_FALSE;
+
 		for (c = 0; c < children; c++) {
+			char *bias = NULL;
+			char *type = NULL;
+
 			if (nvlist_lookup_uint64(child[c], ZPOOL_CONFIG_IS_LOG,
-			    &islog) != 0 || !islog)
+			    &islog) == 0 && islog) {
+				bias = VDEV_ALLOC_CLASS_LOGS;
+			} else {
+				(void) nvlist_lookup_string(child[c],
+				    ZPOOL_CONFIG_ALLOCATION_BIAS, &bias);
+				(void) nvlist_lookup_string(child[c],
+				    ZPOOL_CONFIG_TYPE, &type);
+			}
+			if (bias == NULL || strcmp(bias, class_name[n]) != 0)
 				continue;
+			if (!islog && strcmp(type, VDEV_TYPE_INDIRECT) == 0)
+				continue;
+
+			if (!printed) {
+				/* LINTED E_SEC_PRINTF_VAR_FMT */
+				(void) printf(dashes, cb->cb_namewidth,
+				    class_name[n]);
+				printed = B_TRUE;
+			}
 			vname = zpool_vdev_name(g_zfs, zhp, child[c],
 			    cb->cb_name_flags);
 			print_list_stats(zhp, vname, child[c], cb, depth + 2);
@@ -4853,7 +5119,6 @@ print_list_stats(zpool_handle_t *zhp, const char *name, nvlist_t *nv,
 	}
 }
 
-
 /*
  * Generic callback function to list a pool.
  */
@@ -4866,13 +5131,21 @@ list_callback(zpool_handle_t *zhp, void *data)
 
 	config = zpool_get_config(zhp, NULL);
 
-	print_pool(zhp, cbp);
-	if (!cbp->cb_verbose)
-		return (0);
+	if (cbp->cb_verbose) {
+		config = zpool_get_config(zhp, NULL);
 
-	verify(nvlist_lookup_nvlist(config, ZPOOL_CONFIG_VDEV_TREE,
-	    &nvroot) == 0);
-	print_list_stats(zhp, NULL, nvroot, cbp, 0);
+		verify(nvlist_lookup_nvlist(config, ZPOOL_CONFIG_VDEV_TREE,
+		    &nvroot) == 0);
+	}
+
+	if (cbp->cb_verbose)
+		cbp->cb_namewidth = max_width(zhp, nvroot, 0, 0,
+		    cbp->cb_name_flags);
+
+	print_pool(zhp, cbp);
+
+	if (cbp->cb_verbose)
+		print_list_stats(zhp, NULL, nvroot, cbp, 0);
 
 	return (0);
 }
@@ -4935,6 +5208,7 @@ zpool_do_list(int argc, char **argv)
 			break;
 		case 'v':
 			cb.cb_verbose = B_TRUE;
+			cb.cb_namewidth = 8;	/* 8 until precalc is avail */
 			break;
 		case ':':
 			(void) fprintf(stderr, gettext("missing argument for "
@@ -5324,7 +5598,7 @@ zpool_do_split(int argc, char **argv)
 		if (flags.dryrun) {
 			(void) printf(gettext("would create '%s' with the "
 			    "following layout:\n\n"), newpool);
-			print_vdev_tree(NULL, newpool, config, 0, B_FALSE,
+			print_vdev_tree(NULL, newpool, config, 0, "",
 			    flags.name_flags);
 		}
 	}
@@ -5904,17 +6178,6 @@ zpool_do_initialize(int argc, char **argv)
 	return (err);
 }
 
-typedef struct status_cbdata {
-	int		cb_count;
-	int		cb_name_flags;
-	boolean_t	cb_allpools;
-	boolean_t	cb_verbose;
-	boolean_t	cb_display_flags;
-	boolean_t	cb_explain;
-	boolean_t	cb_first;
-	boolean_t	cb_dedup_stats;
-} status_cbdata_t;
-
 /*
  * Print out detailed scrub status.
  */
@@ -5922,11 +6185,13 @@ static void
 print_scan_status(pool_scan_stat_t *ps)
 {
 	time_t start, end, pause;
-	uint64_t elapsed, mins_left, hours_left;
-	uint64_t pass_exam, examined, total;
-	uint_t rate;
+	uint64_t total_secs_left;
+	uint64_t elapsed, secs_left, mins_left, hours_left, days_left;
+	uint64_t pass_scanned, scanned, pass_issued, issued, total;
+	uint_t scan_rate, issue_rate;
 	double fraction_done;
-	char processed_buf[7], examined_buf[7], total_buf[7], rate_buf[7];
+	char processed_buf[7], scanned_buf[7], issued_buf[7], total_buf[7];
+	char srate_buf[7], irate_buf[7];
 
 	(void) printf(gettext("  scan: "));
 
@@ -5944,26 +6209,30 @@ print_scan_status(pool_scan_stat_t *ps)
 
 	assert(ps->pss_func == POOL_SCAN_SCRUB ||
 	    ps->pss_func == POOL_SCAN_RESILVER);
-	/*
-	 * Scan is finished or canceled.
-	 */
+
+	/* Scan is finished or canceled. */
 	if (ps->pss_state == DSS_FINISHED) {
-		uint64_t minutes_taken = (end - start) / 60;
-		char *fmt = NULL;
+		total_secs_left = end - start;
+		days_left = total_secs_left / 60 / 60 / 24;
+		hours_left = (total_secs_left / 60 / 60) % 24;
+		mins_left = (total_secs_left / 60) % 60;
+		secs_left = (total_secs_left % 60);
 
 		if (ps->pss_func == POOL_SCAN_SCRUB) {
-			fmt = gettext("scrub repaired %s in %lluh%um with "
-			    "%llu errors on %s");
+			(void) printf(gettext("scrub repaired %s "
+			    "in %llu days %02llu:%02llu:%02llu "
+			    "with %llu errors on %s"), processed_buf,
+			    (u_longlong_t)days_left, (u_longlong_t)hours_left,
+			    (u_longlong_t)mins_left, (u_longlong_t)secs_left,
+			    (u_longlong_t)ps->pss_errors, ctime(&end));
 		} else if (ps->pss_func == POOL_SCAN_RESILVER) {
-			fmt = gettext("resilvered %s in %lluh%um with "
-			    "%llu errors on %s");
+			(void) printf(gettext("resilvered %s "
+			    "in %llu days %02llu:%02llu:%02llu "
+			    "with %llu errors on %s"), processed_buf,
+			    (u_longlong_t)days_left, (u_longlong_t)hours_left,
+			    (u_longlong_t)mins_left, (u_longlong_t)secs_left,
+			    (u_longlong_t)ps->pss_errors, ctime(&end));
 		}
-		/* LINTED */
-		(void) printf(fmt, processed_buf,
-		    (u_longlong_t)(minutes_taken / 60),
-		    (uint_t)(minutes_taken % 60),
-		    (u_longlong_t)ps->pss_errors,
-		    ctime((time_t *)&end));
 		return;
 	} else if (ps->pss_state == DSS_CANCELED) {
 		if (ps->pss_func == POOL_SCAN_SCRUB) {
@@ -5978,19 +6247,15 @@ print_scan_status(pool_scan_stat_t *ps)
 
 	assert(ps->pss_state == DSS_SCANNING);
 
-	/*
-	 * Scan is in progress.
-	 */
+	/* Scan is in progress. Resilvers can't be paused. */
 	if (ps->pss_func == POOL_SCAN_SCRUB) {
 		if (pause == 0) {
 			(void) printf(gettext("scrub in progress since %s"),
 			    ctime(&start));
 		} else {
-			char buf[32];
-			struct tm *p = localtime(&pause);
-			(void) strftime(buf, sizeof (buf), "%a %b %e %T %Y", p);
-			(void) printf(gettext("scrub paused since %s\n"), buf);
-			(void) printf(gettext("\tscrub started on   %s"),
+			(void) printf(gettext("scrub paused since %s"),
+			    ctime(&pause));
+			(void) printf(gettext("\tscrub started on %s"),
 			    ctime(&start));
 		}
 	} else if (ps->pss_func == POOL_SCAN_RESILVER) {
@@ -5998,49 +6263,67 @@ print_scan_status(pool_scan_stat_t *ps)
 		    ctime(&start));
 	}
 
-	examined = ps->pss_examined ? ps->pss_examined : 1;
+	scanned = ps->pss_examined;
+	pass_scanned = ps->pss_pass_exam;
+	issued = ps->pss_issued;
+	pass_issued = ps->pss_pass_issued;
 	total = ps->pss_to_examine;
-	fraction_done = (double)examined / total;
 
-	/* elapsed time for this pass */
+	/* we are only done with a block once we have issued the IO for it */
+	fraction_done = (double)issued / total;
+
+	/* elapsed time for this pass, rounding up to 1 if it's 0 */
 	elapsed = time(NULL) - ps->pss_pass_start;
 	elapsed -= ps->pss_pass_scrub_spent_paused;
-	elapsed = elapsed ? elapsed : 1;
-	pass_exam = ps->pss_pass_exam ? ps->pss_pass_exam : 1;
-	rate = pass_exam / elapsed;
-	rate = rate ? rate : 1;
-	mins_left = ((total - examined) / rate) / 60;
-	hours_left = mins_left / 60;
+	elapsed = (elapsed != 0) ? elapsed : 1;
 
-	zfs_nicenum(examined, examined_buf, sizeof (examined_buf));
+	scan_rate = pass_scanned / elapsed;
+	issue_rate = pass_issued / elapsed;
+	total_secs_left = (issue_rate != 0) ?
+	    ((total - issued) / issue_rate) : UINT64_MAX;
+
+	days_left = total_secs_left / 60 / 60 / 24;
+	hours_left = (total_secs_left / 60 / 60) % 24;
+	mins_left = (total_secs_left / 60) % 60;
+	secs_left = (total_secs_left % 60);
+
+	/* format all of the numbers we will be reporting */
+	zfs_nicenum(scanned, scanned_buf, sizeof (scanned_buf));
+	zfs_nicenum(issued, issued_buf, sizeof (issued_buf));
 	zfs_nicenum(total, total_buf, sizeof (total_buf));
+	zfs_nicenum(scan_rate, srate_buf, sizeof (srate_buf));
+	zfs_nicenum(issue_rate, irate_buf, sizeof (irate_buf));
 
-	/*
-	 * do not print estimated time if hours_left is more than 30 days
-	 * or we have a paused scrub
-	 */
+	/* do not print estimated time if we have a paused scrub */
 	if (pause == 0) {
-		zfs_nicenum(rate, rate_buf, sizeof (rate_buf));
-		(void) printf(gettext("\t%s scanned out of %s at %s/s"),
-		    examined_buf, total_buf, rate_buf);
-		if (hours_left < (30 * 24)) {
-			(void) printf(gettext(", %lluh%um to go\n"),
-			    (u_longlong_t)hours_left, (uint_t)(mins_left % 60));
-		} else {
-			(void) printf(gettext(
-			    ", (scan is slow, no estimated time)\n"));
-		}
+		(void) printf(gettext("\t%s scanned at %s/s, "
+				"%s issued at %s/s, %s total\n"),
+			scanned_buf, srate_buf, issued_buf, irate_buf, total_buf);
 	} else {
-		(void) printf(gettext("\t%s scanned out of %s\n"),
-		    examined_buf, total_buf);
+		(void) printf(gettext("\t%s scanned, %s issued, %s total\n"),
+			scanned_buf, issued_buf, total_buf);
 	}
 
 	if (ps->pss_func == POOL_SCAN_RESILVER) {
-		(void) printf(gettext("    %s resilvered, %.2f%% done\n"),
+		(void) printf(gettext("\t%s resilvered, %.2f%% done"),
 		    processed_buf, 100 * fraction_done);
 	} else if (ps->pss_func == POOL_SCAN_SCRUB) {
-		(void) printf(gettext("    %s repaired, %.2f%% done\n"),
+		(void) printf(gettext("\t%s repaired, %.2f%% done"),
 		    processed_buf, 100 * fraction_done);
+	}
+
+	if (pause == 0) {
+		if (issue_rate >= 10 * 1024 * 1024) {
+			(void) printf(gettext(", %llu days "
+			    "%02llu:%02llu:%02llu to go\n"),
+			    (u_longlong_t)days_left, (u_longlong_t)hours_left,
+			    (u_longlong_t)mins_left, (u_longlong_t)secs_left);
+		} else {
+			(void) printf(gettext(", no estimated "
+			    "completion time\n"));
+		}
+	} else {
+		(void) printf(gettext("\n"));
 	}
 }
 
@@ -6252,8 +6535,8 @@ print_error_log(zpool_handle_t *zhp)
 }
 
 static void
-print_spares(zpool_handle_t *zhp, nvlist_t **spares, uint_t nspares,
-    int namewidth, int name_flags)
+print_spares(zpool_handle_t *zhp, status_cbdata_t *cb, nvlist_t **spares,
+    uint_t nspares)
 {
 	uint_t i;
 	char *name;
@@ -6264,16 +6547,16 @@ print_spares(zpool_handle_t *zhp, nvlist_t **spares, uint_t nspares,
 	(void) printf(gettext("\tspares\n"));
 
 	for (i = 0; i < nspares; i++) {
-		name = zpool_vdev_name(g_zfs, zhp, spares[i], name_flags);
-		print_status_config(zhp, name, spares[i],
-		    namewidth, 2, B_TRUE, name_flags);
+		name = zpool_vdev_name(g_zfs, zhp, spares[i],
+		    cb->cb_name_flags);
+		print_status_config(zhp, cb, name, spares[i], 2, B_TRUE);
 		free(name);
 	}
 }
 
 static void
-print_l2cache(zpool_handle_t *zhp, nvlist_t **l2cache, uint_t nl2cache,
-    int namewidth, int name_flags)
+print_l2cache(zpool_handle_t *zhp, status_cbdata_t *cb, nvlist_t **l2cache,
+    uint_t nl2cache)
 {
 	uint_t i;
 	char *name;
@@ -6284,9 +6567,9 @@ print_l2cache(zpool_handle_t *zhp, nvlist_t **l2cache, uint_t nl2cache,
 	(void) printf(gettext("\tcache\n"));
 
 	for (i = 0; i < nl2cache; i++) {
-		name = zpool_vdev_name(g_zfs, zhp, l2cache[i], name_flags);
-		print_status_config(zhp, name, l2cache[i],
-		    namewidth, 2, B_FALSE, name_flags);
+		name = zpool_vdev_name(g_zfs, zhp, l2cache[i],
+		    cb->cb_name_flags);
+		print_status_config(zhp, cb, name, l2cache[i], 2, B_FALSE);
 		free(name);
 	}
 }
@@ -6553,6 +6836,15 @@ status_callback(zpool_handle_t *zhp, void *data)
 		    "to be recovered.\n"));
 		break;
 
+	case ZPOOL_STATUS_IO_FAILURE_MMP:
+		(void) printf(gettext("status: The pool is suspended because "
+		    "multihost writes failed or were delayed;\n\tanother "
+		    "system could import the pool undetected.\n"));
+		(void) printf(gettext("action: Make sure the pool's devices "
+		    "are connected, then reboot your system and\n\timport the "
+		    "pool.\n"));
+		break;
+
 	case ZPOOL_STATUS_IO_FAILURE_WAIT:
 	case ZPOOL_STATUS_IO_FAILURE_CONTINUE:
 		(void) printf(gettext("status: One or more devices are "
@@ -6623,7 +6915,6 @@ status_callback(zpool_handle_t *zhp, void *data)
 		    msgid);
 
 	if (config != NULL) {
-		int namewidth;
 		uint64_t nerr;
 		nvlist_t **spares, **l2cache;
 		uint_t nspares, nl2cache;
@@ -6643,28 +6934,32 @@ status_callback(zpool_handle_t *zhp, void *data)
 		print_removal_status(zhp, prs);
 		print_checkpoint_status(pcs);
 
-		namewidth = max_width(zhp, nvroot, 0, 0, 0);
-		if (namewidth < 10)
-			namewidth = 10;
+		cbp->cb_namewidth = max_width(zhp, nvroot, 0, 0,
+		    cbp->cb_name_flags);
+		if (cbp->cb_namewidth < 10)
+			cbp->cb_namewidth = 10;
 
 		(void) printf(gettext("config:\n\n"));
-		(void) printf(gettext("\t%-*s  %-8s %5s %5s %5s\n"), namewidth,
-		    "NAME", "STATE", "READ", "WRITE", "CKSUM");
-		print_status_config(zhp, zpool_get_name(zhp), nvroot,
-		    namewidth, 0, B_FALSE, cbp->cb_name_flags);
+		(void) printf(gettext("\t%-*s  %-8s %5s %5s %5s"),
+		    cbp->cb_namewidth, "NAME", "STATE", "READ", "WRITE",
+		    "CKSUM");
 
-		if (num_logs(nvroot) > 0)
-			print_logs(zhp, nvroot, namewidth, B_TRUE,
-			    cbp->cb_name_flags);
+		printf("\n");
+
+		print_status_config(zhp, cbp, zpool_get_name(zhp), nvroot, 0,
+		    B_FALSE);
+
+		print_class_vdevs(zhp, cbp, nvroot, VDEV_ALLOC_BIAS_DEDUP);
+		print_class_vdevs(zhp, cbp, nvroot, VDEV_ALLOC_BIAS_SPECIAL);
+		print_class_vdevs(zhp, cbp, nvroot, VDEV_ALLOC_CLASS_LOGS);
+
 		if (nvlist_lookup_nvlist_array(nvroot, ZPOOL_CONFIG_L2CACHE,
 		    &l2cache, &nl2cache) == 0)
-			print_l2cache(zhp, l2cache, nl2cache, namewidth,
-				cbp->cb_name_flags);
+			print_l2cache(zhp, cbp, l2cache, nl2cache);
 
 		if (nvlist_lookup_nvlist_array(nvroot, ZPOOL_CONFIG_SPARES,
 		    &spares, &nspares) == 0)
-			print_spares(zhp, spares, nspares, namewidth,
-			    cbp->cb_name_flags);
+			print_spares(zhp, cbp, spares, nspares);
 
 		if (nvlist_lookup_uint64(config, ZPOOL_CONFIG_ERRCOUNT,
 		    &nerr) == 0) {
@@ -6773,6 +7068,7 @@ zpool_do_status(int argc, char **argv)
 		cb.cb_allpools = B_TRUE;
 
 	cb.cb_first = B_TRUE;
+	cb.cb_print_status = B_TRUE;
 
 	for (;;) {
 		if (timestamp_fmt != NODATE)

@@ -520,7 +520,8 @@ vdev_initialize_load(vdev_t *vd)
 
 	if (vd->vdev_initialize_state == VDEV_INITIALIZE_ACTIVE ||
 	    vd->vdev_initialize_state == VDEV_INITIALIZE_SUSPENDED) {
-		int err = zap_lookup(vd->vdev_spa->spa_meta_objset,
+		int err =
+			zap_lookup(vd->vdev_spa->spa_meta_objset,
 		    vd->vdev_leaf_zap, VDEV_LEAF_ZAP_INITIALIZE_LAST_OFFSET,
 		    sizeof (vd->vdev_initialize_last_offset), 1,
 		    &vd->vdev_initialize_last_offset);
@@ -696,7 +697,7 @@ vdev_initialize(vdev_t *vd)
 void
 vdev_initialize_stop(vdev_t *vd, vdev_initializing_state_t tgt_state)
 {
-	spa_t *spa = vd->vdev_spa;
+	ASSERTV(spa_t *spa = vd->vdev_spa);
 	ASSERT(!spa_config_held(spa, SCL_CONFIG | SCL_STATE, RW_WRITER));
 
 	ASSERT(MUTEX_HELD(&vd->vdev_initialize_lock));

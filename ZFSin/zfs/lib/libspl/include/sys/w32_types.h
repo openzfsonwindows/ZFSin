@@ -138,6 +138,10 @@ typedef union {
 #define ESHUTDOWN       58              /* Can't send after socket shutdown */
 #define ESTALE          70              /* Stale NFS file handle */
 
+#define ENOTACTIVE 142
+#define ECHRNG 143
+#define EREMOTEIO 144
+
 #define O_SHLOCK 0
 
 #define INT_MAX 2147483647

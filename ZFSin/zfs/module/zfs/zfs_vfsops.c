@@ -245,6 +245,13 @@ zfsvfs_parse_options(char *mntopts, vfs_t *vfsp)
 	return (error);
 }
 
+
+/* The OS sync ignored by default, as ZFS handles internal periodic
+ * syncs. (As per illumos) Unfortunately, we can not tell the difference
+ * of when users run "sync" by hand. Sync is called on umount though.
+ */
+uint64_t zfs_vfs_sync_paranoia = 0;
+
 int
 zfs_vfs_sync(struct mount *vfsp,  int waitfor,  vfs_context_t *context)
 {
@@ -254,6 +261,11 @@ zfs_vfs_sync(struct mount *vfsp,  int waitfor,  vfs_context_t *context)
      */
     if (spl_panicstr())
         return (0);
+
+	/* Check if sysctl setting wants sync - and we are not unmounting */
+	if (zfs_vfs_sync_paranoia == 0 &&
+		!vfs_isunmount(vfsp))
+		return (0);
 
     if (vfsp != NULL) {
         /*
@@ -904,7 +916,7 @@ fuidstr_to_sid(zfsvfs_t *zfsvfs, const char *fuidstr,
 	uint64_t fuid;
 	const char *domain;
 
-	fuid = strtonum(fuidstr, NULL);
+	fuid = zfs_strtonum(fuidstr, NULL);
 
 	domain = zfs_fuid_find_by_idx(zfsvfs, FUID_INDEX(fuid));
 	if (domain)

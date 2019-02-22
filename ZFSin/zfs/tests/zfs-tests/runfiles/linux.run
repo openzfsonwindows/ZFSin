@@ -23,7 +23,20 @@ outputdir = /var/tmp/test_results
 # posix_001_pos
 # posix_002_pos
 [tests/functional/acl/posix]
-tests = ['posix_003_pos']
+tests = ['posix_001_pos', 'posix_002_pos', 'posix_003_pos']
+tags = ['functional', 'acl', 'posix']
+
+[tests/functional/alloc_class]
+tests = ['alloc_class_001_pos', 'alloc_class_002_neg', 'alloc_class_003_pos',
+    'alloc_class_004_pos', 'alloc_class_005_pos', 'alloc_class_006_pos',
+    'alloc_class_007_pos', 'alloc_class_008_pos', 'alloc_class_009_pos',
+    'alloc_class_010_pos', 'alloc_class_011_neg', 'alloc_class_012_pos',
+    'alloc_class_013_pos']
+tags = ['functional', 'alloc_class']
+
+[tests/functional/arc]
+tests = ['dbufstats_001_pos', 'dbufstats_002_pos']
+tags = ['functional', 'arc']
 
 [tests/functional/atime]
 tests = ['atime_001_pos', 'atime_002_neg', 'atime_003_pos']
@@ -374,9 +387,15 @@ tests = ['zpool_scrub_001_neg', 'zpool_scrub_002_pos', 'zpool_scrub_003_pos',
     'zpool_scrub_encrypted_unloaded']
 
 [tests/functional/cli_root/zpool_set]
-tests = ['zpool_set_001_pos', 'zpool_set_002_neg', 'zpool_set_003_neg']
-pre =
-post =
+tests = ['zpool_set_001_pos', 'zpool_set_002_neg', 'zpool_set_003_neg',
+    'zpool_set_ashift', 'zpool_set_features']
+tags = ['functional', 'cli_root', 'zpool_set']
+
+[tests/functional/cli_root/zpool_split]
+tests = ['zpool_split_cliargs', 'zpool_split_devices',
+    'zpool_split_encryption', 'zpool_split_props', 'zpool_split_vdevs',
+    'zpool_split_resilver']
+tags = ['functional', 'cli_root', 'zpool_split']
 
 [tests/functional/cli_root/zpool_status]
 tests = ['zpool_status_001_pos', 'zpool_status_002_pos']
@@ -390,6 +409,9 @@ tests = ['zpool_upgrade_001_pos',
     'zpool_upgrade_003_pos', 'zpool_upgrade_005_neg',
     'zpool_upgrade_006_neg', 'zpool_upgrade_008_pos',
     'zpool_upgrade_009_neg']
+
+[tests/functional/cli_root/zpool_sync]
+tests = ['zpool_sync_001_pos', 'zpool_sync_002_neg']
 
 # DISABLED:
 # zfs_share_001_neg - requires additional dependencies
@@ -532,8 +554,12 @@ tests = ['migration_001_pos', 'migration_002_pos', 'migration_003_pos',
 [tests/functional/mmap]
 tests = ['mmap_read_001_pos']
 
-# DISABLED:
-# umountall_001 - requires umountall command.
+[tests/functional/mmp]
+tests = ['mmp_on_thread', 'mmp_on_uberblocks', 'mmp_on_off', 'mmp_interval',
+    'mmp_active_import', 'mmp_inactive_import', 'mmp_exported_import',
+    'mmp_write_uberblocks', 'mmp_reset_interval', 'multihost_history']
+tags = ['functional', 'mmp']
+
 [tests/functional/mount]
 tests = ['umount_001']
 
