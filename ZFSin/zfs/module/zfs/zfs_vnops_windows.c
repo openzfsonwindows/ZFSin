@@ -535,6 +535,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 	return 0;
 }
 
+NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION ea, ULONG eaLength, PULONG eaErrorOffset);
 /*
  * In POSIX, the vnop_lookup() would return with iocount still held
  * for the caller to issue VN_RELE() on when done. 
@@ -1230,6 +1231,35 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 					FileObject,
 					&vp->share_access);
 				vnode_unlock(vp);
+
+				if (Irp->AssociatedIrp.SystemBuffer) {
+					vnode_apply_eas(vp, (PFILE_FULL_EA_INFORMATION)Irp->AssociatedIrp.SystemBuffer, IrpSp->Parameters.Create.EaLength, NULL);
+				}
+
+				PECP_LIST ecp;
+				FsRtlGetEcpListFromIrp(Irp, &ecp);
+				if (ecp) {
+					GUID ecpType;
+					VOID *ecpContext = NULL;
+					ULONG ecpContextSize;
+					while (STATUS_NOT_FOUND != FsRtlGetNextExtraCreateParameter(ecp, ecpContext, &ecpType, &ecpContext, &ecpContextSize)) {
+						if (IsEqualGUID(&ecpType, &GUID_ECP_ATOMIC_CREATE)) {
+							ATOMIC_CREATE_ECP_CONTEXT *atomic = (ATOMIC_CREATE_ECP_CONTEXT*)(ecpContext);
+							if (atomic->ReparseBuffer != NULL) {
+								ULONG t = atomic->ReparseBuffer->ReparseTag;
+								if (t == IO_REPARSE_TAG_LX_BLK || t == IO_REPARSE_TAG_LX_CHR || t == IO_REPARSE_TAG_LX_FIFO) {
+									switch (t) {
+									}
+									atomic->OutFlags |= ATOMIC_CREATE_ECP_OUT_FLAG_REPARSE_POINT_SET;
+									FsRtlAcknowledgeEcp(ecpContext);
+								}
+							}
+						} else if (IsEqualGUID(&ecpType, &GUID_ECP_QUERY_ON_CREATE)) {
+							QUERY_ON_CREATE_ECP_CONTEXT *qocContext = (QUERY_ON_CREATE_ECP_CONTEXT*)(ecpContext);
+							FsRtlAcknowledgeEcp(ecpContext);
+						}
+					}
+				}
 
 				if (stream_name == NULL)
 					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
@@ -2765,6 +2795,105 @@ NTSTATUS file_id_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LO
 	return STATUS_SUCCESS;
 }
 
+static void zp_unpack_times(znode_t *zp, PLARGE_INTEGER pMtime, PLARGE_INTEGER pCtime, PLARGE_INTEGER pCrtime, PLARGE_INTEGER pAtime)
+{
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+	sa_bulk_attr_t bulk[3];
+	int count = 0;
+	uint64_t mtime[2];
+	uint64_t ctime[2];
+	uint64_t crtime[2];
+
+	if (pMtime)
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
+	if (pCtime)
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
+	if (pCrtime)
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
+	if (count > 0)
+		sa_bulk_lookup(zp->z_sa_hdl, bulk, count);
+
+	if (pMtime)
+		TIME_UNIX_TO_WINDOWS(mtime, pMtime->QuadPart);
+	if (pCtime)
+		TIME_UNIX_TO_WINDOWS(ctime, pCtime->QuadPart);
+	if (pCrtime)
+		TIME_UNIX_TO_WINDOWS(crtime, pCrtime->QuadPart);
+	if (pAtime)
+		TIME_UNIX_TO_WINDOWS(zp->z_atime, pAtime->QuadPart);
+}
+
+static ULONG zp_get_reparse_tag(znode_t *zp)
+{
+	ULONG reparseTag = 0;
+	if (zp->z_pflags & ZFS_REPARSEPOINT) {
+		/* get reparse tag */
+		int err;
+		uio_t *uio;
+		REPARSE_DATA_BUFFER tagdata;
+		uio = uio_create(1, 0, UIO_SYSSPACE, UIO_READ);	
+		uio_addiov(uio, &tagdata, sizeof(tagdata));
+		err = zfs_readlink(zp->z_vnode, uio, NULL, NULL);
+		reparseTag = tagdata.ReparseTag;
+		uio_free(uio);
+	}
+	return reparseTag;
+}
+
+NTSTATUS file_stat_lx_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_STAT_LX_INFORMATION *flx)
+{
+	dprintf("   %s\n", __func__);
+	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
+		struct vnode *vp = IrpSp->FileObject->FsContext;
+		if (VN_HOLD(vp) == 0) {
+			znode_t *zp = VTOZ(vp);
+			zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+			flx->FileId.QuadPart = zp->z_id;
+			zp_unpack_times(zp, &flx->LastWriteTime, &flx->ChangeTime, &flx->CreationTime, &flx->LastAccessTime);
+
+			flx->FileAttributes = zfs_getwinflags(zp);
+			flx->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
+			flx->EndOfFile.QuadPart = vnode_isdir(vp) ? 0 : zp->z_size;
+			flx->ReparseTag = zp_get_reparse_tag(zp);
+			flx->NumberOfLinks = zp->z_links;
+			flx->EffectiveAccess = 0; /***************************************/
+
+			// LX_INFORMATION specific
+			flx->LxFlags = LX_FILE_METADATA_HAS_UID | LX_FILE_METADATA_HAS_GID | LX_FILE_METADATA_HAS_MODE;
+
+			if (vnode_ischr(vp) || vnode_isblk(vp)) {
+				uint64_t rdev;
+				VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_RDEV(zfsvfs),
+					&rdev, sizeof (rdev)) == 0);
+
+				flx->LxFlags |= LX_FILE_METADATA_HAS_DEVICE_ID;
+				flx->LxDeviceIdMajor = (rdev >> 20) & 0xFFFULL;
+				flx->LxDeviceIdMinor = rdev & 0xFFFFFULL;
+
+				flx->ReparseTag = vnode_ischr(vp) ? IO_REPARSE_TAG_LX_CHR : IO_REPARSE_TAG_LX_BLK;
+			} else if ((zp->z_mode & S_IFIFO) == S_IFIFO) {
+				flx->ReparseTag = IO_REPARSE_TAG_LX_FIFO;
+			}
+
+			flx->LxMode = zp->z_mode;
+			flx->LxUid = zp->z_uid;
+			flx->LxGid = zp->z_gid;
+
+			if (flx->ReparseTag != 0)
+				flx->FileAttributes |= FILE_ATTRIBUTE_REPARSE_POINT;
+
+			if (vnode_isdir(vp) && zfsvfs->z_case == ZFS_CASE_SENSITIVE)
+			{
+				flx->LxFlags |= LX_FILE_CASE_SENSITIVE_DIR;
+			}
+
+			VN_RELE(vp);
+		}
+		return STATUS_SUCCESS;
+	}
+	return STATUS_OBJECT_NAME_NOT_FOUND;
+}
+
 //
 // If overflow, set Information to input_size and NameLength to required size.
 //
@@ -2776,7 +2905,7 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		return STATUS_INVALID_PARAMETER;
 
 
-	if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_NAME_INFORMATION)) {
+	if (IrpSp->Parameters.QueryFile.Length < 0x6/*sizeof(FILE_NAME_INFORMATION)*/) {
 		Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION);
 		return STATUS_BUFFER_TOO_SMALL;
 	}
@@ -3159,7 +3288,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		// If overflow, set Information to input_size and NameLength to required size.
 		//
 		dprintf("* %s: FileNameInformation (normalize %d)\n", __func__, normalize);
-		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_NAME_INFORMATION)) {
+		if (IrpSp->Parameters.QueryFile.Length < 0x6/*sizeof(FILE_NAME_INFORMATION)*/) {
 			Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION);
 			Status = STATUS_BUFFER_TOO_SMALL;
 			break;
@@ -3236,6 +3365,19 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		if (vp) {
 			Status = file_id_information(DeviceObject, Irp, IrpSp, fii);
 			Irp->IoStatus.Information = sizeof(FILE_ID_INFORMATION);
+		}
+		break;
+	case FileStatLxInformation:
+		dprintf("* %s: FileStatLxInformation\n", __func__);
+		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_STAT_LX_INFORMATION)) {
+			Irp->IoStatus.Information = sizeof(FILE_STAT_LX_INFORMATION);
+			Status = STATUS_BUFFER_TOO_SMALL;
+			break;
+		}
+		FILE_STAT_LX_INFORMATION *flx = Irp->AssociatedIrp.SystemBuffer;
+		if (vp) {
+			Status = file_stat_lx_information(DeviceObject, Irp, IrpSp, flx);
+			Irp->IoStatus.Information = sizeof(FILE_STAT_LX_INFORMATION);
 		}
 		break;
 	default:
@@ -3546,7 +3688,31 @@ out:
 	return Status;
 }
 
-int xattr_process(struct vnode *vp, struct vnode *xdvp, FILE_FULL_EA_INFORMATION *ea)
+// WSL uses special EAs to interact with uid/gid/mode/device major/minor
+static BOOLEAN xattr_process_special(struct vnode *vp, PFILE_FULL_EA_INFORMATION ea, vattr_t *vap)
+{
+	if (ea->EaNameLength < 6 || strncmp(ea->EaName, "$LX", 3) != 0)
+		return FALSE;
+
+	BOOLEAN wasSpecial = FALSE;
+	void *eaValue = &ea->EaName[0] + ea->EaNameLength + 1;
+	if (ea->EaNameLength == 6 && strncmp(ea->EaName, "$LXUID", 6) == 0) {
+		vap->va_uid = *(PUINT32)eaValue;
+		vap->va_active |= AT_UID;
+		wasSpecial = TRUE;
+	} else if (ea->EaNameLength == 6 && strncmp(ea->EaName, "$LXGID", 6) == 0) {
+		vap->va_gid = *(PUINT32)eaValue;
+		vap->va_active |= AT_GID;
+		wasSpecial = TRUE;
+	} else if (ea->EaNameLength == 6 && strncmp(ea->EaName, "$LXMOD", 6) == 0) {
+		vap->va_mode = *(PUINT32)eaValue;
+		vap->va_active |= AT_MODE;
+		wasSpecial = TRUE;
+	}
+	return wasSpecial;
+}
+
+static int xattr_process(struct vnode *vp, struct vnode *xdvp, FILE_FULL_EA_INFORMATION *ea)
 {
 	int error;
 	struct vnode *xvp = NULL;
@@ -3585,6 +3751,53 @@ out:
 	return error;
 }
 
+NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION ea, ULONG eaLength, PULONG eaErrorOffset)
+{
+	if (vp == NULL || ea == NULL) return STATUS_INVALID_PARAMETER;
+
+	struct vnode *xdvp = NULL;
+	NTSTATUS Status = STATUS_SUCCESS;
+
+	// Optional: Check for validity if the caller wants it.
+	if (eaErrorOffset != NULL) {
+		Status = IoCheckEaBufferValidity(ea, eaLength, eaErrorOffset);
+		if (!NT_SUCCESS(Status)) {
+			dprintf("%s: failed validity: 0x%x\n", __func__, Status);
+			return Status;
+		}
+	}
+
+	// Open (or Create) the xattr directory
+	if (zfs_get_xattrdir(VTOZ(vp), &xdvp, NULL, CREATE_XATTR_DIR) != 0) {
+		Status = STATUS_EA_CORRUPT_ERROR;
+		goto out;
+	}
+
+	vattr_t va = { 0 };
+	int error;
+	for (PFILE_FULL_EA_INFORMATION i = ea; ; i = (PFILE_FULL_EA_INFORMATION)((uint8_t*)i + i->NextEntryOffset)) {
+		if (xattr_process_special(vp, i, &va)) {
+			dprintf("  encountered special EA '%.*s'\n", i->EaNameLength, i->EaName);
+		} else {
+			error = xattr_process(vp, xdvp, i);
+			if (error != 0) dprintf("  failed to process xattr: %d\n", error);
+		}
+
+		if (i->NextEntryOffset == 0)
+			break;
+	}
+
+	if (va.va_active != 0)
+		zfs_setattr(vp, &va, 0, NULL, NULL);
+
+out:
+	if (xdvp != NULL) {
+		VN_RELE(xdvp);
+	}
+
+	return Status;
+}
+
 /*
  * Receive an array of structs to set EAs, iterate until Next is null.
  */
@@ -3593,11 +3806,10 @@ NTSTATUS set_ea(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 	uint32_t input_len = IrpSp->Parameters.SetEa.Length;
 	uint8_t *buffer = NULL, *UserBuffer = NULL;
 	NTSTATUS Status = STATUS_SUCCESS;
-	struct vnode *vp = NULL, *xdvp = NULL;
 
 	if (IrpSp->FileObject == NULL) return STATUS_INVALID_PARAMETER;
 
-	vp = IrpSp->FileObject->FsContext;
+	struct vnode *vp = IrpSp->FileObject->FsContext;
 	if (vp == NULL) return STATUS_INVALID_PARAMETER;
 
 	dprintf("%s\n", __func__);
@@ -3607,42 +3819,16 @@ NTSTATUS set_ea(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 	// This magic is straight out of fastfat
 	buffer = BufferUserBuffer(Irp, input_len);
 
-	Status = IoCheckEaBufferValidity((PFILE_FULL_EA_INFORMATION)buffer,
-		input_len,
-		(PULONG)&Irp->IoStatus.Information);
-
+	ULONG eaErrorOffset = 0;
+	Status = vnode_apply_eas(vp, (PFILE_FULL_EA_INFORMATION)buffer, input_len, &eaErrorOffset);
+	// (Information is ULONG_PTR; as win64 is a LLP64 platform, ULONG isn't the right length.)
+	Irp->IoStatus.Information = eaErrorOffset;
 	if (!NT_SUCCESS(Status)) {
-		dprintf("%s: failed Validity: 0x%x\n", __func__, Status);
+		dprintf("%s: failed vnode_apply_eas: 0x%x\n", __func__, Status);
 		return Status;
 	}
 
-	// Iterate "buffer", to get xattr name, and value.
-	FILE_FULL_EA_INFORMATION *FullEa;
-	
-	// Open (or Create) the xattr directory
-	if (zfs_get_xattrdir(VTOZ(vp), &xdvp, NULL, CREATE_XATTR_DIR) != 0) {
-		Status = STATUS_EA_CORRUPT_ERROR;
-		goto out;
-	}
-
-	uint64_t offset = 0;
-	int error;
-	do {
-		FullEa = (FILE_FULL_EA_INFORMATION *)&buffer[offset];
-
-		error = xattr_process(vp, xdvp, FullEa);
-		if (error != 0) dprintf("  failed to process xattr: %d\n", error);
-
-		offset = FullEa->NextEntryOffset;
-	} while (offset != 0);
-
-out:
-	if (xdvp != NULL) {
-		VN_RELE(xdvp);
-	}
-
 	return Status;
-	return STATUS_EAS_NOT_SUPPORTED;
 }
 
 NTSTATUS get_reparse_point(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)

@@ -2643,6 +2643,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 	switch (dirlisttype) {
 	case FileFullDirectoryInformation:
 	case FileIdBothDirectoryInformation:
+	case FileIdFullDirectoryInformation:
 	case FileBothDirectoryInformation:
 	case FileDirectoryInformation:
 	case FileNamesInformation:
@@ -2943,6 +2944,28 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					fibdi->ShortNameLength = 0;
 					nameptr = fibdi->FileName;
 					fibdi->FileNameLength = namelenholder;
+
+					break;
+
+				case FileIdFullDirectoryInformation:
+					// Full is the same as Both, but no Shortname
+					structsize = FIELD_OFFSET(FILE_ID_FULL_DIR_INFORMATION, FileName[0]);
+					if (outcount + structsize + namelenholder > bufsize) break;
+
+					eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
+					FILE_ID_FULL_DIR_INFORMATION *fifdi = (FILE_ID_FULL_DIR_INFORMATION *)bufptr;
+					fifdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
+					fifdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size;
+					TIME_UNIX_TO_WINDOWS(mtime, fifdi->LastWriteTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(ctime, fifdi->ChangeTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(crtime, fifdi->CreationTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(tzp->z_atime, fifdi->LastAccessTime.QuadPart);
+					fifdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : xattr_getsize(ZTOV(tzp));
+					fifdi->FileAttributes = zfs_getwinflags(tzp);
+					fifdi->FileId.QuadPart = objnum;
+					fifdi->FileIndex = offset;
+					nameptr = fifdi->FileName;
+					fifdi->FileNameLength = namelenholder;
 
 					break;
 
