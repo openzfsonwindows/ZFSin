@@ -576,7 +576,6 @@ zfs_create_share_dir(zfsvfs_t *zfsvfs, dmu_tx_t *tx)
 #ifndef	MAXMIN64
 #define	MAXMIN64	0xffffffffUL
 #endif
-#if 0
 /*
  * Create special expldev for ZFS private use.
  * Can't use standard expldev since it doesn't do
@@ -602,7 +601,6 @@ zfs_cmpldev(uint64_t dev)
 {
 	return (makedev((dev >> NBITSMINOR64), (dev & MAXMIN64)));
 }
-#endif
 
 static void
 zfs_znode_sa_init(zfsvfs_t *zfsvfs, znode_t *zp,
@@ -1015,7 +1013,7 @@ zfs_mknode(znode_t *dzp, vattr_t *vap, dmu_tx_t *tx, cred_t *cr,
 	}
 
 	if (vap->va_type == VBLK || vap->va_type == VCHR) {
-	//	rdev = zfs_expldev(vap->va_rdev);
+		rdev = zfs_expldev(vap->va_rdev);
 	}
 
 	parent = dzp->z_id;

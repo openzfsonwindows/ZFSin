@@ -161,6 +161,15 @@ extern uint32_t zone_get_hostid(void *zone);
 extern void spl_setup(void);
 extern void spl_cleanup(void);
 
+#define major(x)                                                               \
+	((unsigned)((((x) >> 31 >> 1) & 0xfffff000) |                          \
+		    (((x) >> 8) & 0x00000fff)))
+#define minor(x) ((unsigned)((((x) >> 12) & 0xffffff00) | ((x)&0x000000ff)))
+
+#define makedev(x, y)                                                          \
+	((((x)&0xfffff000ULL) << 32) | (((x)&0x00000fffULL) << 8) |            \
+	 (((y)&0xffffff00ULL) << 12) | (((y)&0x000000ffULL)))
+
 #define makedevice(maj,min) makedev(maj,min)
 
 /* common macros */

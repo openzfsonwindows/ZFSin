@@ -3262,8 +3262,8 @@ zfs_getattr(vnode_t *vp, vattr_t *vap, int flags, cred_t *cr,
 #ifdef sun
 	vap->va_rdev = vp->v_rdev;
 #else
-//	if (vnode_isblk(vp) || vnode_ischr(vp))
-//		vap->va_rdev = zfs_cmpldev(rdev);
+	if (vnode_isblk(vp) || vnode_ischr(vp))
+		vap->va_rdev = zfs_cmpldev(rdev);
 #endif
 	//vap->va_seq = zp->z_seq;
 	vap->va_flags = 0;	/* FreeBSD: Reset chflags(2) flags. */

@@ -61,6 +61,7 @@
 #include <sys/dbuf.h>
 #include <sys/zap.h>
 #include <sys/sa.h>
+#include <sys/sysmacros.h>
 #include <sys/zfs_vnops.h>
 #include <sys/vfs.h>
 #include <sys/vfs_opreg.h>
@@ -534,6 +535,62 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 
 	return 0;
 }
+
+static void zp_unpack_times(znode_t *zp, PLARGE_INTEGER pMtime, PLARGE_INTEGER pCtime, PLARGE_INTEGER pCrtime, PLARGE_INTEGER pAtime);
+static ULONG zp_get_reparse_tag(znode_t *zp);
+#define ZFSWIN_FILL_STAT_INFORMATION(fst, vp)                                  \
+	do {                                                                   \
+		znode_t *zp = VTOZ((vp));                                      \
+		zfsvfs_t *zfsvfs = zp->z_zfsvfs;                               \
+		(fst)->FileId.QuadPart = zp->z_id;                             \
+		zp_unpack_times(zp, &(fst)->LastWriteTime, &(fst)->ChangeTime, \
+				&(fst)->CreationTime, &(fst)->LastAccessTime); \
+                                                                               \
+		(fst)->FileAttributes = zfs_getwinflags(zp);                   \
+		(fst)->AllocationSize.QuadPart =                               \
+		    P2ROUNDUP(zp->z_size, zfs_blksz(zp));                      \
+		(fst)->EndOfFile.QuadPart =                                    \
+		    vnode_isdir((vp)) ? 0 : zp->z_size;                        \
+		(fst)->ReparseTag = zp_get_reparse_tag(zp);                    \
+		(fst)->NumberOfLinks = zp->z_links;                            \
+                                                                               \
+		if ((fst)->ReparseTag != 0)                                    \
+			(fst)->FileAttributes |= FILE_ATTRIBUTE_REPARSE_POINT; \
+                                                                               \
+	} while (0)
+
+#define ZFSWIN_FILL_LX_INFORMATION(flx, vp)                                    \
+	do {                                                                   \
+		znode_t *zp = VTOZ((vp));                                      \
+		zfsvfs_t *zfsvfs = zp->z_zfsvfs;                               \
+                                                                               \
+		(flx)->EffectiveAccess =                                       \
+		    0; /***************************************/               \
+                                                                               \
+		(flx)->LxFlags = LX_FILE_METADATA_HAS_UID |                    \
+				 LX_FILE_METADATA_HAS_GID |                    \
+				 LX_FILE_METADATA_HAS_MODE;                    \
+                                                                               \
+		if (vnode_ischr((vp)) || vnode_isblk((vp))) {                  \
+			uint64_t rdev;                                         \
+			VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_RDEV(zfsvfs),    \
+					 &rdev, sizeof(rdev)) == 0);           \
+			dev_t cmpl = zfs_cmpldev(rdev);                        \
+                                                                               \
+			(flx)->LxFlags |= LX_FILE_METADATA_HAS_DEVICE_ID;      \
+			(flx)->LxDeviceIdMajor = major(cmpl);                  \
+			(flx)->LxDeviceIdMinor = minor(cmpl);                  \
+		}                                                              \
+                                                                               \
+		(flx)->LxMode = zp->z_mode;                                    \
+		(flx)->LxUid = zp->z_uid;                                      \
+		(flx)->LxGid = zp->z_gid;                                      \
+                                                                               \
+		if (vnode_isdir((vp)) &&                                       \
+		    zfsvfs->z_case == ZFS_CASE_SENSITIVE) {                    \
+			(flx)->LxFlags |= LX_FILE_CASE_SENSITIVE_DIR;          \
+		}                                                              \
+	} while (0)
 
 NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION ea, ULONG eaLength, PULONG eaErrorOffset);
 /*
@@ -1187,6 +1244,60 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		vap.va_type = VREG;
 		vap.va_mode = 0644;
 
+		PQUERY_ON_CREATE_ECP_CONTEXT qocContext = NULL;
+		PECP_LIST ecp = NULL;
+		FsRtlGetEcpListFromIrp(Irp, &ecp);
+		if (ecp) {
+			GUID ecpType;
+			VOID *ecpContext = NULL;
+			ULONG ecpContextSize;
+			while (NT_SUCCESS(FsRtlGetNextExtraCreateParameter(ecp, ecpContext, &ecpType, &ecpContext, &ecpContextSize))) {
+				if (IsEqualGUID(&ecpType, &GUID_ECP_ATOMIC_CREATE)) {
+					ATOMIC_CREATE_ECP_CONTEXT *atomic = (PATOMIC_CREATE_ECP_CONTEXT)ecpContext;
+					if (BooleanFlagOn(atomic->InFlags, ATOMIC_CREATE_ECP_IN_FLAG_REPARSE_POINT_SPECIFIED)
+						&& atomic->ReparseBuffer != NULL) {
+						ULONG tag = atomic->ReparseBuffer->ReparseTag;
+						enum vtype newType = VNON;
+						switch (tag) {
+						case IO_REPARSE_TAG_LX_BLK:
+							newType = VBLK;
+							break;
+						case IO_REPARSE_TAG_LX_CHR:
+							newType = VCHR;
+							break;
+						case IO_REPARSE_TAG_LX_FIFO:
+							newType = VFIFO;
+							break;
+						}
+
+						if (newType != VNON) {
+							// Type was overridden by the reparse point value.
+							vap.va_type = newType;
+
+							SetFlag(atomic->OutFlags, ATOMIC_CREATE_ECP_OUT_FLAG_REPARSE_POINT_SET);
+							FsRtlAcknowledgeEcp(ecpContext);
+						}
+					}
+				} else if (IsEqualGUID(&ecpType, &GUID_ECP_QUERY_ON_CREATE)) {
+					qocContext = (PQUERY_ON_CREATE_ECP_CONTEXT)ecpContext;
+				}
+			}
+		}
+
+		// The associated buffer on a CreateFile is an EA buffer.
+		if (Irp->AssociatedIrp.SystemBuffer != NULL) {
+			static BOOLEAN vattr_apply_single_ea(vattr_t *vap, PFILE_FULL_EA_INFORMATION ea);
+			for (PFILE_FULL_EA_INFORMATION ea = (PFILE_FULL_EA_INFORMATION)Irp->AssociatedIrp.SystemBuffer; ; ea = (PFILE_FULL_EA_INFORMATION)((uint8_t*)ea + ea->NextEntryOffset)) {
+				// only parse $LX attrs right now -- things we can store before the file
+				// gets created.
+				if (vattr_apply_single_ea(&vap, ea)) {
+					dprintf("  encountered special attrs EA '%.*s'\n", ea->EaNameLength, ea->EaName);
+				}
+				if (ea->NextEntryOffset == 0)
+					break;
+			}
+		}
+
 		// If O_TRUNC:
 		switch (CreateDisposition) {
 		case FILE_SUPERSEDE:
@@ -1233,32 +1344,18 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				vnode_unlock(vp);
 
 				if (Irp->AssociatedIrp.SystemBuffer) {
+					// Second pass: this will apply all EAs that are not only vattr EAs
 					vnode_apply_eas(vp, (PFILE_FULL_EA_INFORMATION)Irp->AssociatedIrp.SystemBuffer, IrpSp->Parameters.Create.EaLength, NULL);
 				}
 
-				PECP_LIST ecp;
-				FsRtlGetEcpListFromIrp(Irp, &ecp);
-				if (ecp) {
-					GUID ecpType;
-					VOID *ecpContext = NULL;
-					ULONG ecpContextSize;
-					while (STATUS_NOT_FOUND != FsRtlGetNextExtraCreateParameter(ecp, ecpContext, &ecpType, &ecpContext, &ecpContextSize)) {
-						if (IsEqualGUID(&ecpType, &GUID_ECP_ATOMIC_CREATE)) {
-							ATOMIC_CREATE_ECP_CONTEXT *atomic = (ATOMIC_CREATE_ECP_CONTEXT*)(ecpContext);
-							if (atomic->ReparseBuffer != NULL) {
-								ULONG t = atomic->ReparseBuffer->ReparseTag;
-								if (t == IO_REPARSE_TAG_LX_BLK || t == IO_REPARSE_TAG_LX_CHR || t == IO_REPARSE_TAG_LX_FIFO) {
-									switch (t) {
-									}
-									atomic->OutFlags |= ATOMIC_CREATE_ECP_OUT_FLAG_REPARSE_POINT_SET;
-									FsRtlAcknowledgeEcp(ecpContext);
-								}
-							}
-						} else if (IsEqualGUID(&ecpType, &GUID_ECP_QUERY_ON_CREATE)) {
-							QUERY_ON_CREATE_ECP_CONTEXT *qocContext = (QUERY_ON_CREATE_ECP_CONTEXT*)(ecpContext);
-							FsRtlAcknowledgeEcp(ecpContext);
-						}
+				if (qocContext) {
+					if (BooleanFlagOn(qocContext->Flags, QoCFileStatInformation)) {
+						ZFSWIN_FILL_STAT_INFORMATION(&qocContext->StatInformation, vp);
 					}
+					if (BooleanFlagOn(qocContext->Flags, QoCFileLxInformation)) {
+						ZFSWIN_FILL_LX_INFORMATION(&qocContext->LxInformation, vp);
+					}
+					FsRtlAcknowledgeEcp(qocContext);
 				}
 
 				if (stream_name == NULL)
@@ -2836,7 +2933,17 @@ static ULONG zp_get_reparse_tag(znode_t *zp)
 		err = zfs_readlink(zp->z_vnode, uio, NULL, NULL);
 		reparseTag = tagdata.ReparseTag;
 		uio_free(uio);
+		return reparseTag;
 	}
+
+	struct vnode *vp = ZTOV(zp);
+	if (vnode_ischr(vp))
+		reparseTag = IO_REPARSE_TAG_LX_CHR;
+	else if (vnode_isblk(vp))
+		reparseTag = IO_REPARSE_TAG_LX_BLK;
+	else if (vnode_isfifo(vp))
+		reparseTag = IO_REPARSE_TAG_LX_FIFO;
+
 	return reparseTag;
 }
 
@@ -2846,47 +2953,8 @@ NTSTATUS file_stat_lx_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 		struct vnode *vp = IrpSp->FileObject->FsContext;
 		if (VN_HOLD(vp) == 0) {
-			znode_t *zp = VTOZ(vp);
-			zfsvfs_t *zfsvfs = zp->z_zfsvfs;
-			flx->FileId.QuadPart = zp->z_id;
-			zp_unpack_times(zp, &flx->LastWriteTime, &flx->ChangeTime, &flx->CreationTime, &flx->LastAccessTime);
-
-			flx->FileAttributes = zfs_getwinflags(zp);
-			flx->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
-			flx->EndOfFile.QuadPart = vnode_isdir(vp) ? 0 : zp->z_size;
-			flx->ReparseTag = zp_get_reparse_tag(zp);
-			flx->NumberOfLinks = zp->z_links;
-			flx->EffectiveAccess = 0; /***************************************/
-
-			// LX_INFORMATION specific
-			flx->LxFlags = LX_FILE_METADATA_HAS_UID | LX_FILE_METADATA_HAS_GID | LX_FILE_METADATA_HAS_MODE;
-
-			if (vnode_ischr(vp) || vnode_isblk(vp)) {
-				uint64_t rdev;
-				VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_RDEV(zfsvfs),
-					&rdev, sizeof (rdev)) == 0);
-
-				flx->LxFlags |= LX_FILE_METADATA_HAS_DEVICE_ID;
-				flx->LxDeviceIdMajor = (rdev >> 20) & 0xFFFULL;
-				flx->LxDeviceIdMinor = rdev & 0xFFFFFULL;
-
-				flx->ReparseTag = vnode_ischr(vp) ? IO_REPARSE_TAG_LX_CHR : IO_REPARSE_TAG_LX_BLK;
-			} else if ((zp->z_mode & S_IFIFO) == S_IFIFO) {
-				flx->ReparseTag = IO_REPARSE_TAG_LX_FIFO;
-			}
-
-			flx->LxMode = zp->z_mode;
-			flx->LxUid = zp->z_uid;
-			flx->LxGid = zp->z_gid;
-
-			if (flx->ReparseTag != 0)
-				flx->FileAttributes |= FILE_ATTRIBUTE_REPARSE_POINT;
-
-			if (vnode_isdir(vp) && zfsvfs->z_case == ZFS_CASE_SENSITIVE)
-			{
-				flx->LxFlags |= LX_FILE_CASE_SENSITIVE_DIR;
-			}
-
+			ZFSWIN_FILL_STAT_INFORMATION(flx, vp);
+			ZFSWIN_FILL_LX_INFORMATION(flx, vp);
 			VN_RELE(vp);
 		}
 		return STATUS_SUCCESS;
@@ -3220,17 +3288,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
 			tag->FileAttributes = zfs_getwinflags(zp);
-			if (zp->z_pflags & ZFS_REPARSEPOINT) {
-				int err;
-				uio_t *uio;
-				REPARSE_DATA_BUFFER tagdata;
-				uio = uio_create(1, 0, UIO_SYSSPACE, UIO_READ);	
-				uio_addiov(uio, &tagdata, sizeof(tagdata));
-				err = zfs_readlink(vp, uio, NULL, NULL);
-				tag->ReparseTag = tagdata.ReparseTag;
-				dprintf("Returning tag 0x%x\n", tag->ReparseTag);
-				uio_free(uio);
-			}
+			tag->ReparseTag = zp_get_reparse_tag(zp);
 			Irp->IoStatus.Information = sizeof(FILE_ATTRIBUTE_TAG_INFORMATION);
 			Status = STATUS_SUCCESS;
 		}
@@ -3689,30 +3747,36 @@ out:
 }
 
 // WSL uses special EAs to interact with uid/gid/mode/device major/minor
-static BOOLEAN xattr_process_special(struct vnode *vp, PFILE_FULL_EA_INFORMATION ea, vattr_t *vap)
+// Returns: TRUE if the EA was stored in the vattr.
+static BOOLEAN vattr_apply_single_ea(vattr_t *vap, PFILE_FULL_EA_INFORMATION ea)
 {
-	if (ea->EaNameLength < 6 || strncmp(ea->EaName, "$LX", 3) != 0)
+	if (ea->EaNameLength != 6 || strncmp(ea->EaName, "$LX", 3) != 0)
 		return FALSE;
 
-	BOOLEAN wasSpecial = FALSE;
+	BOOLEAN setVap = FALSE;
 	void *eaValue = &ea->EaName[0] + ea->EaNameLength + 1;
-	if (ea->EaNameLength == 6 && strncmp(ea->EaName, "$LXUID", 6) == 0) {
+	if (strncmp(ea->EaName, LX_FILE_METADATA_UID_EA_NAME, ea->EaNameLength) == 0) {
 		vap->va_uid = *(PUINT32)eaValue;
 		vap->va_active |= AT_UID;
-		wasSpecial = TRUE;
-	} else if (ea->EaNameLength == 6 && strncmp(ea->EaName, "$LXGID", 6) == 0) {
+		setVap = TRUE;
+	} else if (strncmp(ea->EaName, LX_FILE_METADATA_GID_EA_NAME, ea->EaNameLength) == 0) {
 		vap->va_gid = *(PUINT32)eaValue;
 		vap->va_active |= AT_GID;
-		wasSpecial = TRUE;
-	} else if (ea->EaNameLength == 6 && strncmp(ea->EaName, "$LXMOD", 6) == 0) {
+		setVap = TRUE;
+	} else if (strncmp(ea->EaName, LX_FILE_METADATA_MODE_EA_NAME, ea->EaNameLength) == 0) {
 		vap->va_mode = *(PUINT32)eaValue;
 		vap->va_active |= AT_MODE;
-		wasSpecial = TRUE;
+		setVap = TRUE;
+	} else if (strncmp(ea->EaName, LX_FILE_METADATA_DEVICE_ID_EA_NAME, ea->EaNameLength) == 0) {
+		UINT32 *vu32 = (UINT32*)eaValue;
+		vap->va_rdev = makedev(vu32[0], vu32[1]);
+		vap->va_active |= VNODE_ATTR_va_rdev;
+		setVap = TRUE;
 	}
-	return wasSpecial;
+	return setVap;
 }
 
-static int xattr_process(struct vnode *vp, struct vnode *xdvp, FILE_FULL_EA_INFORMATION *ea)
+static int vnode_apply_single_ea(struct vnode *vp, struct vnode *xdvp, FILE_FULL_EA_INFORMATION *ea)
 {
 	int error;
 	struct vnode *xvp = NULL;
@@ -3751,44 +3815,46 @@ out:
 	return error;
 }
 
-NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION ea, ULONG eaLength, PULONG eaErrorOffset)
+NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION eas, ULONG eaLength, PULONG eaErrorOffset)
 {
-	if (vp == NULL || ea == NULL) return STATUS_INVALID_PARAMETER;
+	if (vp == NULL || eas == NULL) return STATUS_INVALID_PARAMETER;
 
-	struct vnode *xdvp = NULL;
 	NTSTATUS Status = STATUS_SUCCESS;
 
 	// Optional: Check for validity if the caller wants it.
 	if (eaErrorOffset != NULL) {
-		Status = IoCheckEaBufferValidity(ea, eaLength, eaErrorOffset);
+		Status = IoCheckEaBufferValidity(eas, eaLength, eaErrorOffset);
 		if (!NT_SUCCESS(Status)) {
 			dprintf("%s: failed validity: 0x%x\n", __func__, Status);
 			return Status;
 		}
 	}
 
-	// Open (or Create) the xattr directory
-	if (zfs_get_xattrdir(VTOZ(vp), &xdvp, NULL, CREATE_XATTR_DIR) != 0) {
-		Status = STATUS_EA_CORRUPT_ERROR;
-		goto out;
-	}
-
-	vattr_t va = { 0 };
+	struct vnode *xdvp = NULL;
+	vattr_t vap = { 0 };
 	int error;
-	for (PFILE_FULL_EA_INFORMATION i = ea; ; i = (PFILE_FULL_EA_INFORMATION)((uint8_t*)i + i->NextEntryOffset)) {
-		if (xattr_process_special(vp, i, &va)) {
-			dprintf("  encountered special EA '%.*s'\n", i->EaNameLength, i->EaName);
+	for (PFILE_FULL_EA_INFORMATION ea = eas; ; ea = (PFILE_FULL_EA_INFORMATION)((uint8_t*)ea + ea->NextEntryOffset)) {
+		if (vattr_apply_single_ea(&vap, ea)) {
+			dprintf("  encountered special attrs EA '%.*s'\n", ea->EaNameLength, ea->EaName);
 		} else {
-			error = xattr_process(vp, xdvp, i);
+			// optimization: do not create an xattr dir if we only had special vattr EAs
+			if (xdvp == NULL) {
+				// Open (or Create) the xattr directory
+				if (zfs_get_xattrdir(VTOZ(vp), &xdvp, NULL, CREATE_XATTR_DIR) != 0) {
+					Status = STATUS_EA_CORRUPT_ERROR;
+					goto out;
+				}
+			}
+			error = vnode_apply_single_ea(vp, xdvp, ea);
 			if (error != 0) dprintf("  failed to process xattr: %d\n", error);
 		}
 
-		if (i->NextEntryOffset == 0)
+		if (ea->NextEntryOffset == 0)
 			break;
 	}
 
-	if (va.va_active != 0)
-		zfs_setattr(vp, &va, 0, NULL, NULL);
+	if (vap.va_active != 0)
+		zfs_setattr(vp, &vap, 0, NULL, NULL);
 
 out:
 	if (xdvp != NULL) {

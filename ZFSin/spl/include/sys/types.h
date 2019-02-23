@@ -211,7 +211,6 @@ typedef struct {
 	unsigned char g_guid[KAUTH_GUID_SIZE];
 } guid_t;
 
-#define minor(x) (x)
 #pragma warning( disable: 4296 )  // expression is always true
 #pragma error( disable: 4296 )  // expression is always true
 #pragma warning( disable: 4703 )  // potentially uninitialized local pointer variable
