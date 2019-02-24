@@ -119,6 +119,12 @@ uint64_t vnop_num_reclaims = 0;
 uint64_t vnop_num_vnodes = 0;
 #endif
 
+#pragma region Prototypes
+static void zp_unpack_times(znode_t *zp, PLARGE_INTEGER pMtime, PLARGE_INTEGER pCtime, PLARGE_INTEGER pCrtime, PLARGE_INTEGER pAtime);
+static NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION ea, ULONG eaLength, PULONG eaErrorOffset);
+static BOOLEAN vattr_apply_single_ea(vattr_t *vap, PFILE_FULL_EA_INFORMATION ea);
+#pragma endregion
+
 BOOLEAN zfs_AcquireForLazyWrite(void *Context, BOOLEAN Wait)
 {
 	struct vnode *vp = Context;
@@ -536,8 +542,14 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 	return 0;
 }
 
-static void zp_unpack_times(znode_t *zp, PLARGE_INTEGER pMtime, PLARGE_INTEGER pCtime, PLARGE_INTEGER pCrtime, PLARGE_INTEGER pAtime);
 static ULONG zp_get_reparse_tag(znode_t *zp);
+// There are multiple struct types with "stat" style members.
+// In the absence of templating (C++!), a macro will serve as a type-unsafe way
+// to fill them all out.
+// Non-comprehensively, they are:
+// - FILE_STAT_LX_INFORMATION
+// - FILE_STAT_INFORMATION
+// - QUERY_ON_CREATE_FILE_STAT_INFORMATION
 #define ZFSWIN_FILL_STAT_INFORMATION(fst, vp)                                  \
 	do {                                                                   \
 		znode_t *zp = VTOZ((vp));                                      \
@@ -559,6 +571,10 @@ static ULONG zp_get_reparse_tag(znode_t *zp);
                                                                                \
 	} while (0)
 
+// There are multiple struct types with "lx" style members.
+// Non-comprehensively, they are:
+// - FILE_STAT_LX_INFORMATION
+// - QUERY_ON_CREATE_FILE_LX_INFORMATION
 #define ZFSWIN_FILL_LX_INFORMATION(flx, vp)                                    \
 	do {                                                                   \
 		znode_t *zp = VTOZ((vp));                                      \
@@ -592,7 +608,6 @@ static ULONG zp_get_reparse_tag(znode_t *zp);
 		}                                                              \
 	} while (0)
 
-NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION ea, ULONG eaLength, PULONG eaErrorOffset);
 /*
  * In POSIX, the vnop_lookup() would return with iocount still held
  * for the caller to issue VN_RELE() on when done. 
@@ -1286,7 +1301,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 		// The associated buffer on a CreateFile is an EA buffer.
 		if (Irp->AssociatedIrp.SystemBuffer != NULL) {
-			static BOOLEAN vattr_apply_single_ea(vattr_t *vap, PFILE_FULL_EA_INFORMATION ea);
 			for (PFILE_FULL_EA_INFORMATION ea = (PFILE_FULL_EA_INFORMATION)Irp->AssociatedIrp.SystemBuffer; ; ea = (PFILE_FULL_EA_INFORMATION)((uint8_t*)ea + ea->NextEntryOffset)) {
 				// only parse $LX attrs right now -- things we can store before the file
 				// gets created.
@@ -3815,6 +3829,9 @@ out:
 	return error;
 }
 
+/*
+ * Apply a set of EAs to a vnode, while handling special Windows EAs that set UID/GID/Mode/rdev.
+ */
 NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION eas, ULONG eaLength, PULONG eaErrorOffset)
 {
 	if (vp == NULL || eas == NULL) return STATUS_INVALID_PARAMETER;
@@ -3837,7 +3854,7 @@ NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION eas, ULONG 
 		if (vattr_apply_single_ea(&vap, ea)) {
 			dprintf("  encountered special attrs EA '%.*s'\n", ea->EaNameLength, ea->EaName);
 		} else {
-			// optimization: do not create an xattr dir if we only had special vattr EAs
+			// optimization: defer creating an xattr dir until the first standard EA
 			if (xdvp == NULL) {
 				// Open (or Create) the xattr directory
 				if (zfs_get_xattrdir(VTOZ(vp), &xdvp, NULL, CREATE_XATTR_DIR) != 0) {
@@ -3865,7 +3882,7 @@ out:
 }
 
 /*
- * Receive an array of structs to set EAs, iterate until Next is null.
+ * Receive an array of structs to set EAs, check basic facts (len, file presence) and apply
  */
 NTSTATUS set_ea(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
