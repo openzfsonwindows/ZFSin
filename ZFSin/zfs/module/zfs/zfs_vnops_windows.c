@@ -121,6 +121,7 @@ uint64_t vnop_num_vnodes = 0;
 
 #pragma region Prototypes
 static void zp_unpack_times(znode_t *zp, PLARGE_INTEGER pMtime, PLARGE_INTEGER pCtime, PLARGE_INTEGER pCrtime, PLARGE_INTEGER pAtime);
+static NTSTATUS zp_get_or_synthesize_reparse(znode_t *zp, PREPARSE_DATA_BUFFER pTagData, ULONG tagDataLen, PULONG pTagDataRequiredLen);
 static NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION ea, ULONG eaLength, PULONG eaErrorOffset);
 static BOOLEAN vattr_apply_single_ea(vattr_t *vap, PFILE_FULL_EA_INFORMATION ea);
 #pragma endregion
@@ -542,8 +543,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 	return 0;
 }
 
-static ULONG zp_get_reparse_tag(znode_t *zp);
-// There are multiple struct types with "stat" style members.
+// There are multiple sturct types with "stat" style members.
 // In the absence of templating (C++!), a macro will serve as a type-unsafe way
 // to fill them all out.
 // Non-comprehensively, they are:
@@ -563,12 +563,16 @@ static ULONG zp_get_reparse_tag(znode_t *zp);
 		    P2ROUNDUP(zp->z_size, zfs_blksz(zp));                      \
 		(fst)->EndOfFile.QuadPart =                                    \
 		    vnode_isdir((vp)) ? 0 : zp->z_size;                        \
-		(fst)->ReparseTag = zp_get_reparse_tag(zp);                    \
+		(fst)->ReparseTag = 0;                                         \
 		(fst)->NumberOfLinks = zp->z_links;                            \
                                                                                \
-		if ((fst)->ReparseTag != 0)                                    \
+		REPARSE_DATA_BUFFER reparse = {0};                             \
+		if (STATUS_NOT_A_REPARSE_POINT !=                              \
+		    (zp_get_or_synthesize_reparse(zp, &reparse,                \
+						  sizeof(reparse), NULL))) {   \
+			(fst)->ReparseTag = reparse.ReparseTag;                \
 			(fst)->FileAttributes |= FILE_ATTRIBUTE_REPARSE_POINT; \
-                                                                               \
+		}                                                              \
 	} while (0)
 
 // There are multiple struct types with "lx" style members.
@@ -2934,31 +2938,48 @@ static void zp_unpack_times(znode_t *zp, PLARGE_INTEGER pMtime, PLARGE_INTEGER p
 		TIME_UNIX_TO_WINDOWS(zp->z_atime, pAtime->QuadPart);
 }
 
-static ULONG zp_get_reparse_tag(znode_t *zp)
+static NTSTATUS zp_get_or_synthesize_reparse(znode_t *zp, PREPARSE_DATA_BUFFER pTagData, ULONG tagDataLen, PULONG pTagDataRequiredLen)
 {
-	ULONG reparseTag = 0;
+	if (tagDataLen < REPARSE_DATA_BUFFER_HEADER_SIZE)
+		return STATUS_INVALID_PARAMETER;
+
+	NTSTATUS Status = STATUS_NOT_A_REPARSE_POINT;
+
 	if (zp->z_pflags & ZFS_REPARSEPOINT) {
 		/* get reparse tag */
 		int err;
 		uio_t *uio;
-		REPARSE_DATA_BUFFER tagdata;
 		uio = uio_create(1, 0, UIO_SYSSPACE, UIO_READ);	
-		uio_addiov(uio, &tagdata, sizeof(tagdata));
+		uio_addiov(uio, pTagData, tagDataLen);
 		err = zfs_readlink(zp->z_vnode, uio, NULL, NULL);
-		reparseTag = tagdata.ReparseTag;
 		uio_free(uio);
-		return reparseTag;
+
+		if (pTagDataRequiredLen)
+			*pTagDataRequiredLen = zp->z_size;
+		Status = tagDataLen < zp->z_size ? STATUS_BUFFER_OVERFLOW : STATUS_SUCCESS;
+	} else {
+		struct vnode *vp = ZTOV(zp);
+		ULONG synthesizedTag = 0;
+
+		if (vnode_ischr(vp)) {
+			synthesizedTag = IO_REPARSE_TAG_LX_CHR;
+		} else if (vnode_isblk(vp)) {
+			synthesizedTag = IO_REPARSE_TAG_LX_BLK;
+		} else if (vnode_isfifo(vp)) {
+			synthesizedTag = IO_REPARSE_TAG_LX_FIFO;
+		}
+
+		if (synthesizedTag) {
+			if (pTagDataRequiredLen)
+				*pTagDataRequiredLen = sizeof(REPARSE_DATA_BUFFER);
+
+			pTagData->ReparseTag = synthesizedTag;
+			pTagData->ReparseDataLength = 0;
+			Status = STATUS_SUCCESS;
+		}
 	}
 
-	struct vnode *vp = ZTOV(zp);
-	if (vnode_ischr(vp))
-		reparseTag = IO_REPARSE_TAG_LX_CHR;
-	else if (vnode_isblk(vp))
-		reparseTag = IO_REPARSE_TAG_LX_BLK;
-	else if (vnode_isfifo(vp))
-		reparseTag = IO_REPARSE_TAG_LX_FIFO;
-
-	return reparseTag;
+	return Status;
 }
 
 NTSTATUS file_stat_lx_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_STAT_LX_INFORMATION *flx)
@@ -3302,7 +3323,13 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
 			tag->FileAttributes = zfs_getwinflags(zp);
-			tag->ReparseTag = zp_get_reparse_tag(zp);
+			tag->ReparseTag = 0;
+			REPARSE_DATA_BUFFER reparse;
+			if (STATUS_NOT_A_REPARSE_POINT !=
+			    (zp_get_or_synthesize_reparse(
+				zp, &reparse, sizeof(reparse), NULL))) {
+				tag->ReparseTag = reparse.ReparseTag;
+			}
 			Irp->IoStatus.Information = sizeof(FILE_ATTRIBUTE_TAG_INFORMATION);
 			Status = STATUS_SUCCESS;
 		}
@@ -3919,7 +3946,7 @@ NTSTATUS get_reparse_point(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 	NTSTATUS Status = STATUS_NOT_A_REPARSE_POINT;
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
 	DWORD outlen = IrpSp->Parameters.FileSystemControl.OutputBufferLength;
-	void *buffer = Irp->AssociatedIrp.SystemBuffer;
+	PREPARSE_DATA_BUFFER reparseBuffer = (PREPARSE_DATA_BUFFER)Irp->AssociatedIrp.SystemBuffer;
 	struct vnode *vp;
 
 	if (FileObject == NULL) return STATUS_INVALID_PARAMETER;
@@ -3929,25 +3956,12 @@ NTSTATUS get_reparse_point(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 	if (vp) {
 		VN_HOLD(vp);
 		znode_t *zp = VTOZ(vp);
-
-		if (zp->z_pflags & ZFS_REPARSEPOINT) {
-			int err;
-			int size = MIN(zp->z_size, outlen);
-			uio_t *uio;
-			uio = uio_create(1, 0, UIO_SYSSPACE, UIO_READ);
-			uio_addiov(uio, buffer, size);
-			err = zfs_readlink(vp, uio, NULL, NULL);
-			uio_free(uio);
-
-			if (outlen < zp->z_size)
-				Status = STATUS_BUFFER_OVERFLOW;
-			else
-				Status = STATUS_SUCCESS;
-
-			Irp->IoStatus.Information = size;
-
-			REPARSE_DATA_BUFFER *rdb = buffer;
-			dprintf("Returning tag 0x%x\n", rdb->ReparseTag);
+		ULONG requiredLen = 0;
+		Status = zp_get_or_synthesize_reparse(zp, (PREPARSE_DATA_BUFFER)reparseBuffer, outlen, &requiredLen);
+		if (Status != STATUS_NOT_A_REPARSE_POINT) {
+			// Buffer overflow and success can also come out of zp_get_or_synthesize_reparse.
+			Irp->IoStatus.Information = requiredLen;
+			dprintf("Returning tag 0x%x\n", reparseBuffer->ReparseTag);
 		}
 		VN_RELE(vp);
 	}
