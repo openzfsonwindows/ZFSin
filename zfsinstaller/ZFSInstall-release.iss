@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "OpenZFS On Windows"
-#define MyAppVersion "0.099"
+#define MyAppVersion "0.16"
 #define MyAppPublisher "OpenZFS"
 #define MyAppURL "http://www.openzfsonwindows.org/"
 
@@ -34,6 +34,8 @@ OutputDir={#SourcePath}\..
 ChangesEnvironment=true
 WizardSmallImageFile="{#SourcePath}\Small.bmp"
 WizardImageFile="{#SourcePath}\Large.bmp"
+; Tools/Configure Sign Tools -> Add -> "signtool" = "signtool.exe $p"
+SignTool=signtool sign /a /n $qJoergen Lundman$q /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d $qOpenZFS on Windows$q $f
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -56,7 +58,7 @@ Name: envPath; Description: "Add OpenZFS to PATH variable"
 
 [Files]
 Source: "{#SourcePath}\..\README.md"; DestDir: "{app}"; Flags: ignoreversion  
-Source: "{#SourcePath}\..\x64\Release\*.exe"; DestDir: "{app}"; Flags: ignoreversion  
+Source: "{#SourcePath}\..\x64\Release\*.exe"; DestDir: "{app}"; Flags: ignoreversion sign 
 Source: "{#SourcePath}\..\x64\Release\ZFSin.sys"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\x64\Release\ZFSin\ZFSin.cat"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\x64\Release\ZFSin.cer"; DestDir: "{app}"; Flags: ignoreversion  
@@ -65,8 +67,8 @@ Source: "{#SourcePath}\..\x64\Release\*.pdb"; DestDir: "{app}\symbols"; Flags: i
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
-Name: "{group}\{cm:ProgramOnTheWeb,{#MyAppName}}"; Filename: "{#MyAppURL}"
-Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
+Name: "{group}\{cm:ProgramOnTheWeb,{#MyAppName}}"; Filename: "{#MyAppURL}"; IconFilename: "{#SourcePath}\ZFSinlogo.ico"
+Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"; IconFilename: "{#SourcePath}\ZFSinlogo.ico"
 
 [Run]
 Filename: "{app}\ZFSInstaller.exe"; Parameters: "install .\ZFSin.inf"; StatusMsg: "Installing Driver..."; Flags: runascurrentuser; 

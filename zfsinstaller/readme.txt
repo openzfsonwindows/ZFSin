@@ -1,14 +1,6 @@
 
 ** Open ZFS On Windows **
 
-As this Windows Driver is not yet signed, it is required that Windows is booted
-into Test Mode.
-
-If the Desktop does not display "Test Mode" in the bottom right corner, 
-you will need to run;
-
-"bcdedit.exe -set testsigning on"
-
 ** THIS IS AN EARLY ALPHA OF OPEN ZFS **
 
 It is recommended that this software is only used on test VMs, with test POOLS
