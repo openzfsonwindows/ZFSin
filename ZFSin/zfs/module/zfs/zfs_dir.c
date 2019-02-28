@@ -1132,7 +1132,7 @@ zfs_make_xattrdir(znode_t *zp, vattr_t *vap, vnode_t **xvpp, cred_t *cr)
 	/*
 	 * Obtain and attach the vnode after committing the transaction
 	 */
-	zfs_znode_getvnode(xzp, zfsvfs);
+	zfs_znode_getvnode(xzp, zp, zfsvfs);
 #endif
 	*xvpp = ZTOV(xzp);
 

@@ -177,7 +177,7 @@ extern int    zfs_setsecattr(vnode_t *vp, vsecattr_t *vsecp, int flag,
                              cred_t *cr, caller_context_t *ct);
 
 /* zfs_vops_osx.c calls */
-extern int    zfs_znode_getvnode( znode_t *zp, zfsvfs_t *zfsvfs);
+extern int    zfs_znode_getvnode( znode_t *zp, znode_t *dzp, zfsvfs_t *zfsvfs);
 
 extern void   getnewvnode_reserve( int num );
 extern void   getnewvnode_drop_reserve( void );

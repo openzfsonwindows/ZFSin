@@ -48,7 +48,7 @@
 #if defined (_WIN32) && defined (_KERNEL)
 #include <sys/zfs_rlock.h>
 #include <sys/zfs_znode.h>
-extern int    zfs_znode_getvnode( znode_t *zp, zfsvfs_t *zfsvfs);
+extern int    zfs_znode_getvnode( znode_t *zp, znode_t *dzp, zfsvfs_t *zfsvfs);
 #endif
 
 /*

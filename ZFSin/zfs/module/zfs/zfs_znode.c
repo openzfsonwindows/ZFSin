@@ -1493,7 +1493,7 @@ again:
 			dprintf("ZFS: zget without vnode in znodealloc case\n");
 	} else {
 		/* Attach a vnode to our new znode */
-		zfs_znode_getvnode(zp, zfsvfs); /* Assigns both vp and z_vnode */
+		zfs_znode_getvnode(zp, NULL, zfsvfs); /* Assigns both vp and z_vnode */
 	}
 
 	//dprintf("zget returning %d\n", err);

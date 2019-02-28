@@ -427,7 +427,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 			dvp = NULL;
 			break;
 		}
-		zfs_set_security(vp, dvp);
+
 		// If last lookup hit a non-directory type, we stop
 		zp = VTOZ(vp);
 		ASSERT(zp != NULL);
@@ -670,7 +670,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 		dvp = ZTOV(zp);
 		vnode_ref(dvp); // Hold open reference, until CLOSE
-		zfs_set_security(dvp, NULL);
 
 		vnode_couplefileobject(dvp, FileObject);
 		IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
@@ -721,7 +720,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 					vp = ZTOV(zp);
 					vnode_couplefileobject(vp, FileObject);
 					vnode_ref(vp); // Hold open reference, until CLOSE
-					zfs_set_security(vp, NULL);
 					VN_RELE(vp);
 
 					// A valid lookup gets a ccb attached
@@ -752,7 +750,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				vnode_couplefileobject(dvp, FileObject);
 				if (vnode_isdir(dvp))
 					FileObject->FsContext2 = zfs_dirlist_alloc();
-				zfs_set_security(dvp, NULL);
 				VN_RELE(dvp);
 			} else {
 				kmem_free(filename, PATH_MAX);
@@ -880,9 +877,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 			return STATUS_OBJECT_NAME_NOT_FOUND;
 		}
-		if (!vnode_security(dvp))
-			zfs_set_security(dvp, NULL);
-		zfs_set_security(vp, dvp);
 		VN_RELE(vp);
 		vp = NULL;
 		int direntflags = 0; // To detect ED_CASE_CONFLICT
@@ -910,7 +904,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 			vnode_couplefileobject(dvp, FileObject);
 			vnode_ref(dvp); // Hold open reference, until CLOSE
-			zfs_set_security(dvp, NULL);
 			if (DeleteOnClose) 
 				Status = zfs_setunlink(vp, dvp);
 
@@ -974,7 +967,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 			vnode_couplefileobject(vp, FileObject);
 			vnode_ref(vp); // Hold open reference, until CLOSE
-			zfs_set_security(vp, dvp);
 			if (DeleteOnClose)
 				Status = zfs_setunlink(vp, dvp);
 
@@ -1118,7 +1110,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		} else {
 			granted_access = 0;
 		}
-
+ 
 		// Io*ShareAccess(): X is not an atomic operation. Therefore, drivers calling this routine must protect the shared file object
 		vnode_lock(vp ? vp : dvp);
 		if (vnode_isinuse(vp ? vp : dvp, 0)) {  // 0 is we are the only (usecount added below), 1+ if already open.
@@ -1201,7 +1193,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		if (error == 0) {
 			vnode_couplefileobject(vp, FileObject);
 			vnode_ref(vp); // Hold open reference, until CLOSE
-			zfs_set_security(vp, dvp);
 
 			if (DeleteOnClose) 
 				Status = zfs_setunlink(vp, dvp);
@@ -1259,7 +1250,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 		vnode_couplefileobject(dvp, FileObject);
 		vnode_ref(dvp); // Hold open reference, until CLOSE
-		zfs_set_security(dvp, NULL);
 		if (DeleteOnClose) 
 			Status = zfs_setunlink(vp, dvp);
 
@@ -1280,7 +1270,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		// Technically, this should call zfs_open() - but it is mostly empty
 		vnode_couplefileobject(vp, FileObject);
 		vnode_ref(vp); // Hold open reference, until CLOSE
-		zfs_set_security(vp, dvp);
 		if (DeleteOnClose)
 			Status = zfs_setunlink(vp, dvp);
 
@@ -1420,9 +1409,10 @@ getnewvnode_drop_reserve()
  *
  * This function uses zp->z_zfsvfs, zp->z_mode, zp->z_flags, zp->z_id and sets
  * zp->z_vnode and zp->z_vid.
+ * If given parent, dzp, we can save some hassles. If not, looks it up internally.
  */
 int
-zfs_znode_getvnode(znode_t *zp, zfsvfs_t *zfsvfs)
+zfs_znode_getvnode(znode_t *zp, znode_t *dzp, zfsvfs_t *zfsvfs)
 {
 	struct vnode *vp = NULL;
 	int flags = 0;
@@ -1453,6 +1443,13 @@ zfs_znode_getvnode(znode_t *zp, zfsvfs_t *zfsvfs)
 	ASSERT(zp->z_name_cache == NULL);
 	if (zfs_build_path(zp, NULL, &zp->z_name_cache, &zp->z_name_len, &zp->z_name_offset) == -1)
 		dprintf("%s: failed to build fullpath\n", __func__);
+
+	// Assign security here. But, if we are XATTR, we do not? In Windows, it refers to Streams
+	// and they do not have Scurity?
+	if (zp->z_pflags & ZFS_XATTR)
+		;
+	else
+		zfs_set_security(vp, dzp && ZTOV(dzp) ? ZTOV(dzp) : NULL);
 
 	return (0);
 }

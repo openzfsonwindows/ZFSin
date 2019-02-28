@@ -2055,7 +2055,7 @@ zfs_obtain_xattr(znode_t *dzp, const char *name, mode_t mode, cred_t *cr,
 	/*
 	 * OS X - attach the vnode _after_ committing the transaction
 	 */
-	zfs_znode_getvnode(xzp, zfsvfs);
+	zfs_znode_getvnode(xzp, dzp, zfsvfs);
 
 	zfs_dirent_unlock(dl);
  out:

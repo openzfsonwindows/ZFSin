@@ -1822,7 +1822,7 @@ top:
 		/*
 		 * OS X - attach the vnode _after_ committing the transaction
 		 */
-		zfs_znode_getvnode(zp, zfsvfs);
+		zfs_znode_getvnode(zp, dzp, zfsvfs);
 
 	} else {
 		int aflags = (flag & FAPPEND) ? V_APPEND : 0;
@@ -2379,7 +2379,7 @@ top:
 	/*
 	 * OS X - attach the vnode _after_ committing the transaction
 	 */
-	zfs_znode_getvnode(zp, zfsvfs);
+	zfs_znode_getvnode(zp, dzp, zfsvfs);
 	*vpp = ZTOV(zp);
 
 	zfs_dirent_unlock(dl);
@@ -4888,7 +4888,7 @@ top:
 	/*
 	 * OS X - attach the vnode _after_ committing the transaction
 	 */
-	zfs_znode_getvnode(zp, zfsvfs);
+	zfs_znode_getvnode(zp, dzp, zfsvfs);
 	*vpp = ZTOV(zp);
 
 	zfs_dirent_unlock(dl);
