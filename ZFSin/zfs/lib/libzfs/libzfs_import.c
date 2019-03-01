@@ -136,7 +136,7 @@ get_device_number(char* device_path, STORAGE_DEVICE_NUMBER* device_number)
 		FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
 		NULL);
 	if (hDevice == INVALID_HANDLE_VALUE) {
-		fprintf(stderr, "invalid handle value\n"); fflush(stderr);
+		//fprintf(stderr, "invalid handle value\n"); fflush(stderr);
 		return GetLastError();
 	}
 
@@ -145,7 +145,7 @@ get_device_number(char* device_path, STORAGE_DEVICE_NUMBER* device_number)
 	CloseHandle(hDevice);
 
 	if (!ret) {
-		fprintf(stderr, "DeviceIoControl returned error\n"); fflush(stderr);
+		//fprintf(stderr, "DeviceIoControl returned error\n"); fflush(stderr);
 		return ERROR_INVALID_FUNCTION;
 	}
 
@@ -254,21 +254,22 @@ fix_paths(nvlist_t *nv, name_entry_t *names)
 		return ret;
 	}
 
+	// If it is a device, clean that up - otherwise it is a filename pool
 	ret = get_device_number(end, &deviceNumber);
-	if (ret) {
-		fprintf(stderr, "get_device_number failed, return\n"); fflush(stderr);
-		return ret;
-	}
+	if (ret == 0) {
+		char vdev_path[MAX_PATH];
+		sprintf(vdev_path, "/dev/physicaldrive%lu", deviceNumber.DeviceNumber);
 
-	char vdev_path[MAX_PATH];
-	sprintf(vdev_path, "/dev/physicaldrive%lu", deviceNumber.DeviceNumber);
-	
-	fprintf(stderr, "setting path here '%s'\r\n", vdev_path); fflush(stderr);
-	fprintf(stderr, "setting physpath here '%s'\r\n", best->ne_name); fflush(stderr);
-	if (nvlist_add_string(nv, ZPOOL_CONFIG_PATH, vdev_path) != 0)
-		return (-1);
-	if (nvlist_add_string(nv, ZPOOL_CONFIG_PHYS_PATH, best->ne_name) != 0)
-		return (-1);
+		fprintf(stderr, "setting path here '%s'\r\n", vdev_path); fflush(stderr);
+		fprintf(stderr, "setting physpath here '%s'\r\n", best->ne_name); fflush(stderr);
+		if (nvlist_add_string(nv, ZPOOL_CONFIG_PATH, vdev_path) != 0)
+			return (-1);
+		if (nvlist_add_string(nv, ZPOOL_CONFIG_PHYS_PATH, best->ne_name) != 0)
+			return (-1);
+	} else {
+		if (nvlist_add_string(nv, ZPOOL_CONFIG_PATH, best->ne_name) != 0)
+			return (-1);
+	}
 
 	if ((devid = get_devid(best->ne_name)) == NULL) {
 		(void) nvlist_remove_all(nv, ZPOOL_CONFIG_DEVID);
@@ -1086,6 +1087,10 @@ zpool_read_label_win(HANDLE h, nvlist_t **config, int *num_labels)
 
 typedef struct rdsk_node {
 	char *rn_name;
+#ifdef WIN32
+	// There is no openat/statat option, so pass parent path along.
+	char *rn_parent;
+#endif
 	int rn_num_labels;
 	int rn_dfd;
 	libzfs_handle_t *rn_hdl;
@@ -1506,8 +1511,10 @@ zpool_open_func_win(void *arg)
 
 
 	} else {
-
-		fd = CreateFile(rn->rn_name,
+		// We have no openat() - so stich paths togther.
+		char fullpath[MAX_PATH];
+		snprintf(fullpath, sizeof(fullpath), "%s%s", rn->rn_parent, rn->rn_name);
+		fd = CreateFile(fullpath,
 			GENERIC_READ,
 			FILE_SHARE_READ | FILE_SHARE_WRITE,
 			NULL,
@@ -1742,9 +1749,14 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 	for (i = 0; i < dirs; i++) {
 		taskq_t *t;
 		char rdsk[MAXPATHLEN];
-		int dfd;
 		boolean_t config_failed = B_FALSE;
+#ifdef WIN32
+		WIN32_FIND_DATA dirp;
+		HANDLE dfd;
+#else
+		int dfd;
 		DIR *dirp;
+#endif
 
 		/* use realpath to normalize the path */
 		if (realpath(dir[i], path) == 0) {
@@ -1759,7 +1771,11 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 			goto error;
 		}
 		end = &path[strlen(path)];
+#ifdef WIN32
+		*end++ = '\\';
+#else
 		*end++ = '/';
+#endif
 		*end = 0;
 		pathleft = &path[sizeof (path)] - end;
 
@@ -1773,6 +1789,19 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 		else
 			(void) strlcpy(rdsk, path, sizeof (rdsk));
 
+#ifdef WIN32
+		// FindFirstFile() needs to have "*" search pattern to find anything. 
+		strlcat(rdsk, "*", sizeof(rdsk));
+
+		dfd = FindFirstFile(rdsk, &dirp);
+		if (dfd == INVALID_HANDLE_VALUE) {
+			zfs_error_aux(hdl, strerror(errno));
+			(void)zfs_error_fmt(hdl, EZFS_BADPATH,
+				dgettext(TEXT_DOMAIN, "cannot open '%s'"),
+				rdsk);
+			goto error;
+		}
+#else
 		if ((dfd = open(rdsk, O_RDONLY)) < 0 ||
 		    (dirp = fdopendir(dfd)) == NULL) {
 			if (dfd >= 0)
@@ -1783,6 +1812,7 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 			    rdsk);
 			goto error;
 		}
+#endif
 
 		avl_create(&slice_cache, slice_cache_compare,
 		    sizeof (rdsk_node_t), offsetof(rdsk_node_t, rn_node));
@@ -1790,6 +1820,23 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 		/*
 		 * This is not MT-safe, but we have no MT consumers of libzfs
 		 */
+#ifdef WIN32
+		do {
+			const char *name = dirp.cFileName;
+			if (name[0] == '.' &&
+				(name[1] == 0 || (name[1] == '.' && name[2] == 0)))
+				continue;
+
+			slice = zfs_alloc(hdl, sizeof(rdsk_node_t));
+			slice->rn_name = zfs_strdup(hdl, name);
+			slice->rn_parent = zfs_strdup(hdl, path);
+			slice->rn_avl = &slice_cache;
+			slice->rn_dfd = dfd;
+			slice->rn_hdl = hdl;
+			slice->rn_nozpool = B_FALSE;
+			avl_add(&slice_cache, slice);
+		} while (FindNextFile(dfd, &dirp));
+#else
 		while ((dp = readdir(dirp)) != NULL) {
 			const char *name = dp->d_name;
 			if (name[0] == '.' &&
@@ -1804,7 +1851,7 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 			slice->rn_nozpool = B_FALSE;
 			avl_add(&slice_cache, slice);
 		}
-
+#endif
 		/*
 		 * create a thread pool to do all of this in parallel;
 		 * rn_nozpool is not protected, so this is racy in that
@@ -1819,8 +1866,13 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 		for (slice = avl_first(&slice_cache); slice;
 		    (slice = avl_walk(&slice_cache, slice,
 		    AVL_AFTER)))
-			(void) taskq_dispatch(t, zpool_open_func, slice,
+#ifdef WIN32
+			(void) taskq_dispatch(t, zpool_open_func_win, slice,
+				TQ_SLEEP);
+#else
+				(void) taskq_dispatch(t, zpool_open_func, slice,
 			    TQ_SLEEP);
+#endif
 		taskq_wait(t);
 		taskq_destroy(t);
 
@@ -1859,11 +1911,16 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 				nvlist_free(config);
 			}
 			free(slice->rn_name);
+#ifdef WIN32
+			free(slice->rn_parent);
+#endif
 			free(slice);
 		}
 		avl_destroy(&slice_cache);
 
+#ifndef WIN32
 		(void) closedir(dirp);
+#endif
 
 		if (config_failed)
 			goto error;
