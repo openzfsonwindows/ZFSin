@@ -85,6 +85,16 @@ extern "C" {
 #define	KMEM_REDZONE_PATTERN		0xfeedfacefeedfaceULL
 #define	KMEM_REDZONE_BYTE			0xbb
 
+ /*
+  * Upstream platforms handle size == 0 as valid alloc, we
+  * can not return NULL, as that invalidates KM_SLEEP. So
+  * we return a valid hardcoded address, instead of actually taking up
+  * memory by fudging size to 1 byte. If read/writes are
+  * attempted, we will get page fault (which is correct, they
+  * asked for zero bytes after all)
+  */
+#define KMEM_ZERO_SIZE_PTR ((void *)16)
+
     /*
      * Redzone size encodings for kmem_alloc() / kmem_free().  We encode the
      * allocation size, rather than storing it directly, so that kmem_free()
