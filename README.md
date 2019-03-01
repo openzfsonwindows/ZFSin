@@ -401,3 +401,17 @@ No pools available
 ```
 
 A reboot might be neccessary to uninstall it completely.
+
+# Tuning ZFSin
+
+You can use `kstat` to tune various settings of ZFSin, using the following format:
+```
+kstat -w module:instance:name:statistic=value
+```
+
+e.g. To set `zfs_arc_max` to 512 MiB:
+```
+kstat -w zfs:0:tunable:zfs_arc_max=536870912
+```
+
+These settings will be reset on reboot.
