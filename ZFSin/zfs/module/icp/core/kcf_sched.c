@@ -1080,9 +1080,6 @@ kcf_sched_destroy(void)
 		kmem_free(kcfpool, sizeof (kcf_pool_t));
 	}
 
-	mutex_destroy(&ntfy_list_lock);
-	cv_destroy(&ntfy_list_cv);
-
 	for (i = 0; i < REQID_TABLES; i++) {
 		if (kcf_reqid_table[i]) {
 			mutex_destroy(&kcf_reqid_table[i]->rt_lock);
@@ -1091,11 +1088,11 @@ kcf_sched_destroy(void)
 		}
 	}
 
-	if (gswq)
-		kmem_free(gswq, sizeof (kcf_global_swq_t));
-
-	mutex_destroy(&gswq->gs_lock);
-	cv_destroy(&gswq->gs_cv);
+	if (gswq) {
+		mutex_destroy(&gswq->gs_lock);
+		cv_destroy(&gswq->gs_cv);
+		kmem_free(gswq, sizeof(kcf_global_swq_t));
+	}
 
 	if (kcf_context_cache)
 		kmem_cache_destroy(kcf_context_cache);
@@ -1103,6 +1100,9 @@ kcf_sched_destroy(void)
 		kmem_cache_destroy(kcf_areq_cache);
 	if (kcf_sreq_cache)
 		kmem_cache_destroy(kcf_sreq_cache);
+
+	mutex_destroy(&ntfy_list_lock);
+	cv_destroy(&ntfy_list_cv);
 }
 
 /*
