@@ -214,11 +214,11 @@ dump_record(dmu_replay_record_t *drr, void *payload, int payload_len,
 	}
 	(void) fletcher_4_incremental_native(
 	    &drr->drr_u.drr_checksum.drr_checksum, sizeof (zio_cksum_t), zc);
-	if (write(outfd, drr, sizeof (*drr)) == -1)
+	if (write(_fileno(stdout), drr, sizeof (*drr)) == -1)
 		return (errno);
 	if (payload_len != 0) {
 		(void) fletcher_4_incremental_native(payload, payload_len, zc);
-		if (write(outfd, payload, payload_len) == -1)
+		if (write(_fileno(stdout), payload, payload_len) == -1)
 			return (errno);
 	}
 	return (0);
@@ -1423,7 +1423,10 @@ dump_snapshot(zfs_handle_t *zhp, void *arg)
 		}
 
 		err = dump_ioctl(zhp, sdd->prevsnap, sdd->prevsnap_obj,
-		    fromorigin, sdd->outfd, flags, sdd->debugnv);
+			fromorigin, sdd->outfd, flags, sdd->debugnv);
+
+		//err = dump_ioctl(zhp, sdd->prevsnap, sdd->prevsnap_obj,
+		//    fromorigin, /*sdd->outfd*/STDOUT_FILENO, flags, sdd->debugnv);
 
 		if (sdd->progress) {
 			(void) pthread_cancel(tid);
@@ -1987,7 +1990,7 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 			bzero(&drr, sizeof (drr));
 			drr.drr_type = DRR_END;
 			drr.drr_u.drr_end.drr_checksum = zc;
-			err = write(outfd, &drr, sizeof (drr));
+			err = write(_fileno(stdout), &drr, sizeof (drr));
 			if (err == -1) {
 				err = errno;
 				goto stderr_out;
@@ -2135,7 +2138,7 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 		 */
 		dmu_replay_record_t drr = { 0 };
 		drr.drr_type = DRR_END;
-		if (write(outfd, &drr, sizeof (drr)) == -1) {
+		if (write(_fileno(stdout), &drr, sizeof (drr)) == -1) {
 			return (zfs_standard_error(zhp->zfs_hdl,
 			    errno, errbuf));
 		}
