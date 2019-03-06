@@ -402,16 +402,24 @@ No pools available
 
 A reboot might be neccessary to uninstall it completely.
 
-# Tuning ZFSin
+# Tuning
 
-You can use `kstat` to tune various settings of ZFSin, using the following format:
-```
-kstat -w module:instance:name:statistic=value
-```
+You can use `kstat` to tune various parameters.
 
-e.g. To set `zfs_arc_max` to 512 MiB:
-```
-kstat -w zfs:0:tunable:zfs_arc_max=536870912
-```
+**SYNTAX**
 
-These settings will be reset on reboot.
+    kstat -w module:instance:name:statistic=value [ ... ]
+
+**EXAMPLES**
+
+To set max ARC size to 512 MiB:
+
+    kstat -w zfs:0:tunable:zfs_arc_max=536870912
+
+To specify multiple values:
+
+    kstat -w zfs:0:tunable:zfs_arc_max=536870912 zfs:0:tunable:zfs_arc_meta_limit=402653184
+
+[Details](https://github.com/zfsonlinux/zfs/wiki/ZFS-on-Linux-Module-Parameters)  
+Some are unavailable, such as `zfs_arc_meta_limit_percent`.  
+These will be reset on reboot.
