@@ -4798,9 +4798,13 @@ NTSTATUS query_security(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATIO
 		&sd);
 	VN_RELE(vp);
 
-	Irp->IoStatus.Information = buflen;
 	if (Status == STATUS_BUFFER_TOO_SMALL) {
 		Status = STATUS_BUFFER_OVERFLOW;
+		Irp->IoStatus.Information = buflen;
+	} else if (NT_SUCCESS(Status)) {
+		Irp->IoStatus.Information = IrpSp->Parameters.QuerySecurity.Length;
+	} else {
+		Irp->IoStatus.Information = 0;
 	}
 
 	return Status;
@@ -4833,16 +4837,14 @@ NTSTATUS set_security(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	Status = SeSetSecurityDescriptorInfo(NULL, 
 		&IrpSp->Parameters.SetSecurity.SecurityInformation, 
 		IrpSp->Parameters.SetSecurity.SecurityDescriptor, 
-		(void**)&oldsd, 
+		(void **)&vp->security_descriptor,
 		PagedPool, 
 		IoGetFileObjectGenericMapping());
 
 	if (!NT_SUCCESS(Status))
 		goto err;
 
-	// Here, 'oldsd' is now ptr to new sd, and vnode_security() one needs to be freed
-	ExFreePool(vnode_security(vp));
-	vnode_setsecurity(vp, oldsd);
+	ExFreePool(oldsd);
 
 	// Now, we might need to update ZFS ondisk information
 	vattr_t vattr;
@@ -4876,6 +4878,9 @@ NTSTATUS set_security(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	}
 
 	Irp->IoStatus.Information = 0;
+	zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+		FILE_NOTIFY_CHANGE_SECURITY,
+		FILE_ACTION_MODIFIED);
 
 err:
 	VN_RELE(vp);
