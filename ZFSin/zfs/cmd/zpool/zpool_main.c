@@ -3294,7 +3294,6 @@ print_iostat_dashes(iostat_cbdata_t *cb, unsigned int force_column_width,
 	namewidth = MAX(MAX(strlen(title), cb->cb_namewidth),
 	    name ? strlen(name) : 0);
 
-
 	if (name) {
 		printf("%-*s", namewidth, name);
 	} else {
@@ -4080,8 +4079,14 @@ get_columns(void)
 	CONSOLE_SCREEN_BUFFER_INFO csbi;
 	int columns, rows;
 
+	csbi.srWindow.Right = 1;
+	csbi.srWindow.Left = 80;
 	GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
-	columns = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+
+	if (csbi.srWindow.Right > csbi.srWindow.Left)
+		columns = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+	else
+		columns = csbi.srWindow.Left - csbi.srWindow.Right + 1;
 	//rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
 	return columns;
 }

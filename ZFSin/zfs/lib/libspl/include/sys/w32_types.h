@@ -203,4 +203,6 @@ int kobj_get_filesize(struct _buf *file, uint64_t *size);
 
 #define strcasecmp _stricmp
 
+int nanosleep(const struct timespec *rqtp, struct timespec *rmtp);
+
 #endif

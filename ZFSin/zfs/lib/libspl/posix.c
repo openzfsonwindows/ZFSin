@@ -343,16 +343,21 @@ int usleep(__int64 usec)
 	CloseHandle(timer);
 }
 
-boolean_t nanosleep(int64_t ns) 
+int
+nanosleep(const struct timespec *rqtp, struct timespec *rmtp)
 {
 	/* Declarations */
 	HANDLE timer;	/* Timer handle */
 	LARGE_INTEGER li;	/* Time defintion */
 						/* Create timer */
+
+	// Negative means relative time, 100 nanosecs on Windows.
+	li.QuadPart = -((SEC2NSEC(rqtp->tv_sec) + rqtp->tv_nsec) / 100ULL);
+
 	if (!(timer = CreateWaitableTimer(NULL, TRUE, NULL)))
 		return FALSE;
+
 	/* Set timer properties */
-	li.QuadPart = -ns;
 	if (!SetWaitableTimer(timer, &li, 0, NULL, NULL, FALSE)) {
 		CloseHandle(timer);
 		return FALSE;
@@ -362,7 +367,7 @@ boolean_t nanosleep(int64_t ns)
 	/* Clean resources */
 	CloseHandle(timer);
 	/* Slept without problems */
-	return TRUE;
+	return 0;
 }
 
 int strncasecmp(char *s1, char *s2, uint32_t n)
