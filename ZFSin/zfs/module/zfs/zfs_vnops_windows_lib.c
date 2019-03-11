@@ -2856,6 +2856,82 @@ void zfs_freesid(SID *sid)
 	kmem_free(sid, offsetof(SID, SubAuthority) + (sid->SubAuthorityCount * sizeof(ULONG)));
 }
 
+typedef struct {
+	UCHAR revision;
+	UCHAR elements;
+	UCHAR auth[6];
+	UINT32 nums[8];
+} sid_header;
+
+static sid_header sid_BA = { 1, 2, SECURITY_NT_AUTHORITY, {32, 544} }; // BUILTIN\Administrators
+static sid_header sid_SY = { 1, 1, SECURITY_NT_AUTHORITY, {18} };      // NT AUTHORITY\SYSTEM
+static sid_header sid_BU = { 1, 2, SECURITY_NT_AUTHORITY, {32, 545} }; // BUILTIN\Users
+static sid_header sid_AU = { 1, 1, SECURITY_NT_AUTHORITY, {11} };      // NT AUTHORITY\Authenticated Users
+
+typedef struct {
+	UCHAR flags;
+	ACCESS_MASK mask;
+	sid_header* sid;
+} dacl;
+
+static dacl def_dacls[] = {
+	{ 0, FILE_ALL_ACCESS, &sid_BA },
+	{ OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE, FILE_ALL_ACCESS, &sid_BA },
+	{ 0, FILE_ALL_ACCESS, &sid_SY },
+	{ OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE, FILE_ALL_ACCESS, &sid_SY },
+	//{ OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE, FILE_GENERIC_READ | FILE_GENERIC_EXECUTE, &sid_BU },
+	{ OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE, FILE_ALL_ACCESS, &sid_BU },
+	{ OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE, FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE, &sid_AU },
+	{ 0, FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE, &sid_AU },
+	// FIXME - Mandatory Label\High Mandatory Level:(OI)(NP)(IO)(NW)
+	{ 0, 0, NULL }
+};
+
+static ACL *
+load_default_acl(void) 
+{
+	UINT16 size, i;
+	ACL* acl;
+	ACCESS_ALLOWED_ACE* aaa;
+
+	size = sizeof(ACL);
+	i = 0;
+	while (def_dacls[i].sid) {
+		size += sizeof(ACCESS_ALLOWED_ACE);
+		size += 8 + (def_dacls[i].sid->elements * sizeof(UINT32)) - sizeof(ULONG);
+		i++;
+	}
+
+	acl = ExAllocatePoolWithTag(PagedPool, size, 'WHOC');
+	if (!acl) {
+		return NULL;
+	}
+
+	acl->AclRevision = ACL_REVISION;
+	acl->Sbz1 = 0;
+	acl->AclSize = size;
+	acl->AceCount = i;
+	acl->Sbz2 = 0;
+
+	aaa = (ACCESS_ALLOWED_ACE*)&acl[1];
+	i = 0;
+	while (def_dacls[i].sid) {
+		aaa->Header.AceType = ACCESS_ALLOWED_ACE_TYPE;
+		aaa->Header.AceFlags = def_dacls[i].flags;
+		aaa->Header.AceSize = sizeof(ACCESS_ALLOWED_ACE) - sizeof(ULONG) + 8 + (def_dacls[i].sid->elements * sizeof(UINT32));
+		aaa->Mask = def_dacls[i].mask;
+
+		RtlCopyMemory(&aaa->SidStart, def_dacls[i].sid, 8 + (def_dacls[i].sid->elements * sizeof(UINT32)));
+
+		aaa = (ACCESS_ALLOWED_ACE*)((UINT8*)aaa + aaa->Header.AceSize);
+
+		i++;
+	}
+
+	return acl;
+}
+
+
 void zfs_set_security_root(struct vnode *vp)
 {
 	SECURITY_DESCRIPTOR sd;
@@ -2872,6 +2948,24 @@ void zfs_set_security_root(struct vnode *vp)
 	zfs_gid2sid(zp->z_gid, &groupsid);
 	RtlSetGroupSecurityDescriptor(&sd, groupsid, FALSE);
 
+#if 0
+	Status = RtlSetDaclSecurityDescriptor(&sd,
+		TRUE,
+		NULL,
+		TRUE);
+#else
+	ACL* acl = NULL;
+	acl = load_default_acl();
+
+	if (!acl) {
+		Status = STATUS_NO_MEMORY;
+		goto err;
+	}
+
+	Status = RtlSetDaclSecurityDescriptor(&sd, TRUE, acl, FALSE);
+	if (Status) goto err;
+#endif
+
 	ULONG buflen = 0;
 	Status = RtlAbsoluteToSelfRelativeSD(&sd, NULL, &buflen);
 	if (Status != STATUS_SUCCESS &&
@@ -2879,6 +2973,7 @@ void zfs_set_security_root(struct vnode *vp)
 
 	ASSERT(buflen != 0);
 
+	Status = STATUS_NO_MEMORY;
 	void *tmp = ExAllocatePoolWithTag(PagedPool, buflen, 'ZSEC');
 	if (tmp == NULL) goto err;
 
@@ -2887,10 +2982,13 @@ void zfs_set_security_root(struct vnode *vp)
 	vnode_setsecurity(vp, tmp);
 
 err:
+	if (acl)
+		ExFreePool(acl);
 	if (usersid != NULL)
 		zfs_freesid(usersid);
 	if (groupsid != NULL)
 		zfs_freesid(groupsid);
+	ASSERT(Status == 0);
 }
 
 void zfs_set_security(struct vnode *vp, struct vnode *dvp)
@@ -2942,6 +3040,9 @@ void zfs_set_security(struct vnode *vp, struct vnode *dvp)
 
 	if (Status != STATUS_SUCCESS) goto err;
 
+	dprintf("%s: created vp %p security %p based on dvp %p security %p: name '%s' parent '%s'\n", __func__,
+		vp, sd, dvp, dvp->security_descriptor,
+		VTOZ(vp)->z_name_cache, dzp->z_name_cache);
 	vnode_setsecurity(vp, sd);
 
 	PSID usersid = NULL, groupsid = NULL;
@@ -2960,6 +3061,7 @@ err:
 		zfs_freesid(usersid);
 	if (groupsid != NULL)
 		zfs_freesid(groupsid);
+	ASSERT(Status == 0);
 }
 
 // return true if a XATTR name should be skipped

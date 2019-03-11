@@ -1092,21 +1092,40 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 		} else if (IrpSp->Parameters.Create.SecurityContext->DesiredAccess != 0) {
 
+			PPRIVILEGE_SET privileges = NULL;
+			BOOLEAN accessGranted;
 
 			SeLockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
-			if (!SeAccessCheck(/* (fileref->fcb->ads || fileref->fcb == Vcb->dummy_fcb) ? fileref->parent->fcb->sd : */ vnode_security(vp ? vp : dvp),
+
+			accessGranted = SeAccessCheck(vnode_security(vp ? vp : dvp),
 				&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext,
-				TRUE, IrpSp->Parameters.Create.SecurityContext->DesiredAccess, 0, NULL,
-				IoGetFileObjectGenericMapping(), IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode,
-				&granted_access, &Status)) {
-				SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
+				TRUE, 
+				IrpSp->Parameters.Create.SecurityContext->DesiredAccess, 
+				0, 
+				&privileges,
+				IoGetFileObjectGenericMapping(), 
+				IrpSp->Flags & SL_FORCE_ACCESS_CHECK ? UserMode : Irp->RequestorMode,
+				&granted_access, 
+				&Status);
+			
+			if (privileges) {
+				(VOID)SeAppendPrivileges(
+					IrpSp->Parameters.Create.SecurityContext->AccessState,
+					privileges
+				);
+				SeFreePrivileges(privileges);
+			}
+			
+			SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
+
+			if (!accessGranted) {
 				if (vp) VN_RELE(vp);
 				VN_RELE(dvp);
 				kmem_free(filename, PATH_MAX);
 				dprintf("%s: denied due to SeAccessCheck()\n", __func__);
+				//DbgBreakPoint();
 				return Status;
 			}
-			SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
 		} else {
 			granted_access = 0;
 		}
@@ -1336,11 +1355,6 @@ int zfs_vnop_reclaim (struct vnode *vp)
 	dprintf("  zfs_vnop_recycle: releasing zp %p and vp %p: '%s'\n", zp, vp,
 		zp->z_name_cache ? zp->z_name_cache : "");
 
-	void *sd = vnode_security(vp);
-	if (sd != NULL)
-		ExFreePool(sd);
-	vnode_setsecurity(vp, NULL);
-
 	// Decouple the nodes
 	ASSERT(ZTOV(zp) != 0xdeadbeefdeadbeef);
 
@@ -1435,21 +1449,26 @@ zfs_znode_getvnode(znode_t *zp, znode_t *dzp, zfsvfs_t *zfsvfs)
 
 	atomic_inc_64(&vnop_num_vnodes);
 
-	//dprintf("Assigned zp %p with vp %p\n", zp, vp);
-	zp->z_vid = vnode_vid(vp);
-	zp->z_vnode = vp;
-
-	// Build a fullpath string here, for Notifications and set_name_information
-	ASSERT(zp->z_name_cache == NULL);
-	if (zfs_build_path(zp, NULL, &zp->z_name_cache, &zp->z_name_len, &zp->z_name_offset) == -1)
-		dprintf("%s: failed to build fullpath\n", __func__);
-
 	// Assign security here. But, if we are XATTR, we do not? In Windows, it refers to Streams
 	// and they do not have Scurity?
 	if (zp->z_pflags & ZFS_XATTR)
 		;
 	else
 		zfs_set_security(vp, dzp && ZTOV(dzp) ? ZTOV(dzp) : NULL);
+
+	dprintf("%s: Setting vp %p security to %p\n", __func__, vp, vp->security_descriptor);
+
+	//dprintf("Assigned zp %p with vp %p\n", zp, vp);
+	// We assign z_vnode last, as once that is done, other
+	// threads can get this vp
+	zp->z_vid = vnode_vid(vp);
+	zp->z_vnode = vp;
+
+	// Build a fullpath string here, for Notifications and set_name_information
+	// Requires z_vnode to be set above
+	ASSERT(zp->z_name_cache == NULL);
+	if (zfs_build_path(zp, NULL, &zp->z_name_cache, &zp->z_name_len, &zp->z_name_offset) == -1)
+		dprintf("%s: failed to build fullpath\n", __func__);
 
 	return (0);
 }
@@ -4845,7 +4864,8 @@ NTSTATUS set_security(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 		goto err;
 
 	ExFreePool(oldsd);
-
+	dprintf("%s: vp %p free security %p set new %p\n", __func__,
+		vp, vp->security_descriptor, oldsd);
 	// Now, we might need to update ZFS ondisk information
 	vattr_t vattr;
 	vattr.va_mask = 0;
@@ -6142,7 +6162,7 @@ dispatcher(
 	}
 
 
-	ASSERT(validity_check == *((uint64_t *)Irp));
+	ASSERT3U(validity_check, ==, *((uint64_t *)Irp));
 
 	// IOCTL_STORAGE_GET_HOTPLUG_INFO
 	// IOCTL_DISK_CHECK_VERIFY

@@ -1042,10 +1042,13 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	vp->v_iocount = 1;
 	vp->v_usecount = 0;
 	vp->v_unlink = 0;
+	vp->security_descriptor = NULL;
 	atomic_inc_64(&vnode_active);
 
 	list_link_init(&vp->v_list);
 	ASSERT(vnode_fileobject_empty(vp, 1)); // lying about locked is ok. 
+
+	dprintf("%s: Created vp %p\n", __func__, vp);
 
 	if (flags & VNODE_MARKROOT)
 		vp->v_flags |= VNODE_MARKROOT;
@@ -1237,6 +1240,12 @@ int vnode_drain_delayclose(int force)
 			list_remove(&vnode_all_list, vp);
 			vnode_unlock(vp);
 			dprintf("%s: freeing DEAD vp %p\n", __func__, vp);
+
+			void *sd = vnode_security(vp);
+			if (sd != NULL)
+				ExFreePool(sd);
+			vnode_setsecurity(vp, NULL);
+
 			kmem_cache_free(vnode_cache, vp); // Holding all_list_lock, that OK?
 			atomic_dec_64(&vnode_active);
 
@@ -1319,13 +1328,17 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
  */
 void vnode_setsecurity(vnode_t *vp, void *sd)
 {
+	ASSERT(sd == NULL || RtlValidSecurityDescriptor(sd));
+	if (sd == NULL) dprintf("%s: Setting vp %p security to NULL\n", __func__, vp);
 	vp->security_descriptor = sd;
 }
+
 void *vnode_security(vnode_t *vp)
 {
+	ASSERT3P(vp->security_descriptor, !=, NULL);
+	ASSERT(vp->security_descriptor == NULL || RtlValidSecurityDescriptor(vp->security_descriptor));
 	return vp->security_descriptor;
 }
-
 
 void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) 
 {
