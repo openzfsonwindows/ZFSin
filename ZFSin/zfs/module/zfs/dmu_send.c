@@ -514,7 +514,6 @@ dump_dnode(dmu_sendarg_t *dsp, const blkptr_t *bp, uint64_t object,
 	drro->drr_bonustype = dnp->dn_bonustype;
 	drro->drr_blksz = dnp->dn_datablkszsec << SPA_MINBLOCKSHIFT;
 	drro->drr_bonuslen = dnp->dn_bonuslen;
-	drro->drr_dn_slots = dnp->dn_extra_slots + 1;
 	drro->drr_checksumtype = dnp->dn_checksum;
 	drro->drr_compress = dnp->dn_compress;
 	drro->drr_toguid = dsp->dsa_toguid;
@@ -705,6 +704,7 @@ do_dump(dmu_sendarg_t *dsa, struct send_block_record *data)
 	spa_t *spa = ds->ds_dir->dd_pool->dp_spa;
 	dmu_object_type_t type = bp ? BP_GET_TYPE(bp) : DMU_OT_NONE;
 	int err = 0;
+	uint64_t dnobj;
 
 	ASSERT3U(zb->zb_level, >=, 0);
 
@@ -740,10 +740,12 @@ do_dump(dmu_sendarg_t *dsa, struct send_block_record *data)
 	} else if (zb->zb_level > 0 || type == DMU_OT_OBJSET) {
 		return (0);
 	} else if (type == DMU_OT_DNODE) {
+		dnode_phys_t *blk;
 		int epb = BP_GET_LSIZE(bp) >> DNODE_SHIFT;
 		arc_flags_t aflags = ARC_FLAG_WAIT;
 		arc_buf_t *abuf;
 		enum zio_flag zioflags = ZIO_FLAG_CANFAIL;
+		int i;
 
 		if (dsa->dsa_featureflags & DMU_BACKUP_FEATURE_RAW) {
 			ASSERT(BP_IS_ENCRYPTED(bp));
@@ -757,8 +759,8 @@ do_dump(dmu_sendarg_t *dsa, struct send_block_record *data)
 		    ZIO_PRIORITY_ASYNC_READ, zioflags, &aflags, zb) != 0)
 			return (SET_ERROR(EIO));
 
-		dnode_phys_t *blk = abuf->b_data;
-		uint64_t dnobj = zb->zb_blkid * epb;
+		blk = abuf->b_data;
+		dnobj = zb->zb_blkid * epb;
 
 		/*
 		 * Raw sends require sending encryption parameters for the
@@ -771,8 +773,8 @@ do_dump(dmu_sendarg_t *dsa, struct send_block_record *data)
 		}
 
 		if (err == 0) {
-			for (int i = 0; i < epb;
-				 i += blk[i].dn_extra_slots + 1) {
+			for (i = 0; i < epb; i += blk[i].dn_extra_slots + 1) {
+				VERIFY0(blk[i].dn_extra_slots);
 				err = dump_dnode(dsa, bp, dnobj + i, blk + i);
 				if (err != 0)
 					break;
@@ -978,9 +980,6 @@ dmu_send_impl(void *tag, dsl_pool_t *dp, dsl_dataset_t *to_ds,
 	if ((large_block_ok || rawok) &&
 	    to_ds->ds_feature_inuse[SPA_FEATURE_LARGE_BLOCKS])
 		featureflags |= DMU_BACKUP_FEATURE_LARGE_BLOCKS;
-
-	if (to_ds->ds_feature_inuse[SPA_FEATURE_LARGE_DNODE])
-		featureflags |= DMU_BACKUP_FEATURE_LARGE_DNODE;
 
 	/* encrypted datasets will not have embedded blocks */
 	if ((embedok || rawok) && !os->os_encrypted &&
@@ -1634,14 +1633,10 @@ dmu_recv_begin_check(void *arg, dmu_tx_t *tx)
 	/*
 	 * The receiving code doesn't know how to translate large blocks
 	 * to smaller ones, so the pool must have the LARGE_BLOCKS
-	 * feature enabled if the stream has LARGE_BLOCKS. Same with
-	 * large dnodes.
+	 * feature enabled if the stream has LARGE_BLOCKS.
 	 */
 	if ((featureflags & DMU_BACKUP_FEATURE_LARGE_BLOCKS) &&
 	    !spa_feature_is_enabled(dp->dp_spa, SPA_FEATURE_LARGE_BLOCKS))
-		return (SET_ERROR(ENOTSUP));
-	if ((featureflags & DMU_BACKUP_FEATURE_LARGE_DNODE) &&
-	    !spa_feature_is_enabled(dp->dp_spa, SPA_FEATURE_LARGE_DNODE))
 		return (SET_ERROR(ENOTSUP));
 
 	if ((featureflags & DMU_BACKUP_FEATURE_RAW)) {
@@ -1890,9 +1885,6 @@ dmu_recv_resume_begin_check(void *arg, dmu_tx_t *tx)
 	dsl_dataset_t *ds;
 	const char *tofs = drba->drba_cookie->drc_tofs;
 
-	/* 6 extra bytes for /%recv */
-	char recvname[ZFS_MAX_DATASET_NAME_LEN + 6];
-
 	/* already checked */
 	ASSERT3U(drrb->drr_magic, ==, DMU_BACKUP_MAGIC);
 	ASSERT(featureflags & DMU_BACKUP_FEATURE_RESUMING);
@@ -1920,18 +1912,8 @@ dmu_recv_resume_begin_check(void *arg, dmu_tx_t *tx)
 	    !spa_feature_is_enabled(dp->dp_spa, SPA_FEATURE_LZ4_COMPRESS))
 		return (SET_ERROR(ENOTSUP));
 
-	/*
-	 * The receiving code doesn't know how to translate large blocks
-	 * to smaller ones, so the pool must have the LARGE_BLOCKS
-	 * feature enabled if the stream has LARGE_BLOCKS. Same with
-	 * large dnodes.
-	 */
-	if ((featureflags & DMU_BACKUP_FEATURE_LARGE_BLOCKS) &&
-	    !spa_feature_is_enabled(dp->dp_spa, SPA_FEATURE_LARGE_BLOCKS))
-		return (SET_ERROR(ENOTSUP));
-	if ((featureflags & DMU_BACKUP_FEATURE_LARGE_DNODE) &&
-	    !spa_feature_is_enabled(dp->dp_spa, SPA_FEATURE_LARGE_DNODE))
-		return (SET_ERROR(ENOTSUP));
+	/* 6 extra bytes for /%recv */
+	char recvname[ZFS_MAX_DATASET_NAME_LEN + 6];
 
 	(void) snprintf(recvname, sizeof (recvname), "%s/%s",
 	    tofs, recv_clone_name);
@@ -2367,8 +2349,7 @@ deduce_nblkptr(dmu_object_type_t bonus_type, uint64_t bonus_size)
 		return (1);
 	} else {
 		return (1 +
-		    ((DN_OLD_MAX_BONUSLEN -
-		    MIN(DN_OLD_MAX_BONUSLEN, bonus_size)) >> SPA_BLKPTRSHIFT));
+		    ((DN_MAX_BONUSLEN - bonus_size) >> SPA_BLKPTRSHIFT));
 	}
 }
 
@@ -2417,8 +2398,6 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 	dmu_tx_t *tx;
 	uint64_t object;
 	int err;
-	uint8_t dn_slots = drro->drr_dn_slots != 0 ?
-	    drro->drr_dn_slots : DNODE_MIN_SLOTS;
 
 	if (drro->drr_type == DMU_OT_NONE ||
 	    !DMU_OT_IS_VALID(drro->drr_type) ||
@@ -2428,10 +2407,7 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 	    P2PHASE(drro->drr_blksz, SPA_MINBLOCKSIZE) ||
 	    drro->drr_blksz < SPA_MINBLOCKSIZE ||
 	    drro->drr_blksz > spa_maxblocksize(dmu_objset_spa(rwa->os)) ||
-	    drro->drr_bonuslen >
-	    DN_BONUS_SIZE(spa_maxdnodesize(dmu_objset_spa(rwa->os))) ||
-		dn_slots >
-	    (spa_maxdnodesize(dmu_objset_spa(rwa->os)) >> DNODE_SHIFT)) {
+	    drro->drr_bonuslen > DN_MAX_BONUSLEN) {
 		return (SET_ERROR(EINVAL));
 	}
 
@@ -2446,7 +2422,7 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 		    drro->drr_indblkshift > SPA_MAXBLOCKSHIFT ||
 		    drro->drr_nlevels > DN_MAX_LEVELS ||
 		    drro->drr_nblkptr > DN_MAX_NBLKPTR ||
-			DN_SLOTS_TO_BONUSLEN(dn_slots) <
+			DN_SLOTS_TO_BONUSLEN(drro->drr_dn_slots) <
 			drro->drr_raw_bonuslen)
 			return (SET_ERROR(EINVAL));
 	} else {
@@ -2458,7 +2434,7 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 
 	err = dmu_object_info(rwa->os, drro->drr_object, &doi);
 
-	if (err != 0 && err != ENOENT && err != EEXIST)
+	if (err != 0 && err != ENOENT)
 		return (SET_ERROR(EINVAL));
 
 	if (drro->drr_object > rwa->max_object)
@@ -2485,7 +2461,6 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 
 		if (drro->drr_blksz != doi.doi_data_block_size ||
 			nblkptr < doi.doi_nblkptr ||
-			dn_slots != doi.doi_dnodesize >> DNODE_SHIFT ||
 		    (rwa->raw &&
 		    (indblksz != doi.doi_metadata_block_size ||
 		    drro->drr_nlevels < doi.doi_indirection))) {
@@ -2505,8 +2480,7 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 		 * free the object completely and call dmu_object_claim_dnsize()
 		 * instead.
 		 */
-		if ((rwa->raw && drro->drr_nlevels < doi.doi_indirection) ||
-			dn_slots != doi.doi_dnodesize >> DNODE_SHIFT) {
+		if ((rwa->raw && drro->drr_nlevels < doi.doi_indirection)) {
 			err = dmu_free_long_object(rwa->os, drro->drr_object);
 			if (err != 0)
 				return (SET_ERROR(EINVAL));
@@ -2514,51 +2488,9 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 			txg_wait_synced(dmu_objset_pool(rwa->os), 0);
 			object = DMU_NEW_OBJECT;
 		}
-	} else if (err == EEXIST) {
-		/*
-		 * The object requested is currently an interior slot of a
-		 * multi-slot dnode. This will be resolved when the next txg
-		 * is synced out, since the send stream will have told us
-		 * to free this slot when we freed the associated dnode
-		 * earlier in the stream.
-		 */
-		txg_wait_synced(dmu_objset_pool(rwa->os), 0);
-		object = drro->drr_object;
 	} else {
 		/* object is free and we are about to allocate a new one */
 		object = DMU_NEW_OBJECT;
-	}
-
-	/*
-	 * If this is a multi-slot dnode there is a chance that this
-	 * object will expand into a slot that is already used by
-	 * another object from the previous snapshot. We must free
-	 * these objects before we attempt to allocate the new dnode.
-	 */
-	if (dn_slots > 1) {
-		boolean_t need_sync = B_FALSE;
-
-		for (uint64_t slot = drro->drr_object + 1;
-		    slot < drro->drr_object + dn_slots;
-		    slot++) {
-			dmu_object_info_t slot_doi;
-
-			err = dmu_object_info(rwa->os, slot, &slot_doi);
-			if (err == ENOENT || err == EEXIST)
-				continue;
-			else if (err != 0)
-				return (err);
-
-			err = dmu_free_long_object(rwa->os, slot);
-
-			if (err != 0)
-				return (err);
-
-			need_sync = B_TRUE;
-		}
-
-		if (need_sync)
-			txg_wait_synced(dmu_objset_pool(rwa->os), 0);
 	}
 
 	tx = dmu_tx_create(rwa->os);
@@ -2572,19 +2504,17 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 
 	if (object == DMU_NEW_OBJECT) {
 		/* currently free, want to be allocated */
-		err = dmu_object_claim_dnsize(rwa->os, drro->drr_object,
+		err = dmu_object_claim(rwa->os, drro->drr_object,
 		    drro->drr_type, drro->drr_blksz,
-		    drro->drr_bonustype, drro->drr_bonuslen,
-		    dn_slots << DNODE_SHIFT, tx);
+		    drro->drr_bonustype, drro->drr_bonuslen, tx);
 	} else if (drro->drr_type != doi.doi_type ||
 	    drro->drr_blksz != doi.doi_data_block_size ||
 	    drro->drr_bonustype != doi.doi_bonus_type ||
 	    drro->drr_bonuslen != doi.doi_bonus_size) {
 		/* currently allocated, but with different properties */
-		err = dmu_object_reclaim_dnsize(rwa->os, drro->drr_object,
+		err = dmu_object_reclaim(rwa->os, drro->drr_object,
 		    drro->drr_type, drro->drr_blksz,
-		    drro->drr_bonustype, drro->drr_bonuslen,
-			dn_slots << DNODE_SHIFT, tx);
+		    drro->drr_bonustype, drro->drr_bonuslen, tx);
 	}
 	if (err != 0) {
 		dmu_tx_commit(tx);
@@ -2608,7 +2538,7 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 		 * checksum.  They don't need to verify the MAC.
 		 */
 		dmu_buf_t *db = NULL;
-		uint64_t offset = rwa->or_firstobj * DNODE_MIN_SIZE;
+		uint64_t offset = rwa->or_firstobj * DNODE_SIZE;
 
 		err = dmu_buf_hold_by_dnode(DMU_META_DNODE(rwa->os),
 		    offset, FTAG, &db, DMU_READ_PREFETCH | DMU_READ_NO_DECRYPT);
@@ -2687,18 +2617,13 @@ receive_freeobjects(struct receive_writer_arg *rwa,
 	if (drrfo->drr_firstobj + drrfo->drr_numobjs < drrfo->drr_firstobj)
 		return (SET_ERROR(EINVAL));
 
-	for (obj = drrfo->drr_firstobj == 0 ? 1 : drrfo->drr_firstobj;
+	for (obj = drrfo->drr_firstobj;
 	    obj < drrfo->drr_firstobj + drrfo->drr_numobjs && next_err == 0;
 	    next_err = dmu_object_next(rwa->os, &obj, FALSE, 0)) {
 		int err;
 
-		err = dmu_object_info(rwa->os, obj, NULL);
-		if (err == ENOENT) {
-			obj++;
+		if (dmu_object_info(rwa->os, obj, NULL) != 0)
 			continue;
-		} else if (err != 0) {
-			return (err);
-		}
 
 		err = dmu_free_long_object(rwa->os, obj);
 

@@ -896,7 +896,7 @@ zfs_mode_compute(uint64_t fmode, zfs_acl_t *aclp,
 	int		entry_type;
 	mode_t		mode;
 	mode_t		seen = 0;
-	zfs_ace_hdr_t	*acep = NULL;
+	zfs_ace_hdr_t 	*acep = NULL;
 	uint64_t	who;
 	uint16_t	iflags, type;
 	uint32_t	access_mask;
@@ -1296,7 +1296,7 @@ zfs_aclset_common(znode_t *zp, zfs_acl_t *aclp, cred_t *cr, dmu_tx_t *tx)
 				    otype == DMU_OT_ACL ?
 				    DMU_OT_SYSACL : DMU_OT_NONE,
 				    otype == DMU_OT_ACL ?
-				    DN_OLD_MAX_BONUSLEN : 0, tx);
+				    DN_MAX_BONUSLEN : 0, tx);
 			} else {
 				(void) dmu_object_set_blocksize(zfsvfs->z_os,
 				    aoid, aclp->z_acl_bytes, 0, tx);
@@ -1371,12 +1371,12 @@ zfs_acl_chmod(umode_t umode, uint64_t mode, boolean_t split, boolean_t trim,
 	uint64_t	who;
 	int		new_count, new_bytes;
 	int		ace_size;
-	int		entry_type;
+	int 		entry_type;
 	uint16_t	iflags, type;
 	uint32_t	access_mask;
 	zfs_acl_node_t	*newnode;
-	size_t		abstract_size = aclp->z_ops->ace_abstract_size();
-	void		*zacep;
+	size_t 		abstract_size = aclp->z_ops->ace_abstract_size();
+	void 		*zacep;
 	boolean_t	isdir;
 	trivial_acl_t	masks;
 
@@ -1816,9 +1816,7 @@ zfs_acl_ids_overquota(zfsvfs_t *zfsvfs, zfs_acl_ids_t *acl_ids)
 	    zfs_fuid_overquota(zfsvfs, B_TRUE, acl_ids->z_fgid));
 }
 
-/*
- * Retrieve a file's ACL
- */
+
 int
 zfs_getacl(znode_t *zp, struct kauth_acl **aclpp, boolean_t skipaclcheck,
            cred_t *cr)
@@ -2286,7 +2284,7 @@ zfs_zaccess_aces_check(znode_t *zp, uint32_t *working_mode,
 	zfs_acl_t	*aclp;
 	int		error;
 	uid_t		uid = crgetuid(cr);
-	uint64_t	who;
+	uint64_t 	who;
 	uint16_t	type, iflags;
 	uint16_t	entry_type;
 	uint32_t	access_mask;

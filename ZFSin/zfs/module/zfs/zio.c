@@ -4222,6 +4222,9 @@ zio_done(zio_t *zio)
 {
 	const uint64_t psize = zio->io_size;
 	zio_t *pio, *pio_next;
+#if !defined (_KERNEL) || defined (DEBUG)
+	metaslab_class_t *mc = spa_normal_class(zio->io_spa);
+#endif
 	int c, w;
 	zio_link_t *zl = NULL;
 

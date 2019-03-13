@@ -107,7 +107,7 @@ typedef enum drr_headertype {
 #define	DMU_BACKUP_FEATURE_RESUMING		(1 << 20)
 /* flag #21 is reserved for a Delphix feature */
 #define	DMU_BACKUP_FEATURE_COMPRESSED		(1 << 22)
-#define	DMU_BACKUP_FEATURE_LARGE_DNODE		(1 << 23)
+/* flag #23 is reserved for the large dnode feature */
 #define	DMU_BACKUP_FEATURE_RAW			(1 << 24)
 /* flag #25 is reserved for the ZSTD compression feature */
 
@@ -135,7 +135,7 @@ NOTE 3:  Fix to 7097870 (spill block can be dropped in some situations during
     DMU_BACKUP_FEATURE_DEDUPPROPS | DMU_BACKUP_FEATURE_SA_SPILL | \
     DMU_BACKUP_FEATURE_EMBED_DATA | DMU_BACKUP_FEATURE_LZ4 | \
     DMU_BACKUP_FEATURE_RESUMING | DMU_BACKUP_FEATURE_LARGE_BLOCKS | \
-	DMU_BACKUP_FEATURE_COMPRESSED | DMU_BACKUP_FEATURE_LARGE_DNODE | \
+	DMU_BACKUP_FEATURE_COMPRESSED /*| DMU_BACKUP_FEATURE_LARGE_DNODE*/ | \
     DMU_BACKUP_FEATURE_RAW)
 
 /* Are all features in the given flag word currently supported? */
@@ -151,7 +151,7 @@ typedef enum dmu_send_resume_token_version {
  *
  *	64	56	48	40	32	24	16	8	0
  *	+-------+-------+-------+-------+-------+-------+-------+-------+
- *	|		reserved	|        feature-flags	    |C|S|
+ *  	|		reserved	|        feature-flags	    |C|S|
  *	+-------+-------+-------+-------+-------+-------+-------+-------+
  *
  * The low order two bits indicate the header type: SUBSTREAM (0x1)
