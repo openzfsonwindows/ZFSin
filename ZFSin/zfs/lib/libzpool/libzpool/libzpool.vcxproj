@@ -87,6 +87,7 @@
     <ClCompile Include="..\..\..\module\zfs\dmu_diff.c" />
     <ClCompile Include="..\..\..\module\zfs\dmu_object.c" />
     <ClCompile Include="..\..\..\module\zfs\dmu_objset.c" />
+    <ClCompile Include="..\..\..\module\zfs\dmu_recv.c" />
     <ClCompile Include="..\..\..\module\zfs\dmu_send.c" />
     <ClCompile Include="..\..\..\module\zfs\dmu_traverse.c" />
     <ClCompile Include="..\..\..\module\zfs\dmu_tx.c" />

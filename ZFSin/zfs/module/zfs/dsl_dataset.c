@@ -55,6 +55,8 @@
 #include <sys/dsl_userhold.h>
 #include <sys/dsl_bookmark.h>
 #include <sys/dbuf.h>
+#include <sys/policy.h>
+#include <sys/dmu_recv.h>
 #include <sys/zio_compress.h>
 #include <zfs_fletcher.h>
 #include <sys/dmu_send.h>

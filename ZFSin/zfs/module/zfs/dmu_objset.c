@@ -52,8 +52,10 @@
 #include <sys/zfs_onexit.h>
 #include <sys/dsl_destroy.h>
 #include <sys/vdev.h>
-#include <sys/dmu_send.h>
 #include <sys/zfeature.h>
+#include <sys/policy.h>
+#include <sys/spa_impl.h>
+#include <sys/dmu_recv.h>
 #include "zfs_namecheck.h"
 
 /*

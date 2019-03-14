@@ -340,6 +340,7 @@
     <ClCompile Include="zfs\module\zfs\dmu_diff.c" />
     <ClCompile Include="zfs\module\zfs\dmu_object.c" />
     <ClCompile Include="zfs\module\zfs\dmu_objset.c" />
+    <ClCompile Include="zfs\module\zfs\dmu_recv.c" />
     <ClCompile Include="zfs\module\zfs\dmu_send.c" />
     <ClCompile Include="zfs\module\zfs\dmu_traverse.c" />
     <ClCompile Include="zfs\module\zfs\dmu_tx.c" />

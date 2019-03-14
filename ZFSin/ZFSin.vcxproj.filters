@@ -798,6 +798,9 @@
     <ClCompile Include="zfs\module\zfs\mmp.c">
       <Filter>Source Files\ZFS\module\zfs</Filter>
     </ClCompile>
+    <ClCompile Include="zfs\module\zfs\dmu_recv.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h">
