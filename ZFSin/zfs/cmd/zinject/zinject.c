@@ -292,8 +292,8 @@ usage(void)
 	    "\t\tspecified by the remaining tuple.  Each number is in\n"
 	    "\t\thexidecimal, and only one block can be specified.\n"
 	    "\n"
-	    "\tzinject [-q] <-t type> [-e errno] [-l level] [-r range]\n"
-	    "\t    [-a] [-m] [-u] [-f freq] <object>\n"
+	    "\tzinject [-q] <-t type> [-C dvas] [-e errno] [-l level]\n"
+	    "\t\t[-r range] [-a] [-m] [-u] [-f freq] <object>\n"
 	    "\n"
 	    "\t\tInject an error into the object specified by the '-t' option\n"
 	    "\t\tand the object descriptor.  The 'object' parameter is\n"
@@ -301,7 +301,10 @@ usage(void)
 	    "\n"
 	    "\t\t-q\tQuiet mode.  Only print out the handler number added.\n"
 	    "\t\t-e\tInject a specific error.  Must be one of 'io',\n"
-	    "\t\t\t'checksum', or decrypt.  Default is 'io'.\n"
+	    "\t\t\t'checksum', 'decompress', or 'decrypt'.  Default is 'io'.\n"
+	    "\t\t-C\tInject the given error only into specific DVAs. The\n"
+	    "\t\t\tDVAs should be specified as a list of 0-indexed DVAs\n"
+	    "\t\t\tseparated by commas (ex. '0,2').\n"
 	    "\t\t-l\tInject error at a particular block level. Default is "
 	    "0.\n"
 	    "\t\t-m\tAutomatically remount underlying filesystem.\n"
@@ -365,17 +368,20 @@ print_data_handler(int id, const char *pool, zinject_record_t *record,
 		return (0);
 
 	if (*count == 0) {
-		(void) printf("%3s  %-15s  %-6s  %-6s  %-8s  %3s  %-15s\n",
-		    "ID", "POOL", "OBJSET", "OBJECT", "TYPE", "LVL",  "RANGE");
+		(void) printf("%3s  %-15s  %-6s  %-6s  %-8s  %3s  %-4s  "
+		    "%-15s\n", "ID", "POOL", "OBJSET", "OBJECT", "TYPE",
+		    "LVL", "DVAs", "RANGE");
 		(void) printf("---  ---------------  ------  "
-		    "------  --------  ---  ---------------\n");
+		    "------  --------  ---  ----  ---------------\n");
 	}
 
 	*count += 1;
 
-	(void) printf("%3d  %-15s  %-6llu  %-6llu  %-8s  %3d  ", id, pool,
-	    (u_longlong_t)record->zi_objset, (u_longlong_t)record->zi_object,
-	    type_to_name(record->zi_type), record->zi_level);
+	(void) printf("%3d  %-15s  %-6llu  %-6llu  %-8s  %-3d  0x%02x  ",
+	    id, pool, (u_longlong_t)record->zi_objset,
+	    (u_longlong_t)record->zi_object, type_to_name(record->zi_type),
+	    record->zi_level, record->zi_dvas);
+
 
 	if (record->zi_start == 0 &&
 	    record->zi_end == -1ULL)
@@ -605,6 +611,7 @@ register_handler(const char *pool, int flags, zinject_record_t *record,
 				(void) printf(" range: [%llu, %llu)\n",
 				    (u_longlong_t)record->zi_start,
 				    (u_longlong_t)record->zi_end);
+			(void) printf("  dvas: 0x%x\n", record->zi_dvas);
 		}
 	}
 
@@ -656,6 +663,80 @@ parse_delay(char *str, uint64_t *delay, uint64_t *nlanes)
 	return (0);
 }
 
+static int
+parse_frequency(const char *str, uint32_t *percent)
+{
+	double val;
+	char *post;
+
+	val = strtod(str, &post);
+	if (post == NULL || *post != '\0')
+		return (EINVAL);
+
+	/* valid range is [0.0001, 100.0] */
+	val /= 100.0f;
+	if (val < 0.000001f || val > 1.0f)
+		return (ERANGE);
+
+	/* convert to an integer for use by kernel */
+	*percent = ((uint32_t)(val * ZI_PERCENTAGE_MAX));
+
+	return (0);
+}
+
+/*
+ * This function converts a string specifier for DVAs into a bit mask.
+ * The dva's provided by the user should be 0 indexed and separated by
+ * a comma. For example:
+ *	"1"	-> 0b0010  (0x2)
+ *	"0,1"	-> 0b0011  (0x3)
+ *	"0,1,2"	-> 0b0111  (0x7)
+ */
+static int
+parse_dvas(const char *str, uint32_t *dvas_out)
+{
+	const char *c = str;
+	uint32_t mask = 0;
+	boolean_t need_delim = B_FALSE;
+
+	/* max string length is 5 ("0,1,2") */
+	if (strlen(str) > 5 || strlen(str) == 0)
+		return (EINVAL);
+
+	while (*c != '\0') {
+		switch (*c) {
+		case '0':
+		case '1':
+		case '2':
+			/* check for pipe between DVAs */
+			if (need_delim)
+				return (EINVAL);
+
+			/* check if this DVA has been set already */
+			if (mask & (1 << ((*c) - '0')))
+				return (EINVAL);
+
+			mask |= (1 << ((*c) - '0'));
+			need_delim = B_TRUE;
+			break;
+		case ',':
+			need_delim = B_FALSE;
+			break;
+		default:
+			/* check for invalid character */
+			return (EINVAL);
+		}
+		c++;
+	}
+
+	/* check for dangling delimiter */
+	if (!need_delim)
+		return (EINVAL);
+
+	*dvas_out = mask;
+	return (0);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -682,6 +763,7 @@ main(int argc, char **argv)
 	int dur_secs = 0;
 	int ret;
 	int flags = 0;
+	uint32_t dvas = 0;
 
 	if ((g_zfs = libzfs_init()) == NULL) {
 		(void) fprintf(stderr, "%s", libzfs_error_init(errno));
@@ -711,7 +793,7 @@ main(int argc, char **argv)
 	}
 
 	while ((c = getopt(argc, argv,
-	    ":aA:b:d:D:f:Fg:qhIc:t:T:l:mr:s:e:uL:p:")) != -1) {
+	    ":aA:b:C:d:D:f:Fg:qhIc:t:T:l:mr:s:e:uL:p:")) != -1) {
 		switch (c) {
 		case 'a':
 			flags |= ZINJECT_FLUSH_ARC;
@@ -733,6 +815,17 @@ main(int argc, char **argv)
 			break;
 		case 'c':
 			cancel = optarg;
+			break;
+		case 'C':
+			ret = parse_dvas(optarg, &dvas);
+			if (ret != 0) {
+				(void) fprintf(stderr, "invalid DVA list '%s': "
+				    "DVAs should be 0 indexed and separated by "
+				    "commas.\n", optarg);
+				usage();
+				libzfs_fini(g_zfs);
+				return (1);
+			}
 			break;
 		case 'd':
 			device = optarg;
@@ -768,10 +861,13 @@ main(int argc, char **argv)
 			}
 			break;
 		case 'f':
-			record.zi_freq = atoi(optarg);
-			if (record.zi_freq < 1 || record.zi_freq > 100) {
-				(void) fprintf(stderr, "frequency range must "
-				    "be in the range (0, 100]\n");
+			ret = parse_frequency(optarg, &record.zi_freq);
+			if (ret != 0) {
+				(void) fprintf(stderr, "%sfrequency value must "
+				    "be in the range [0.0001, 100.0]\n",
+				    ret == EINVAL ? "invalid value: " :
+				    ret == ERANGE ? "out of range: " : "");
+				libzfs_fini(g_zfs);
 				return (1);
 			}
 			break;
@@ -896,7 +992,8 @@ main(int argc, char **argv)
 		 * '-c' is invalid with any other options.
 		 */
 		if (raw != NULL || range != NULL || type != TYPE_INVAL ||
-		    level != 0 || record.zi_cmd != ZINJECT_UNINITIALIZED) {
+		    level != 0 || record.zi_cmd != ZINJECT_UNINITIALIZED ||
+		    record.zi_freq > 0 || dvas != 0) {
 			(void) fprintf(stderr, "cancel (-c) incompatible with "
 			    "any other options\n");
 			usage();
@@ -928,7 +1025,8 @@ main(int argc, char **argv)
 		 * for doing injection, so handle it separately here.
 		 */
 		if (raw != NULL || range != NULL || type != TYPE_INVAL ||
-		    level != 0 || record.zi_cmd != ZINJECT_UNINITIALIZED) {
+		    level != 0 || record.zi_cmd != ZINJECT_UNINITIALIZED ||
+		    dvas != 0) {
 			(void) fprintf(stderr, "device (-d) incompatible with "
 			    "data error injection\n");
 			usage();
@@ -962,7 +1060,8 @@ main(int argc, char **argv)
 
 	} else if (raw != NULL) {
 		if (range != NULL || type != TYPE_INVAL || level != 0 ||
-		    record.zi_cmd != ZINJECT_UNINITIALIZED) {
+		    record.zi_cmd != ZINJECT_UNINITIALIZED ||
+		    record.zi_freq > 0 || dvas != 0) {
 			(void) fprintf(stderr, "raw (-b) format with "
 			    "any other options\n");
 			usage();
@@ -992,7 +1091,8 @@ main(int argc, char **argv)
 			error = EIO;
 	} else if (record.zi_cmd == ZINJECT_PANIC) {
 		if (raw != NULL || range != NULL || type != TYPE_INVAL ||
-		    level != 0 || device != NULL) {
+		    level != 0 || device != NULL || record.zi_freq > 0 ||
+		    dvas != 0) {
 			(void) fprintf(stderr, "panic (-p) incompatible with "
 			    "other options\n");
 			usage();
@@ -1011,6 +1111,15 @@ main(int argc, char **argv)
 			record.zi_type = atoi(argv[1]);
 		dataset[0] = '\0';
 	} else if (record.zi_cmd == ZINJECT_IGNORED_WRITES) {
+		if (raw != NULL || range != NULL || type != TYPE_INVAL ||
+		    level != 0 || record.zi_freq > 0 || dvas != 0) {
+			(void) fprintf(stderr, "hardware failure (-I) "
+			    "incompatible with other options\n");
+			usage();
+			libzfs_fini(g_zfs);
+			return (2);
+		}
+
 		if (nowrites == 0) {
 			(void) fprintf(stderr, "-s or -g meaningless "
 			    "without -I (ignore writes)\n");
@@ -1062,6 +1171,18 @@ main(int argc, char **argv)
 			(void) fprintf(stderr, "data error type must be "
 			    "'checksum' or 'io'\n");
 			return (1);
+		}
+
+		if (dvas != 0) {
+			if (error == EACCES || error == EINVAL) {
+				(void) fprintf(stderr, "the '-c' option may "
+				    "not be used with logical data errors "
+				    "'decrypt' and 'decompress'\n");
+				libzfs_fini(g_zfs);
+				return (1);
+			}
+
+			record.zi_dvas = dvas;
 		}
 
 		if (error == EACCES) {
