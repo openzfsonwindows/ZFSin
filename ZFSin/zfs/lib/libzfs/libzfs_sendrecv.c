@@ -133,10 +133,16 @@ static size_t
 ssread(void *buf, size_t len, FILE *stream)
 {
 	size_t outlen;
-
+#ifdef WIN32
+	/* Windows we have a SOCKET type here*/
+	DWORD rv;
+	if (!ReadFile(stream, buf, len, &rv, NULL))
+		return 0;
+	outlen = rv;
+#else
 	if ((outlen = fread(buf, len, 1, stream)) == 0)
 		return (0);
-
+#endif
 	return (outlen);
 }
 
@@ -217,7 +223,7 @@ dump_record(dmu_replay_record_t *drr, void *payload, int payload_len,
 
 #ifdef WIN32
 	DWORD byteswritten = 0;
-	if (!WriteFile(outfd, &drr, sizeof(drr), &byteswritten, NULL)) {
+	if (!WriteFile(outfd, drr, sizeof(*drr), &byteswritten, NULL)) {
 		return (GetLastError());
 	}
 #else
@@ -228,7 +234,7 @@ dump_record(dmu_replay_record_t *drr, void *payload, int payload_len,
 		(void) fletcher_4_incremental_native(payload, payload_len, zc);
 #ifdef WIN32
 		byteswritten = 0;
-		if (!WriteFile(outfd, &drr, sizeof(drr), &byteswritten, NULL)) {
+		if (!WriteFile(outfd, drr, sizeof(*drr), &byteswritten, NULL)) {
 			return (GetLastError());
 		}
 #else
@@ -301,7 +307,12 @@ cksummer(void *arg)
 	ddt.ddt_full = B_FALSE;
 
 	outfd = dda->outputfd;
+#ifdef WIN32
+	// "inputfd" is from socketpair(), so SOCKET type (HANDLE) and not "fd int".
+	ofp = dda->inputfd;
+#else
 	ofp = fdopen(dda->inputfd, "r");
+#endif
 	while (ssread(drr, sizeof (*drr), ofp) != 0) {
 
 		/*
@@ -508,7 +519,9 @@ out:
 	umem_cache_destroy(ddt.ddecache);
 	free(ddt.dedup_hash_array);
 	free(buf);
+#ifndef WIN32
 	(void) fclose(ofp);
+#endif
 
 	return (NULL);
 }
@@ -1930,8 +1943,13 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 		dda.inputfd = pipefd[1];
 		dda.dedup_hdl = zhp->zfs_hdl;
 		if ((err = pthread_create(&tid, NULL, cksummer, &dda))) {
+#ifdef WIN32
+			(void) closesocket(pipefd[0]);
+			(void) closesocket(pipefd[1]);
+#else
 			(void) close(pipefd[0]);
 			(void) close(pipefd[1]);
+#endif
 			zfs_error_aux(zhp->zfs_hdl, strerror(errno));
 			return (zfs_error(zhp->zfs_hdl,
 			    EZFS_THREADCREATEFAILED, errbuf));
@@ -2006,6 +2024,7 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 			DWORD byteswritten;
 			if (!WriteFile(outfd, &drr, sizeof(drr), &byteswritten, NULL)) {
 				err = GetLastError();
+				fprintf(stderr, "writefile1\r\n"); fflush(stderr);
 				goto stderr_out;
 			}
 #else
@@ -2140,12 +2159,20 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 	if (tid_set != 0) {
 		if (err != 0)
 			(void) pthread_cancel(tid);
+#ifdef WIN32
+		(void) closesocket(pipefd[0]);
+#else
 		(void) close(pipefd[0]);
+#endif
 		(void) pthread_join(tid, NULL);
 	}
 
 	if (sdd.cleanup_fd != -1) {
+#ifdef WIN32
+		VERIFY(0 == CloseHandle(sdd.cleanup_fd));
+#else
 		VERIFY(0 == close(sdd.cleanup_fd));
+#endif
 		sdd.cleanup_fd = -1;
 	}
 
