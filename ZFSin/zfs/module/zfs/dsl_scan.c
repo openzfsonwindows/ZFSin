@@ -904,6 +904,7 @@ dsl_scrub_pause_resume_sync(void *arg, dmu_tx_t *tx)
 		/* can't pause a scrub when there is no in-progress scrub */
 		spa->spa_scan_pass_scrub_pause = gethrestime_sec();
 		scn->scn_phys.scn_flags |= DSF_SCRUB_PAUSED;
+		scn->scn_phys_cached.scn_flags |= DSF_SCRUB_PAUSED;
 		dsl_scan_sync_state(scn, tx, SYNC_CACHED);
 		spa_event_notify(spa, NULL, NULL, ESC_ZFS_SCRUB_PAUSED);
 	} else {
@@ -918,6 +919,7 @@ dsl_scrub_pause_resume_sync(void *arg, dmu_tx_t *tx)
 			    gethrestime_sec() - spa->spa_scan_pass_scrub_pause;
 			spa->spa_scan_pass_scrub_pause = 0;
 			scn->scn_phys.scn_flags &= ~DSF_SCRUB_PAUSED;
+			scn->scn_phys_cached.scn_flags &= ~DSF_SCRUB_PAUSED;
 			dsl_scan_sync_state(scn, tx, SYNC_CACHED);
 		}
 	}
