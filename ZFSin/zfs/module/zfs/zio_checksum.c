@@ -334,7 +334,7 @@ zio_checksum_compute(zio_t *zio, enum zio_checksum checksum,
 		bzero(&saved, sizeof (zio_cksum_t));
 
 		if (checksum == ZIO_CHECKSUM_ZILOG2) {
-			zil_chain_t zilc;
+			zil_chain_t zilc = { 0 };
 			ASSERT3S(abd->abd_size,>=,sizeof (zil_chain_t));
 			abd_copy_to_buf_off(&zilc, abd, 0, sizeof (zil_chain_t));
 

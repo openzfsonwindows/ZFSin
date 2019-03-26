@@ -120,6 +120,7 @@ static scan_cb_t dsl_scan_scrub_cb;
 static int scan_ds_queue_compare(const void *a, const void *b);
 static int scan_prefetch_queue_compare(const void *a, const void *b);
 static void scan_ds_queue_clear(dsl_scan_t *scn);
+static void scan_ds_prefetch_queue_clear(dsl_scan_t *scn);
 static boolean_t scan_ds_queue_contains(dsl_scan_t *scn, uint64_t dsobj,
     uint64_t *txg);
 static void scan_ds_queue_insert(dsl_scan_t *scn, uint64_t dsobj, uint64_t txg);
@@ -476,6 +477,8 @@ dsl_scan_init(dsl_pool_t *dp, uint64_t txg)
 		}
 	}
 
+	bcopy(&scn->scn_phys, &scn->scn_phys_cached, sizeof (scn->scn_phys));
+
 	/* reload the queue into the in-core state */
 	if (scn->scn_phys.scn_queue_obj != 0) {
 		zap_cursor_t zc;
@@ -506,6 +509,7 @@ dsl_scan_fini(dsl_pool_t *dp)
 			taskq_destroy(scn->scn_taskq);
 		scan_ds_queue_clear(scn);
 		avl_destroy(&scn->scn_queue);
+		scan_ds_prefetch_queue_clear(scn);
 		avl_destroy(&scn->scn_prefetch_queue);
 
 		kmem_free(dp->dp_scan, sizeof (dsl_scan_t));
@@ -731,7 +735,7 @@ dsl_scan(dsl_pool_t *dp, pool_scan_func_t func)
 	}
 
 	return (dsl_sync_task(spa_name(spa), dsl_scan_setup_check,
-	    dsl_scan_setup_sync, &func, 0, ZFS_SPACE_CHECK_NONE));
+	    dsl_scan_setup_sync, &func, 0, ZFS_SPACE_CHECK_EXTRA_RESERVED));
 }
 
 /*
@@ -801,6 +805,7 @@ dsl_scan_done(dsl_scan_t *scn, boolean_t complete, dmu_tx_t *tx)
 		scn->scn_phys.scn_queue_obj = 0;
 	}
 	scan_ds_queue_clear(scn);
+	scan_ds_prefetch_queue_clear(scn);
 
 	scn->scn_phys.scn_flags &= ~DSF_SCRUB_PAUSED;
 
@@ -1408,6 +1413,22 @@ scan_prefetch_ctx_add_ref(scan_prefetch_ctx_t *spc, void *tag)
 	zfs_refcount_add(&spc->spc_refcnt, tag);
 }
 
+static void
+scan_ds_prefetch_queue_clear(dsl_scan_t *scn)
+{
+	spa_t *spa = scn->scn_dp->dp_spa;
+	void *cookie = NULL;
+	scan_prefetch_issue_ctx_t *spic = NULL;
+
+	mutex_enter(&spa->spa_scrub_lock);
+	while ((spic = avl_destroy_nodes(&scn->scn_prefetch_queue,
+	    &cookie)) != NULL) {
+		scan_prefetch_ctx_rele(spic->spic_spc, scn);
+		kmem_free(spic, sizeof (scan_prefetch_issue_ctx_t));
+	}
+	mutex_exit(&spa->spa_scrub_lock);
+}
+
 static boolean_t
 dsl_scan_check_prefetch_resume(scan_prefetch_ctx_t *spc,
     const zbookmark_phys_t *zb)
@@ -1512,7 +1533,7 @@ dsl_scan_prefetch_cb(zio_t *zio, const zbookmark_phys_t *zb, const blkptr_t *bp,
 	dsl_scan_t *scn = spc->spc_scn;
 	spa_t *spa = scn->scn_dp->dp_spa;
 
-	/* broadcast that the IO has completed for rate limitting purposes */
+	/* broadcast that the IO has completed for rate limiting purposes */
 	mutex_enter(&spa->spa_scrub_lock);
 	ASSERT3U(spa->spa_scrub_inflight, >=, BP_GET_PSIZE(bp));
 	spa->spa_scrub_inflight -= BP_GET_PSIZE(bp);
@@ -1520,7 +1541,7 @@ dsl_scan_prefetch_cb(zio_t *zio, const zbookmark_phys_t *zb, const blkptr_t *bp,
 	mutex_exit(&spa->spa_scrub_lock);
 
 	/* if there was an error or we are done prefetching, just cleanup */
-	if (buf == NULL || scn->scn_suspending)
+	if (buf == NULL || scn->scn_prefetch_stop)
 		goto out;
 
 	if (BP_GET_LEVEL(bp) > 0) {
@@ -1778,7 +1799,7 @@ dsl_scan_recurse(dsl_scan_t *scn, dsl_dataset_t *ds, dmu_objset_type_t ostype,
 	return (0);
 }
 
-__forceinline static void
+_forceinline static void
 dsl_scan_visitdnode(dsl_scan_t *scn, dsl_dataset_t *ds,
     dmu_objset_type_t ostype, dnode_phys_t *dnp,
     uint64_t object, dmu_tx_t *tx)
@@ -1807,7 +1828,7 @@ dsl_scan_visitdnode(dsl_scan_t *scn, dsl_dataset_t *ds,
  * The arguments are in this order because mdb can only print the
  * first 5; we want them to be useful.
  */
-static void
+void
 dsl_scan_visitbp(blkptr_t *bp, const zbookmark_phys_t *zb,
     dnode_phys_t *dnp, dsl_dataset_t *ds, dsl_scan_t *scn,
     dmu_objset_type_t ostype, dmu_tx_t *tx)
@@ -2380,7 +2401,21 @@ dsl_scan_ddt_entry(dsl_scan_t *scn, enum zio_checksum checksum,
 	zbookmark_phys_t zb = { 0 };
 	int p;
 
-	if (scn->scn_phys.scn_state != DSS_SCANNING)
+	if (!dsl_scan_is_running(scn))
+		return;
+
+	/*
+	 * This function is special because it is the only thing
+	 * that can add scan_io_t's to the vdev scan queues from
+	 * outside dsl_scan_sync(). For the most part this is ok
+	 * as long as it is called from within syncing context.
+	 * However, dsl_scan_sync() expects that no new sio's will
+	 * be added between when all the work for a scan is done
+	 * and the next txg when the scan is actually marked as
+	 * completed. This check ensures we do not issue new sio's
+	 * during this period.
+	 */
+	if (scn->scn_done_txg != 0)
 		return;
 
 	for (p = 0; p < DDT_PHYS_TYPES; p++, ddp++) {
