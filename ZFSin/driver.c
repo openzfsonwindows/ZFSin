@@ -28,7 +28,7 @@ wzvolDriverInfo STOR_wzvolDriverInfo;
 DRIVER_UNLOAD ZFSin_Fini;
 void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
 {
-	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "ZFSin_Fini\n"));
+	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "ZFSin_Fini\n"));
 	zfs_stop();
 	if (STOR_DriverUnload != NULL) {
 		STOR_DriverUnload(DriverObject);
@@ -37,6 +37,7 @@ void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
 
 	kstat_osx_fini();
 	spl_stop();
+	DbgBreakPoint();
 	finiDbgCircularBuffer();
 }
 

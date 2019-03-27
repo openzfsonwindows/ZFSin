@@ -744,12 +744,9 @@ vmem_hash_insert(vmem_t *vmp, vmem_seg_t *vsp)
 	*bucket = vsp;
 
 	if (vmem_seg_size == sizeof (vmem_seg_t)) {
-		//		vsp->vs_depth = (uint8_t)getpcstack(vsp->vs_stack,
-		//											VMEM_STACK_DEPTH);
-		//		vsp->vs_thread = curthread;
-
-		vsp->vs_depth = 0;
-		vsp->vs_thread = 0;
+		vsp->vs_depth = (uint8_t)getpcstack(vsp->vs_stack,
+			VMEM_STACK_DEPTH);
+		vsp->vs_thread = curthread;
 		vsp->vs_timestamp = gethrtime();
 	} else {
 		vsp->vs_depth = 0;
