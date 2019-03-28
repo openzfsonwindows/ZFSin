@@ -2172,8 +2172,8 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 						fprintf(stderr, "    part %d:  offset %llx:    len %llx:    tag: %x    name: '%s'\n", i, vtoc->efi_parts[i].p_start, vtoc->efi_parts[i].p_size,
 							vtoc->efi_parts[i].p_tag, vtoc->efi_parts[i].p_name); fflush(stderr);
 						if (vtoc->efi_parts[i].p_start != 0 &&
-							vtoc->efi_parts[i].p_size != 0 &&
-							(strstr(vtoc->efi_parts[i].p_name, "ZFS") != NULL || strstr(vtoc->efi_parts[i].p_name, "zfs") != NULL)) {
+							vtoc->efi_parts[i].p_size != 0 /* &&
+							(strstr(vtoc->efi_parts[i].p_name, "ZFS") != NULL || strstr(vtoc->efi_parts[i].p_name, "zfs") != NULL)*/) {
 							// Lets invent a naming scheme with start, and len in it.
 							snprintf(rdsk, sizeof(rdsk), "#%llu#%llu#%s",
 								vtoc->efi_parts[i].p_start * vtoc->efi_lbasize, vtoc->efi_parts[i].p_size * vtoc->efi_lbasize, deviceInterfaceDetailData->DevicePath);
