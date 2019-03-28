@@ -234,7 +234,7 @@ dump_record(dmu_replay_record_t *drr, void *payload, int payload_len,
 		(void) fletcher_4_incremental_native(payload, payload_len, zc);
 #ifdef WIN32
 		byteswritten = 0;
-		if (!WriteFile(outfd, drr, sizeof(*drr), &byteswritten, NULL)) {
+		if (!WriteFile(outfd, payload, payload_len, &byteswritten, NULL)) {
 			return (GetLastError());
 		}
 #else
@@ -2021,10 +2021,9 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 			drr.drr_type = DRR_END;
 			drr.drr_u.drr_end.drr_checksum = zc;
 #ifdef WIN32
-			DWORD byteswritten;
+			DWORD byteswritten = 0;
 			if (!WriteFile(outfd, &drr, sizeof(drr), &byteswritten, NULL)) {
 				err = GetLastError();
-				fprintf(stderr, "writefile1\r\n"); fflush(stderr);
 				goto stderr_out;
 			}
 #else
@@ -2169,7 +2168,7 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 
 	if (sdd.cleanup_fd != -1) {
 #ifdef WIN32
-		VERIFY(0 == CloseHandle(sdd.cleanup_fd));
+		VERIFY(0 != CloseHandle(sdd.cleanup_fd));
 #else
 		VERIFY(0 == close(sdd.cleanup_fd));
 #endif
