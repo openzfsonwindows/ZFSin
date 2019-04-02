@@ -441,5 +441,8 @@
     <ClCompile Include="..\..\..\module\zfs\dmu_recv.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\module\zfs\vdev_trim.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

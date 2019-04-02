@@ -390,8 +390,8 @@ VOP_CLOSE(struct vnode *vp, int flag, int count, offset_t off, void *cr, void *)
 extern int
 VOP_FSYNC(struct vnode *vp, int flags, void* unused, void *);
 extern int
-VOP_SPACE(struct vnode *vp, int cmd, void *fl, int flags, offset_t off,
-          cred_t *cr, void *ctx);
+VOP_SPACE(HANDLE h, int cmd, struct flock *fl, int flags, offset_t off,
+	cred_t *cr, void *ctx);
 
 extern int VOP_GETATTR(struct vnode *vp, vattr_t *vap, int flags, void *x3, void *x4);
 
@@ -571,5 +571,14 @@ int vnode_drain_delayclose(int);
 int vnode_easize(struct vnode *vp, uint64_t *size);
 void vnode_set_easize(struct vnode *vp, uint64_t size);
 void vnode_clear_easize(struct vnode *vp);
+
+int kernel_ioctl(PDEVICE_OBJECT DeviceObject, long cmd, void *inbuf, uint32_t inlen,
+	void *outbuf, uint32_t outlen);
+
+/* Linux TRIM API */
+int blk_queue_discard(PDEVICE_OBJECT dev);
+int blk_queue_discard_secure(PDEVICE_OBJECT dev);
+int blk_queue_nonrot(PDEVICE_OBJECT dev);
+int blkdev_issue_discard_bytes(PDEVICE_OBJECT dev, uint64_t offset, uint64_t size, uint32_t flags);
 
 #endif /* SPL_VNODE_H */

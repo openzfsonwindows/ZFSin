@@ -36,7 +36,7 @@
 #include <sys/fm/fs/zfs.h>
 
 #ifdef ZFS_DEBUG
-#include <sys/vdev_initialize.h>	/* vdev_xlate testing */
+#include <sys/vdev.h>	/* For vdev_xlate() in vdev_raidz_io_verify() */
 #endif
 
 /*

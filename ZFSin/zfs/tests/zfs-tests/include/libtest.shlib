@@ -23,19 +23,15 @@
 # Copyright 2009 Sun Microsystems, Inc.  All rights reserved.
 # Use is subject to license terms.
 # Copyright (c) 2012, 2017 by Delphix. All rights reserved.
-# Copyright 2016 Nexenta Systems, Inc.
+# Copyright (c) 2017 by Tim Chase. All rights reserved.
+# Copyright (c) 2017 by Nexenta Systems, Inc. All rights reserved.
 # Copyright (c) 2017 Lawrence Livermore National Security, LLC.
 # Copyright (c) 2017 Datto Inc.
 # Copyright (c) 2017 Open-E, Inc. All Rights Reserved.
+# Use is subject to license terms.
 #
 
-<<<<<<< HEAD
 . ${STF_TOOLS}/contrib/include/logapi.shlib
-=======
-. ${STF_TOOLS}/include/logapi.shlib
-. ${STF_SUITE}/include/math.shlib
-. ${STF_SUITE}/include/blkdev.shlib
->>>>>>> d3f2cd7e3b... Added no_scrub_restart flag to zpool reopen
 
 ZFS=${ZFS:-/usr/sbin/zfs}
 ZPOOL=${ZPOOL:-/usr/sbin/zpool}
@@ -51,6 +47,20 @@ ZPOOL=${ZPOOL:-/usr/sbin/zpool}
 # configure O3X to comply.
 #
 export __ZFS_MAIN_MOUNTPOINT_DIR=/
+
+function is_linux
+{
+        return 1
+}
+
+function is_osx
+{
+        if [[ $(uname -s) == "Darwin" ]]; then
+                return 0
+        else
+                return 1
+        fi
+}
 
 # Determine whether a dataset is mounted
 #
@@ -916,7 +926,7 @@ function fill_fs # destdir dirnum filenum bytes num_writes data
 	typeset -i filenum=${3:-50}
 	typeset -i bytes=${4:-8192}
 	typeset -i num_writes=${5:-10240}
-	typeset -i data=${6:-0}
+	typeset data=${6:-0}
 
 	typeset -i odirnum=1
 	typeset -i idirnum=0
@@ -2963,7 +2973,6 @@ function get_rootpool
 }
 
 #
-<<<<<<< HEAD
 # Get the sub string from specified source string
 #
 # $1 source string
@@ -3024,8 +3033,6 @@ function get_device_dir #device
 }
 
 #
-=======
->>>>>>> d3f2cd7e3b... Added no_scrub_restart flag to zpool reopen
 # Get the package name
 #
 function get_package_name

@@ -878,6 +878,30 @@ fop_getattr(vnode_t *vp, vattr_t *vap)
 	return (0);
 }
 
+int
+fop_space(
+	vnode_t *vp,
+	int cmd,
+	struct flock *fl,
+	int flag,
+	offset_t offset,
+	cred_t *cr,
+	void *ct)
+{
+#ifdef F_PUNCHHOLE
+	if (cmd == F_FREESP) {
+		fpunchhole_t fpht;
+		fpht.fp_flags = 0;
+		fpht.fp_offset = fl->l_start;
+		fpht.fp_length = fl->l_len;
+
+		if (fcntl(vp->v_fd, F_PUNCHHOLE, &fpht) == -1)
+			return (errno);
+	}
+#endif
+	return (0);
+}
+
 /*
  * =========================================================================
  * Figure out which debugging statements to print

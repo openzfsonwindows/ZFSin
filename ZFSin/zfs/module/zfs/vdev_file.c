@@ -28,6 +28,7 @@
 #include <sys/spa_impl.h>
 #include <sys/vdev_file.h>
 #include <sys/vdev_impl.h>
+#include <sys/vdev_trim.h>
 #include <sys/zio.h>
 #include <sys/fs/zfs.h>
 #include <sys/fm/fs/zfs.h>
@@ -68,6 +69,19 @@ vdev_file_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
     dprintf("vdev_file_open %p\n", vd->vdev_tsd);
 	/* Rotational optimizations only make sense on block devices */
 	vd->vdev_nonrot = B_TRUE;
+
+	/*
+	 * Allow TRIM on file based vdevs.  This may not always be supported,
+	 * since it depends on your kernel version and underlying filesystem
+	 * type but it is always safe to attempt.
+	 */
+	vd->vdev_has_trim = B_TRUE;
+
+	/*
+	 * Disable secure TRIM on file based vdevs.  There is no way to
+	 * request this behavior from the underlying filesystem.
+	 */
+	vd->vdev_has_securetrim = B_FALSE;
 
 	/*
 	 * We must have a pathname, and it must be absolute.
@@ -229,6 +243,21 @@ vdev_file_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 
 	vf->vf_FileObject = FileObject;
 	vf->vf_DeviceObject = DeviceObject;
+
+	// Change it to SPARSE, so TRIM might work
+	status = ZwFsControlFile(
+		vf->vf_handle,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		FSCTL_SET_SPARSE,
+		NULL,
+		0,
+		NULL,
+		0
+	);
+	xprintf("%s: set Sparse 0x%x.\n", __func__, status);
 
 #endif
 
@@ -414,7 +443,26 @@ vdev_file_io_start(zio_t *zio)
 
 		zio_interrupt(zio);
         return;
-    }
+
+	} else if (zio->io_type == ZIO_TYPE_TRIM) {
+#ifdef _KERNEL
+			struct flock flck;
+			vdev_file_t *vf = vd->vdev_tsd;
+
+			ASSERT3U(zio->io_size, != , 0);
+			bzero(&flck, sizeof(flck));
+			flck.l_type = F_FREESP;
+			flck.l_start = zio->io_offset;
+			flck.l_len = zio->io_size;
+			flck.l_whence = 0;
+
+			zio->io_error = VOP_SPACE(vf->vf_handle, F_FREESP, &flck,
+				0, 0, kcred, NULL);
+
+#endif
+			zio_execute(zio);
+			return;
+	}
 
 	ASSERT(zio->io_type == ZIO_TYPE_READ || zio->io_type == ZIO_TYPE_WRITE);
 	zio->io_target_timestamp = zio_handle_io_delay(zio);

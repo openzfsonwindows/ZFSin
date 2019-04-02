@@ -34,6 +34,9 @@
 
 #include <sys/taskq.h>
 
+#include <ntdddisk.h>
+#include <Ntddstor.h>
+
 #ifdef DEBUG_IOCOUNT
 #include <sys/zfs_znode.h>
 #endif
@@ -216,12 +219,155 @@ int zfs_vn_rdwr(enum uio_rw rw, struct vnode *vp, caddr_t base, ssize_t len,
     return (error);
 }
 
+int kernel_ioctl(PDEVICE_OBJECT DeviceObject, long cmd, void *inbuf, uint32_t inlen,
+	void *outbuf, uint32_t outlen)
+{
+	NTSTATUS status;
+	PFILE_OBJECT        FileObject;
+
+	dprintf("%s: trying to send kernel ioctl %x\n", __func__, cmd);
+
+	IO_STATUS_BLOCK IoStatusBlock;
+	KEVENT Event;
+	PIRP Irp;
+	NTSTATUS Status;
+	ULONG Remainder;
+	PAGED_CODE();
+
+	/* Build the information IRP */
+	KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
+	Irp = IoBuildDeviceIoControlRequest(cmd,
+		DeviceObject,
+		inbuf,
+		inlen,
+		outbuf,
+		outlen,
+		FALSE,
+		&Event,
+		&IoStatusBlock);
+	if (!Irp) return STATUS_NO_MEMORY;
+
+	/* Override verification */
+	IoGetNextIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
+
+	/* Do the request */
+	Status = IoCallDriver(DeviceObject, Irp);
+	if (Status == STATUS_PENDING) {
+		/* Wait for completion */
+		KeWaitForSingleObject(&Event,
+			Executive,
+			KernelMode,
+			FALSE,
+			NULL);
+		Status = IoStatusBlock.Status;
+	}
+
+	return Status;
+}
+
+/* Linux TRIM API */
+int blk_queue_discard(PDEVICE_OBJECT dev)
+{
+	STORAGE_PROPERTY_QUERY spqTrim;
+	spqTrim.PropertyId = (STORAGE_PROPERTY_ID)StorageDeviceTrimProperty;
+	spqTrim.QueryType = PropertyStandardQuery;
+
+	DWORD bytesReturned = 0;
+	DEVICE_TRIM_DESCRIPTOR dtd = { 0 };
+
+	if (kernel_ioctl(dev, IOCTL_STORAGE_QUERY_PROPERTY,
+		&spqTrim, sizeof(spqTrim), &dtd, sizeof(dtd)) == 0) {
+		return dtd.TrimEnabled;
+	}
+	return 0; // No trim
+}
+
+int blk_queue_discard_secure(PDEVICE_OBJECT dev)
+{
+	return 0; // No secure trim
+}
+
+int blk_queue_nonrot(PDEVICE_OBJECT dev)
+{
+	STORAGE_PROPERTY_QUERY spqSeekP;
+	spqSeekP.PropertyId = (STORAGE_PROPERTY_ID)StorageDeviceSeekPenaltyProperty;
+	spqSeekP.QueryType = PropertyStandardQuery;
+	DWORD bytesReturned = 0;
+	DEVICE_SEEK_PENALTY_DESCRIPTOR dspd = { 0 };
+	if (kernel_ioctl(dev, IOCTL_STORAGE_QUERY_PROPERTY,
+		&spqSeekP, sizeof(spqSeekP), &dspd, sizeof(dspd)) == 0) {
+		return !dspd.IncursSeekPenalty;
+	}
+	return 0; // Not SSD;
+}
+
+int blkdev_issue_discard_bytes(PDEVICE_OBJECT dev, uint64_t offset, uint64_t size, uint32_t flags)
+{
+	int Status = 0;
+	struct setAttrAndRange {
+		DEVICE_MANAGE_DATA_SET_ATTRIBUTES dmdsa;
+		DEVICE_DATA_SET_RANGE range;
+	} set;
+
+	set.dmdsa.Size = sizeof(DEVICE_MANAGE_DATA_SET_ATTRIBUTES);
+	set.dmdsa.Action = DeviceDsmAction_Trim;
+	set.dmdsa.Flags = DEVICE_DSM_FLAG_TRIM_NOT_FS_ALLOCATED;
+	set.dmdsa.ParameterBlockOffset = 0;
+	set.dmdsa.ParameterBlockLength = 0;
+	set.dmdsa.DataSetRangesOffset = FIELD_OFFSET(struct setAttrAndRange, range);
+	set.dmdsa.DataSetRangesLength = 1 * sizeof(DEVICE_DATA_SET_RANGE);
+
+	set.range.LengthInBytes = size;
+	set.range.StartingOffset = offset;
+
+	Status = kernel_ioctl(dev, IOCTL_STORAGE_MANAGE_DATA_SET_ATTRIBUTES,
+		&set, sizeof(set), NULL, 0);
+
+	static int first = 1;
+	if (first)
+		xprintf("trim said 0x%x\n", Status);
+	first = 0;
+
+	if (Status == 0) {
+		return 0; // TRIM OK
+	}
+
+	// Linux returncodes are negative
+	return -Status;
+}
+
 
 int
-VOP_SPACE(struct vnode *vp, int cmd, void *fl, int flags, offset_t off,
+VOP_SPACE(HANDLE h, int cmd, struct flock *fl, int flags, offset_t off,
           cred_t *cr, void *ctx)
 {
-    return (0);
+	if (cmd == F_FREESP) {
+		NTSTATUS Status;
+		DWORD ret;
+		FILE_ZERO_DATA_INFORMATION fzdi;
+		fzdi.FileOffset.QuadPart = fl->l_start;
+		fzdi.BeyondFinalZero.QuadPart = fl->l_start + fl->l_len;
+
+		Status = ZwFsControlFile(
+			h,
+			NULL,
+			NULL,
+			NULL,
+			NULL,
+			FSCTL_SET_ZERO_DATA,
+			&fzdi, sizeof(fzdi),
+			NULL,
+			0
+		);
+
+		static int first = 1;
+	    if (first)	xprintf("filetrim said 0x%x\n", Status);
+		first = 0;
+
+		return (Status);
+	}
+
+	return (STATUS_NOT_SUPPORTED);
 }
 
 int
