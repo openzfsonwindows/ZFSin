@@ -149,6 +149,7 @@
     <ClCompile Include="..\..\..\module\zfs\vdev_raidz.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_removal.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_root.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_trim.c" />
     <ClCompile Include="..\..\..\module\zfs\zap.c" />
     <ClCompile Include="..\..\..\module\zfs\zap_leaf.c" />
     <ClCompile Include="..\..\..\module\zfs\zap_micro.c" />

@@ -47,6 +47,7 @@
 //#include <inttypes.h>
 #define PRIu64 "llu"  // fixme, add inttypes.h
 #include <sys/vdev_initialize.h>
+#include <sys/vdev_trim.h>
 
 /*
  * This file contains the necessary logic to remove vdevs from a
@@ -285,15 +286,8 @@ vdev_remove_initiate_sync(void *arg, dmu_tx_t *tx)
 		if (ms->ms_sm == NULL)
 			continue;
 
-		/*
-		 * Sync tasks happen before metaslab_sync(), therefore
-		 * smp_alloc and sm_alloc must be the same.
-		 */
-		ASSERT3U(space_map_allocated(ms->ms_sm), ==,
-		    ms->ms_sm->sm_phys->smp_alloc);
-
 		spa->spa_removing_phys.sr_to_copy +=
-		    space_map_allocated(ms->ms_sm);
+		    metaslab_allocated_space(ms);
 
 		/*
 		 * Space which we are freeing this txg does not need to
@@ -1152,6 +1146,8 @@ vdev_remove_complete(spa_t *spa)
 	txg = spa_vdev_enter(spa);
 	vdev_t *vd = vdev_lookup_top(spa, spa->spa_vdev_removal->svr_vdev_id);
 	ASSERT3P(vd->vdev_initialize_thread, ==, NULL);
+	ASSERT3P(vd->vdev_trim_thread, ==, NULL);
+	ASSERT3P(vd->vdev_autotrim_thread, ==, NULL);
 
 	sysevent_t *ev = spa_event_create(spa, vd, NULL,
 	    ESC_ZFS_VDEV_REMOVE_DEV);
@@ -1403,22 +1399,8 @@ spa_vdev_remove_thread(void *arg)
 		 * appropriate action (see free_from_removing_vdev()).
 		 */
 		if (msp->ms_sm != NULL) {
-			space_map_t *sm = NULL;
-
-			/*
-			 * We have to open a new space map here, because
-			 * ms_sm's sm_length and sm_alloc may not reflect
-			 * what's in the object contents, if we are in between
-			 * metaslab_sync() and metaslab_sync_done().
-			 */
-			VERIFY0(space_map_open(&sm,
-			    spa->spa_dsl_pool->dp_meta_objset,
-			    msp->ms_sm->sm_object, msp->ms_sm->sm_start,
-			    msp->ms_sm->sm_size, msp->ms_sm->sm_shift));
-			space_map_update(sm);
-			VERIFY0(space_map_load(sm, svr->svr_allocd_segs,
-			    SM_ALLOC));
-			space_map_close(sm);
+			VERIFY0(space_map_load(msp->ms_sm,
+			    svr->svr_allocd_segs, SM_ALLOC));
 
 			range_tree_walk(msp->ms_freeing,
 			    range_tree_remove, svr->svr_allocd_segs);
@@ -1613,16 +1595,6 @@ spa_vdev_remove_cancel_sync(void *arg, dmu_tx_t *tx)
 		ASSERT0(range_tree_space(msp->ms_freed));
 
 		if (msp->ms_sm != NULL) {
-			/*
-			 * Assert that the in-core spacemap has the same
-			 * length as the on-disk one, so we can use the
-			 * existing in-core spacemap to load it from disk.
-			 */
-			ASSERT3U(msp->ms_sm->sm_alloc, ==,
-			    msp->ms_sm->sm_phys->smp_alloc);
-			ASSERT3U(msp->ms_sm->sm_length, ==,
-			    msp->ms_sm->sm_phys->smp_objsize);
-
 			mutex_enter(&svr->svr_lock);
 			VERIFY0(space_map_load(msp->ms_sm,
 			    svr->svr_allocd_segs, SM_ALLOC));
@@ -1691,14 +1663,9 @@ spa_vdev_remove_cancel_sync(void *arg, dmu_tx_t *tx)
 	    vd->vdev_id, (vd->vdev_path != NULL) ? vd->vdev_path : "-");
 }
 
-int
-spa_vdev_remove_cancel(spa_t *spa)
+static int
+spa_vdev_remove_cancel_impl(spa_t *spa)
 {
-	spa_vdev_remove_suspend(spa);
-
-	if (spa->spa_vdev_removal == NULL)
-		return (ENOTACTIVE);
-
 	uint64_t vdid = spa->spa_vdev_removal->svr_vdev_id;
 
 	int error = dsl_sync_task(spa->spa_name, spa_vdev_remove_cancel_check,
@@ -1715,9 +1682,17 @@ spa_vdev_remove_cancel(spa_t *spa)
 	return (error);
 }
 
-/*
- * Called every sync pass of every txg if there's a svr.
- */
+int
+spa_vdev_remove_cancel(spa_t *spa)
+{
+	spa_vdev_remove_suspend(spa);
+
+	if (spa->spa_vdev_removal == NULL)
+		return (ENOTACTIVE);
+
+	return (spa_vdev_remove_cancel_impl(spa));
+}
+
 void
 svr_sync(spa_t *spa, dmu_tx_t *tx)
 {
@@ -1829,8 +1804,10 @@ spa_vdev_remove_log(vdev_t *vd, uint64_t *txg)
 	/* Make sure these changes are sync'ed */
 	spa_vdev_config_exit(spa, NULL, *txg, 0, FTAG);
 
-	/* Stop initializing */
+	/* Stop initializing and TRIM */
 	vdev_initialize_stop_all(vd, VDEV_INITIALIZE_CANCELED);
+	vdev_trim_stop_all(vd, VDEV_TRIM_CANCELED);
+	vdev_autotrim_stop_wait(vd);
 
 	*txg = spa_vdev_config_enter(spa);
 
@@ -2009,11 +1986,13 @@ spa_vdev_remove_top(vdev_t *vd, uint64_t *txg)
 	error = spa_reset_logs(spa);
 
 	/*
-	 * We stop any initializing that is currently in progress but leave
-	 * the state as "active". This will allow the initializing to resume
-	 * if the removal is canceled sometime later.
+	 * We stop any initializing and TRIM that is currently in progress
+	 * but leave the state as "active". This will allow the process to
+	 * resume if the removal is canceled sometime later.
 	 */
 	vdev_initialize_stop_all(vd, VDEV_INITIALIZE_ACTIVE);
+	vdev_trim_stop_all(vd, VDEV_TRIM_ACTIVE);
+	vdev_autotrim_stop_wait(vd);
 
 	*txg = spa_vdev_config_enter(spa);
 
@@ -2027,6 +2006,8 @@ spa_vdev_remove_top(vdev_t *vd, uint64_t *txg)
 	if (error != 0) {
 		metaslab_group_activate(mg);
 		spa_async_request(spa, SPA_ASYNC_INITIALIZE_RESTART);
+		spa_async_request(spa, SPA_ASYNC_TRIM_RESTART);
+		spa_async_request(spa, SPA_ASYNC_AUTOTRIM_RESTART);
 		return (error);
 	}
 

@@ -819,37 +819,8 @@ dmu_free_long_range_impl(objset_t *os, dnode_t *dn, uint64_t offset,
 		 */
 		if (dirty_frees_threshold != 0 &&
 		    long_free_dirty_all_txgs >= dirty_frees_threshold) {
-#ifndef __APPLE__
-			txg_wait_open(dp, 0);
+			txg_wait_open(dp, 0, B_TRUE);
 			continue;
-#else
-			/*
-			 * Since freeing an already freed large region can happen
-			 * (e.g. when zvol_unmap() unmaps an unallocated range,
-			 * which commonly happens when HFS+-in-zvols are mounted)
-			 * we want to avoid a txg_wait_open().    Freeing freed
-			 * regions generates almost no dirty data, in particular
-			 * because dbuf_dirty() is not called much.
-			 *
-			 * (See details in large comment block in dnode_free_range())
-			 *
-			 * So if the pool's dirty data is below the threshold
-			 * then we can keep adding frees to the current TXG.
-			 */
-			if (dp->dp_dirty_total >= dirty_frees_threshold) {
-#ifdef DEBUG
-				int64_t dirty = (int64_t)dp->dp_dirty_total;
-				txg_wait_open(dp, 0);
-				int64_t new_dirty = (int64_t)dp->dp_dirty_total;
-				int64_t delta = dirty - new_dirty;
-				zfs_dbgmsg("%s: dirty before %lld after %lld delta %lld\n",
-				    __func__, dirty, new_dirty, delta);
-#else
-				txg_wait_open(dp, 0);
-#endif
-				continue;
-			}
-#endif // __APPLE__
 		}
 
 		tx = dmu_tx_create(os);

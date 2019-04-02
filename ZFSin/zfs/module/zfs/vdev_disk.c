@@ -26,6 +26,7 @@
 #include <sys/spa.h>
 #include <sys/vdev_disk.h>
 #include <sys/vdev_impl.h>
+#include <sys/vdev_trim.h>
 #include <sys/fs/zfs.h>
 #include <sys/zio.h>
 
@@ -40,7 +41,6 @@
 
 #undef dprintf
 #define dprintf
-
 
 static void vdev_disk_close(vdev_t *);
 
@@ -74,62 +74,6 @@ vdev_disk_free(vdev_t *vd)
 #else
 #define        VDEV_DEBUG(...) /* Nothing... */
 #endif
-
-// If we call this function, not only does it return all zeros, but we crash
-// much later on trying to release a mutex. Why?
-int kernel_ioctl(vdev_disk_t *dvd, long cmd, void *inbuf, uint32_t inlen,
-	void *outbuf, uint32_t outlen)
-{
-	NTSTATUS status;
-	PFILE_OBJECT        FileObject;
-	PDEVICE_OBJECT      DeviceObject;
-
-	dprintf("%s: trying to send kernel ioctl %x\n", __func__, cmd);
-
-	DISK_GEOMETRY DiskGeometry;
-	PARTITION_INFORMATION PartitionInfo;
-	IO_STATUS_BLOCK IoStatusBlock;
-	KEVENT Event;
-	PIRP Irp;
-	NTSTATUS Status;
-	ULONG Remainder;
-	PAGED_CODE();
-
-	/* Only needed for disks */
-	dprintf("%s: device type %d\n", __func__, dvd->vd_DeviceObject->DeviceType);
-
-	/* Build the information IRP */
-	KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
-	Irp = IoBuildDeviceIoControlRequest(IOCTL_DISK_GET_DRIVE_GEOMETRY,
-		dvd->vd_DeviceObject,
-		NULL,
-		0,
-		&DiskGeometry,
-		sizeof(DISK_GEOMETRY),
-		FALSE,
-		&Event,
-		&IoStatusBlock);
-	if (!Irp) return FALSE;
-
-	/* Override verification */
-	IoGetNextIrpStackLocation(Irp)->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
-
-	/* Do the request */
-	Status = IoCallDriver(dvd->vd_DeviceObject, Irp);
-	if (Status == STATUS_PENDING)
-	{
-		/* Wait for completion */
-		KeWaitForSingleObject(&Event,
-			Executive,
-			KernelMode,
-			FALSE,
-			NULL);
-		Status = IoStatusBlock.Status;
-	}
-	dprintf("%s: BPS %u\n", __func__, DiskGeometry.BytesPerSector);
-
-	return 0;
-}
 
 static int
 vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
@@ -327,7 +271,7 @@ skip_open:
 	} else {
 		DISK_GEOMETRY_EX geometry_ex;
 		DWORD len;
-		error = kernel_ioctl(dvd->vd_lh, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
+		error = kernel_ioctl(dvd->vd_DeviceObject, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
 			NULL, 0,
 			&geometry_ex, sizeof(geometry_ex));
 		if (error == 0)
@@ -347,7 +291,7 @@ skip_open:
 	memset(&diskAlignment, 0, sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR));
 	DWORD outsize;
 
-	error = kernel_ioctl(dvd, IOCTL_STORAGE_QUERY_PROPERTY,
+	error = kernel_ioctl(dvd->vd_DeviceObject, IOCTL_STORAGE_QUERY_PROPERTY,
 		&storageQuery, sizeof(STORAGE_PROPERTY_QUERY),
 		&diskAlignment, sizeof(STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR));
 
@@ -381,12 +325,18 @@ skip_open:
 	*/
 	vd->vdev_nowritecache = B_FALSE;
 
+	/* Set when device reports it supports TRIM. */
+	vd->vdev_has_trim = !!blk_queue_discard(dvd->vd_DeviceObject);
+
+	/* Set when device reports it supports secure TRIM. */
+	vd->vdev_has_securetrim = !!blk_queue_discard_secure(dvd->vd_DeviceObject);
+
 	/* Inform the ZIO pipeline that we are non-rotational */
-	vd->vdev_nonrot = B_FALSE;
-//	if (ldi_ioctl(dvd->vd_lh, DKIOCISSOLIDSTATE, (intptr_t)&isssd,
-//		FKIOCTL, kcred, NULL) == 0) {
-//		vd->vdev_nonrot = (isssd ? B_TRUE : B_FALSE);
-//	}
+	/* Best choice seems to be either TRIM, or SeekPenalty */
+	vd->vdev_nonrot = vd->vdev_has_trim || blk_queue_nonrot(dvd->vd_DeviceObject);
+
+	xprintf("%s: nonrot %d, trim %d, securetrim %d\n", __func__,
+		vd->vdev_nonrot, vd->vdev_has_trim, vd->vdev_has_securetrim);
 
 	return (0);
 }
@@ -561,6 +511,7 @@ vdev_disk_io_start(zio_t *zio)
 	vdev_disk_t *dvd = vd->vdev_tsd;
 	struct dk_callback *dkc;
 	buf_t *bp;
+	unsigned long trim_flags = 0;
 	int flags, error = 0;
 
 	dprintf("%s: type 0x%x offset 0x%llx len 0x%llx \n", __func__, zio->io_type, zio->io_offset, zio->io_size);
@@ -639,6 +590,16 @@ vdev_disk_io_start(zio_t *zio)
 		else
 			flags = B_READ | B_ASYNC;
 		break;
+
+	case ZIO_TYPE_TRIM:
+#if defined(BLKDEV_DISCARD_SECURE)
+		if (zio->io_trim_flags & ZIO_TRIM_SECURE)
+			trim_flags |= BLKDEV_DISCARD_SECURE;
+#endif
+		zio->io_error = -blkdev_issue_discard_bytes(dvd->vd_DeviceObject,
+			zio->io_offset, zio->io_size, trim_flags);
+		zio_interrupt(zio);
+		return;
 
 	default:
 		zio->io_error = SET_ERROR(ENOTSUP);
