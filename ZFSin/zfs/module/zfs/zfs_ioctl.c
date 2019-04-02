@@ -6887,12 +6887,6 @@ zfs_ioctl_init(void)
 	    zfs_secpolicy_config, POOL_NAME, POOL_CHECK_SUSPENDED, B_TRUE,
 	    B_TRUE, zfs_keys_pool_reopen, ARRAY_SIZE(zfs_keys_pool_reopen));
 
-	zfs_ioctl_register("channel_program", ZFS_IOC_CHANNEL_PROGRAM,
-	    zfs_ioc_channel_program, zfs_secpolicy_config,
-	    POOL_NAME, POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_TRUE,
-	    B_TRUE, zfs_keys_channel_program,
-	    ARRAY_SIZE(zfs_keys_channel_program));
-
 	zfs_ioctl_register("zpool_checkpoint", ZFS_IOC_POOL_CHECKPOINT,
 	    zfs_ioc_pool_checkpoint, zfs_secpolicy_config, POOL_NAME,
 	    POOL_CHECK_SUSPENDED | POOL_CHECK_READONLY, B_TRUE, B_TRUE,
