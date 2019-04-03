@@ -415,21 +415,33 @@ zfs_is_mountable(zfs_handle_t *zhp, char *buf, size_t buflen,
 		// if we don't mount as driveletter, check the directory
 		// if file exists, it should be a directory and not a reparse point
 		DWORD fileAttr = GetFileAttributes(buf);
-		if (fileAttr != 0xFFFFFFFF && // file exist
+		if (fileAttr != INVALID_FILE_ATTRIBUTES && // file exist
 			(fileAttr & FILE_ATTRIBUTE_REPARSE_POINT ||
 			!(fileAttr & FILE_ATTRIBUTE_DIRECTORY))) 
 			return (B_FALSE);
 
 		// if we aren't root, check parent folder, it should exist
+		// This code needs to use driveletter logic, "/tank/lower" would
+		// check "/tank" - which may be mounted on "F:"
+#if 0
 		if (strcmp(buf, "/") != 0) {
 			char parent_path[MAX_PATH];
-			sprintf(parent_path, "%s/..", buf);
+			//sprintf(parent_path, "%s/..", buf);
+			strlcpy(parent_path, buf, MAX_PATH);
+			//PathCchRemoveFileSpec(parent_path, MAX_PATH);
+			char *tok, *last = NULL;
+			tok = parent_path;
+			while (tok = strpbrk(tok, "\\/")) {
+				last = tok++;
+			}
+			if (last) *last = 0;
 			fileAttr = GetFileAttributes(parent_path);
-			if (fileAttr == 0xFFFFFFFF || // file doesn't exist
+			if (fileAttr == INVALID_FILE_ATTRIBUTES || // file doesn't exist
 				fileAttr & FILE_ATTRIBUTE_REPARSE_POINT ||
 				!(fileAttr & FILE_ATTRIBUTE_DIRECTORY))
-				return (B_FALSE);
+				return (B_FALSE); // we die here.
 		}
+#endif
 	}
 #endif
 
