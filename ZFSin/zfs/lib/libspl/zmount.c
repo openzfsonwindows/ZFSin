@@ -134,6 +134,29 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 #endif
 	ret = zfs_ioctl(zhp->zfs_hdl, ZFS_IOC_MOUNT, &zc);
 
+
+	if (ret == 0) {
+		// Tell Explorer we have a new drive
+		// Whats the deal here with this header file - did not like to be included.
+//#include <Shlobj.h>
+#define SHCNE_DRIVEADD            0x00000100L
+#define SHCNF_PATH       0x0001  
+		struct mnttab entry;
+
+		// Refresh the mount table.
+		libzfs_mnttab_update(zhp->zfs_hdl);
+
+		// Locate this mount
+		if (libzfs_mnttab_find(zhp->zfs_hdl, zhp->zfs_name, &entry) == 0) {
+
+			// If we get a driveletter, we tell Explorer. Otherwise not required.
+			if (entry.mnt_mountp[1] == ':') { // "E:\ " -> "E:"
+				entry.mnt_mountp[2] = 0;
+				SHChangeNotify(SHCNE_DRIVEADD, SHCNF_PATH, entry.mnt_mountp, NULL);
+			}
+		}
+	}
+
 #ifdef DEBUG
 	fprintf(stderr, "zmount(%s,%s) returns %d\n",
 		zhp->zfs_name, dir, ret);

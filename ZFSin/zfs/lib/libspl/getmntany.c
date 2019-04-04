@@ -382,7 +382,7 @@ int getfsstat(struct statfs *buf, int bufsize, int flags)
 
 		h = CreateFile(name, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 //		printf("Open '%s': %d : getlast %d\n", name, h, GetLastError());
-		fflush(stdout);
+	//	fflush(stdout);
 		if (h != INVALID_HANDLE_VALUE) {
 			char *dataset;
 			char cheat[1024];
