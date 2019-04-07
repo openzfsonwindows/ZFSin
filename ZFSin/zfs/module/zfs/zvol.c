@@ -1246,6 +1246,8 @@ zvol_create_minors_impl(const char *name)
 	if (zvol_inhibit_dev)
 		return (0);
 
+	uint32_t numzvols = zvol_minors;
+
 	parent = kmem_alloc(MAXPATHLEN, KM_SLEEP);
 	(void) strlcpy(parent, name, MAXPATHLEN);
 
@@ -1265,7 +1267,10 @@ zvol_create_minors_impl(const char *name)
 
 	kmem_free(parent, MAXPATHLEN);
 
-	wzvol_announce_buschange();
+	// Only announce bus changed if it changed - this 
+	// function is called a lot, even with non-zvol entries.
+	if (numzvols != zvol_minors)
+		wzvol_announce_buschange();
 
 	return (SET_ERROR(error));
 }

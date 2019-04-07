@@ -581,6 +581,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	char *stream_name = NULL;
 	boolean_t UndoShareAccess = FALSE;
 	NTSTATUS Status = STATUS_SUCCESS;
+	ACCESS_MASK granted_access = 0;
 
 	if (zfsvfs == NULL) return STATUS_OBJECT_PATH_NOT_FOUND;
 
@@ -1081,8 +1082,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 
 	if (vp || CreateFile == 0) {
-		ACCESS_MASK granted_access;
-		NTSTATUS Status;
+//		NTSTATUS Status;
 
 		// Streams do not call SeAccessCheck?
 		if (stream_name != NULL) {
@@ -1090,11 +1090,11 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				FileObject, vp ? &vp->share_access : &dvp->share_access);
 
 
-		} else if (IrpSp->Parameters.Create.SecurityContext->DesiredAccess != 0) {
+		} else if (IrpSp->Parameters.Create.SecurityContext->DesiredAccess != 0 && vp) {
 
 
 			SeLockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
-#if 0
+#if 1
 			if (!SeAccessCheck(/* (fileref->fcb->ads || fileref->fcb == Vcb->dummy_fcb) ? fileref->parent->fcb->sd : */ vnode_security(vp ? vp : dvp),
 				&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext,
 				TRUE, IrpSp->Parameters.Create.SecurityContext->DesiredAccess, 0, NULL,
@@ -1314,6 +1314,9 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		VN_RELE(vp);
 		VN_RELE(dvp);
 	}
+
+	IrpSp->Parameters.Create.SecurityContext->AccessState->PreviouslyGrantedAccess |= granted_access;
+	IrpSp->Parameters.Create.SecurityContext->AccessState->RemainingDesiredAccess &= ~(granted_access | MAXIMUM_ALLOWED);
 
 	kmem_free(filename, PATH_MAX);
 	return Status;
