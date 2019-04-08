@@ -65,7 +65,6 @@ struct zap_cursor;
 struct dsl_dataset;
 struct dsl_pool;
 struct dnode;
-struct drr_begin;
 struct drr_end;
 struct zbookmark_phys;
 struct spa;

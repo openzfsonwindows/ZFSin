@@ -317,7 +317,7 @@ boolean_t zfs_prop_written(const char *);
 int zfs_prop_index_to_string(zfs_prop_t, uint64_t, const char **);
 int zfs_prop_string_to_index(zfs_prop_t, const char *, uint64_t *);
 uint64_t zfs_prop_random_value(zfs_prop_t, uint64_t seed);
-boolean_t zfs_prop_valid_for_type(int, zfs_type_t);
+boolean_t zfs_prop_valid_for_type(int, zfs_type_t, boolean_t);
 
 /*
  * Pool property functions shared between libzfs and kernel.
@@ -1180,6 +1180,15 @@ typedef enum {
 	VDEV_TRIM_SUSPENDED,
 	VDEV_TRIM_COMPLETE,
 } vdev_trim_state_t;
+
+/*
+ * nvlist name constants. Facilitate restricting snapshot iteration range for
+ * the "list next snapshot" ioctl
+ */
+#define SNAP_ITER_MIN_TXG       "snap_iter_min_txg"
+#define SNAP_ITER_MAX_TXG       "snap_iter_max_txg"
+
+#define	ZVOL_DEFAULT_BLOCKSIZE	131072
 
 /*
  * zvol ioctl to get dataset name

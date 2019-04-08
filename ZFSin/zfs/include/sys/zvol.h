@@ -124,6 +124,10 @@ extern int zvol_set_volsize(const char *, uint64_t);
 extern int zvol_set_volblocksize(const char *, uint64_t);
 extern int zvol_set_snapdev(const char *, zprop_source_t, uint64_t);
 
+extern zvol_state_t *zvol_suspend(const char *);
+extern int zvol_resume(zvol_state_t *);
+extern void *zvol_tag(zvol_state_t *);
+
 extern int zvol_open(dev_t dev, int flag, int otyp, struct proc *p);
 extern int zvol_close(dev_t dev, int flag, int otyp, struct proc *p);
 extern int zvol_read(dev_t dev, struct uio *uiop, int p);

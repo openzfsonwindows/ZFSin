@@ -110,6 +110,7 @@ typedef enum drr_headertype {
 #define	DMU_BACKUP_FEATURE_LARGE_DNODE		(1 << 23)
 #define	DMU_BACKUP_FEATURE_RAW			(1 << 24)
 /* flag #25 is reserved for the ZSTD compression feature */
+#define	DMU_BACKUP_FEATURE_HOLDS		(1 << 26)
 
     /* Unsure what Oracle called this bit */
 #define	DMU_BACKUP_FEATURE_SPILLBLOCKS	(0x20)
@@ -206,6 +207,19 @@ typedef enum dmu_send_resume_token_version {
 /*
  * zfs ioctl command structure
  */
+
+/* Header is used in C++ so can't forward declare untagged struct */
+struct drr_begin {
+	uint64_t drr_magic;
+	uint64_t drr_versioninfo; /* was drr_version */
+	uint64_t drr_creation_time;
+	dmu_objset_type_t drr_type;
+	uint32_t drr_flags;
+	uint64_t drr_toguid;
+	uint64_t drr_fromguid;
+	char drr_toname[MAXNAMELEN];
+};
+
 typedef struct dmu_replay_record {
 	enum {
 		DRR_BEGIN, DRR_OBJECT, DRR_FREEOBJECTS,
@@ -215,16 +229,7 @@ typedef struct dmu_replay_record {
 	} drr_type;
 	uint32_t drr_payloadlen;
 	union {
-		struct drr_begin {
-			uint64_t drr_magic;
-			uint64_t drr_versioninfo; /* was drr_version */
-			uint64_t drr_creation_time;
-			dmu_objset_type_t drr_type;
-			uint32_t drr_flags;
-			uint64_t drr_toguid;
-			uint64_t drr_fromguid;
-			char drr_toname[MAXNAMELEN];
-		} drr_begin;
+		struct drr_begin drr_begin;
 		struct drr_end {
 			zio_cksum_t drr_checksum;
 			uint64_t drr_toguid;
@@ -466,7 +471,7 @@ typedef struct zfs_cmd {
 	uint64_t	zc_iflags;		/* internal to zfs(7fs) */
 	zfs_share_t	zc_share;
 	dmu_objset_stats_t zc_objset_stats;
-	dmu_replay_record_t zc_begin_record;
+	struct drr_begin zc_begin_record;
 	zinject_record_t zc_inject_record;
 	uint32_t	zc_defer_destroy;
 	uint32_t	zc_flags;
@@ -583,6 +588,8 @@ typedef enum zfs_ioc {
 	ZFS_IOC_CHANNEL_PROGRAM		= CTL_CODE(ZFSIOCTL_TYPE, 0x84e, METHOD_NEITHER, FILE_ANY_ACCESS),
 
 	ZFS_IOC_POOL_TRIM			= CTL_CODE(ZFSIOCTL_TYPE, 0x84f, METHOD_NEITHER, FILE_ANY_ACCESS),
+
+	ZFS_IOC_RECV_NEW,
 
 	/*
 	 * Linux - 3/64 numbers reserved.

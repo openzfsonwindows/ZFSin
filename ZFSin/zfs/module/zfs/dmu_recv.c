@@ -712,7 +712,8 @@ dmu_recv_resume_begin_sync(void *arg, dmu_tx_t *tx)
  */
 int
 dmu_recv_begin(char *tofs, char *tosnap, dmu_replay_record_t *drr_begin,
-    boolean_t force, boolean_t resumable, char *origin, dmu_recv_cookie_t *drc)
+    boolean_t force, boolean_t resumable, nvlist_t *localprops,
+    nvlist_t *hidden_args, char *origin, dmu_recv_cookie_t *drc)
 {
 	dmu_recv_begin_arg_t drba = { 0 };
 
@@ -748,9 +749,33 @@ dmu_recv_begin(char *tofs, char *tosnap, dmu_replay_record_t *drr_begin,
 		    dmu_recv_resume_begin_check, dmu_recv_resume_begin_sync,
 		    &drba, 5, ZFS_SPACE_CHECK_NORMAL));
 	} else  {
-		return (dsl_sync_task(tofs,
+		int err;
+
+		/*
+		 * For non-raw, non-incremental, non-resuming receives the
+		 * user can specify encryption parameters on the command line
+		 * with "zfs recv -o". For these receives we create a dcp and
+		 * pass it to the sync task. Creating the dcp will implicitly
+		 * remove the encryption params from the localprops nvlist,
+		 * which avoids errors when trying to set these normally
+		 * read-only properties. Any other kind of receive that
+		 * attempts to set these properties will fail as a result.
+		 */
+		if ((DMU_GET_FEATUREFLAGS(drc->drc_drrb->drr_versioninfo) &
+		    DMU_BACKUP_FEATURE_RAW) == 0 &&
+		    origin == NULL && drc->drc_drrb->drr_fromguid == 0) {
+			err = dsl_crypto_params_create_nvlist(DCP_CMD_NONE,
+			    localprops, hidden_args, &drba.drba_dcp);
+			if (err != 0)
+				return (err);
+		}
+
+		err = dsl_sync_task(tofs,
 		    dmu_recv_begin_check, dmu_recv_begin_sync,
-		    &drba, 5, ZFS_SPACE_CHECK_NORMAL));
+		    &drba, 5, ZFS_SPACE_CHECK_NORMAL);
+		dsl_crypto_params_free(drba.drba_dcp, !!err);
+
+		return (err);
 	}
 }
 

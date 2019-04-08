@@ -107,7 +107,6 @@ void wzvol_clear_targetid(uint8_t targetid);
  */
 
 void *zfsdev_state;
-static char *zvol_tag = "zvol_tag";
 
 #define	ZVOL_DUMPSIZE		"dumpsize"
 
@@ -901,6 +900,103 @@ zvol_create_minors_cb(const char *dsname, void *arg)
 	return (0);
 }
 
+/*
+ * Shutdown every zv_objset related stuff except zv_objset itself.
+ * The is the reverse of zvol_setup_zv.
+ */
+static void
+zvol_shutdown_zv(zvol_state_t *zv)
+{
+	//ASSERT(MUTEX_HELD(&zv->zv_state_lock) &&
+	//    RW_LOCK_HELD(&zv->zv_suspend_lock));
+
+	zil_close(zv->zv_zilog);
+	zv->zv_zilog = NULL;
+
+#ifdef linux
+	dnode_rele(zv->zv_dn, FTAG);
+	zv->zv_dn = NULL;
+#else
+#endif
+
+	/*
+	 * Evict cached data. We must write out any dirty data before
+	 * disowning the dataset.
+	 */
+	if (!(zv->zv_flags & ZVOL_RDONLY))
+		txg_wait_synced(dmu_objset_pool(zv->zv_objset), 0);
+	(void) dmu_objset_evict_dbufs(zv->zv_objset);
+}
+
+/*
+ * return the proper tag for rollback and recv
+ */
+void *
+zvol_tag(zvol_state_t *zv)
+{
+//	ASSERT(RW_WRITE_HELD(&zv->zv_suspend_lock));
+	return (zv->zv_open_count > 0 ? zv : NULL);
+}
+
+/*
+ * Suspend the zvol for recv and rollback.
+ */
+zvol_state_t *
+zvol_suspend(const char *name)
+{
+	zvol_state_t *zv;
+
+#ifdef linux
+	zv = zvol_find_by_name(name, RW_WRITER);
+#else
+	mutex_enter(&zfsdev_state_lock);
+	zv = zvol_minor_lookup(name);
+	mutex_exit(&zfsdev_state_lock);
+#endif
+	if (zv == NULL)
+		return (NULL);
+
+#ifdef linux
+	/* block all I/O, release in zvol_resume. */
+	ASSERT(MUTEX_HELD(&zfsdev_state_lock));
+
+	atomic_inc(&zv->zv_suspend_ref);
+#endif
+
+	if (zv->zv_open_count > 0)
+		zvol_shutdown_zv(zv);
+
+#ifdef linux
+	/*
+	 * do not hold zv_state_lock across suspend/resume to
+	 * avoid locking up zvol lookups
+	 */
+	mutex_exit(&zfsdev_state_lock);
+#endif
+
+	/* zv_suspend_lock is released in zvol_resume() */
+	return (zv);
+}
+
+int
+zvol_resume(zvol_state_t *zv)
+{
+	int error = 0;
+
+	mutex_enter(&zfsdev_state_lock);
+
+	if (zv->zv_open_count > 0) {
+		VERIFY0(dmu_objset_hold(zv->zv_name, zv, &zv->zv_objset));
+		VERIFY3P(zv->zv_objset->os_dsl_dataset->ds_owner, ==, zv);
+		VERIFY(dsl_dataset_long_held(zv->zv_objset->os_dsl_dataset));
+		dmu_objset_rele(zv->zv_objset, zv);
+
+	}
+
+	mutex_exit(&zfsdev_state_lock);
+
+	return (SET_ERROR(error));
+}
 
 int
 zvol_first_open(zvol_state_t *zv)

@@ -50,7 +50,7 @@ LARGESIZE=$((MINVDEVSIZE * 4))
 LARGEFILE="$TESTDIR/largefile"
 
 log_must mkdir "$TESTDIR"
-log_must truncate -s $LARGESIZE "$LARGEFILE"
+log_must $TRUNCATE -s $LARGESIZE "$LARGEFILE"
 log_must zpool create $TESTPOOL "$LARGEFILE"
 
 log_must dd if=/dev/urandom of=/$TESTPOOL/file1 bs=1048576 count=64

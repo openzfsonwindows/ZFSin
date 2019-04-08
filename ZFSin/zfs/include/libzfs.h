@@ -172,6 +172,7 @@ typedef enum zfs_error {
 	EZFS_NO_INITIALIZE,	/* no active initialize */
 	EZFS_ACTIVE_POOL,	/* pool is imported on a different system */
 	EZFS_IOC_NOTSUPPORTED,	/* operation not supported by zfs module */
+	EZFS_WRONG_PARENT,	/* invalid parent dataset (e.g ZVOL) */
 	EZFS_TRIMMING,		/* currently trimming */
 	EZFS_NO_TRIM,		/* no active trim */
 	EZFS_TRIM_NOTSUP,	/* device does not support trim */
@@ -563,7 +564,7 @@ extern nvlist_t *zfs_get_clones_nvl(zfs_handle_t *);
  */
 extern int zfs_crypto_get_encryption_root(zfs_handle_t *, boolean_t *, char *);
 extern int zfs_crypto_create(libzfs_handle_t *, char *, nvlist_t *, nvlist_t *,
-    uint8_t **, uint_t *);
+    boolean_t stdin_available, uint8_t **, uint_t *);
 extern int zfs_crypto_clone_check(libzfs_handle_t *, zfs_handle_t *, char *,
     nvlist_t *);
 extern int zfs_crypto_attempt_load_keys(libzfs_handle_t *, char *);
@@ -652,8 +653,10 @@ extern int zfs_iter_root(libzfs_handle_t *, zfs_iter_f, void *);
 extern int zfs_iter_children(zfs_handle_t *, zfs_iter_f, void *);
 extern int zfs_iter_dependents(zfs_handle_t *, boolean_t, zfs_iter_f, void *);
 extern int zfs_iter_filesystems(zfs_handle_t *, zfs_iter_f, void *);
-extern int zfs_iter_snapshots(zfs_handle_t *, boolean_t, zfs_iter_f, void *);
-extern int zfs_iter_snapshots_sorted(zfs_handle_t *, zfs_iter_f, void *);
+extern int zfs_iter_snapshots(zfs_handle_t *, boolean_t, zfs_iter_f, void *,
+    uint64_t, uint64_t);
+extern int zfs_iter_snapshots_sorted(zfs_handle_t *, zfs_iter_f, void *,
+    uint64_t, uint64_t);
 extern int zfs_iter_snapspec(zfs_handle_t *, const char *, zfs_iter_f, void *);
 extern int zfs_iter_bookmarks(zfs_handle_t *, zfs_iter_f, void *);
 
@@ -723,13 +726,19 @@ typedef struct sendflags {
 
 	/* raw encrypted records are permitted */
 	boolean_t raw;
+
+	/* only send received properties (ie. -b) */
+	boolean_t backup;
+
+	/* include snapshot holds in send stream */
+	boolean_t holds;
 } sendflags_t;
 
 typedef boolean_t (snapfilter_cb_t)(zfs_handle_t *, void *);
 
 extern int zfs_send(zfs_handle_t *, const char *, const char *,
     sendflags_t *, int, snapfilter_cb_t, void *, nvlist_t **);
-extern int zfs_send_one(zfs_handle_t *, const char *, int, enum lzc_send_flags);
+extern int zfs_send_one(zfs_handle_t *, const char *, int, sendflags_t flags);
 extern int zfs_send_resume(libzfs_handle_t *, sendflags_t *, int outfd,
     const char *);
 extern nvlist_t *zfs_send_resume_token_to_nvlist(libzfs_handle_t *hdl,
@@ -785,6 +794,12 @@ typedef struct recvflags {
 
 	/* do not mount file systems as they are extracted (private) */
 	boolean_t nomount;
+
+	/* Was holds flag set in the compound header? */
+	boolean_t holds;
+
+	/* skip receive of snapshot holds */
+	boolean_t skipholds;
 } recvflags_t;
 
 extern int zfs_receive(libzfs_handle_t *, const char *, nvlist_t *,
@@ -864,7 +879,8 @@ enum zfs_nicenum_format {
 extern void zfs_nicenum(uint64_t, char *, size_t);
 extern void zfs_nicenum_format(uint64_t num, char *buf, size_t buflen,
     enum zfs_nicenum_format type);
-
+// ZOL API
+#define zfs_nicebytes(A, B, C) zfs_nicenum((A), (B), (C))
 
 extern void zfs_nicetime(uint64_t, char *, size_t);
 extern int zfs_nicestrtonum(libzfs_handle_t *, const char *, uint64_t *);

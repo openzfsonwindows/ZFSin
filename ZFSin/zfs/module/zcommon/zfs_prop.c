@@ -727,9 +727,9 @@ zfs_prop_random_value(zfs_prop_t prop, uint64_t seed)
  * Returns TRUE if the property applies to any of the given dataset types.
  */
 boolean_t
-zfs_prop_valid_for_type(int prop, zfs_type_t types)
+zfs_prop_valid_for_type(int prop, zfs_type_t types, boolean_t headcheck)
 {
-	return (zprop_valid_for_type(prop, types));
+	return (zprop_valid_for_type(prop, types, headcheck));
 }
 
 zprop_type_t
