@@ -7231,6 +7231,9 @@ zfs_do_diff(int argc, char **argv)
 	char *atp, *copy;
 	int err = 0;
 	int c;
+#ifndef _WIN32
+	struct sigaction sa;
+#endif
 
 	while ((c = getopt(argc, argv, "FHt")) != -1) {
 		switch (c) {
@@ -7288,11 +7291,20 @@ zfs_do_diff(int argc, char **argv)
 	 * information on any failure
 	 */
 #ifndef _WIN32
-	(void) sigignore(SIGPIPE);
+	if (sigemptyset(&sa.sa_mask) == -1) {
+		err = errno;
+		goto out;
+	}
+	sa.sa_flags = 0;
+	sa.sa_handler = SIG_IGN;
+	if (sigaction(SIGPIPE, &sa, NULL) == -1) {
+		err = errno;
+		goto out;
+	}
 #endif
 
 	err = zfs_show_diffs(zhp, STDOUT_FILENO, fromsnap, tosnap, flags);
-
+out:
 	zfs_close(zhp);
 
 	return (err != 0);
