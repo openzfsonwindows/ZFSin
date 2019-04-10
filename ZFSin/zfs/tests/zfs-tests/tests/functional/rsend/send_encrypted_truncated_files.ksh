@@ -67,6 +67,10 @@ log_must eval "echo 'password' > $keyfile"
 log_must zfs create -o encryption=on -o keyformat=passphrase \
 	-o keylocation=file://$keyfile $TESTPOOL/$TESTFS2
 
+# Explicitly set the recordsize since the truncation sizes below depend on
+# this value being 128k.  This is currently same as the default recordsize.
+log_must zfs set recordsize=128k $TESTPOOL/$TESTFS2
+
 # Create files with varied layouts on disk
 log_must mkfile 32M /$TESTPOOL/$TESTFS2/truncated
 log_must mkfile 524288 /$TESTPOOL/$TESTFS2/truncated2
