@@ -38,7 +38,7 @@
 .Nd configures ZFS file systems
 .Sh SYNOPSIS
 .Nm
-.Op Fl ?
+.Fl ?V
 .Nm
 .Cm create
 .Op Fl p
@@ -290,6 +290,8 @@
 .Op Fl o Sy keyformat Ns = Ns Ar value
 .Op Fl o Sy pbkdf2iters Ns = Ns Ar value
 .Ar filesystem
+.Nm
+.Cm version
 .Sh DESCRIPTION
 The
 .Nm
@@ -2051,6 +2053,13 @@ original form.
 .Bl -tag -width ""
 .It Nm Fl ?
 Displays a help message.
+.It Xo
+.Nm
+.Fl V, -version
+.Xc
+An alias for the
+.Nm zfs Cm version
+subcommand.
 .It Xo
 .Nm
 .Cm create
@@ -3970,6 +3979,13 @@ and
 after the dataset has been created.
 .El
 .El
+.It Xo
+.Nm
+.Cm version
+.Xc
+Displays the software version of the
+.Nm
+userland utility and the zfs kernel module.
 .El
 .Sh EXIT STATUS
 The

@@ -60,6 +60,9 @@
 void libshare_init(void);
 #endif /* __APPLE__ */
 
+#include <zfs_fletcher.h>
+
+#include <../zfs_config.h>
 
 int
 libzfs_errno(libzfs_handle_t *hdl)
@@ -2222,4 +2225,52 @@ zprop_iter(zprop_func func, void *cb, boolean_t show_all, boolean_t ordered,
     zfs_type_t type)
 {
 	return (zprop_iter_common(func, cb, show_all, ordered, type));
+}
+
+/*
+ * Fill given version buffer with zfs userland version
+ */
+void
+zfs_version_userland(char *version, int len)
+{
+	(void) strlcpy(version, ZFS_META_ALIAS, len);
+}
+
+/*
+ * Fill given version buffer with zfs kernel version read from ZFS_SYSFS_DIR
+ * Returns 0 on success, and -1 on error (with errno set)
+ * "zfs.kext_version: 1.9.0-1"
+ */
+int
+zfs_version_kernel(char *version, int len)
+{
+	size_t rlen = len;
+
+	snprintf(version, len, "port me!");
+
+	return (0);
+}
+
+/*
+ * Prints both zfs userland and kernel versions
+ * Returns 0 on success, and -1 on error (with errno set)
+ */
+int
+zfs_version_print(void)
+{
+	char zver_userland[128];
+	char zver_kernel[128];
+
+	if (zfs_version_kernel(zver_kernel, sizeof (zver_kernel)) == -1) {
+		fprintf(stderr, "zfs_version_kernel() failed: %s\n",
+		    strerror(errno));
+		return (-1);
+	}
+
+	zfs_version_userland(zver_userland, sizeof (zver_userland));
+
+	(void) printf("%s\n", zver_userland);
+	(void) printf("zfs-kmod-%s\n", zver_kernel);
+
+	return (0);
 }
