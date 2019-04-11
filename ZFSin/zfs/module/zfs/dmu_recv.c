@@ -76,14 +76,12 @@ typedef struct dmu_recv_begin_arg {
 
 static int
 recv_begin_check_existing_impl(dmu_recv_begin_arg_t *drba, dsl_dataset_t *ds,
-    uint64_t fromguid)
+    uint64_t fromguid, uint64_t featureflags)
 {
 	uint64_t val;
 	uint64_t children;
 	int error;
 	dsl_pool_t *dp = ds->ds_dir->dd_pool;
-	struct drr_begin *drrb = drba->drba_cookie->drc_drrb;
-	uint64_t featureflags = DMU_GET_FEATUREFLAGS(drrb->drr_versioninfo);
 	boolean_t encrypted = ds->ds_dir->dd_crypto_obj != 0;
 	boolean_t raw = (featureflags & DMU_BACKUP_FEATURE_RAW) != 0;
 	boolean_t embed = (featureflags & DMU_BACKUP_FEATURE_EMBED_DATA) != 0;
@@ -290,7 +288,8 @@ dmu_recv_begin_check(void *arg, dmu_tx_t *tx)
 			return (SET_ERROR(EINVAL));
 		}
 
-		error = recv_begin_check_existing_impl(drba, ds, fromguid);
+		error = recv_begin_check_existing_impl(drba, ds, fromguid,
+		    featureflags);
 		dsl_dataset_rele_flags(ds, dsflags, FTAG);
 	} else if (error == ENOENT) {
 		/* target fs does not exist; must be a full backup or clone */
@@ -432,6 +431,7 @@ dmu_recv_begin_sync(void *arg, dmu_tx_t *tx)
 
 	if (drrb->drr_flags & DRR_FLAG_CI_DATA)
 		crflags |= DS_FLAG_CI_DATASET;
+
 	if ((featureflags & DMU_BACKUP_FEATURE_RAW) == 0)
 		dsflags |= DS_HOLD_FLAG_DECRYPT;
 
@@ -475,6 +475,7 @@ dmu_recv_begin_sync(void *arg, dmu_tx_t *tx)
 		if (drba->drba_origin != NULL) {
 			VERIFY0(dsl_dataset_hold(dp, drba->drba_origin,
 			    FTAG, &origin));
+			ASSERT3P(dcp, ==, NULL);
 		}
 
 		/* Create new dataset. */
@@ -485,6 +486,7 @@ dmu_recv_begin_sync(void *arg, dmu_tx_t *tx)
 		dsl_dir_rele(dd, FTAG);
 		drba->drba_cookie->drc_newfs = B_TRUE;
 	}
+
 	VERIFY0(dsl_dataset_own_obj(dp, dsobj, dsflags, dmu_recv_tag, &newds));
 	VERIFY0(dmu_objset_from_ds(newds, &os));
 
@@ -568,9 +570,6 @@ dmu_recv_resume_begin_check(void *arg, dmu_tx_t *tx)
 	dsl_dataset_t *ds;
 	const char *tofs = drba->drba_cookie->drc_tofs;
 
-	/* 6 extra bytes for /%recv */
-	char recvname[ZFS_MAX_DATASET_NAME_LEN + 6];
-
 	/* already checked */
 	ASSERT3U(drrb->drr_magic, ==, DMU_BACKUP_MAGIC);
 	ASSERT(featureflags & DMU_BACKUP_FEATURE_RESUMING);
@@ -611,6 +610,8 @@ dmu_recv_resume_begin_check(void *arg, dmu_tx_t *tx)
 	    !spa_feature_is_enabled(dp->dp_spa, SPA_FEATURE_LARGE_DNODE))
 		return (SET_ERROR(ENOTSUP));
 
+	/* 6 extra bytes for /%recv */
+	char recvname[ZFS_MAX_DATASET_NAME_LEN + 6];
 	(void) snprintf(recvname, sizeof (recvname), "%s/%s",
 	    tofs, recv_clone_name);
 
@@ -1165,7 +1166,6 @@ receive_object(struct receive_writer_arg *rwa, struct drr_object *drro,
 	}
 
 	err = dmu_object_info(rwa->os, drro->drr_object, &doi);
-
 	if (err != 0 && err != ENOENT && err != EEXIST)
 		return (SET_ERROR(EINVAL));
 
@@ -1441,15 +1441,14 @@ receive_freeobjects(struct receive_writer_arg *rwa,
 	for (obj = drrfo->drr_firstobj == 0 ? 1 : drrfo->drr_firstobj;
 	    obj < drrfo->drr_firstobj + drrfo->drr_numobjs && next_err == 0;
 	    next_err = dmu_object_next(rwa->os, &obj, FALSE, 0)) {
+		dmu_object_info_t doi;
 		int err;
 
-		err = dmu_object_info(rwa->os, obj, NULL);
-		if (err == ENOENT) {
-			obj++;
+		err = dmu_object_info(rwa->os, obj, &doi);
+		if (err == ENOENT)
 			continue;
-		} else if (err != 0) {
+		 else if (err != 0)
 			return (err);
-		}
 
 		err = dmu_free_long_object(rwa->os, obj);
 
@@ -1571,13 +1570,13 @@ receive_write_byref(struct receive_writer_arg *rwa,
 		ref_os = rwa->os;
 	}
 
+	if (drrwbr->drr_object > rwa->max_object)
+		rwa->max_object = drrwbr->drr_object;
+
 	if (rwa->raw)
 		flags |= DMU_READ_NO_DECRYPT;
 
 	/* may return either a regular db or an encrypted one */
-	if (drrwbr->drr_object > rwa->max_object)
-		rwa->max_object = drrwbr->drr_object;
-
 	err = dmu_buf_hold(ref_os, drrwbr->drr_refobject,
 	    drrwbr->drr_refoffset, FTAG, &dbp, flags);
 	if (err != 0)
@@ -1616,15 +1615,17 @@ receive_write_embedded(struct receive_writer_arg *rwa,
 	int err;
 
 	if (drrwe->drr_offset + drrwe->drr_length < drrwe->drr_offset)
-		return (EINVAL);
+		return (SET_ERROR(EINVAL));
 
 	if (drrwe->drr_psize > BPE_PAYLOAD_SIZE)
-		return (EINVAL);
+		return (SET_ERROR(EINVAL));
 
 	if (drrwe->drr_etype >= NUM_BP_EMBEDDED_TYPES)
-		return (EINVAL);
+		return (SET_ERROR(EINVAL));
 	if (drrwe->drr_compression >= ZIO_COMPRESS_FUNCTIONS)
-		return (EINVAL);
+		return (SET_ERROR(EINVAL));
+	if (rwa->raw)
+		return (SET_ERROR(EINVAL));
 
 	if (drrwe->drr_object > rwa->max_object)
 		rwa->max_object = drrwe->drr_object;
@@ -1696,8 +1697,6 @@ receive_spill(struct receive_writer_arg *rwa, struct drr_spill *drrs,
 		dmu_tx_abort(tx);
 		return (err);
 	}
-
-	dmu_buf_will_dirty(db_spill, tx);
 
 	if (db_spill->db_size < drrs->drr_length)
 		VERIFY(0 == dbuf_spill_set_blksz(db_spill,
@@ -1771,6 +1770,9 @@ receive_object_range(struct receive_writer_arg *rwa,
 	    P2PHASE(drror->drr_firstobj, DNODES_PER_BLOCK) != 0 ||
 	    !rwa->raw)
 		return (SET_ERROR(EINVAL));
+
+	if (drror->drr_firstobj > rwa->max_object)
+		rwa->max_object = drror->drr_firstobj;
 
 	/*
 	 * The DRR_OBJECT_RANGE handling must be deferred to receive_object()
@@ -2022,7 +2024,7 @@ receive_read_record(struct receive_arg *ra)
 		 * See receive_read_prefetch for an explanation why we're
 		 * storing this object in the ignore_obj_list.
 		 */
-		if (err == ENOENT ||
+		if (err == ENOENT || err == EEXIST ||
 		    (err == 0 && doi.doi_data_block_size != drro->drr_blksz)) {
 			objlist_insert(&ra->ignore_objlist, drro->drr_object);
 			err = 0;
@@ -2159,6 +2161,103 @@ receive_read_record(struct receive_arg *ra)
 	}
 }
 
+static void
+dprintf_drr(struct receive_record_arg *rrd, int err)
+{
+#ifdef ZFS_DEBUG
+	switch (rrd->header.drr_type) {
+	case DRR_OBJECT:
+	{
+		struct drr_object *drro = &rrd->header.drr_u.drr_object;
+		dprintf("drr_type = OBJECT obj = %llu type = %u "
+		    "bonustype = %u blksz = %u bonuslen = %u cksumtype = %u "
+		    "compress = %u dn_slots = %u err = %d\n",
+		    drro->drr_object, drro->drr_type,  drro->drr_bonustype,
+		    drro->drr_blksz, drro->drr_bonuslen,
+		    drro->drr_checksumtype, drro->drr_compress,
+		    drro->drr_dn_slots, err);
+		break;
+	}
+	case DRR_FREEOBJECTS:
+	{
+		struct drr_freeobjects *drrfo =
+		    &rrd->header.drr_u.drr_freeobjects;
+		dprintf("drr_type = FREEOBJECTS firstobj = %llu "
+		    "numobjs = %llu err = %d\n",
+		    drrfo->drr_firstobj, drrfo->drr_numobjs, err);
+		break;
+	}
+	case DRR_WRITE:
+	{
+		struct drr_write *drrw = &rrd->header.drr_u.drr_write;
+		dprintf("drr_type = WRITE obj = %llu type = %u offset = %llu "
+		    "lsize = %llu cksumtype = %u flags = %u "
+		    "compress = %u psize = %llu err = %d\n",
+		    drrw->drr_object, drrw->drr_type, drrw->drr_offset,
+		    drrw->drr_logical_size, drrw->drr_checksumtype,
+		    drrw->drr_flags, drrw->drr_compressiontype,
+		    drrw->drr_compressed_size, err);
+		break;
+	}
+	case DRR_WRITE_BYREF:
+	{
+		struct drr_write_byref *drrwbr =
+		    &rrd->header.drr_u.drr_write_byref;
+		dprintf("drr_type = WRITE_BYREF obj = %llu offset = %llu "
+		    "length = %llu toguid = %llx refguid = %llx "
+		    "refobject = %llu refoffset = %llu cksumtype = %u "
+		    "flags = %u err = %d\n",
+		    drrwbr->drr_object, drrwbr->drr_offset,
+		    drrwbr->drr_length, drrwbr->drr_toguid,
+		    drrwbr->drr_refguid, drrwbr->drr_refobject,
+		    drrwbr->drr_refoffset, drrwbr->drr_checksumtype,
+		    drrwbr->drr_flags, err);
+		break;
+	}
+	case DRR_WRITE_EMBEDDED:
+	{
+		struct drr_write_embedded *drrwe =
+		    &rrd->header.drr_u.drr_write_embedded;
+		dprintf("drr_type = WRITE_EMBEDDED obj = %llu offset = %llu "
+		    "length = %llu compress = %u etype = %u lsize = %u "
+		    "psize = %u err = %d\n",
+		    drrwe->drr_object, drrwe->drr_offset, drrwe->drr_length,
+		    drrwe->drr_compression, drrwe->drr_etype,
+		    drrwe->drr_lsize, drrwe->drr_psize, err);
+		break;
+	}
+	case DRR_FREE:
+	{
+		struct drr_free *drrf = &rrd->header.drr_u.drr_free;
+		dprintf("drr_type = FREE obj = %llu offset = %llu "
+		    "length = %lld err = %d\n",
+		    drrf->drr_object, drrf->drr_offset, drrf->drr_length,
+		    err);
+		break;
+	}
+	case DRR_SPILL:
+	{
+		struct drr_spill *drrs = &rrd->header.drr_u.drr_spill;
+		dprintf("drr_type = SPILL obj = %llu length = %llu "
+		    "err = %d\n", drrs->drr_object, drrs->drr_length, err);
+		break;
+	}
+	case DRR_OBJECT_RANGE:
+	{
+		struct drr_object_range *drror =
+		    &rrd->header.drr_u.drr_object_range;
+		dprintf("drr_type = OBJECT_RANGE firstobj = %llu "
+		    "numslots = %llu flags = %u err = %d\n",
+		    drror->drr_firstobj, drror->drr_numslots,
+		    drror->drr_flags, err);
+		break;
+	}
+	default:
+		return;
+	}
+#endif
+}
+
 /*
  * Commit the records to the pool.
  */
@@ -2179,13 +2278,14 @@ receive_process_record(struct receive_writer_arg *rwa,
 		err = receive_object(rwa, drro, rrd->payload);
 		kmem_free(rrd->payload, rrd->payload_size);
 		rrd->payload = NULL;
-		return (err);
+		break;
 	}
 	case DRR_FREEOBJECTS:
 	{
 		struct drr_freeobjects *drrfo =
 		    &rrd->header.drr_u.drr_freeobjects;
-		return (receive_freeobjects(rwa, drrfo));
+		err = receive_freeobjects(rwa, drrfo);
+		break;
 	}
 	case DRR_WRITE:
 	{
@@ -2196,13 +2296,14 @@ receive_process_record(struct receive_writer_arg *rwa,
 			dmu_return_arcbuf(rrd->arc_buf);
 		rrd->arc_buf = NULL;
 		rrd->payload = NULL;
-		return (err);
+		break;
 	}
 	case DRR_WRITE_BYREF:
 	{
 		struct drr_write_byref *drrwbr =
 		    &rrd->header.drr_u.drr_write_byref;
-		return (receive_write_byref(rwa, drrwbr));
+		err = receive_write_byref(rwa, drrwbr);
+		break;
 	}
 	case DRR_WRITE_EMBEDDED:
 	{
@@ -2211,12 +2312,13 @@ receive_process_record(struct receive_writer_arg *rwa,
 		err = receive_write_embedded(rwa, drrwe, rrd->payload);
 		kmem_free(rrd->payload, rrd->payload_size);
 		rrd->payload = NULL;
-		return (err);
+		break;
 	}
 	case DRR_FREE:
 	{
 		struct drr_free *drrf = &rrd->header.drr_u.drr_free;
-		return (receive_free(rwa, drrf));
+		err = receive_free(rwa, drrf);
+		break;
 	}
 	case DRR_SPILL:
 	{
@@ -2227,18 +2329,23 @@ receive_process_record(struct receive_writer_arg *rwa,
 			dmu_return_arcbuf(rrd->arc_buf);
 		rrd->arc_buf = NULL;
 		rrd->payload = NULL;
-		return (err);
+		break;
 	}
 	case DRR_OBJECT_RANGE:
 	{
 		struct drr_object_range *drror =
 		    &rrd->header.drr_u.drr_object_range;
 		err = receive_object_range(rwa, drror);
-		return (err);
+		break;
 	}
 	default:
-		return (SET_ERROR(EINVAL));
+		err = (SET_ERROR(EINVAL));
 	}
+
+	if (err != 0)
+		dprintf_drr(rrd, err);
+
+	return (err);
 }
 
 /*
@@ -2320,24 +2427,29 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
     int cleanup_fd, uint64_t *action_handlep)
 {
 	int err = 0;
-	struct receive_arg ra = { 0 };
-	struct receive_writer_arg rwa = { 0 };
+	struct receive_arg *ra;
+	struct receive_writer_arg *rwa;
 	int featureflags;
+	uint32_t payloadlen;
+	void *payload;
 	nvlist_t *begin_nvl = NULL;
 
-	ra.byteswap = drc->drc_byteswap;
-	ra.raw = drc->drc_raw;
-	ra.cksum = drc->drc_cksum;
-	ra.vp = vp;
-	ra.voff = *voffp;
+	ra = kmem_zalloc(sizeof (*ra), KM_SLEEP);
+	rwa = kmem_zalloc(sizeof (*rwa), KM_SLEEP);
+
+	ra->byteswap = drc->drc_byteswap;
+	ra->raw = drc->drc_raw;
+	ra->cksum = drc->drc_cksum;
+	ra->vp = vp;
+	ra->voff = *voffp;
 
 	if (dsl_dataset_is_zapified(drc->drc_ds)) {
 		(void) zap_lookup(drc->drc_ds->ds_dir->dd_pool->dp_meta_objset,
 		    drc->drc_ds->ds_object, DS_FIELD_RESUME_BYTES,
-		    sizeof (ra.bytes_read), 1, &ra.bytes_read);
+		    sizeof (ra->bytes_read), 1, &ra->bytes_read);
 	}
 
-	objlist_create(&ra.ignore_objlist);
+	objlist_create(&ra->ignore_objlist);
 
 	/* these were verified in dmu_recv_begin */
 	ASSERT3U(DMU_GET_STREAM_HDRTYPE(drc->drc_drrb->drr_versioninfo), ==,
@@ -2347,19 +2459,15 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 	/*
 	 * Open the objset we are modifying.
 	 */
-	VERIFY0(dmu_objset_from_ds(drc->drc_ds, &ra.os));
+	VERIFY0(dmu_objset_from_ds(drc->drc_ds, &ra->os));
 
 	ASSERT(dsl_dataset_phys(drc->drc_ds)->ds_flags & DS_FLAG_INCONSISTENT);
 
 	featureflags = DMU_GET_FEATUREFLAGS(drc->drc_drrb->drr_versioninfo);
-	ra.featureflags = featureflags;
+	ra->featureflags = featureflags;
 
-	/* embedded data is incompatible with encrypted datasets */
-	if (ra.os->os_encrypted &&
-	    (featureflags & DMU_BACKUP_FEATURE_EMBED_DATA)) {
-		err = SET_ERROR(EINVAL);
-		goto out;
-	}
+	ASSERT0(ra->os->os_encrypted &&
+	    (featureflags & DMU_BACKUP_FEATURE_EMBED_DATA));
 
 	/* if this stream is dedup'ed, set up the avl tree for guid mapping */
 	if (featureflags & DMU_BACKUP_FEATURE_DEDUP) {
@@ -2376,32 +2484,32 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 		}
 
 		if (*action_handlep == 0) {
-			rwa.guid_to_ds_map =
+			rwa->guid_to_ds_map =
 			    kmem_alloc(sizeof (avl_tree_t), KM_SLEEP);
-			avl_create(rwa.guid_to_ds_map, guid_compare,
+			avl_create(rwa->guid_to_ds_map, guid_compare,
 			    sizeof (guid_map_entry_t),
 			    offsetof(guid_map_entry_t, avlnode));
 			err = zfs_onexit_add_cb(minor,
-			    free_guid_map_onexit, rwa.guid_to_ds_map,
+			    free_guid_map_onexit, rwa->guid_to_ds_map,
 			    action_handlep);
 			if (err != 0)
 				goto out;
 		} else {
 			err = zfs_onexit_cb_data(minor, *action_handlep,
-			    (void **)&rwa.guid_to_ds_map);
+			    (void **)&rwa->guid_to_ds_map);
 			if (err != 0)
 				goto out;
 		}
 
-		drc->drc_guid_to_ds_map = rwa.guid_to_ds_map;
+		drc->drc_guid_to_ds_map = rwa->guid_to_ds_map;
 	}
 
-	uint32_t payloadlen = drc->drc_drr_begin->drr_payloadlen;
-	void *payload = NULL;
+	payloadlen = drc->drc_drr_begin->drr_payloadlen;
+	payload = NULL;
 	if (payloadlen != 0)
 		payload = kmem_alloc(payloadlen, KM_SLEEP);
 
-	err = receive_read_payload_and_next_header(&ra, payloadlen, payload);
+	err = receive_read_payload_and_next_header(ra, payloadlen, payload);
 	if (err != 0) {
 		if (payloadlen != 0)
 			kmem_free(payload, payloadlen);
@@ -2418,7 +2526,7 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 	if (featureflags & DMU_BACKUP_FEATURE_RAW) {
 		nvlist_t *keynvl = NULL;
 
-		ASSERT(ra.os->os_encrypted);
+		ASSERT(ra->os->os_encrypted);
 		ASSERT(drc->drc_raw);
 
 		err = nvlist_lookup_nvlist(begin_nvl, "crypt_keydata", &keynvl);
@@ -2431,7 +2539,7 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 		 * are sure the rest of the receive succeeded so we stash
 		 * the keynvl away until then.
 		 */
-		err = dsl_crypto_recv_raw(spa_name(ra.os->os_spa),
+		err = dsl_crypto_recv_raw(spa_name(ra->os->os_spa),
 		    drc->drc_ds->ds_object, drc->drc_fromsnapobj,
 		    drc->drc_drrb->drr_type, keynvl, drc->drc_newfs);
 		if (err != 0)
@@ -2447,96 +2555,88 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 	}
 
 	if (featureflags & DMU_BACKUP_FEATURE_RESUMING) {
-		err = resume_check(&ra, begin_nvl);
+		err = resume_check(ra, begin_nvl);
 		if (err != 0)
 			goto out;
 	}
 
-	(void) bqueue_init(&rwa.q, zfs_recv_queue_length,
+	(void) bqueue_init(&rwa->q,
+	    MAX(zfs_recv_queue_length, 2 * zfs_max_recordsize),
 	    offsetof(struct receive_record_arg, node));
-	cv_init(&rwa.cv, NULL, CV_DEFAULT, NULL);
-	mutex_init(&rwa.mutex, NULL, MUTEX_DEFAULT, NULL);
-	rwa.os = ra.os;
-	rwa.byteswap = drc->drc_byteswap;
-	rwa.resumable = drc->drc_resumable;
-	rwa.raw = drc->drc_raw;
-	rwa.os->os_raw_receive = drc->drc_raw;
+	cv_init(&rwa->cv, NULL, CV_DEFAULT, NULL);
+	mutex_init(&rwa->mutex, NULL, MUTEX_DEFAULT, NULL);
+	rwa->os = ra->os;
+	rwa->byteswap = drc->drc_byteswap;
+	rwa->resumable = drc->drc_resumable;
+	rwa->raw = drc->drc_raw;
+	rwa->os->os_raw_receive = drc->drc_raw;
 
-	(void) thread_create(NULL, 0, receive_writer_thread, &rwa, 0, curproc,
+	(void) thread_create(NULL, 0, receive_writer_thread, rwa, 0, curproc,
 	    TS_RUN, minclsyspri);
 	/*
-	 * We're reading rwa.err without locks, which is safe since we are the
+	 * We're reading rwa->err without locks, which is safe since we are the
 	 * only reader, and the worker thread is the only writer.  It's ok if we
 	 * miss a write for an iteration or two of the loop, since the writer
 	 * thread will keep freeing records we send it until we send it an eos
 	 * marker.
 	 *
-	 * We can leave this loop in 3 ways:  First, if rwa.err is
+	 * We can leave this loop in 3 ways:  First, if rwa->err is
 	 * non-zero.  In that case, the writer thread will free the rrd we just
 	 * pushed.  Second, if  we're interrupted; in that case, either it's the
-	 * first loop and ra.rrd was never allocated, or it's later, and ra.rrd
+	 * first loop and ra->rrd was never allocated, or it's later and ra->rrd
 	 * has been handed off to the writer thread who will free it.  Finally,
 	 * if receive_read_record fails or we're at the end of the stream, then
-	 * we free ra.rrd and exit.
+	 * we free ra->rrd and exit.
 	 */
-	while (rwa.err == 0) {
+	while (rwa->err == 0) {
 		if (issig(JUSTLOOKING) && issig(FORREAL)) {
 			err = SET_ERROR(EINTR);
 			break;
 		}
 
-		ASSERT3P(ra.rrd, ==, NULL);
-		ra.rrd = ra.next_rrd;
-		ra.next_rrd = NULL;
-		/* Allocates and loads header into ra.next_rrd */
-		err = receive_read_record(&ra);
+		ASSERT3P(ra->rrd, ==, NULL);
+		ra->rrd = ra->next_rrd;
+		ra->next_rrd = NULL;
+		/* Allocates and loads header into ra->next_rrd */
+		err = receive_read_record(ra);
 
-		if (ra.rrd->header.drr_type == DRR_END || err != 0) {
-			kmem_free(ra.rrd, sizeof (*ra.rrd));
-			ra.rrd = NULL;
+		if (ra->rrd->header.drr_type == DRR_END || err != 0) {
+			kmem_free(ra->rrd, sizeof (*ra->rrd));
+			ra->rrd = NULL;
 			break;
 		}
 
-		bqueue_enqueue(&rwa.q, ra.rrd,
-		    sizeof (struct receive_record_arg) + ra.rrd->payload_size);
-		ra.rrd = NULL;
+		bqueue_enqueue(&rwa->q, ra->rrd,
+		    sizeof (struct receive_record_arg) + ra->rrd->payload_size);
+		ra->rrd = NULL;
 	}
-	ASSERT3P(ra.rrd, ==, NULL);
-	ra.rrd = kmem_zalloc(sizeof (*ra.rrd), KM_SLEEP);
-	ra.rrd->eos_marker = B_TRUE;
-	bqueue_enqueue(&rwa.q, ra.rrd, 1);
+	ASSERT3P(ra->rrd, ==, NULL);
+	ra->rrd = kmem_zalloc(sizeof (*ra->rrd), KM_SLEEP);
+	ra->rrd->eos_marker = B_TRUE;
+	bqueue_enqueue(&rwa->q, ra->rrd, 1);
 
-	mutex_enter(&rwa.mutex);
-	while (!rwa.done) {
-		cv_wait(&rwa.cv, &rwa.mutex);
+	mutex_enter(&rwa->mutex);
+	while (!rwa->done) {
+		cv_wait(&rwa->cv, &rwa->mutex);
 	}
-	mutex_exit(&rwa.mutex);
+	mutex_exit(&rwa->mutex);
 
 	/*
 	 * If we are receiving a full stream as a clone, all object IDs which
 	 * are greater than the maximum ID referenced in the stream are
-	 * by definition unused and must be freed. Note that it's possible that
-	 * we've resumed this send and the first record we received was the END
-	 * record. In that case, max_object would be 0, but we shouldn't start
-	 * freeing all objects from there; instead we should start from the
-	 * resumeobj.
+	 * by definition unused and must be freed.
 	 */
 	if (drc->drc_clone && drc->drc_drrb->drr_fromguid == 0) {
-		uint64_t obj;
-		if (nvlist_lookup_uint64(begin_nvl, "resume_object", &obj) != 0)
-			obj = 0;
-		if (rwa.max_object > obj)
-			obj = rwa.max_object;
-		obj++;
+		uint64_t obj = rwa->max_object + 1;
 		int free_err = 0;
 		int next_err = 0;
 
 		while (next_err == 0) {
-			free_err = dmu_free_long_object(rwa.os, obj);
+			free_err = dmu_free_long_object(rwa->os, obj);
 			if (free_err != 0 && free_err != ENOENT)
 				break;
 
-			next_err = dmu_object_next(rwa.os, &obj, FALSE, 0);
+			next_err = dmu_object_next(rwa->os, &obj, FALSE, 0);
 		}
 
 		if (err == 0) {
@@ -2547,11 +2647,11 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 		}
 	}
 
-	cv_destroy(&rwa.cv);
-	mutex_destroy(&rwa.mutex);
-	bqueue_destroy(&rwa.q);
+	cv_destroy(&rwa->cv);
+	mutex_destroy(&rwa->mutex);
+	bqueue_destroy(&rwa->q);
 	if (err == 0)
-		err = rwa.err;
+		err = rwa->err;
 
 out:
 	/*
@@ -2559,8 +2659,8 @@ out:
 	 * we need to clean up the next_rrd we create by processing the
 	 * DRR_BEGIN record.
 	 */
-	if (ra.next_rrd != NULL)
-		kmem_free(ra.next_rrd, sizeof (*ra.next_rrd));
+	if (ra->next_rrd != NULL)
+		kmem_free(ra->next_rrd, sizeof (*ra->next_rrd));
 
 	nvlist_free(begin_nvl);
 	if ((featureflags & DMU_BACKUP_FEATURE_DEDUP) && (cleanup_fd != -1))
@@ -2576,8 +2676,10 @@ out:
 		nvlist_free(drc->drc_keynvl);
 	}
 
-	*voffp = ra.voff;
-	objlist_destroy(&ra.ignore_objlist);
+	*voffp = ra->voff;
+	objlist_destroy(&ra->ignore_objlist);
+	kmem_free(ra, sizeof (*ra));
+	kmem_free(rwa, sizeof (*rwa));
 	return (err);
 }
 
