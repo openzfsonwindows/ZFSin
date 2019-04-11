@@ -44,7 +44,7 @@ AC_SUBST(PREFIX)
 # - top	of build tree (ZFSin/zpool.exe)
 # - build output dir (ZFSin/x64/Debug/zpool.exe)
 # If installer was used, PATH is already updated.
-AC_SUBST(PATH,"$PATH:$(PWD)/../../..":"$PATH:$(PWD)/../../../x64/Debug":"$PATH:\$(PWD)/../../../x64/Release":"$(PWD)/zfs-tests/cmd/scripts")
+AC_SUBST(PATH,"$(PWD)/../../..":"$PATH:$(PWD)/../../../x64/Debug":"$PATH:\$(PWD)/../../../x64/Release":"$(PWD)/zfs-tests/cmd/scripts:$PATH")
 
 m4_include(config/system.m4)
 m4_include(config/commands-common.m4)
