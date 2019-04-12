@@ -3440,34 +3440,3 @@ function set_tunable_impl
 	esac
 }
 
-#
-# Get a global system tunable
-#
-# $1 tunable name
-#
-function get_tunable
-{
-	get_tunable_impl "$1"
-}
-
-function get_tunable_impl
-{
-	typeset tunable="$1"
-	typeset module="${2:-zfs}"
-
-	[[ -z "$tunable" ]] && return 1
-
-	case "$(uname)" in
-	Linux)
-		typeset zfs_tunables="/sys/module/$module/parameters"
-		[[ -f "$zfs_tunables/$tunable" ]] || return 1
-		cat $zfs_tunables/$tunable
-		return "$?"
-		;;
-	SunOS)
-		[[ "$module" -eq "zfs" ]] || return 1
-		;;
-	esac
-
-	return 1
-}
