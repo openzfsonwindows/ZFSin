@@ -856,7 +856,7 @@ NTSTATUS CreateReparsePoint(POBJECT_ATTRIBUTES poa, LPCWSTR SubstituteName, LPCW
 
 	dprintf("%s: \n", __func__);
 
-	status = ZwDeleteFile(poa);
+	status = ZwDeleteFile(poa); // this is stalled forever waiting for event of deletion - possibly ZFS doesnt send event?
 	if (status != STATUS_SUCCESS) dprintf("pre-rmdir failed 0x%x\n", status);
 	status = ZwCreateFile(&hFile, FILE_ALL_ACCESS, poa, &iosb, 0, 0, 0,
 		FILE_CREATE, FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, 0, 0);

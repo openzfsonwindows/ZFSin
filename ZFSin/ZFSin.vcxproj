@@ -127,13 +127,21 @@
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <ApiValidator_Enable>false</ApiValidator_Enable>
     <Inf2CatUseLocalTime>true</Inf2CatUseLocalTime>
-    <TimeStampServer />
+    <TimeStampServer>
+    </TimeStampServer>
+    <Inf2CatWindowsVersionList>8_X64,8_X86,Server8_X64,Server2008R2_X64,7_X64,7_X86,Server2008_X64,Server2008_X86,Vista_X64,Vista_X86,Server2003_X64,Server2003_X86,XP_X64,XP_X86,2000,10_X86,10_X64,Server10_X64</Inf2CatWindowsVersionList>
+    <Inf2CatVerbose>true</Inf2CatVerbose>
+    <DisableProductionSignDebugWarnings>true</DisableProductionSignDebugWarnings>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
     <ApiValidator_Enable>false</ApiValidator_Enable>
     <Inf2CatUseLocalTime>true</Inf2CatUseLocalTime>
-    <TimeStampServer />
+    <TimeStampServer>
+    </TimeStampServer>
+    <Inf2CatWindowsVersionList>8_X64,8_X86,Server8_X64,Server2008R2_X64,7_X64,7_X86,Server2008_X64,Server2008_X86,Vista_X64,Vista_X86,Server2003_X64,Server2003_X86,XP_X64,XP_X86,2000,10_X86,10_X64,Server10_X64</Inf2CatWindowsVersionList>
+    <Inf2CatVerbose>true</Inf2CatVerbose>
+    <DisableProductionSignDebugWarnings>true</DisableProductionSignDebugWarnings>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
