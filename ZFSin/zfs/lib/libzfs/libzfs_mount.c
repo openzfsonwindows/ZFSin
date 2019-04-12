@@ -1271,6 +1271,9 @@ zfs_share_proto(zfs_handle_t *zhp, zfs_share_proto_t *proto)
 		(void) zfs_error_fmt(hdl, EZFS_SHARENFSFAILED,
 		    dgettext(TEXT_DOMAIN, "cannot share '%s': %s"),
 		    zfs_get_name(zhp), sa_errorstr(ret));
+#ifdef _WIN32
+		return (0);
+#endif
 		return (-1);
 	}
 
@@ -1314,6 +1317,7 @@ zfs_share_proto(zfs_handle_t *zhp, zfs_share_proto_t *proto)
 				    dgettext(TEXT_DOMAIN, "cannot share '%s'"),
 				    zfs_get_name(zhp));
 #endif
+				return (0);
 				return (-1);
 			}
 			hdl->libzfs_shareflags |= ZFSSHARE_MISS;
