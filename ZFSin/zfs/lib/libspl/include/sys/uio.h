@@ -110,4 +110,39 @@ typedef struct xuio {
 #define	XUIO_XUZC_PRIV(xuio)	xuio->xu_ext.xu_zc.xu_zc_priv
 #define	XUIO_XUZC_RW(xuio)	xuio->xu_ext.xu_zc.xu_zc_rw
 
+extern struct uio* uio_create(
+	int a_iovcount,             /* max number of iovecs */
+	off_t a_offset,             /* current offset */
+	int a_spacetype,            /* type of address space */
+	int a_iodirection);         /* read or write flag */
+
+
+extern user_addr_t uio_curriovbase(struct uio* a_uio);
+extern int uio_iovcnt(struct uio* a_uio);
+extern void uio_free(struct uio* a_uio);
+
+extern int uio_addiov(struct uio* o, user_addr_t a_baseaddr, user_size_t a_length);
+
+extern int uio_getiov(struct uio* a_uio,
+	int a_index,
+	user_addr_t* a_baseaddr_p,
+	user_size_t* a_length_p);
+
+extern user_size_t uio_curriovlen(struct uio* a_uio);
+
+extern int uio_isuserspace(struct uio* a_uio);
+
+extern user_size_t uio_resid(struct uio* a_uio);
+
+extern void uio_setrw(struct uio* a_uio, int a_value);
+
+extern int uiomove(const char* cp, int n, int r, struct uio* uio);
+
+extern void uio_update(struct uio* a_uio, user_size_t a_count);
+
+extern off_t uio_offset(struct uio* a_uio);
+
+extern void uio_reset(struct uio* a_uio, off_t a_offset, int a_spacetype,
+	int a_iodirection);
+
 #endif	/* _SYS_UIO_H */

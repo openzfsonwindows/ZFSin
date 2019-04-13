@@ -65,6 +65,7 @@
 #include <sys/blkptr.h>
 #include <zfs_comutil.h>
 #include <libzfs.h>
+#include <getopt.h>
 
 #include "zdb.h"
 

@@ -35,7 +35,10 @@
 #include <strings.h>
 #include <unistd.h>
 #include <stddef.h>
-
+#ifdef _WIN32
+#include <getopt.h>
+#endif
+#include <uuid.h>
 #include <sys/dmu.h>
 #include <sys/zfs_ioctl.h>
 #include <sys/zio.h>

@@ -79,6 +79,7 @@
 #include <sys/stat.h>
 #include <sys/vtoc.h>
 #include <sys/file.h>
+#include <uuid.h>
 #include <sys/mntent.h>
 //#include <uuid/uuid.h>
 #ifdef HAVE_LIBBLKID

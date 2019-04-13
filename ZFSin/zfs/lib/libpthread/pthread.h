@@ -346,6 +346,8 @@ static void pthread_tls_init(void)
 	if (_pthread_tls == TLS_OUT_OF_INDEXES) abort();
 }
 
+static int pthread_rwlock_unlock(pthread_rwlock_t* l);
+
 static void _pthread_cleanup_dest(pthread_t t)
 {
 	int i, j;

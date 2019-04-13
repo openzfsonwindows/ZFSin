@@ -265,6 +265,9 @@ extern bool_t	xdr_double();
 extern bool_t	xdr_reference();
 extern bool_t	xdr_pointer();
 extern bool_t	xdr_wrapstring();
+extern bool_t   xdr_longlong_t(XDR* xdrs, longlong_t* hp);
+extern bool_t xdr_u_longlong_t(XDR* xdrs, u_longlong_t* hp);
+extern bool_t xdr_control(XDR* xdrs, int request, void* info);
 
 /*
  * Common opaque bytes objects used by many rpc protocols;

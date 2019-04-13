@@ -1,0 +1,6 @@
+add_subdirectory(icp)
+add_subdirectory(lua)
+add_subdirectory(zfs)
+add_subdirectory(zcommon)
+add_subdirectory(nvpair)
+add_subdirectory(unicode)

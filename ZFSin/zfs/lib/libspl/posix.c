@@ -36,6 +36,7 @@
 #include <sys/zfs_ioctl.h>
 #include <WinSock2.h>
 #include <pthread.h>
+#include <Windows.h>
 
 int posix_memalign(void **memptr, uint32_t alignment, uint32_t size)
 {
@@ -52,6 +53,13 @@ int fsync(int fd) {
 	if (!FlushFileBuffers(h)) 
 		return EIO; 
 	return 0; 
+}
+
+const char* getexecname(void)
+{
+	__declspec(thread) static char execname[32767 + 1];
+	GetModuleFileNameA(NULL, execname, sizeof(execname));
+	return execname;
 }
 
 struct passwd *getpwnam(const char *login)

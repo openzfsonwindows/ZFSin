@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/w32_types.h>
+extern hrtime_t gethrtime(void);
 
 #ifdef _LP64
 #define	TMPPATHFMT	"%s/uu%ld"

@@ -62,6 +62,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <libintl.h>
+#include <getopt.h>
 
 #include <../lib/libkstat/kstat.h>  // ick
 
@@ -69,6 +70,8 @@
 #include "statcommon.h"
 
 #pragma comment(lib, "Ws2_32.lib")
+
+extern hrtime_t gethrtime(void);
 
 char	*cmdname = "kstat";	/* Name of this command */
 int	caught_cont = 0;	/* Have caught a SIGCONT */

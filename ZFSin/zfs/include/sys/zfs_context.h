@@ -64,7 +64,11 @@
 
 #endif
 
-#define noinline
+#ifdef noinline
+#undef noinline
+#endif
+
+#define noinline __declspec(noinline)
 
 #ifndef MAX_UPL_TRANSFER
 #define MAX_UPL_TRANSFER 256
