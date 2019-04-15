@@ -618,7 +618,9 @@ spa_prop_validate(spa_t *spa, nvlist_t *props)
 
 				/*
 				 * Must be ZPL, and its property settings
-				 * must be supported.
+				 * must be supported by GRUB (compression
+				 * is not gzip, and large dnodes are not
+				 * used).
 				 */
 
 				if (dmu_objset_type(os) != DMU_OST_ZFS) {
