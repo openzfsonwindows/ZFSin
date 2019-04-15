@@ -26,7 +26,8 @@
 .\" Copyright (c) 2014, Joyent, Inc. All rights reserved.
 .\" Copyright (c) 2014 by Adam Stevko. All rights reserved.
 .\" Copyright (c) 2014 Integros [integros.com]
-.\" Copyright 2017 Nexenta Systems, Inc.
+.\" Copyright 2019 Richard Laager. All rights reserved.
+.\" Copyright 2018 Nexenta Systems, Inc.
 .\" Copyright 2018 Joyent, Inc.
 .\"
 .Dd September 16, 2016
@@ -318,7 +319,7 @@ Applications that depend on standards conformance might fail due to non-standard
 behavior when checking file system free space.
 .It Sy volume
 A logical volume exported as a raw or block device.
-This type of dataset should only be used under special circumstances.
+This type of dataset should only be used when a block device is required.
 File systems are typically used in most environments.
 .It Sy snapshot
 A read-only version of a file system or volume at a given point in time.
@@ -2478,7 +2479,7 @@ A property for sorting the output by column in ascending order based on the
 value of the property.
 The property must be one of the properties described in the
 .Sx Properties
-section, or the special value
+section or the value
 .Sy name
 to sort by the dataset name.
 Multiple properties can be specified at one time using multiple
@@ -2569,7 +2570,7 @@ and
 .Sx User Properties
 sections.
 .Pp
-The special value
+The value
 .Sy all
 can be used to display all properties that apply to the given dataset's type
 .Pq filesystem, volume, snapshot, or bookmark .
@@ -3428,6 +3429,30 @@ feature enabled.
 See
 .Xr zpool-features 5
 for details on ZFS feature flags.
+.It Fl u
+File system that is associated with the received stream is not mounted.
+.It Fl v
+Print verbose information about the stream and the time required to perform the
+receive operation.
+.It Fl x Em property
+Ensures that the effective value of the specified property after the
+receive is unaffected by the value of that property in the send stream (if any),
+as if the property had been excluded from the send stream.
+.Pp
+If the specified property is not present in the send stream, this option does
+nothing.
+.Pp
+If a received property needs to be overridden, the effective value will be
+set or inherited, depending on whether the property is inheritable or not.
+.Pp
+In the case of an incremental update,
+.Fl x
+leaves any existing local setting or explicit inheritance unchanged.
+.Pp
+All
+.Fl o
+restrictions (e.g. set-once) apply equally to
+.Fl x .
 .El
 .It Xo
 .Nm
