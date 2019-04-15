@@ -1034,6 +1034,9 @@ The
 and
 .Sy edonr
 checksum algorithms require enabling the appropriate features on the pool.
+These pool features are not supported by GRUB and must not be used on the
+pool if GRUB needs to access the pool (e.g. for /boot).
+.Pp
 Please see
 .Xr zpool-features 5
 for more information on these algorithms.
