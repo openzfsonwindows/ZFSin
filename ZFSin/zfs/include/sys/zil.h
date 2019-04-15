@@ -97,6 +97,15 @@ typedef struct zil_chain {
 #define	ZIL_MIN_BLKSZ	4096ULL
 
 /*
+ * ziltest is by and large an ugly hack, but very useful in
+ * checking replay without tedious work.
+ * When running ziltest we want to keep all itx's and so maintain
+ * a single list in the zl_itxg[] that uses a high txg: ZILTEST_TXG
+ * We subtract TXG_CONCURRENT_STATES to allow for common code.
+ */
+#define ZILTEST_TXG (UINT64_MAX - TXG_CONCURRENT_STATES)
+
+/*
  * The words of a log block checksum.
  */
 #define	ZIL_ZC_GUID_0	0
@@ -461,7 +470,7 @@ struct znode;
 struct rl;
 typedef int zil_replay_func_t(void *arg1, void *arg2, boolean_t byteswap);
 typedef int zil_get_data_t(void *arg, lr_write_t *lr, char *dbuf,
-	struct lwb *lwb, zio_t *zio, struct znode *zp, struct rl *rl);
+	struct lwb *lwb, zio_t *zio);
 
 extern int zil_parse(zilog_t *zilog, zil_parse_blk_func_t *parse_blk_func,
     zil_parse_lr_func_t *parse_lr_func, void *arg, uint64_t txg,

@@ -1219,11 +1219,7 @@ zfs_get_done(zgd_t *zgd, int error)
 	 * allocate new vnode, we don't (ZGET_FLAG_WITHOUT_VNODE), and it is
 	 * attached after zfs_get_data() is finished (and immediately released).
 	 */
-//#ifndef _WIN32
-//	if (ZTOV(zp)) {
-		VN_RELE_ASYNC(ZTOV(zp), dsl_pool_vnrele_taskq(dmu_objset_pool(os)));
-//	}
-//#endif
+	VN_RELE_ASYNC(ZTOV(zp), dsl_pool_vnrele_taskq(dmu_objset_pool(os)));
 	if (error == 0 && zgd->zgd_bp)
 		zil_lwb_add_block(zgd->zgd_lwb, zgd->zgd_bp);
 
@@ -1239,10 +1235,11 @@ static int zil_fault_io = 0;
  */
 int
 zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
-	zio_t *zio, znode_t *zp, rl_t *rl)
+	zio_t *zio)
 {
 	zfsvfs_t *zfsvfs = arg;
 	objset_t *os = zfsvfs->z_os;
+	znode_t *zp;
 	uint64_t object = lr->lr_foid;
 	uint64_t offset = lr->lr_offset;
 	uint64_t size = lr->lr_length;
@@ -1254,14 +1251,13 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 	ASSERT3P(zio, !=, NULL);
 	ASSERT3U(size, !=, 0);
 
-#ifndef _WIN32
 	/*
 	 * Nothing to do if the file has been removed
 	 * This zget is moved into zil.c
 	 */
 	if (zfs_zget(zfsvfs, object, &zp) != 0)
 		return (SET_ERROR(ENOENT));
-#endif
+
 	if (zp->z_unlinked) {
 		/*
 		 * Release the vnode asynchronously as we currently have the
@@ -1275,9 +1271,6 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 	zgd = (zgd_t *)kmem_zalloc(sizeof (zgd_t), KM_SLEEP);
 	zgd->zgd_lwb = lwb;
 	zgd->zgd_private = zp;
-#ifdef _WIN32
-	zgd->zgd_rl = rl;
-#endif
 
 	/*
 	 * Write records come in two flavors: immediate and indirect.
@@ -1288,9 +1281,7 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 	 */
 	if (buf != NULL) { /* immediate write */
 
-#ifndef _WIN32
 		zgd->zgd_rl = zfs_range_lock(zp, offset, size, RL_READER);
-#endif
 		/* test for truncation needs to be done while range locked */
 		if (offset >= zp->z_size) {
 			error = SET_ERROR(ENOENT);
@@ -1311,16 +1302,12 @@ zfs_get_data(void *arg, lr_write_t *lr, char *buf, 	struct lwb *lwb,
 			size = zp->z_blksz;
 			blkoff = ISP2(size) ? P2PHASE(offset, size) : offset;
 			offset -= blkoff;
-#ifndef _WIN32
 			zgd->zgd_rl = zfs_range_lock(zp, offset, size,
 				RL_READER);
-#endif
 			if (zp->z_blksz == size)
 				break;
 			offset += blkoff;
-#ifndef _WIN32
 			 zfs_range_unlock(zgd->zgd_rl);
-#endif
 		}
 		/* test for truncation needs to be done while range locked */
 		if (lr->lr_offset >= zp->z_size)

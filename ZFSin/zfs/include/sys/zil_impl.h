@@ -74,7 +74,8 @@ typedef enum {
     LWB_STATE_CLOSED,
     LWB_STATE_OPENED,
     LWB_STATE_ISSUED,
-    LWB_STATE_DONE,
+    LWB_STATE_WRITE_DONE,
+    LWB_STATE_FLUSH_DONE,
     LWB_NUM_STATES
 } lwb_state_t;
 
@@ -101,6 +102,7 @@ typedef struct lwb {
 	dmu_tx_t	*lwb_tx;	/* tx for log block allocation */
 	uint64_t	lwb_max_txg;	/* highest txg in this lwb */
 	list_node_t	lwb_node;	/* zilog->zl_lwb_list linkage */
+	list_t		lwb_itxs;		/* list of itx's */
 	list_t		lwb_waiters;	/* list of zil_commit_waiter's */
 	avl_tree_t	lwb_vdev_tree;	/* vdevs to flush after lwb write */
 	kmutex_t	lwb_vdev_lock;	/* protects lwb_vdev_tree */
