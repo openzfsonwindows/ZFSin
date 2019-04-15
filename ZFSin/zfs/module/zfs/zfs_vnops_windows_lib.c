@@ -2049,7 +2049,6 @@ zfs_obtain_xattr(znode_t *dzp, const char *name, mode_t mode, cred_t *cr,
 	(void) zfs_link_create(dl, xzp, tx, ZNEW);
 	zfs_log_create(zilog, tx, TX_CREATE, dzp, xzp, (char *)name,
                    NULL /* vsecp */, 0 /*acl_ids.z_fuidp*/, &vattr);
-    zfs_acl_ids_free(&acl_ids);
 	dmu_tx_commit(tx);
 
 	/*
@@ -2059,7 +2058,8 @@ zfs_obtain_xattr(znode_t *dzp, const char *name, mode_t mode, cred_t *cr,
 
 	zfs_dirent_unlock(dl);
  out:
-    if (cn.pn_buf)
+	zfs_acl_ids_free(&acl_ids);
+	if (cn.pn_buf)
 		kmem_free(cn.pn_buf, cn.pn_bufsize);
 
 	/* The REPLACE error if doesn't exist is ENOATTR */
