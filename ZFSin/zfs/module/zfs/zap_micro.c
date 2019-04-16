@@ -1190,7 +1190,7 @@ mzap_addent(zap_name_t *zn, uint64_t value)
 
 #ifdef ZFS_DEBUG
 	for (int i = 0; i < zap->zap_m.zap_num_chunks; i++) {
-		mzap_ent_phys_t *mze = &zap_m_phys(zap)->mz_chunk[i];
+		ASSERTV(mzap_ent_phys_t *mze = &zap_m_phys(zap)->mz_chunk[i]);
 		ASSERT(strcmp(zn->zn_key_orig, mze->mze_name) != 0);
 	}
 #endif
@@ -1625,4 +1625,3 @@ zap_get_stats(objset_t *os, uint64_t zapobj, zap_stats_t *zs)
 	zap_unlockdir(zap, FTAG);
 	return (0);
 }
-
