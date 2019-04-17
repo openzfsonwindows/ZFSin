@@ -211,23 +211,25 @@ int
 zvol_get_stats(objset_t *os, nvlist_t *nv)
 {
 	int error;
-	dmu_object_info_t doi;
+	dmu_object_info_t *doi;
 	uint64_t val;
 
 	error = zap_lookup(os, ZVOL_ZAP_OBJ, "size", 8, 1, &val);
 	if (error)
-		return (error);
+		return (SET_ERROR(error));
 
 	dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_VOLSIZE, val);
-
-	error = dmu_object_info(os, ZVOL_OBJ, &doi);
+	doi = kmem_alloc(sizeof (dmu_object_info_t), KM_SLEEP);
+	error = dmu_object_info(os, ZVOL_OBJ, doi);
 
 	if (error == 0) {
 		dsl_prop_nvlist_add_uint64(nv, ZFS_PROP_VOLBLOCKSIZE,
-		    doi.doi_data_block_size);
+		    doi->doi_data_block_size);
 	}
 
-	return (error);
+	kmem_free(doi, sizeof (dmu_object_info_t));
+
+	return (SET_ERROR(error));
 }
 
 static zvol_state_t *
