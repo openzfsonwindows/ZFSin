@@ -4157,7 +4157,7 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 				err = zfs_error(hdl, EZFS_EXISTS, errbuf);
 				goto out;
 			}
-			if (ioctl(hdl->libzfs_fd, ZFS_IOC_SNAPSHOT_LIST_NEXT,
+			if (zfs_ioctl(hdl, ZFS_IOC_SNAPSHOT_LIST_NEXT,
 			    &zc) == 0) {
 				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
 				    "destination has snapshots (eg. %s)\n"
@@ -4175,7 +4175,7 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 				goto out;
 			}
 			if (is_volume &&
-			    ioctl(hdl->libzfs_fd, ZFS_IOC_DATASET_LIST_NEXT,
+			    zfs_ioctl(hdl, ZFS_IOC_DATASET_LIST_NEXT,
 			    &zc) == 0) {
 				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
 				    "destination has children (eg. %s)\n"
