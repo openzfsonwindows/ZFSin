@@ -7821,7 +7821,7 @@ zfs_do_change_key(int argc, char **argv)
 			inheritkey = B_TRUE;
 			break;
 		case 'o':
-			if (parseprop(props, optarg) != 0) {
+			if (!parseprop(props, optarg)) {
 				nvlist_free(props);
 				return (1);
 			}
