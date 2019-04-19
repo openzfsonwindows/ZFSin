@@ -1628,7 +1628,7 @@ zfs_lookup(vnode_t *dvp, char *nm, vnode_t **vpp, struct componentname *cnp,
  *		excl	- flag indicating exclusive or non-exclusive mode.
  *		mode	- mode to open file with.
  *		cr	- credentials of caller.
- *		flag	- large file flag [UNUSED].
+ *		flag	- file flag.
  *		ct	- caller context
  *		vsecp 	- ACL to be set
  *
@@ -5835,7 +5835,7 @@ zfs_delmap(vnode_t *vp, offset_t off, struct as *as, caddr_t addr,
  *		bfp	- section of file to free/alloc.
  *		flag	- current file open mode flags.
  *		offset	- current file offset.
- *		cr	- credentials of caller [UNUSED].
+ *		cr	- credentials of caller.
  *		ct	- caller context.
  *
  *	RETURN:	0 on success, error code on failure.
