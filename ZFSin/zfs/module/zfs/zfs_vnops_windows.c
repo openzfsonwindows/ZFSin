@@ -787,9 +787,26 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			dprintf("%s: Parsed out streamname '%s'\n", __func__, stream_name);
 
 
-		// If we have dvp, it is HELD
-		error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), (CreateDisposition == FILE_CREATE), &finalname, &dvp, &vp, flags);
 
+
+		// There is a special case, where name is just the stream ":ZoneIdentifier:$DATA", and
+		// RelatedFileObject is set to the object.
+		if (stream_name != NULL &&
+			FileObject->RelatedFileObject && FileObject->RelatedFileObject->FsContext &&
+			strlen(filename) == 0) {
+
+			// The RelatedFileObject conditional above will assign "dvp" - but
+			// the stream_name check below will expect it in "vp". dvp_no_rele is already set.
+			ASSERT(dvp_no_rele == 1);
+			vp = FileObject->RelatedFileObject->FsContext;
+			dvp = NULL;
+
+		} else {
+
+			// If we have dvp, it is HELD
+			error = zfs_find_dvp_vp(zfsvfs, filename, (CreateFile || OpenTargetDirectory), (CreateDisposition == FILE_CREATE), &finalname, &dvp, &vp, flags);
+
+		}
 
 	} else {  // Open By File ID
 
@@ -865,12 +882,13 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	}
 
 	// Streams
-	// If we opened vp, grab it's xattrdir, and try to to locate stream
+	// If we opened vp, grab its xattrdir, and try to to locate stream
 	if (stream_name != NULL && vp != NULL) {
 		// Here, we will release dvp, and attempt to open the xattr dir.
 		// xattr dir will be the new dvp. Then we will look for streamname
 		// in xattrdir, and assign vp.
-		VN_RELE(dvp);
+		if (dvp_no_rele)
+			VN_RELE(dvp);
 		// Create the xattrdir only if we are to create a new entry
 		if (error = zfs_get_xattrdir(VTOZ(vp), &dvp, cr, CreateFile ? CREATE_XATTR_DIR : 0)) {
 			VN_RELE(vp);
