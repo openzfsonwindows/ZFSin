@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "OpenZFS On Windows"
-#define MyAppVersion "0.16"
+#define MyAppVersion "0.18"
 #define MyAppPublisher "OpenZFS"
 #define MyAppURL "http://www.openzfsonwindows.org/"
 
@@ -35,7 +35,8 @@ ChangesEnvironment=true
 WizardSmallImageFile="{#SourcePath}\Small.bmp"
 WizardImageFile="{#SourcePath}\Large.bmp"
 ; Tools/Configure Sign Tools -> Add -> "signtool" = "signtool.exe $p"
-SignTool=signtool sign /a /n $qJoergen Lundman$q /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d $qOpenZFS on Windows$q $f
+SignTool=signtool sign /sha1 ab8e4f6b94cecfa4638847122b511e507e147c50 /n $qJoergen Lundman$q /t http://timestamp.digicert.com /fd sha1 /d $qOpenZFS on Windows$q $f
+SignTool=signtool sign /sha1 ab8e4f6b94cecfa4638847122b511e507e147c50 /as /n $qJoergen Lundman$q /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d $qOpenZFS on Windows$q $f
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -59,10 +60,10 @@ Name: envPath; Description: "Add OpenZFS to PATH variable"
 [Files]
 Source: "{#SourcePath}\..\README.md"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\x64\Release\*.exe"; DestDir: "{app}"; Flags: ignoreversion sign 
-Source: "{#SourcePath}\..\x64\Release\ZFSin.sys"; DestDir: "{app}"; Flags: ignoreversion  
+Source: "{#SourcePath}\..\x64\Release\ZFSin\ZFSin.sys"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\x64\Release\ZFSin\ZFSin.cat"; DestDir: "{app}"; Flags: ignoreversion  
+Source: "{#SourcePath}\..\x64\Release\ZFSin\ZFSin.inf"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\x64\Release\ZFSin.cer"; DestDir: "{app}"; Flags: ignoreversion  
-Source: "{#SourcePath}\..\ZFSin\ZFSin.inf"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\x64\Release\*.pdb"; DestDir: "{app}\symbols"; Flags: ignoreversion  
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
