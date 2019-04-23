@@ -2344,6 +2344,104 @@ data        23.9G  14.6G  9.30G    48%         -    61%  1.00x  ONLINE  -
     c1t3d0      -      -      -      -         -
 .Ed
 .El
+.Sh ENVIRONMENT VARIABLES
+.Bl -tag -width "ZFS_ABORT"
+.It Ev ZFS_ABORT
+Cause
+.Nm zpool
+to dump core on exit for the purposes of running
+.Sy ::findleaks .
+.El
+.Bl -tag -width "ZPOOL_IMPORT_PATH"
+.It Ev ZPOOL_IMPORT_PATH
+The search path for devices or files to use with the pool. This is a colon-separated list of directories in which
+.Nm zpool
+looks for device nodes and files.
+Similar to the
+.Fl d
+option in
+.Nm zpool import .
+.El
+.Bl -tag -width "ZPOOL_VDEV_NAME_GUID"
+.It Ev ZPOOL_VDEV_NAME_GUID
+Cause
+.Nm zpool
+subcommands to output vdev guids by default.  This behavior is identical to the
+.Nm zpool status -g
+command line option.
+.El
+.Bl -tag -width "ZPOOL_VDEV_NAME_FOLLOW_LINKS"
+.It Ev ZPOOL_VDEV_NAME_FOLLOW_LINKS
+Cause
+.Nm zpool
+subcommands to follow links for vdev names by default.  This behavior is identical to the
+.Nm zpool status -L
+command line option.
+.El
+.Bl -tag -width "ZPOOL_VDEV_NAME_PATH"
+.It Ev ZPOOL_VDEV_NAME_PATH
+Cause
+.Nm zpool
+subcommands to output full vdev path names by default.  This
+behavior is identical to the
+.Nm zpool status -p
+command line option.
+.El
+.Bl -tag -width "ZFS_VDEV_DEVID_OPT_OUT"
+.It Ev ZFS_VDEV_DEVID_OPT_OUT
+Older ZFS on Linux implementations had issues when attempting to display pool
+config VDEV names if a
+.Sy devid
+NVP value is present in the pool's config.
+.Pp
+For example, a pool that originated on illumos platform would have a devid
+value in the config and
+.Nm zpool status
+would fail when listing the config.
+This would also be true for future Linux based pools.
+.Pp
+A pool can be stripped of any
+.Sy devid
+values on import or prevented from adding
+them on
+.Nm zpool create
+or
+.Nm zpool add
+by setting
+.Sy ZFS_VDEV_DEVID_OPT_OUT .
+.El
+.Bl -tag -width "ZPOOL_SCRIPTS_AS_ROOT"
+.It Ev ZPOOL_SCRIPTS_AS_ROOT
+Allow a privileged user to run the
+.Nm zpool status/iostat
+with the
+.Fl c
+option.  Normally, only unprivileged users are allowed to run
+.Fl c .
+.El
+.Bl -tag -width "ZPOOL_SCRIPTS_PATH"
+.It Ev ZPOOL_SCRIPTS_PATH
+The search path for scripts when running
+.Nm zpool status/iostat
+with the
+.Fl c
+option. This is a colon-separated list of directories and overrides the default
+.Pa ~/.zpool.d
+and
+.Pa /etc/zfs/zpool.d
+search paths.
+.El
+.Bl -tag -width "ZPOOL_SCRIPTS_ENABLED"
+.It Ev ZPOOL_SCRIPTS_ENABLED
+Allow a user to run
+.Nm zpool status/iostat
+with the
+.Fl c
+option. If
+.Sy ZPOOL_SCRIPTS_ENABLED
+is not set, it is assumed that the user is allowed to run
+.Nm zpool status/iostat -c .
+.El
 .Sh INTERFACE STABILITY
 .Sy Evolving
 .Sh SEE ALSO
