@@ -599,7 +599,7 @@ int ioctl(HANDLE hDevice, int request, zfs_cmd_t *zc)
 		zc->zc_nvlist_dst, zc->zc_nvlist_dst_size
 	); fflush(stderr);
 #endif
-
+	errno = error;
 	return error;
 }
 

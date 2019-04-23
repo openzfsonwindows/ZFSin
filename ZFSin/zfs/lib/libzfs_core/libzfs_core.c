@@ -174,28 +174,13 @@ libzfs_core_fini(void)
 /*
  * In osx the error code is returned differently
  * so we have to wrap plain ioctl() calls.
+ * But on Windows, we define our own ioctl() which
+ * can handle this, so this wrapper is not required.
  */
 static int
 zioctl(int fildes, zfs_ioc_t ioc, zfs_cmd_t *zc)
 {
-	int ioctl_err;
-	ioctl_err = ioctl(g_fd, ioc, zc);
-
-	// OS call failed (ZFS not reached)
-	if (ioctl_err != 0) return ioctl_err;
-
-	if (zc->zc_ioc_error == 0)
-		return 0;
-
-	// Call to ZFS OK, check for ZFS error
-	if (zc->zc_ioc_error != 0) {
-		errno = zc->zc_ioc_error;
-	} else if (ioctl_err != -1) {
-		errno = ioctl_err;
-	} else if (ioctl_err == -1 && errno == 0) {
-		errno = -1;
-	}
-	return -1;
+	return ioctl(g_fd, ioc, zc);
 }
 
 static int
