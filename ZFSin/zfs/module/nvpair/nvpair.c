@@ -2449,7 +2449,8 @@ nvlist_xunpack(char *buf, uint32_t buflen, nvlist_t **nvlp, nv_alloc_t *nva)
 	if ((err = nvlist_xalloc(&nvl, 0, nva)) != 0)
 		return (err);
 
-	if ((err = nvlist_common(nvl, buf, &buflen, 0, NVS_OP_DECODE)) != 0)
+	if ((err = nvlist_common(nvl, buf, &buflen, NV_ENCODE_NATIVE,
+	    NVS_OP_DECODE)) != 0)
 		nvlist_free(nvl);
 	else
 		*nvlp = nvl;
