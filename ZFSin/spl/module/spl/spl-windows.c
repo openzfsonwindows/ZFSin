@@ -37,6 +37,8 @@
 #include <sys/utsname.h>
 //#include <sys/ioctl.h>
 #include <sys/taskq.h>
+#include <sys/systeminfo.h>
+
 //#define MACH_KERNEL_PRIVATE
 
 //#include <kern/processor.h>
@@ -57,7 +59,7 @@ uint64_t vm_page_free_count = 5000;
 uint64_t vm_page_speculative_count = 5500;
 
 uint64_t spl_GetPhysMem(void);
-
+uint32_t spl_GetMachineGuid(void);
 
 #include <sys/types.h>
 //#include <sys/sysctl.h>
@@ -74,6 +76,8 @@ extern uint64_t		segkmem_total_mem_allocated;
 #define MAXHOSTNAMELEN 64
 extern char hostname[MAXHOSTNAMELEN];
 
+uint32_t spl_hostid = 0;
+
 /*
  * Solaris delay is in ticks (hz) and Windows in 100 nanosecs
  * 1 HZ is 10 milliseconds, 10000000 nanoseconds.
@@ -87,22 +91,10 @@ windows_delay(int ticks)
 	KeDelayExecutionThread(KernelMode, FALSE, &interval);
 }
 
-
-
-
 uint32_t zone_get_hostid(void *zone)
 {
-    size_t len;
-    uint32_t myhostid = 0;
-
-    len = sizeof(myhostid);
-    //sysctlbyname("kern.hostid", &myhostid, &len, NULL, 0);
-    return myhostid;
+	return spl_hostid;
 }
-
-
-#include <sys/systeminfo.h>
-
 
 const char *spl_panicstr(void)
 {
@@ -128,6 +120,84 @@ int
 getpcstack(uintptr_t *pcstack, int pcstack_limit)
 {
 	return RtlCaptureStackBackTrace(1, pcstack_limit, (PVOID *)pcstack, NULL);
+}
+
+/*
+ * fnv_32a_str - perform a 32 bit Fowler/Noll/Vo FNV-1a hash on a string
+ *
+ * input:
+ *	str	- string to hash
+ *	hval	- previous hash value or 0 if first call
+ *
+ * returns:
+ *	32 bit hash as a static hash type
+ *
+ * NOTE: To use the recommended 32 bit FNV-1a hash, use FNV1_32A_INIT as the
+ *  	 hval arg on the first call to either fnv_32a_buf() or fnv_32a_str().
+ */
+uint32_t
+fnv_32a_str(const char *str, uint32_t hval)
+{
+	unsigned char *s = (unsigned char *)str;	/* unsigned string */
+
+	/*
+	 * FNV-1a hash each octet in the buffer
+	 */
+	while (*s) {
+
+		/* xor the bottom with the current octet */
+		hval ^= (uint32_t)*s++;
+
+		/* multiply by the 32 bit FNV magic prime mod 2^32 */
+#if defined(NO_FNV_GCC_OPTIMIZATION)
+		hval *= FNV_32_PRIME;
+#else
+		hval += (hval << 1) + (hval << 4) + (hval << 7) + (hval << 8) + (hval << 24);
+#endif
+	}
+
+	/* return our new hash value */
+	return hval;
+}
+
+/*
+ * fnv_32a_buf - perform a 32 bit Fowler/Noll/Vo FNV-1a hash on a buffer
+ *
+ * input:
+ *buf- start of buffer to hash
+ *len- length of buffer in octets
+ *hval- previous hash value or 0 if first call
+ *
+ * returns:
+ *32 bit hash as a static hash type
+ *
+ * NOTE: To use the recommended 32 bit FNV-1a hash, use FNV1_32A_INIT as the
+ *  hval arg on the first call to either fnv_32a_buf() or fnv_32a_str().
+ */
+uint32_t
+fnv_32a_buf(void *buf, size_t len, uint32_t hval)
+{
+	unsigned char *bp = (unsigned char *)buf;/* start of buffer */
+	unsigned char *be = bp + len;/* beyond end of buffer */
+
+	/*
+	 * FNV-1a hash each octet in the buffer
+	 */
+	while (bp < be) {
+
+		/* xor the bottom with the current octet */
+		hval ^= (uint32_t)*bp++;
+
+		/* multiply by the 32 bit FNV magic prime mod 2^32 */
+#if defined(NO_FNV_GCC_OPTIMIZATION)
+		hval *= FNV_32_PRIME;
+#else
+		hval += (hval << 1) + (hval << 4) + (hval << 7) + (hval << 8) + (hval << 24);
+#endif
+	}
+
+	/* return our new hash value */
+	return hval;
 }
 
 int
@@ -413,6 +483,10 @@ int spl_start (void)
     //len = sizeof(utsname.version);
     //sysctlbyname("kern.version", &utsname.version, &len, NULL, 0);
 
+	// Fetch out the Cryptography/MachineGuid and change it into 32bit.
+	// This should probably be a kstat as well.
+	spl_hostid = spl_GetMachineGuid();
+
     //strlcpy(utsname.nodename, hostname, sizeof(utsname.nodename));
     strlcpy(utsname.nodename, "Windows", sizeof(utsname.nodename));
     spl_mutex_subsystem_init();
@@ -426,7 +500,6 @@ int spl_start (void)
     spl_vnode_init();
 	spl_kmem_thread_init();
 	spl_kmem_mp_init();
-	IOLog("SPL: starting KMEM\n");
 
     IOLog("SPL: Loaded module v%s-%s%s, "
           "(ncpu %d, memsize %llu, pages %llu)\n",
@@ -557,4 +630,60 @@ uint64_t spl_GetPhysMem(void)
 	return memory;
 }
 
+NTSTATUS
+spl_query_machineguid(
+	IN PWSTR ValueName,
+	IN ULONG ValueType,
+	IN PVOID ValueData,
+	IN ULONG ValueLength,
+	IN PVOID Context,
+	IN PVOID EntryContext
+)
+{
+	dprintf("%s: '%S' type 0x%x len 0x%x\n", __func__,
+		ValueName, ValueType, ValueLength);
+
+	if ((ValueType == REG_SZ) &&
+		(_wcsicmp(L"MachineGuid", ValueName) == 0)) {
+		uint32_t *myhostid = EntryContext;
+
+		if (myhostid != NULL) {
+			*myhostid = fnv_32a_buf(ValueData, ValueLength,
+				FNV1_32A_INIT);
+			xprintf("%s: hostid is 0x%lx\n", __func__, *myhostid);
+		}
+	}
+
+	return STATUS_SUCCESS;
+}
+
+
+uint32_t spl_GetMachineGuid(void)
+{
+	uint32_t guid = 0;
+	NTSTATUS status;
+	static RTL_QUERY_REGISTRY_TABLE query[2] =
+	{
+		{
+		.Flags = RTL_QUERY_REGISTRY_REQUIRED
+		/*| RTL_QUERY_REGISTRY_DIRECT*/
+		| RTL_QUERY_REGISTRY_NOEXPAND
+		| RTL_QUERY_REGISTRY_TYPECHECK,
+.QueryRoutine = spl_query_machineguid,
+}
+	};
+
+	query[0].EntryContext = &guid;
+	status = RtlQueryRegistryValues(
+		RTL_REGISTRY_ABSOLUTE,
+		L"\\REGISTRY\\MACHINE\\SOFTWARE\\Microsoft\\Cryptography", // \\MachineGuid",
+		query, NULL, NULL);
+
+	if (status != STATUS_SUCCESS) {
+		dprintf("%s: MachineGuid query failed: 0x%x\n", __func__, status);
+		return 0UL;
+	}
+
+	return guid;
+}
 

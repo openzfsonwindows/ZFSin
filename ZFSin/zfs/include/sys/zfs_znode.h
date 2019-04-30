@@ -452,11 +452,6 @@ void zfs_time_stamper_locked(znode_t *zp, uint_t flag, dmu_tx_t *tx);
 int zfs_setattr_set_documentid(znode_t *zp, boolean_t update_flags);
 void zfs_setattr_generate_id(znode_t *zp, uint64_t val, char *name);
 
-#define FNV1_32A_INIT ((uint32_t)0x811c9dc5)
-uint32_t fnv_32a_str(const char *str, uint32_t hval);
-uint32_t fnv_32a_buf(void *buf, size_t len, uint32_t hval);
-
-
 #ifdef ZFS_DEBUG
 typedef enum whereami {
 	N_znode_alloc = 0,

@@ -175,6 +175,7 @@ osx_kstat_t osx_kstat = {
 	{"zfs_trim_txg_batch",			KSTAT_DATA_UINT64  },
 	{"zfs_trim_queue_limit",		KSTAT_DATA_UINT64  },
 
+	{ "hw.hostid",					KSTAT_DATA_UINT32 },
 };
 
 
@@ -371,6 +372,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		zfs_trim_queue_limit =
 			ks->zfs_trim_queue_limit.value.ui64;
 
+		spl_hostid = ks->win32_hw_hostid.value.ui32;
+
 	} else {
 
 		/* kstat READ */
@@ -549,6 +552,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			zfs_trim_txg_batch;
 		ks->zfs_trim_queue_limit.value.ui64 =
 			zfs_trim_queue_limit;
+
+		ks->win32_hw_hostid.value.ui32 = spl_hostid;
 
 	}
 

@@ -143,6 +143,8 @@ typedef struct osx_kstat {
 	kstat_named_t zfs_trim_metaslab_skip;
 	kstat_named_t zfs_trim_txg_batch;
 	kstat_named_t zfs_trim_queue_limit;
+
+	kstat_named_t win32_hw_hostid;
 } osx_kstat_t;
 
 
@@ -154,6 +156,7 @@ extern unsigned int zfs_vnop_skip_unlinked_drain;
 extern uint64_t zfs_vfs_sync_paranoia;
 extern uint64_t vnop_num_vnodes;
 extern uint64_t vnop_num_reclaims;
+extern uint32_t spl_hostid;
 
 extern uint64_t zfs_arc_max;
 extern uint64_t zfs_arc_min;

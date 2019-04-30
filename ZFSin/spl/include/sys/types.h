@@ -218,4 +218,8 @@ typedef struct {
 
 #define LINK_MAX                32767   /* max file link count */
 
+#define FNV1_32A_INIT ((uint32_t)0x811c9dc5)
+uint32_t fnv_32a_str(const char *str, uint32_t hval);
+uint32_t fnv_32a_buf(void *buf, size_t len, uint32_t hval);
+
 #endif	/* _SPL_TYPES_H */
