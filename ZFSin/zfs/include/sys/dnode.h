@@ -579,12 +579,6 @@ extern dnode_stats_t dnode_stats;
     DNODE_STAT_INCR(stat, 1);
 
 #ifdef ZFS_DEBUGXXX
-/*
- * There should be a ## between the string literal and fmt, to make it
- * clear that we're joining two strings together, but that piece of shit
- * gcc doesn't support that preprocessor token.
- */
-
 // OSX, this code is broooken
 
 #define	dprintf_dnode(dn, fmt, ...) do { \
