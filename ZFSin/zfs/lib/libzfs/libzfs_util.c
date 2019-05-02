@@ -312,6 +312,9 @@ libzfs_error_description(libzfs_handle_t *hdl)
 		    "supported by this device"));
 	case EZFS_WRONG_PARENT:
 		return (dgettext(TEXT_DOMAIN, "invalid parent dataset"));
+	case EZFS_NO_RESILVER_DEFER:
+		return (dgettext(TEXT_DOMAIN, "this action requires the "
+		    "resilver_defer feature"));
 	case EZFS_UNKNOWN:
 		return (dgettext(TEXT_DOMAIN, "unknown error"));
 	default:
