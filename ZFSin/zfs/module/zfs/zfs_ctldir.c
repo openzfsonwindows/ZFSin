@@ -57,15 +57,13 @@
  * perform an automount of the underlying filesystem and return the
  * corresponding vnode.
  *
- * All mounts are handled automatically by the kernel, but unmounts are
- * (currently) handled from user land.  The main reason is that there is no
- * reliable way to auto-unmount the filesystem when it's "no longer in use".
- * When the user unmounts a filesystem, we call zfsctl_unmount(), which
- * unmounts any snapshots within the snapshot directory.
+ * All mounts are handled automatically by an user mode helper which invokes
+ * the mount procedure.  Unmounts are handled by allowing the mount
+ * point to expire so the kernel may automatically unmount it.
  *
  * The '.zfs', '.zfs/snapshot', and all directories created under
- * '.zfs/snapshot' (ie: '.zfs/snapshot/<snapname>') are all GFS nodes and
- * share the same vfs_t as the head filesystem (what '.zfs' lives under).
+ * '.zfs/snapshot' (ie: '.zfs/snapshot/<snapname>') all share the same
+ * zfsvfs_t as the head filesystem (what '.zfs' lives under).
  *
  * File systems mounted ontop of the GFS nodes '.zfs/snapshot/<snapname>'
  * (ie: snapshots) are ZFS nodes and have their own unique vfs_t.
