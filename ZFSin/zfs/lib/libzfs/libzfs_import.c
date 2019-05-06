@@ -1017,7 +1017,7 @@ zpool_read_label(int fd, nvlist_t **config, int *num_labels)
 }
 
 int
-zpool_read_label_win(HANDLE h, nvlist_t **config, int *num_labels)
+zpool_read_label_win(HANDLE h, uint64_t len, nvlist_t **config, int *num_labels)
 {
 	int l, count = 0;
 	vdev_label_t *label;
@@ -1028,7 +1028,7 @@ zpool_read_label_win(HANDLE h, nvlist_t **config, int *num_labels)
 
 	*config = NULL;
 
-	drivesize = GetFileDriveSize(h);
+	drivesize = len;
 	size = P2ALIGN_TYPED(drivesize, sizeof(vdev_label_t), uint64_t);
 
 	if ((label = malloc(sizeof(vdev_label_t))) == NULL)
@@ -1464,6 +1464,7 @@ zpool_open_func_win(void *arg)
 	nvlist_t *config;
 	int num_labels;
 	HANDLE fd;
+	uint64_t drive_len;
 	fprintf(stderr, "%s: enter\n", __func__); fflush(stderr);
 	if (rn->rn_nozpool)
 		return;
@@ -1509,6 +1510,7 @@ zpool_open_func_win(void *arg)
 		LARGE_INTEGER place;
 		place.QuadPart = offset;
 		SetFilePointerEx(fd, place, NULL, FILE_BEGIN); // If it fails, we cant read label
+		drive_len = len;
 
 
 	} else {
@@ -1526,6 +1528,8 @@ zpool_open_func_win(void *arg)
 			int error = GetLastError();
 			return;
 		}
+
+		drive_len = GetFileDriveSize(fd);
 	}
 
 	DWORD type = GetFileType(fd);
@@ -1543,7 +1547,7 @@ zpool_open_func_win(void *arg)
 	
 	/* this file is too small to hold a zpool */
 	if (type == FILE_TYPE_DISK &&
-		GetFileDriveSize(fd) < SPA_MINDEVSIZE) {
+		drive_len < SPA_MINDEVSIZE) {
 		CloseHandle(fd);
 		return;
 	}
@@ -1562,7 +1566,7 @@ zpool_open_func_win(void *arg)
 		check_slices(rn->rn_avl, fd, rn->rn_name);
 	}
 
-	if ((zpool_read_label_win(fd, &config, &num_labels)) != 0) {
+	if ((zpool_read_label_win(fd, drive_len, &config, &num_labels)) != 0) {
 		CloseHandle(fd);
 		(void)no_memory(rn->rn_hdl);
 		return;

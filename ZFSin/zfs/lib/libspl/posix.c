@@ -704,18 +704,11 @@ uint64_t GetFileDriveSize(HANDLE h)
 	if (GetFileSizeEx(h, &large))
 		return large.QuadPart;
 
-	DISK_GEOMETRY_EX geometry_ex;
-	DWORD len;
-	if (DeviceIoControl(h, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
-		&geometry_ex, sizeof(geometry_ex), &len, NULL))
-		return geometry_ex.DiskSize.QuadPart;
-
-
-	PARTITION_INFORMATION partInfo;
+	PARTITION_INFORMATION_EX partInfo;
 	DWORD retcount = 0;
 
 	if (DeviceIoControl(h,
-		IOCTL_DISK_GET_PARTITION_INFO,
+		IOCTL_DISK_GET_PARTITION_INFO_EX,
 		(LPVOID)NULL,
 		(DWORD)0,
 		(LPVOID)&partInfo,
@@ -724,6 +717,14 @@ uint64_t GetFileDriveSize(HANDLE h)
 		(LPOVERLAPPED)NULL)) {
 		return partInfo.PartitionLength.QuadPart;
 	}
+
+
+	DISK_GEOMETRY_EX geometry_ex;
+	DWORD len;
+	if (DeviceIoControl(h, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
+		&geometry_ex, sizeof(geometry_ex), &len, NULL))
+		return geometry_ex.DiskSize.QuadPart;
+
 	return 0;
 }
 
