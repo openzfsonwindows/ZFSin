@@ -175,7 +175,9 @@ osx_kstat_t osx_kstat = {
 	{"zfs_trim_txg_batch",			KSTAT_DATA_UINT64  },
 	{"zfs_trim_queue_limit",		KSTAT_DATA_UINT64  },
 
-	{ "hw_hostid",					KSTAT_DATA_UINT32 },
+	{"hw_hostid",					KSTAT_DATA_UINT32 },
+	{"zfs_send_unmodified_spill_blocks",		KSTAT_DATA_UINT64  },
+
 };
 
 
@@ -373,6 +375,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			ks->zfs_trim_queue_limit.value.ui64;
 
 		spl_hostid = ks->win32_hw_hostid.value.ui32;
+		zfs_send_unmodified_spill_blocks =
+			ks->zfs_send_unmodified_spill_blocks.value.ui64;
 
 	} else {
 
@@ -554,6 +558,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			zfs_trim_queue_limit;
 
 		ks->win32_hw_hostid.value.ui32 = spl_hostid;
+		ks->zfs_send_unmodified_spill_blocks.value.ui64 =
+			zfs_send_unmodified_spill_blocks;
 
 	}
 

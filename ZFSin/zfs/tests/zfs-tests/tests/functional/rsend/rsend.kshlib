@@ -29,6 +29,8 @@
 #
 
 . $STF_SUITE/include/libtest.shlib
+. $STF_SUITE/include/math.shlib
+. $STF_SUITE/tests/functional/cli_root/zfs_set/zfs_set_common.kshlib
 . $STF_SUITE/tests/functional/rsend/rsend.cfg
 
 TRUNCATE=/usr/local/bin/gtruncate
@@ -770,8 +772,8 @@ function rand_set_prop
 	log_must eval "zfs set $prop='$value' $dtst"
 }
 
-# Generate a recursive checksum of a filesystems contents.  Only file
-# data is included in the checksum (no meta data, or xattrs).
+# Generate a recursive checksum of a filesystem which includes the file
+# contents and any associated xattrs.
 function recursive_cksum
 {
 	find $1 -type f -exec sha256sum {} \; | \

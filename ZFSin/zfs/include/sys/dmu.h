@@ -416,15 +416,8 @@ int dmu_object_claim_dnsize(objset_t *os, uint64_t object, dmu_object_type_t ot,
     int dnodesize, dmu_tx_t *tx);
 int dmu_object_reclaim_dnsize(objset_t *os, uint64_t object,
     dmu_object_type_t ot, int blocksize, dmu_object_type_t bonustype,
-    int bonuslen, int dnodesize, dmu_tx_t *txp);
-uint64_t dmu_object_alloc_hold(objset_t *os, dmu_object_type_t ot,
-	int blocksize, int indirect_blockshift, dmu_object_type_t bonustype,
-	int bonuslen, int dnodesize, dnode_t **allocated_dnode, void *tag,
-	dmu_tx_t *tx);
-int dmu_object_claim(objset_t *os, uint64_t object, dmu_object_type_t ot,
-    int blocksize, dmu_object_type_t bonus_type, int bonus_len, dmu_tx_t *tx);
-int dmu_object_reclaim(objset_t *os, uint64_t object, dmu_object_type_t ot,
-    int blocksize, dmu_object_type_t bonustype, int bonuslen, dmu_tx_t *txp);
+    int bonuslen, int dnodesize, boolean_t keep_spill, dmu_tx_t *tx);
+int dmu_object_rm_spill(objset_t *os, uint64_t object, dmu_tx_t *tx);
 
 /*
  * Free an object from this objset.
