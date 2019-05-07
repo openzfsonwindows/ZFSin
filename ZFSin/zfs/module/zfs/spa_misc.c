@@ -394,7 +394,7 @@ int zfs_user_indirect_is_special = B_TRUE;
  * Once we allocate 100 - zfs_special_class_metadata_reserve_pct we only
  * let metadata into the class.
  */
-int zfs_special_class_metadata_reserve_pct = 25;
+uint64_t zfs_special_class_metadata_reserve_pct = 25;
 
 /*
  * ==========================================================================

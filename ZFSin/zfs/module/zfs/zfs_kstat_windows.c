@@ -177,6 +177,7 @@ osx_kstat_t osx_kstat = {
 
 	{"hw_hostid",					KSTAT_DATA_UINT32 },
 	{"zfs_send_unmodified_spill_blocks",		KSTAT_DATA_UINT64  },
+	{"zfs_special_class_metadata_reserve_pct",		KSTAT_DATA_UINT64  },
 
 };
 
@@ -377,6 +378,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		spl_hostid = ks->win32_hw_hostid.value.ui32;
 		zfs_send_unmodified_spill_blocks =
 			ks->zfs_send_unmodified_spill_blocks.value.ui64;
+		zfs_special_class_metadata_reserve_pct =
+			ks->zfs_special_class_metadata_reserve_pct.value.ui64;
 
 	} else {
 
@@ -560,6 +563,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		ks->win32_hw_hostid.value.ui32 = spl_hostid;
 		ks->zfs_send_unmodified_spill_blocks.value.ui64 =
 			zfs_send_unmodified_spill_blocks;
+		ks->zfs_special_class_metadata_reserve_pct.value.ui64 =
+			zfs_special_class_metadata_reserve_pct;
 
 	}
 
