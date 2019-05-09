@@ -175,7 +175,7 @@ osx_kstat_t osx_kstat = {
 	{"zfs_trim_txg_batch",			KSTAT_DATA_UINT64  },
 	{"zfs_trim_queue_limit",		KSTAT_DATA_UINT64  },
 
-	{ "hw.hostid",					KSTAT_DATA_UINT32 },
+	{ "hw_hostid",					KSTAT_DATA_UINT32 },
 };
 
 
