@@ -212,8 +212,15 @@ sub prettynum {
 		$num = $num/1000;
 		$index++;
 	}
-	return sprintf("%*d", $sz, $num) if ($index == 0);
-	return sprintf("%*d%s", $sz - 1, $num,$suffix[$index]);
+	if ($index == 0) {
+		if ((($num - int($num)) == 0)) {
+			return sprintf("%*d", $sz, $num);
+		} else {
+			return sprintf("%*.1f", $sz, $num);
+		}
+	} else {
+		return sprintf("%*d%s", $sz - 1, $num,$suffix[$index]);
+	}
 }
 
 #1		1
