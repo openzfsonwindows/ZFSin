@@ -38,14 +38,15 @@
 char* endBuf = "-EB-";
 
 kmutex_t cbuf_mutex;
-char* cbuf;
+char *cbuf = NULL;
+
 static unsigned long long cbuf_size = 0x100000; //1MB 
 static unsigned long long startOff = 0;
 
 
 int initDbgCircularBuffer(void)
 {
-	cbuf = ExAllocatePoolWithTag(PagedPool, cbuf_size, '!GBD');
+	cbuf = ExAllocatePoolWithTag(NonPagedPoolNx, cbuf_size, '!GBD');
 	ASSERT(cbuf);
 	mutex_init(&cbuf_mutex, NULL, MUTEX_DEFAULT, NULL);
 	return 0;
