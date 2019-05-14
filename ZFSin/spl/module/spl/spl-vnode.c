@@ -323,11 +323,6 @@ int blkdev_issue_discard_bytes(PDEVICE_OBJECT dev, uint64_t offset, uint64_t siz
 	Status = kernel_ioctl(dev, IOCTL_STORAGE_MANAGE_DATA_SET_ATTRIBUTES,
 		&set, sizeof(set), NULL, 0);
 
-	static int first = 1;
-	if (first)
-		xprintf("trim said 0x%x\n", Status);
-	first = 0;
-
 	if (Status == 0) {
 		return 0; // TRIM OK
 	}
@@ -359,10 +354,6 @@ VOP_SPACE(HANDLE h, int cmd, struct flock *fl, int flags, offset_t off,
 			NULL,
 			0
 		);
-
-		static int first = 1;
-	    if (first)	xprintf("filetrim said 0x%x\n", Status);
-		first = 0;
 
 		return (Status);
 	}

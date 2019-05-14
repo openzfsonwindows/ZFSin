@@ -257,7 +257,7 @@ vdev_file_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 		NULL,
 		0
 	);
-	xprintf("%s: set Sparse 0x%x.\n", __func__, status);
+	dprintf("%s: set Sparse 0x%x.\n", __func__, status);
 
 #endif
 

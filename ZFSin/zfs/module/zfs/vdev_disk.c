@@ -335,7 +335,7 @@ skip_open:
 	/* Best choice seems to be either TRIM, or SeekPenalty */
 	vd->vdev_nonrot = vd->vdev_has_trim || blk_queue_nonrot(dvd->vd_DeviceObject);
 
-	xprintf("%s: nonrot %d, trim %d, securetrim %d\n", __func__,
+	dprintf("%s: nonrot %d, trim %d, securetrim %d\n", __func__,
 		vd->vdev_nonrot, vd->vdev_has_trim, vd->vdev_has_securetrim);
 
 	return (0);
