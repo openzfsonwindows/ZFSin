@@ -59,7 +59,6 @@ uint64_t vm_page_free_count = 5000;
 uint64_t vm_page_speculative_count = 5500;
 
 uint64_t spl_GetPhysMem(void);
-uint32_t spl_GetMachineGuid(void);
 
 #include <sys/types.h>
 //#include <sys/sysctl.h>
@@ -76,7 +75,7 @@ extern uint64_t		segkmem_total_mem_allocated;
 #define MAXHOSTNAMELEN 64
 extern char hostname[MAXHOSTNAMELEN];
 
-uint32_t spl_hostid = 0;
+unsigned long spl_hostid = 0;
 
 /*
  * Solaris delay is in ticks (hz) and Windows in 100 nanosecs
@@ -483,10 +482,6 @@ int spl_start (void)
     //len = sizeof(utsname.version);
     //sysctlbyname("kern.version", &utsname.version, &len, NULL, 0);
 
-	// Fetch out the Cryptography/MachineGuid and change it into 32bit.
-	// This should probably be a kstat as well.
-	spl_hostid = spl_GetMachineGuid();
-
     //strlcpy(utsname.nodename, hostname, sizeof(utsname.nodename));
     strlcpy(utsname.nodename, "Windows", sizeof(utsname.nodename));
     spl_mutex_subsystem_init();
@@ -630,60 +625,4 @@ uint64_t spl_GetPhysMem(void)
 	return memory;
 }
 
-NTSTATUS
-spl_query_machineguid(
-	IN PWSTR ValueName,
-	IN ULONG ValueType,
-	IN PVOID ValueData,
-	IN ULONG ValueLength,
-	IN PVOID Context,
-	IN PVOID EntryContext
-)
-{
-	dprintf("%s: '%S' type 0x%x len 0x%x\n", __func__,
-		ValueName, ValueType, ValueLength);
-
-	if ((ValueType == REG_SZ) &&
-		(_wcsicmp(L"MachineGuid", ValueName) == 0)) {
-		uint32_t *myhostid = EntryContext;
-
-		if (myhostid != NULL) {
-			*myhostid = fnv_32a_buf(ValueData, ValueLength,
-				FNV1_32A_INIT);
-			xprintf("%s: hostid is 0x%lx\n", __func__, *myhostid);
-		}
-	}
-
-	return STATUS_SUCCESS;
-}
-
-
-uint32_t spl_GetMachineGuid(void)
-{
-	uint32_t guid = 0;
-	NTSTATUS status;
-	static RTL_QUERY_REGISTRY_TABLE query[2] =
-	{
-		{
-		.Flags = RTL_QUERY_REGISTRY_REQUIRED
-		/*| RTL_QUERY_REGISTRY_DIRECT*/
-		| RTL_QUERY_REGISTRY_NOEXPAND
-		| RTL_QUERY_REGISTRY_TYPECHECK,
-.QueryRoutine = spl_query_machineguid,
-}
-	};
-
-	query[0].EntryContext = &guid;
-	status = RtlQueryRegistryValues(
-		RTL_REGISTRY_ABSOLUTE,
-		L"\\REGISTRY\\MACHINE\\SOFTWARE\\Microsoft\\Cryptography", // \\MachineGuid",
-		query, NULL, NULL);
-
-	if (status != STATUS_SUCCESS) {
-		dprintf("%s: MachineGuid query failed: 0x%x\n", __func__, status);
-		return 0UL;
-	}
-
-	return guid;
-}
 
