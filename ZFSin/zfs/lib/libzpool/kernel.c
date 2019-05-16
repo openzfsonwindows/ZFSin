@@ -1303,28 +1303,10 @@ umem_out_of_memory(void)
 	return (0);
 }
 
-static unsigned long
-get_spl_hostid(void)
-{
-	FILE *f;
-	unsigned long hostid;
-
-	f = fopen("/sys/module/spl/parameters/spl_hostid", "r");
-	if (!f)
-		return (0);
-	if (fscanf(f, "%lu", &hostid) != 1)
-		hostid = 0;
-	fclose(f);
-	return (hostid & 0xffffffff);
-}
-
 unsigned long
 get_system_hostid(void)
 {
-	unsigned long system_hostid = get_spl_hostid();
-	if (system_hostid == 0)
-		system_hostid = gethostid() & 0xffffffff;
-	return (system_hostid);
+	return (gethostid());
 }
 
 void

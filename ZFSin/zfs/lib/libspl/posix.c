@@ -666,19 +666,29 @@ void funlockfile(FILE *file)
 {
 }
 
-long gethostid(void)
+unsigned long gethostid(void)
 {
-	char szVolName[MAX_PATH];
-	char szFileSysName[80];
-	DWORD dwSerialNumber;
-	DWORD dwMaxComponentLen;
-	DWORD dwFileSysFlags;
+	LSTATUS Status;
+	unsigned long hostid = 0UL;
+	HKEY key;
+	DWORD type;
+	DWORD len;
 
+	Status = RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SYSTEM\\ControlSet001\\Services\\ZFSin",
+		0, KEY_READ, &key);
+	if (Status != ERROR_SUCCESS)
+		return 0UL;
 
-	GetVolumeInformation("C:\\", szVolName, MAX_PATH,
-		&dwSerialNumber, &dwMaxComponentLen,
-		&dwFileSysFlags, szFileSysName, 80);
-	return dwSerialNumber;
+	len = sizeof(hostid);
+	Status = RegQueryValueEx(key, "hostid", NULL, &type, (LPBYTE)&hostid, &len);
+	if (Status != ERROR_SUCCESS)
+		hostid = 0;
+
+	assert(type == REG_DWORD);
+
+	RegCloseKey(key);
+
+	return (hostid & 0xffffffff);
 }
 
 uid_t geteuid(void)
