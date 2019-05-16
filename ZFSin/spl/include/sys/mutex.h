@@ -51,18 +51,8 @@ typedef enum {
 } kmutex_type_t;
 
 typedef struct {
-	FAST_MUTEX opaque;
+	KEVENT opaque;
 } mutex_t;
-
-/* To enable watchdog to keep an eye on mutex being held for too long
- * define this debug variable.
- */
-//#define SPL_DEBUG_MUTEX // smd - uncomment for lundman testing
-
-#ifdef SPL_DEBUG_MUTEX
-#define SPL_MUTEX_WATCHDOG_SLEEP   10 /* How long to sleep between checking */
-#define SPL_MUTEX_WATCHDOG_TIMEOUT 60 /* When is a mutex held too long? */
-#endif
 
 /*
  * Solaris kmutex defined.
@@ -76,40 +66,17 @@ typedef struct kmutex {
 	mutex_t m_lock;
 	void           *m_owner;
 	unsigned int initialised;
-
-#ifdef SPL_DEBUG_MUTEX
-	void *leak;
-#endif
-
 } kmutex_t;
 
 
 #define MUTEX_HELD(x)           (mutex_owned(x))
 #define MUTEX_NOT_HELD(x)       (!mutex_owned(x))
 
-/*
- * On OS X, CoreStorage provides these symbols, so we have to redefine them,
- * preferably without having to modify SPL users.
- */
-#ifdef SPL_DEBUG_MUTEX
-
-#define mutex_init(A,B,C,D) spl_mutex_init(A,B,C,D,__FILE__,__FUNCTION__,__LINE__)
-void spl_mutex_init(kmutex_t *mp, char *name, kmutex_type_t type, void *ibc, const char *f, const char *fn, int l);
-
-#else
-
 #define mutex_init spl_mutex_init
 void spl_mutex_init(kmutex_t *mp, char *name, kmutex_type_t type, void *ibc);
 
-#endif
-
-#ifdef SPL_DEBUG_MUTEX
-#define mutex_enter(X) spl_mutex_enter((X), __FILE__, __LINE__)
-void spl_mutex_enter(kmutex_t *mp, char *file, int line);
-#else
 #define mutex_enter spl_mutex_enter
 void spl_mutex_enter(kmutex_t *mp);
-#endif
 
 #define	mutex_destroy spl_mutex_destroy
 #define	mutex_exit spl_mutex_exit
@@ -126,7 +93,5 @@ struct kthread *spl_mutex_owner(kmutex_t *mp);
 int  spl_mutex_subsystem_init(void);
 void spl_mutex_subsystem_fini(void);
 
-#endif
-
-
+#endif  // KERNEL
 #endif
