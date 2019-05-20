@@ -1270,6 +1270,8 @@ spa_activate(spa_t *spa, int mode)
 	atomic_inc_64(&zfs_module_busy);
 #endif
 
+	spa_keystore_init(&spa->spa_keystore);
+
 	/*
 	 * This taskq is used to perform zvol-minor-related tasks
 	 * asynchronously. This has several advantages, including easy
@@ -1288,7 +1290,6 @@ spa_activate(spa_t *spa, int mode)
 	spa->spa_zvol_taskq = taskq_create("z_zvol", 1, defclsyspri,
 	    1, INT_MAX, 0);
 
-	spa_keystore_init(&spa->spa_keystore);
 }
 
 /*
@@ -1549,13 +1550,6 @@ spa_unload(spa_t *spa)
 	 * Drop and purge level 2 cache
 	 */
 	spa_l2cache_drop(spa);
-
-	/*
-	 * Close all vdevs.
-	 */
-	if (spa->spa_root_vdev)
-		vdev_free(spa->spa_root_vdev);
-	ASSERT(spa->spa_root_vdev == NULL);
 
 	for (i = 0; i < spa->spa_spares.sav_count; i++)
 		vdev_free(spa->spa_spares.sav_vdevs[i]);
@@ -3430,7 +3424,7 @@ spa_ld_get_props(spa_t *spa)
 	uint64_t obj;
 	vdev_t *rvd = spa->spa_root_vdev;
 
-	/* Grab the secret checksum salt from the MOS. */
+	/* Grab the checksum salt from the MOS. */
 	error = zap_lookup(spa->spa_meta_objset, DMU_POOL_DIRECTORY_OBJECT,
 		DMU_POOL_CHECKSUM_SALT, 1,
 		sizeof (spa->spa_cksum_salt.zcs_bytes),
