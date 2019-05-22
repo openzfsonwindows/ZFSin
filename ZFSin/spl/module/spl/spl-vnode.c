@@ -1230,6 +1230,12 @@ void   vnode_setdeleteonclose(vnode_t *vp)
 	vp->v_unlink |= UNLINK_DELETE_ON_CLOSE;
 }
 
+void   vnode_cleardeleteonclose(vnode_t *vp)
+{
+	dprintf("%s: \n", __func__);
+	vp->v_unlink &= ~UNLINK_DELETE_ON_CLOSE;
+}
+
 int   vnode_deleted(vnode_t *vp)
 {
 	return (vp->v_unlink & UNLINK_DELETED);
