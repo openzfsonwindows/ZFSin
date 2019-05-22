@@ -2212,8 +2212,14 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		FILE_FS_ATTRIBUTE_INFORMATION *ffai = Irp->AssociatedIrp.SystemBuffer;
 		ffai->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_NAMED_STREAMS |
 			FILE_PERSISTENT_ACLS | FILE_SUPPORTS_OBJECT_IDS | FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS |
-			FILE_SUPPORTS_REPARSE_POINTS | FILE_UNICODE_ON_DISK | FILE_SUPPORTS_HARD_LINKS | FILE_SUPPORTS_OPEN_BY_FILE_ID  |
+			FILE_SUPPORTS_REPARSE_POINTS | FILE_UNICODE_ON_DISK | FILE_SUPPORTS_HARD_LINKS | FILE_SUPPORTS_OPEN_BY_FILE_ID |
 			FILE_SUPPORTS_EXTENDED_ATTRIBUTES;
+			/*
+			// NTFS has these:
+			FILE_CASE_SENSITIVE_SEARCH | FILE_FILE_COMPRESSION | FILE_RETURNS_CLEANUP_RESULT_INFO | FILE_SUPPORTS_POSIX_UNLINK_RENAME |
+			FILE_SUPPORTS_ENCRYPTION | FILE_SUPPORTS_TRANSACTIONS | FILE_SUPPORTS_USN_JOURNAL;
+			*/
+
 		if (zfsvfs->z_case == ZFS_CASE_SENSITIVE) 
 			ffai->FileSystemAttributes |= FILE_CASE_SENSITIVE_SEARCH;
 
@@ -2268,7 +2274,12 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		Status = STATUS_SUCCESS;
 		break;
 	case FileFsObjectIdInformation:
-		dprintf("* %s: FileFsObjectIdInformation NOT IMPLEMENTED\n", __func__);
+		dprintf("* %s: FileFsObjectIdInformation\n", __func__);
+		FILE_FS_OBJECTID_INFORMATION* ffoi = Irp->AssociatedIrp.SystemBuffer;
+		//RtlCopyMemory(ffoi->ObjectId, &Vcb->superblock.uuid.uuid[0], sizeof(UCHAR) * 16);
+		RtlZeroMemory(ffoi->ExtendedInfo, sizeof(ffoi->ExtendedInfo));
+		Irp->IoStatus.Information = sizeof(FILE_FS_OBJECTID_INFORMATION);
+		Status = STATUS_OBJECT_NAME_NOT_FOUND; // returned by NTFS
 		break;
 	case FileFsVolumeInformation:
 		dprintf("* %s: FileFsVolumeInformation\n", __func__);
@@ -2278,9 +2289,10 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 			break;
 		}
 		FILE_FS_VOLUME_INFORMATION *ffvi = Irp->AssociatedIrp.SystemBuffer;
-		ffvi->VolumeCreationTime.QuadPart = 0;
+		TIME_UNIX_TO_WINDOWS_EX(zfsvfs->z_last_unmount_time, 0,
+			ffvi->VolumeCreationTime.QuadPart);
 		ffvi->VolumeSerialNumber = 0x19831116;
-		ffvi->SupportsObjects = FALSE;
+		ffvi->SupportsObjects = TRUE;
 		ffvi->VolumeLabelLength =
 			zmo->name.Length;
 
@@ -2872,6 +2884,24 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	return Status;
 }
 
+// This function is not used - left in as example. If you think
+// something is not working due to missing FileRemoteProtocolInformation
+// then think again. This is not the problem.
+NTSTATUS file_remote_protocol_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_REMOTE_PROTOCOL_INFORMATION *frpi)
+{
+	dprintf("   %s\n", __func__);
+
+	frpi->StructureVersion = 4;
+	frpi->StructureSize = sizeof(FILE_REMOTE_PROTOCOL_INFORMATION);
+	frpi->Protocol = WNNC_NET_GOOGLE;
+	frpi->ProtocolMajorVersion = 1;
+	frpi->ProtocolMinorVersion = 0;
+	frpi->ProtocolRevision = 3;
+	frpi->Flags = REMOTE_PROTOCOL_FLAG_LOOPBACK;
+	Irp->IoStatus.Information = sizeof(FILE_REMOTE_PROTOCOL_INFORMATION);
+	return STATUS_SUCCESS;
+}
+
 // Insert a streamname into an output buffer, if there is room,
 // StreamNameLength is always the FULL name length, even when we only
 // fit partial.
@@ -3229,8 +3259,18 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 	case FileHardLinkInformation:
 		dprintf("* %s: FileHardLinkInformation NOT IMPLEMENTED\n", __func__);
 		break;
+	// Not used - not handled by ntfs either
 	case FileRemoteProtocolInformation:
 		dprintf("* %s: FileRemoteProtocolInformation NOT IMPLEMENTED\n", __func__);
+#if 0
+		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_REMOTE_PROTOCOL_INFORMATION)) {
+			Irp->IoStatus.Information = sizeof(FILE_REMOTE_PROTOCOL_INFORMATION);
+			Status = STATUS_BUFFER_TOO_SMALL;
+			break;
+		}
+		Status = file_remote_protocol_information(DeviceObject, Irp, IrpSp, Irp->AssociatedIrp.SystemBuffer);
+#endif
+		Status = STATUS_INVALID_PARAMETER;
 		break;
 	case FileStandardLinkInformation:
 		dprintf("* %s: FileStandardLinkInformation\n", __func__);
@@ -3790,7 +3830,7 @@ NTSTATUS create_or_get_object_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 {
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
-	DWORD inlen = IrpSp->Parameters.DeviceIoControl.InputBufferLength;
+	DWORD inlen = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
 	void *buffer = Irp->AssociatedIrp.SystemBuffer;
 	FILE_OBJECTID_BUFFER *fob = buffer;
 
@@ -3798,7 +3838,8 @@ NTSTATUS create_or_get_object_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		return STATUS_INVALID_PARAMETER;
 
 	if (!fob || inlen < sizeof(FILE_OBJECTID_BUFFER)) {
-		return STATUS_INVALID_PARAMETER;
+		Irp->IoStatus.Information = sizeof(FILE_OBJECTID_BUFFER);
+		return STATUS_BUFFER_OVERFLOW;
 	}
 
 	struct vnode *vp = IrpSp->FileObject->FsContext;
@@ -3825,7 +3866,6 @@ NTSTATUS user_fs_request(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 
 	switch (IrpSp->Parameters.FileSystemControl.FsControlCode) {
-
 	case FSCTL_LOCK_VOLUME:
 		dprintf("    FSCTL_LOCK_VOLUME\n");
 		Status = STATUS_SUCCESS;
@@ -4190,25 +4230,25 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 	case FileDispositionInformation: // unlink
 		dprintf("* SET FileDispositionInformation\n");
 		FILE_DISPOSITION_INFORMATION *fdi = Irp->AssociatedIrp.SystemBuffer;
-		if (fdi->DeleteFile) {
-			if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
-				struct vnode *vp = IrpSp->FileObject->FsContext;
-				VN_HOLD(vp);
-				dprintf("Deletion set on '%wZ'\n",
-					IrpSp->FileObject->FileName);
+		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
+			struct vnode *vp = IrpSp->FileObject->FsContext;
+			VN_HOLD(vp);
+			dprintf("Deletion %s on '%wZ'\n",
+				fdi->DeleteFile ? "set" : "unset",
+				IrpSp->FileObject->FileName);
+			Status = STATUS_SUCCESS;
+			if (fdi->DeleteFile)
 				Status = zfs_setunlink(vp, NULL);
+			else
+				vnode_cleardeleteonclose(vp);
 
-				mount_t *zmo = DeviceObject->DeviceExtension;
-				// Dirs marked for Deletion should release all pending Notify events
+			mount_t *zmo = DeviceObject->DeviceExtension;
+			// Dirs marked for Deletion should release all pending Notify events
 
-				if (Status == STATUS_SUCCESS) {
-					FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, VTOZ(vp));
-				} else {
-					// zfs_setunlink->vnode_setunlink failed
-//					Status = STATUS_ACCESS_DENIED;
-				}
-				VN_RELE(vp);
+			if (Status == STATUS_SUCCESS && fdi->DeleteFile) {
+				FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, VTOZ(vp));
 			}
+			VN_RELE(vp);
 		}
 		break;
 	case FileEndOfFileInformation: // extend?
@@ -5637,6 +5677,10 @@ diskDispatcher(
 			dprintf("IRP_MN_MOUNT_VOLUME disk\n");
 			Status = zfs_vnop_mount(DeviceObject, Irp, IrpSp);
 			break;
+		case IRP_MN_USER_FS_REQUEST:
+			dprintf("IRP_MN_USER_FS_REQUEST: FsControlCode 0x%x\n",
+				IrpSp->Parameters.FileSystemControl.FsControlCode);
+			break;
 		}
 		break;
 
@@ -5647,6 +5691,8 @@ diskDispatcher(
 			break;
 		case IRP_MN_QUERY_DEVICE_RELATIONS:
 			Status = STATUS_NOT_IMPLEMENTED;
+			dprintf("DeviceRelations.Type 0x%x\n", IrpSp->Parameters.QueryDeviceRelations.Type);
+			//if (IrpSp->Parameters.QueryDeviceRelations.Type != BusRelations)
 			break;
 		case IRP_MN_QUERY_ID:
 			Status = pnp_query_id(DeviceObject, Irp, IrpSp);
@@ -5934,6 +5980,8 @@ fsDispatcher(
 		case IRP_MN_USER_FS_REQUEST:
 			Status = user_fs_request(DeviceObject, Irp, IrpSp);
 			break;
+		default:
+			dprintf("IRP_MJ_FILE_SYSTEM_CONTROL: unknown 0x%x\n", IrpSp->MinorFunction);
 		}
 		break;
 
@@ -5944,7 +5992,8 @@ fsDispatcher(
 			break;
 		case IRP_MN_QUERY_DEVICE_RELATIONS:
 			Status = STATUS_NOT_IMPLEMENTED;
-			break;
+			dprintf("DeviceRelations.Type 0x%x\n", IrpSp->Parameters.QueryDeviceRelations.Type);
+			break; 
 		case IRP_MN_QUERY_ID:
 			Status = pnp_query_id(DeviceObject, Irp, IrpSp);
 			break;

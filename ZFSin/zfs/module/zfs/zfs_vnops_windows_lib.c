@@ -627,7 +627,10 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	ANSI_STRING pants;
 	ULONG				deviceCharacteristics;
 	deviceCharacteristics = FILE_DEVICE_IS_MOUNTED;
+	/* Allow $recycle.bin - don't set removable. */
+#if 1
 	deviceCharacteristics |= FILE_REMOVABLE_MEDIA;
+#endif
 
 	snprintf(buf, sizeof(buf), "\\Device\\Volume{%s}", uuid_a);
 	//	snprintf(buf, sizeof(buf), "\\Device\\ZFS_%s", zc->zc_name);
@@ -1030,8 +1033,10 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	// We created a DISK before, now we create a VOLUME
 	ULONG				deviceCharacteristics;
 	deviceCharacteristics = FILE_DEVICE_IS_MOUNTED;
+	/* Allow $recycle.bin - don't set removable. */
+#if 1
 	deviceCharacteristics |= FILE_REMOVABLE_MEDIA;
-
+#endif
 
 	status = IoCreateDevice(DriverObject,               // DriverObject
 		sizeof(mount_t),           // DeviceExtensionSize
@@ -2776,21 +2781,156 @@ void zfs_freesid(SID *sid)
 	kmem_free(sid, offsetof(SID, SubAuthority) + (sid->SubAuthorityCount * sizeof(ULONG)));
 }
 
+typedef struct {
+	UCHAR revision;
+	UCHAR elements;
+	UCHAR auth[6];
+	UINT32 nums[8];
+} sid_header;
+
+static sid_header sid_BA = { 1, 2, SECURITY_NT_AUTHORITY, {32, 544} }; // BUILTIN\Administrators
+static sid_header sid_SY = { 1, 1, SECURITY_NT_AUTHORITY, {18} };      // NT AUTHORITY\SYSTEM
+static sid_header sid_BU = { 1, 2, SECURITY_NT_AUTHORITY, {32, 545} }; // BUILTIN\Users
+static sid_header sid_AU = { 1, 1, SECURITY_NT_AUTHORITY, {11} };      // NT AUTHORITY\Authenticated Users
+
+static sid_header sid_MH = { 1, 1, SECURITY_MANDATORY_LABEL_AUTHORITY, {12288} }; // MandatoryLevel\High
+static sid_header sid_ML = { 1, 1, SECURITY_MANDATORY_LABEL_AUTHORITY, {4096} }; // MandatoryLevel\Low
+
+typedef struct {
+	UCHAR flags;
+	ACCESS_MASK mask;
+	sid_header* sid;
+} dacl;
+
+/*
+
+Brand new ntfs:
+F:\ BUILTIN\Administrators:(F)
+	BUILTIN\Administrators:(OI)(CI)(IO)(F)
+	NT AUTHORITY\SYSTEM:(F)
+	NT AUTHORITY\SYSTEM:(OI)(CI)(IO)(F)
+	NT AUTHORITY\Authenticated Users:(M)
+	NT AUTHORITY\Authenticated Users:(OI)(CI)(IO)(M)
+	BUILTIN\Users:(RX)
+	BUILTIN\Users:(OI)(CI)(IO)(GR,GE)
+*/
+static dacl def_dacls[] = {
+	// BUILTIN\Administrators:(F)
+	{ 0, FILE_ALL_ACCESS, &sid_BA },
+	// BUILTIN\Administrators:(OI)(CI)(IO)(F)
+	{ OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE, FILE_ALL_ACCESS, &sid_BA },
+	// NT AUTHORITY\SYSTEM:(F)
+	{ 0, FILE_ALL_ACCESS, &sid_SY },
+	// NT AUTHORITY\SYSTEM:(OI)(CI)(IO)(F)
+	{ OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE, FILE_ALL_ACCESS, &sid_SY },
+	// NT AUTHORITY\Authenticated Users:(M)
+	{ 0, FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE | FILE_GENERIC_EXECUTE, &sid_AU },
+	// NT AUTHORITY\Authenticated Users:(OI)(CI)(IO)(M)
+	{ OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE, FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE | FILE_GENERIC_EXECUTE, &sid_AU },
+	// BUILTIN\Users:(RX)
+	{ 0, FILE_GENERIC_READ | FILE_GENERIC_EXECUTE, &sid_BU },
+	// BUILTIN\Users:(OI)(CI)(IO)(GR,GE)
+	{ OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE | INHERIT_ONLY_ACE, GENERIC_READ | GENERIC_EXECUTE, &sid_BU },
+#if 0 // C: only?
+	// Mandatory Label\High Mandatory Level:(OI)(NP)(IO)(NW)
+	{ OBJECT_INHERIT_ACE | NO_PROPAGATE_INHERIT_ACE | INHERIT_ONLY_ACE, SYSTEM_MANDATORY_LABEL_NO_WRITE_UP, &sid_MH },
+#endif
+	// END
+	{ 0, 0, NULL }
+};
+
+#if 0
+/*
+Brand new $Recycle.bin
+
+Owner: WDKRemoteUser
+Group: None
+
+F : \$Recycle.bin BUILTIN\Administrators:(I)(F)
+	NT AUTHORITY\SYSTEM : (I)(F)
+	NT AUTHORITY\Authenticated Users : (I)(M)
+	BUILTIN\Users : (I)(RX)
+*/
+	static dacl recycle_dacls[] = {
+	// BUILTIN\Administrators:(I)(F)
+	{ INHERITED_ACE, FILE_ALL_ACCESS, &sid_BA },
+	// NT AUTHORITY\SYSTEM : (I)(F)
+	{ INHERITED_ACE, FILE_ALL_ACCESS, &sid_SY },
+	// NT AUTHORITY\Authenticated Users : (I)(M)
+	{ INHERITED_ACE, FILE_GENERIC_READ | FILE_GENERIC_WRITE | DELETE | FILE_GENERIC_EXECUTE, &sid_AU },
+	// BUILTIN\Users : (I)(RX)
+	{ INHERITED_ACE, FILE_GENERIC_READ | FILE_GENERIC_EXECUTE, &sid_BU },
+	// END
+	{ 0, 0, NULL }
+};
+#endif 
+
+static ACL *
+zfs_set_acl(dacl *dacls) 
+{
+	int size, i;
+	ACL *acl = NULL;
+	ACCESS_ALLOWED_ACE *aaa;
+
+	size = sizeof(ACL);
+	i = 0;
+	while (dacls[i].sid) {
+		size += sizeof(ACCESS_ALLOWED_ACE);
+		size += 8 + (dacls[i].sid->elements * sizeof(UINT32)) - sizeof(ULONG);
+		i++;
+	}
+
+	acl = ExAllocatePoolWithTag(PagedPool, size, 'zacl');
+	if (!acl) 
+		return NULL;
+
+	acl->AclRevision = ACL_REVISION;
+	acl->Sbz1 = 0;
+	acl->AclSize = size;
+	acl->AceCount = i;
+	acl->Sbz2 = 0;
+
+	aaa = (ACCESS_ALLOWED_ACE*)&acl[1];
+	i = 0;
+	while (dacls[i].sid) {
+		aaa->Header.AceType = ACCESS_ALLOWED_ACE_TYPE;
+		aaa->Header.AceFlags = dacls[i].flags;
+		aaa->Header.AceSize = sizeof(ACCESS_ALLOWED_ACE) - sizeof(ULONG) + 8 + (dacls[i].sid->elements * sizeof(UINT32));
+		aaa->Mask = dacls[i].mask;
+
+		RtlCopyMemory(&aaa->SidStart, dacls[i].sid, 8 + (dacls[i].sid->elements * sizeof(UINT32)));
+
+		aaa = (ACCESS_ALLOWED_ACE*)((UINT8*)aaa + aaa->Header.AceSize);
+		i++;
+	}
+
+	return acl;
+}
+
+
 void zfs_set_security_root(struct vnode *vp)
 {
 	SECURITY_DESCRIPTOR sd;
 	PSID usersid = NULL, groupsid = NULL;
 	znode_t *zp = VTOZ(vp);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 	NTSTATUS Status;
+	ACL *acl = NULL;
 
 	Status = RtlCreateSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
 	if (Status != STATUS_SUCCESS) goto err;
 
 	zfs_uid2sid(zp->z_uid, &usersid);
-	RtlSetOwnerSecurityDescriptor(&sd, usersid, FALSE);
-
 	zfs_gid2sid(zp->z_gid, &groupsid);
+	acl = def_dacls;
+
+	RtlSetOwnerSecurityDescriptor(&sd, usersid, FALSE);
 	RtlSetGroupSecurityDescriptor(&sd, groupsid, FALSE);
+
+	acl = zfs_set_acl(acl);
+
+	if (acl) 
+		Status = RtlSetDaclSecurityDescriptor(&sd, TRUE, acl, FALSE);
 
 	ULONG buflen = 0;
 	Status = RtlAbsoluteToSelfRelativeSD(&sd, NULL, &buflen);
@@ -2807,6 +2947,8 @@ void zfs_set_security_root(struct vnode *vp)
 	vnode_setsecurity(vp, tmp);
 
 err:
+	if (acl)
+		ExFreePool(acl);
 	if (usersid != NULL)
 		zfs_freesid(usersid);
 	if (groupsid != NULL)

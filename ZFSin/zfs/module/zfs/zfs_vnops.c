@@ -1582,7 +1582,7 @@ zfs_lookup(vnode_t *dvp, char *nm, vnode_t **vpp, struct componentname *cnp,
 				break;
 			}
 			/* FALLTHROUGH */
-		case DELETE:
+		case VN_DELETE:
 			if (error == 0)
 				;//cnp->cn_flags |= SAVENAME;
 			break;
@@ -1621,7 +1621,7 @@ zfs_lookup(vnode_t *dvp, char *nm, vnode_t **vpp, struct componentname *cnp,
 	 */
 	if (error == 0 && (cnp->cn_flags & MAKEENTRY)) {
 		if (!(cnp->cn_flags & ISLASTCN) ||
-		    (nameiop != DELETE && nameiop != RENAME)) {
+		    (nameiop != VN_DELETE && nameiop != RENAME)) {
 			cache_enter(dvp, *vpp, cnp);
 		}
 	}
@@ -7336,7 +7336,7 @@ vop_deleteextattr {
 		return (error);
 	}
 
-	NDINIT_ATVP(&nd, DELETE, NOFOLLOW | LOCKPARENT | LOCKLEAF,
+	NDINIT_ATVP(&nd, VN_DELETE, NOFOLLOW | LOCKPARENT | LOCKLEAF,
 	    UIO_SYSSPACE, attrname, xvp, td);
 	error = namei(&nd);
 	vp = nd.ni_vp;

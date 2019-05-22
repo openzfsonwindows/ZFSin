@@ -282,10 +282,11 @@ typedef struct vnode_attr vattr_t;
 /*
  * component name operations (for VNOP_LOOKUP)
  */
-#undef DELETE
+// Unfortunately 'DELETE' is a Win32 define as well.
+// We should consider moving all these to VN_*
 #define LOOKUP          0       /* perform name lookup only */
 #define CREATE          1       /* setup for file creation */
-#define DELETE          2       /* setup for file deletion */
+#define VN_DELETE          2       /* setup for file deletion */
 #define RENAME          3       /* setup for file renaming */
 #define OPMASK          3       /* mask for operation */
 
@@ -536,6 +537,7 @@ mount_t *vnode_mount(vnode_t *vp);
 void    vnode_clearfsnode(vnode_t *vp);
 int   vnode_deleteonclose(vnode_t *vp);
 void   vnode_setdeleteonclose(vnode_t *vp);
+void   vnode_cleardeleteonclose(vnode_t *vp);
 int   vnode_deleted(vnode_t *vp);
 void   vnode_setdeleted(vnode_t *vp);
 void vnode_create(mount_t *, void *v_data, int type, int flags, struct vnode **vpp);
