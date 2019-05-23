@@ -800,6 +800,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			ASSERT(dvp_no_rele == 1);
 			vp = FileObject->RelatedFileObject->FsContext;
 			dvp = NULL;
+			VERIFY0(VN_HOLD(vp));
 
 		} else {
 
@@ -2410,7 +2411,11 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	buffer[outlen] = 0;
 	filename = buffer;
 
-	// Filename is often "\??\E:\name" so we want to eat everything up to the "\name"
+	// Filename is often "\??\E:\lower\name" - and "/lower" might be another dataset
+	// so we need to drive a lookup, with SL_OPEN_TARGET_DIRECTORY set so we get
+	// the parent of where we are renaming to. This will give us "tdvp", and
+	// possibly "tvp" is we are to rename over an item.
+#if 0
 	if ((filename[0] == '\\') &&
 		(filename[1] == '?') &&
 		(filename[2] == '?') &&
@@ -2419,10 +2424,69 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		(filename[5] == ':') &&
 		(filename[6] == '\\'))
 		filename = &filename[6];
+#endif
+
+	HANDLE destParentHandle = 0;
+	OBJECT_ATTRIBUTES oa;
+	IO_STATUS_BLOCK ioStatus;
+	UNICODE_STRING uFileName;
+	RtlInitUnicodeString(&uFileName, ren->FileName);
+	InitializeObjectAttributes(&oa, &uFileName, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+		NULL, NULL);
+
+	Status = IoCreateFile(
+		&destParentHandle,
+		FILE_READ_DATA,
+		&oa,
+		&ioStatus,
+		NULL,
+		0,
+		FILE_SHARE_READ,
+		FILE_OPEN,
+		FILE_OPEN_FOR_BACKUP_INTENT,
+		NULL,
+		0,
+		CreateFileTypeNone,
+		NULL,
+		IO_FORCE_ACCESS_CHECK | IO_OPEN_TARGET_DIRECTORY | IO_NO_PARAMETER_CHECKING
+	);
+
+	if (!NT_SUCCESS(Status))
+		return STATUS_INVALID_PARAMETER;
+
+	// We have the targetdirectoryparent - get FileObject.
+	PFILE_OBJECT dFileObject = NULL;
+	Status = ObReferenceObjectByHandle(destParentHandle,
+		STANDARD_RIGHTS_REQUIRED,
+		*IoFileObjectType,
+		KernelMode,
+		&dFileObject,
+		NULL);
+	if (!NT_SUCCESS(Status)) {
+		ZwClose(destParentHandle);
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	// All exits need to go through "out:" at this point on.
+
+	// Assign tdvp
+	tdvp = dFileObject->FsContext;
+	// Hold it
+	VERIFY0(VN_HOLD(tdvp));
+
+	// Filename is '\??\E:\dir\dir\file' and we only care about the last part.
+	char *r = strrchr(filename, '\\');
+	if (r == NULL)
+		r = strrchr(filename, '/');
+	if (r != NULL) {
+		r++;
+		filename = r;
+	}
 
 	error = zfs_find_dvp_vp(zfsvfs, filename, 1, 0, &remainder, &tdvp, &tvp, 0);
 	if (error) {
-		return STATUS_OBJECTID_NOT_FOUND;
+		Status = STATUS_OBJECTID_NOT_FOUND;
+		goto out;
 	}
 
 	// Goto out will release this
@@ -2430,7 +2494,7 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 
 	// If we have a "tvp" here, then something exists where we are to rename
 	if (tvp && !ren->ReplaceIfExists) {
-		error = STATUS_OBJECT_NAME_EXISTS;
+		error = STATUS_OBJECT_NAME_COLLISION;
 		goto out;
 	}
 
@@ -2478,6 +2542,10 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	}
 	// Release all holds
 out:
+	if (destParentHandle != 0)
+		ZwClose(destParentHandle);
+	if (dFileObject)
+		ObDereferenceObject(dFileObject);
 	if (tdvp) VN_RELE(tdvp);
 	if (fdvp) VN_RELE(fdvp);
 	if (fvp) VN_RELE(fvp);
