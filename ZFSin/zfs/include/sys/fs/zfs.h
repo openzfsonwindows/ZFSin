@@ -1183,8 +1183,6 @@ typedef enum {
 #define SNAP_ITER_MIN_TXG       "snap_iter_min_txg"
 #define SNAP_ITER_MAX_TXG       "snap_iter_max_txg"
 
-#define	ZVOL_DEFAULT_BLOCKSIZE	131072
-
 /*
  * zvol ioctl to get dataset name
  */

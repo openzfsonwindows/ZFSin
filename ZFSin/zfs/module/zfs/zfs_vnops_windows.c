@@ -257,12 +257,12 @@ NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 		// unlinked set but not yet reclaimed.
 		// We could optionally drop our iocount here, and try to take it again
 		// handling the case where it may have been deleted after drain.
-		while (zp->z_size >= 3 && 
+		while (zp->z_size == 3 && 
 			vnode_drain_delayclose(1) >= 1) {
 			dprintf("%s: delete_pending waiting\n", __func__);
-			delay(11);
+			delay(1);
 			// This crutch should not be needed, in theory
-			//if (nodeadlock++ > 10) break;
+			if (nodeadlock++ > 10) break;
 		}
 
 		if (zp->z_size > 2) {
