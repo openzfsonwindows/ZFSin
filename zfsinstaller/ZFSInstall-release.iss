@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "OpenZFS On Windows"
-#define MyAppVersion "0.18"
+#define MyAppVersion "0.19"
 #define MyAppPublisher "OpenZFS"
 #define MyAppURL "http://www.openzfsonwindows.org/"
 
@@ -59,6 +59,7 @@ Name: envPath; Description: "Add OpenZFS to PATH variable"
 
 [Files]
 Source: "{#SourcePath}\..\README.md"; DestDir: "{app}"; Flags: ignoreversion  
+Source: "{#SourcePath}\..\CODE_OF_CONDUCT.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourcePath}\..\x64\Release\*.exe"; DestDir: "{app}"; Flags: ignoreversion sign 
 Source: "{#SourcePath}\..\x64\Release\ZFSin\ZFSin.sys"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\x64\Release\ZFSin\ZFSin.cat"; DestDir: "{app}"; Flags: ignoreversion  

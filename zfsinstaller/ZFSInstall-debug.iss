@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "OpenZFS On Windows"
-#define MyAppVersion "0.18"
+#define MyAppVersion "0.19"
 #define MyAppPublisher "OpenZFS"
 #define MyAppURL "http://www.openzfsonwindows.org/"
 
@@ -59,6 +59,7 @@ Name: envPath; Description: "Add OpenZFS to PATH variable"
 
 [Files]
 Source: "{#SourcePath}\..\README.md"; DestDir: "{app}"; Flags: ignoreversion  
+Source: "{#SourcePath}\..\CODE_OF_CONDUCT.md"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\x64\Debug\*.exe"; DestDir: "{app}"; Flags: ignoreversion sign 
 Source: "{#SourcePath}\..\x64\Debug\ZFSin\ZFSin.sys"; DestDir: "{app}"; Flags: ignoreversion 
 Source: "{#SourcePath}\..\x64\Debug\ZFSin\ZFSin.cat"; DestDir: "{app}"; Flags: ignoreversion
@@ -68,7 +69,7 @@ Source: "{#SourcePath}\..\ZFSin.cer"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourcePath}\HowToDebug.txt"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\x64\Debug\*.pdb"; DestDir: "{app}\symbols"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\vcruntime140.dll"; DestDir: "{app}"; Flags: ignoreversion  
-#expr Exec('C:\Python34\python.exe', 'run.py','c:\startupfolder',1,SW_HIDE)
+
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
