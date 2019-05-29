@@ -8004,11 +8004,6 @@ main(int argc, char **argv)
 		if ((strcmp(cmdname, "-V") == 0) || (strcmp(cmdname, "--version")==0))
 			return (zfs_do_version(argc, argv));
 
-		if ((g_zfs = libzfs_init()) == NULL) {
-			(void) fprintf(stderr, "%s", libzfs_error_init(errno));
-			return (1);
-		}
-
 		/*
 		 * Run the appropriate command.
 		 */
