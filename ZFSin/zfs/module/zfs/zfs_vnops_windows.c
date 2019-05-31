@@ -3969,10 +3969,7 @@ NTSTATUS user_fs_request(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		dprintf("    FSCTL_IS_VOLUME_DIRTY\n");
 		PULONG VolumeState;
 
-		if (Irp->AssociatedIrp.SystemBuffer)
-			VolumeState = Irp->AssociatedIrp.SystemBuffer;
-		else
-			VolumeState = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, LowPagePriority | MdlMappingNoExecute);
+		VolumeState = MapUserBuffer(Irp);
 
 		if (VolumeState == NULL) {
 			Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -4091,10 +4088,8 @@ NTSTATUS query_directory_FileFullDirectoryInformation(PDEVICE_OBJECT DeviceObjec
 
 	uio = uio_create(1, zccb->uio_offset, UIO_SYSSPACE, UIO_READ);	
 
-	if (Irp->MdlAddress)
-		uio_addiov(uio, MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority), IrpSp->Parameters.QueryDirectory.Length); // FIXME, check bounds checks are valid
-	else
-		uio_addiov(uio, Irp->UserBuffer, IrpSp->Parameters.QueryDirectory.Length);
+	void *SystemBuffer = MapUserBuffer(Irp);
+	uio_addiov(uio, SystemBuffer, IrpSp->Parameters.QueryDirectory.Length);
 
 	// Grab the root zp
 	zmo = DeviceObject->DeviceExtension;
@@ -4441,6 +4436,9 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	if (fileObject->SectionObjectPointer == NULL)
 		fileObject->SectionObjectPointer = vnode_sectionpointer(vp);
 
+
+	void *SystemBuffer = MapUserBuffer(Irp);
+
 	if (nocache) {
 
 	} else {
@@ -4460,15 +4458,6 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		// DO A NORMAL CACHED READ, if the MDL bit is not set,
 		if (!FlagOn(IrpSp->MinorFunction, IRP_MN_MDL)) {
 
-			void *SystemBuffer;
-			if (!Irp->AssociatedIrp.SystemBuffer) {
-				if (!Irp->MdlAddress)
-					SystemBuffer = Irp->UserBuffer;
-				else
-					SystemBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
-			} else {
-				SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
-			}
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 			if (!CcCopyReadEx(fileObject,
 				&byteOffset,
@@ -4508,16 +4497,11 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 
 
 	uio_t *uio;
-	void *address = NULL;
 
 	uio = uio_create(1, byteOffset.QuadPart, UIO_SYSSPACE, UIO_READ);
-	if (Irp->MdlAddress)
-		address = MmGetSystemAddressForMdlSafe( Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute );
-	else
-		address = Irp->AssociatedIrp.SystemBuffer;
 
-	ASSERT(address != NULL);
-	uio_addiov(uio, address, bufferLength);
+	ASSERT(SystemBuffer != NULL);
+	uio_addiov(uio, SystemBuffer, bufferLength);
 
 	error = zfs_read(vp, uio, 0, NULL, NULL);
 
@@ -4645,6 +4629,8 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
 	}
 
+	void *SystemBuffer = MapUserBuffer(Irp);
+
 	if (!nocache) {
 
 		if (fileObject->PrivateCacheMap == NULL) {
@@ -4692,18 +4678,6 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		// DO A NORMAL CACHED WRITE, if the MDL bit is not set,
 		if (!FlagOn(IrpSp->MinorFunction, IRP_MN_MDL)) {
 
-			//void *SystemBuffer = Irp->MdlAddress ? MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority | MdlMappingNoExecute) :
-			//	Irp->UserBuffer;
-			void *SystemBuffer;
-			if (!Irp->AssociatedIrp.SystemBuffer) {
-				if (!Irp->MdlAddress)
-					SystemBuffer = Irp->UserBuffer;
-				else
-					SystemBuffer = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
-			} else {
-				SystemBuffer = Irp->AssociatedIrp.SystemBuffer;
-			}
-
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 			if (!CcCopyWriteEx(fileObject,
 				&byteOffset,
@@ -4744,10 +4718,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 	uio_t *uio;
 	uio = uio_create(1, byteOffset.QuadPart, UIO_SYSSPACE, UIO_WRITE);
-	if (Irp->MdlAddress)
-		uio_addiov(uio, MmGetSystemAddressForMdl(Irp->MdlAddress), bufferLength);
-	else
-		uio_addiov(uio, Irp->AssociatedIrp.SystemBuffer, bufferLength);
+	uio_addiov(uio, SystemBuffer, bufferLength);
 
 	if (FlagOn(Irp->Flags, IRP_PAGING_IO))
 		error = zfs_write(vp, uio, 0, NULL, NULL);  // Should we call vnop_pageout instead?
@@ -4911,11 +4882,7 @@ NTSTATUS query_security(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATIO
 	if (FileObject == NULL || FileObject->FsContext == NULL)
 		return STATUS_INVALID_PARAMETER;
 
-	void *buf;
-	if (!Irp->MdlAddress)
-		buf = Irp->UserBuffer;
-	else
-		buf = MmGetSystemAddressForMdlSafe(Irp->MdlAddress, NormalPagePriority);
+	void *buf = MapUserBuffer(Irp);
 
 	struct vnode *vp = FileObject->FsContext;
 	VN_HOLD(vp);
