@@ -2682,7 +2682,7 @@ void zfs_send_notify(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG FilterM
 	zmo = zfsvfs->z_vfs;
 	UNICODE_STRING ustr;
 
-	ASSERT(nameoffset < strlen(name));
+	ASSERT(nameoffset <= strlen(name));
 
 	AsciiStringToUnicodeString(name, &ustr);
 

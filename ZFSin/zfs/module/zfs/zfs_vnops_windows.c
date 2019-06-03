@@ -4378,7 +4378,7 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		(Irp->UserBuffer != 0),
 		FlagOn(Irp->Flags, IRP_PAGING_IO));
 #endif
-	nocache = 1;
+	//nocache = 1;
 
 	bufferLength = IrpSp->Parameters.Read.Length;
 	if (bufferLength == 0)
@@ -4544,7 +4544,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	int nocache = Irp->Flags & IRP_NOCACHE;
 	int pagingio = FlagOn(Irp->Flags, IRP_PAGING_IO);
 
-	nocache = 1;
+	//nocache = 1;
 
 	if (FlagOn(IrpSp->MinorFunction, IRP_MN_COMPLETE)) {
 		dprintf("%s: IRP_MN_COMPLETE\n", __func__);
