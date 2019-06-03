@@ -175,7 +175,7 @@ osx_kstat_t osx_kstat = {
 	{"zfs_trim_txg_batch",			KSTAT_DATA_UINT64  },
 	{"zfs_trim_queue_limit",		KSTAT_DATA_UINT64  },
 
-	{"hw_hostid",					KSTAT_DATA_UINT32 },
+	{"hostid",					KSTAT_DATA_UINT32 },
 	{"zfs_send_unmodified_spill_blocks",		KSTAT_DATA_UINT64  },
 	{"zfs_special_class_metadata_reserve_pct",		KSTAT_DATA_UINT64  },
 
@@ -571,10 +571,10 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 	return 0;
 }
 
-
-
-int kstat_osx_init(void)
+int kstat_osx_init(PUNICODE_STRING RegistryPath)
 {
+	int error = 0;
+
 	osx_kstat_ksp = kstat_create("zfs", 0, "tunable", "win32",
 	    KSTAT_TYPE_NAMED, sizeof (osx_kstat) / sizeof (kstat_named_t),
 	    KSTAT_FLAG_VIRTUAL|KSTAT_FLAG_WRITABLE);
@@ -583,6 +583,21 @@ int kstat_osx_init(void)
 		osx_kstat_ksp->ks_data = &osx_kstat;
         osx_kstat_ksp->ks_update = osx_kstat_update;
 		kstat_install(osx_kstat_ksp);
+
+		// We don't hold the ksp here, only call at init, so there are
+		// no other threads.
+		KSTAT_ENTER(osx_kstat_ksp);
+		error = KSTAT_UPDATE(osx_kstat_ksp, KSTAT_READ);
+		if (error != 0) goto out;
+
+		// Returns number of changed, zero means nothing to do.
+		error = spl_kstat_registry(RegistryPath, osx_kstat_ksp);
+		if (error == 0) goto out;
+
+		error = KSTAT_UPDATE(osx_kstat_ksp, KSTAT_WRITE);
+
+	out:
+		KSTAT_EXIT(osx_kstat_ksp);
 	}
 
 	return 0;

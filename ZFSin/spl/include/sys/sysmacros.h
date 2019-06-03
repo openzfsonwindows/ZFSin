@@ -151,7 +151,6 @@ extern unsigned int max_ncpus;
 
 /* Missing globals */
 extern char spl_version[32];
-extern unsigned long spl_hostid;
 extern char hw_serial[11];
 
 /* Missing misc functions */

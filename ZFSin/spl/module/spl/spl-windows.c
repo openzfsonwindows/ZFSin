@@ -75,7 +75,7 @@ extern uint64_t		segkmem_total_mem_allocated;
 #define MAXHOSTNAMELEN 64
 extern char hostname[MAXHOSTNAMELEN];
 
-unsigned long spl_hostid = 0;
+uint32_t spl_hostid = 0;
 
 /*
  * Solaris delay is in ticks (hz) and Windows in 100 nanosecs

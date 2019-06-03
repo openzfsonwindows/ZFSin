@@ -255,10 +255,11 @@ extern uint64_t  zfs_trim_queue_limit;
 extern uint64_t  zfs_send_unmodified_spill_blocks;
 extern uint64_t  zfs_special_class_metadata_reserve_pct;
 
-int        kstat_osx_init(void);
+int        kstat_osx_init(void *);
 void       kstat_osx_fini(void);
 
 int arc_kstat_update(kstat_t *ksp, int rw);
 int arc_kstat_update_osx(kstat_t *ksp, int rw);
+int spl_kstat_registry(void *pRegistryPath, kstat_t *ksp);
 
 #endif

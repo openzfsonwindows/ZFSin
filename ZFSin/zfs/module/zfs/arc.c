@@ -7364,6 +7364,14 @@ arc_kstat_update(kstat_t *ksp, int rw)
 {
 	arc_stats_t *as = ksp->ks_data;
 
+	// SPL can call us super early, handle this special case
+	if (arc_anon == NULL ||
+		arc_mru == NULL ||
+		arc_mru_ghost == NULL ||
+		arc_mfu == NULL ||
+		arc_mfu_ghost == NULL)
+		return EACCES;
+
 	if (rw == KSTAT_WRITE) {
 		return (EACCES);
 	} else {

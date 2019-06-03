@@ -8122,8 +8122,6 @@ zfs_ioctl_osx_init(void)
 
 #ifdef _WIN32
 
-	kstat_osx_init();
-
 	zfs_ioctl_installed = 1;
 #endif
 	DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
@@ -8159,8 +8157,6 @@ zfs_ioctl_osx_fini(void)
 		return (SET_ERROR(EBUSY));
 	}
 #endif
-
-	kstat_osx_fini();
 
 	zvol_fini();
 
