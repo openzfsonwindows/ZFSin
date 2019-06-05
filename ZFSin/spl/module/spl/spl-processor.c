@@ -26,7 +26,6 @@
  */
 
 #include <sys/processor.h>
-
 uint32_t
 cpu_number(void)
 {
@@ -45,4 +44,50 @@ getcpuid()
 	return cpuid % max_ncpus;
 	return 0;
 	return cpuid >= max_ncpus ? 0 : cpuid;
+}
+
+static uint64_t leaf1_features = 0;
+static uint64_t leaf7_features = 0;
+
+uint64_t spl_cpuid_features(void)
+{
+	static int firsttime = 1;
+
+	if (firsttime) {
+		int CPUInfo[4] = { 0 };
+		int registers[4] = { 0 };
+
+		firsttime = 0;
+
+		// fetch number of leaf entries
+		// CPUInfo[0] has "highest leaf" 
+		__cpuid(CPUInfo, 0);
+
+		if (CPUInfo[0] >= 1) {
+			__cpuidex(registers, 0x1, 0);
+			leaf1_features = ((uint64_t)registers[2]) << 32ULL | registers[3];
+		}
+		if (CPUInfo[0] >= 7) {
+			__cpuidex(registers, 0x7, 0);
+			leaf7_features = ((uint64_t)registers[1]) << 32ULL | registers[2];
+		}
+	}
+	return leaf1_features;
+}
+
+uint64_t spl_cpuid_leaf7_features(void)
+{
+	return leaf7_features;
+}
+
+// Unsure when these are required? avx only?
+static volatile XSTATE_SAVE SaveState;
+void kfpu_begin(void)
+{
+	//VERIFY0(KeSaveExtendedProcessorState(XSTATE_MASK_AVX | XSTATE_MASK_LEGACY_SSE, &SaveState));
+}
+
+void kfpu_end(void)
+{
+	//KeRestoreExtendedProcessorState(&SaveState);
 }

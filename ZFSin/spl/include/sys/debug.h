@@ -55,8 +55,10 @@
 #ifndef _SPL_DEBUG_H
 #define _SPL_DEBUG_H
 
+#ifndef __clang__
 #include <spl-debug.h>
 #include <stdio.h>
+#endif
 
 #define panic(...) do { KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__)); DbgBreakPoint(); windows_delay(hz); } while (1)
 

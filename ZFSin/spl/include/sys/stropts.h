@@ -36,7 +36,7 @@
 extern "C" {
 #endif
 
-#define isprint(c)      ((c) >= ' ' && (c) <= '~')
+//#define isprint(c)      ((c) >= ' ' && (c) <= '~')
 
 /*
  * Find highest one bit set.

@@ -113,7 +113,6 @@ void uio_setrw(uio_t *a_uio, int a_value);
 
 int	uiomove(void *, uint32_t, enum uio_rw, struct uio *);
 int	spl_uiomove(const uint8_t *, uint32_t, struct uio *);
-int	uiocopy(void *, uint32_t, enum uio_rw, struct uio *, uint64_t *);
 void uioskip(struct uio *, uint32_t);
 int	uiodup(struct uio *, struct uio *, iovec_t *, int);
 

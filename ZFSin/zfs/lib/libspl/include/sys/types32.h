@@ -79,7 +79,7 @@ typedef unsigned long long uint64_t;
 typedef uint64_t a_offset;
 typedef uint64_t user_addr_t;
 typedef uint64_t user_size_t;
-typedef uint64_t ssize_t;
+typedef int64_t ssize_t;
 typedef char *caddr_t;
 typedef unsigned short umode_t;
 typedef unsigned short mode_t;

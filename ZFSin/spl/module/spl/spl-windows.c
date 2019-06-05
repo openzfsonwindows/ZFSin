@@ -41,7 +41,7 @@
 
 //#define MACH_KERNEL_PRIVATE
 
-//#include <kern/processor.h>
+#include <sys/processor.h>
 
 #define DEBUG 1  // for backtrace debugging info
 
@@ -481,6 +481,9 @@ int spl_start (void)
 
     //len = sizeof(utsname.version);
     //sysctlbyname("kern.version", &utsname.version, &len, NULL, 0);
+
+	// Load CPU features
+	spl_cpuid_features();
 
     //strlcpy(utsname.nodename, hostname, sizeof(utsname.nodename));
     strlcpy(utsname.nodename, "Windows", sizeof(utsname.nodename));

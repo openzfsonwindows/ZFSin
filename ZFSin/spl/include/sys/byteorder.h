@@ -30,7 +30,9 @@
 
 //#include <libkern/OSByteOrder.h>
 //#include <machine/byte_order.h>
+#ifndef __clang__
 #include <intrin.h>
+#endif
 
 #define LE_16(x) (x)
 #define LE_32(x) (x)

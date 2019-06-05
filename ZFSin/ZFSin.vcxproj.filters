@@ -89,6 +89,27 @@
     <Filter Include="Source Files\ZFS\module\lua">
       <UniqueIdentifier>{e92a001f-3a8d-40a3-be3a-e834a5d18078}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\asm-x86_64">
+      <UniqueIdentifier>{0d03693e-43ee-4982-80ba-fcffa00ef41b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\asm-x86_64\aes">
+      <UniqueIdentifier>{6af0d1fb-b4e9-4df6-b2c4-4363b527cf8d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\asm-x86_64\modes">
+      <UniqueIdentifier>{15d09303-0c2a-4469-9131-369e0e6475a6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\asm-x86_64\sha2">
+      <UniqueIdentifier>{a012c88d-516a-4367-857c-0f7f369dc2c9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\include\sys">
+      <UniqueIdentifier>{dbe9b13b-2489-4a46-8cae-7768e5aea09c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\include\ia32">
+      <UniqueIdentifier>{8b5166bb-bf8f-4a13-b4da-2c776dcb8838}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\ZFS\module\icp\include\crypto">
+      <UniqueIdentifier>{77eefe55-5fb3-4d6d-97e3-3f098a5824e3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <Inf Include="ZFSin.inf">
@@ -806,6 +827,35 @@
     </ClCompile>
     <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_mount.c">
       <Filter>Source Files\ZFS\module\zfs</Filter>
+    <ClCompile Include="zfs\module\icp\algs\aes\aes_impl_aesni.c">
+      <Filter>Source Files\ZFS\module\icp\algs\aes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\aes\aes_impl_generic.c">
+      <Filter>Source Files\ZFS\module\icp\algs\aes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\aes\aes_impl_x86-64.c">
+      <Filter>Source Files\ZFS\module\icp\algs\aes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\asm-x86_64\aes\aeskey.c">
+      <Filter>Source Files\ZFS\module\icp\asm-x86_64\aes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\modes\gcm_generic.c">
+      <Filter>Source Files\ZFS\module\icp\algs\modes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\icp\algs\modes\gcm_pclmulqdq.c">
+      <Filter>Source Files\ZFS\module\icp\algs\modes</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zcommon\zfs_fletcher_superscalar.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zcommon\zfs_fletcher_superscalar4.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_raidz_math.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\vdev_raidz_math_scalar.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1294,10 +1344,77 @@
     </ClInclude>
     <ClInclude Include="zfs\include\sys\zvolIO.h">
       <Filter>Header Files</Filter>
+    <ClInclude Include="zfs\module\icp\include\sys\asm_linkage.h">
+      <Filter>Source Files\ZFS\module\icp\include\sys</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\icp\include\sys\ia32\asm_linkage.h">
+      <Filter>Source Files\ZFS\module\icp\include\ia32</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\dca.h">
+      <Filter>Source Files\ZFS\module\icp\include\crypto</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\elfsign.h">
+      <Filter>Source Files\ZFS\module\icp\include\crypto</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\impl.h">
+      <Filter>Source Files\ZFS\module\icp\include\crypto</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\ioctl.h">
+      <Filter>Source Files\ZFS\module\icp\include\crypto</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\ioctladmin.h">
+      <Filter>Source Files\ZFS\module\icp\include\crypto</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\ops_impl.h">
+      <Filter>Source Files\ZFS\module\icp\include\crypto</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\sched_impl.h">
+      <Filter>Source Files\ZFS\module\icp\include\crypto</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\spi.h">
+      <Filter>Source Files\ZFS\module\icp\include\crypto</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\module\zfs\vdev_raidz_math_impl.h">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.md" />
     <None Include="..\Testing.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="zfs\module\icp\asm-x86_64\aes\aes_aesni.S">
+      <Filter>Source Files\ZFS\module\icp\asm-x86_64\aes</Filter>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\icp\asm-x86_64\aes\aes_amd64.S">
+      <Filter>Source Files\ZFS\module\icp\asm-x86_64\aes</Filter>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zfs\vdev_raidz_math_avx512bw.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zfs\vdev_raidz_math_avx512f.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zfs\vdev_raidz_math_sse2.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zfs\vdev_raidz_math_ssse3.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zcommon\zfs_fletcher_avx512.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zcommon\zfs_fletcher_intel.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zcommon\zfs_fletcher_sse.c">
+      <Filter>Source Files\ZFS\module\zcommon</Filter>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zfs\vdev_raidz_math_avx2.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\icp\asm-x86_64\modes\gcm_pclmulqdq.S">
+      <Filter>Source Files\ZFS\module\icp\asm-x86_64\modes</Filter>
+    </CustomBuild>
   </ItemGroup>
 </Project>

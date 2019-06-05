@@ -158,7 +158,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_KERNEL;__x86_64__;__x86_64;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
@@ -172,11 +172,21 @@
     <DriverSign>
       <AdditionalOptions>/tr http://timestamp.digicert.com /td sha256 /fd sha256 %(AdditionalOptions)</AdditionalOptions>
     </DriverSign>
+    <CustomBuild>
+      <Command>clang  -D_KERNEL=1 -D_WIN32=1 -D_ASM -I$(SolutionDir)/ZFSin/spl/include -I$(SolutionDir)/ZFSin/zfs/module/icp/include -I$(SolutionDir)/ZFSin/zfs/include -c %(FullPath) -o $(OutDir)/k%(Filename).obj</Command>
+    </CustomBuild>
+    <CustomBuild>
+      <Message>CLANG Phase (%(Filename))</Message>
+      <Outputs>$(OutDir)/k%(Filename).obj</Outputs>
+      <AdditionalInputs>$(SolutionDir)/ZFSin/zfs/module/icp/include/sys/ia32/asm_linkage.h;$(SolutionDir)/ZFSin/spl/include/sys/simd_x86.h</AdditionalInputs>
+      <OutputItemType>Object</OutputItemType>
+      <BuildInParallel>false</BuildInParallel>
+    </CustomBuild>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_KERNEL;__x86_64__;__x86_64;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
@@ -190,6 +200,16 @@
     <DriverSign>
       <AdditionalOptions>/tr http://timestamp.digicert.com /td sha256 /fd sha256 %(AdditionalOptions)</AdditionalOptions>
     </DriverSign>
+    <CustomBuild>
+      <Command>clang  -D_KERNEL=1 -D_WIN32=1 -D_ASM -I$(SolutionDir)/ZFSin/spl/include -I$(SolutionDir)/ZFSin/zfs/module/icp/include -I$(SolutionDir)/ZFSin/zfs/include -c %(FullPath) -o $(OutDir)/k%(Filename).obj</Command>
+    </CustomBuild>
+    <CustomBuild>
+      <Message>CLANG Phase (%(Filename))</Message>
+      <Outputs>$(OutDir)/k%(Filename).obj</Outputs>
+      <AdditionalInputs>$(SolutionDir)/ZFSin/zfs/module/icp/include/sys/ia32/asm_linkage.h;$(SolutionDir)/ZFSin/spl/include/sys/simd_x86.h</AdditionalInputs>
+      <OutputItemType>Object</OutputItemType>
+      <BuildInParallel>false</BuildInParallel>
+    </CustomBuild>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -262,6 +282,9 @@
     <ClCompile Include="zfs\lib\zlib-1.2.3\trees.c" />
     <ClCompile Include="zfs\lib\zlib-1.2.3\zutil.c" />
     <ClCompile Include="zfs\module\icp\algs\aes\aes_impl.c" />
+    <ClCompile Include="zfs\module\icp\algs\aes\aes_impl_aesni.c" />
+    <ClCompile Include="zfs\module\icp\algs\aes\aes_impl_generic.c" />
+    <ClCompile Include="zfs\module\icp\algs\aes\aes_impl_x86-64.c" />
     <ClCompile Include="zfs\module\icp\algs\aes\aes_modes.c" />
     <ClCompile Include="zfs\module\icp\algs\edonr\edonr.c" />
     <ClCompile Include="zfs\module\icp\algs\modes\cbc.c" />
@@ -269,6 +292,8 @@
     <ClCompile Include="zfs\module\icp\algs\modes\ctr.c" />
     <ClCompile Include="zfs\module\icp\algs\modes\ecb.c" />
     <ClCompile Include="zfs\module\icp\algs\modes\gcm.c" />
+    <ClCompile Include="zfs\module\icp\algs\modes\gcm_generic.c" />
+    <ClCompile Include="zfs\module\icp\algs\modes\gcm_pclmulqdq.c" />
     <ClCompile Include="zfs\module\icp\algs\modes\modes.c" />
     <ClCompile Include="zfs\module\icp\algs\sha1\sha1.c" />
     <ClCompile Include="zfs\module\icp\algs\sha2\sha2.c" />
@@ -280,6 +305,7 @@
     <ClCompile Include="zfs\module\icp\api\kcf_digest.c" />
     <ClCompile Include="zfs\module\icp\api\kcf_mac.c" />
     <ClCompile Include="zfs\module\icp\api\kcf_miscapi.c" />
+    <ClCompile Include="zfs\module\icp\asm-x86_64\aes\aeskey.c" />
     <ClCompile Include="zfs\module\icp\core\kcf_callprov.c" />
     <ClCompile Include="zfs\module\icp\core\kcf_mech_tabs.c" />
     <ClCompile Include="zfs\module\icp\core\kcf_prov_lib.c" />
@@ -329,6 +355,17 @@
     <ClCompile Include="zfs\module\zcommon\zfs_comutil.c" />
     <ClCompile Include="zfs\module\zcommon\zfs_deleg.c" />
     <ClCompile Include="zfs\module\zcommon\zfs_fletcher.c" />
+    <CustomBuild Include="zfs\module\zcommon\zfs_fletcher_avx512.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zcommon\zfs_fletcher_intel.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zcommon\zfs_fletcher_sse.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <ClCompile Include="zfs\module\zcommon\zfs_fletcher_superscalar.c" />
+    <ClCompile Include="zfs\module\zcommon\zfs_fletcher_superscalar4.c" />
     <ClCompile Include="zfs\module\zcommon\zfs_namecheck.c" />
     <ClCompile Include="zfs\module\zcommon\zfs_prop.c" />
     <ClCompile Include="zfs\module\zcommon\zpool_prop.c" />
@@ -411,6 +448,23 @@
     <ClCompile Include="zfs\module\zfs\vdev_missing.c" />
     <ClCompile Include="zfs\module\zfs\vdev_queue.c" />
     <ClCompile Include="zfs\module\zfs\vdev_raidz.c" />
+    <ClCompile Include="zfs\module\zfs\vdev_raidz_math.c" />
+    <CustomBuild Include="zfs\module\zfs\vdev_raidz_math_avx2.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zfs\vdev_raidz_math_avx512bw.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zfs\vdev_raidz_math_avx512f.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <ClCompile Include="zfs\module\zfs\vdev_raidz_math_scalar.c" />
+    <CustomBuild Include="zfs\module\zfs\vdev_raidz_math_sse2.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\zfs\vdev_raidz_math_ssse3.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
     <ClCompile Include="zfs\module\zfs\vdev_removal.c" />
     <ClCompile Include="zfs\module\zfs\vdev_root.c" />
     <ClCompile Include="zfs\module\zfs\vdev_trim.c" />
@@ -601,6 +655,16 @@
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h" />
     <ClInclude Include="zfs\module\icp\algs\skein\skein_impl.h" />
     <ClInclude Include="zfs\module\icp\algs\skein\skein_port.h" />
+    <ClInclude Include="zfs\module\icp\include\sys\asm_linkage.h" />
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\dca.h" />
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\elfsign.h" />
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\impl.h" />
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\ioctl.h" />
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\ioctladmin.h" />
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\ops_impl.h" />
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\sched_impl.h" />
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\spi.h" />
+    <ClInclude Include="zfs\module\icp\include\sys\ia32\asm_linkage.h" />
     <ClInclude Include="zfs\module\lua\lapi.h" />
     <ClInclude Include="zfs\module\lua\lcode.h" />
     <ClInclude Include="zfs\module\lua\lctype.h" />
@@ -621,10 +685,20 @@
     <ClInclude Include="zfs\module\lua\lundump.h" />
     <ClInclude Include="zfs\module\lua\lvm.h" />
     <ClInclude Include="zfs\module\lua\lzio.h" />
+    <ClInclude Include="zfs\module\zfs\vdev_raidz_math_impl.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.md" />
     <None Include="..\Testing.md" />
+    <CustomBuild Include="zfs\module\icp\asm-x86_64\aes\aes_aesni.S">
+      <FileType>Document</FileType>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\icp\asm-x86_64\aes\aes_amd64.S">
+      <FileType>Document</FileType>
+    </CustomBuild>
+    <CustomBuild Include="zfs\module\icp\asm-x86_64\modes\gcm_pclmulqdq.S">
+      <FileType>Document</FileType>
+    </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -28,7 +28,9 @@
 
 #include <sys/inttypes.h>
 #include <sys/list.h>
+#ifndef __clang__
 #include <sys/zfs_context.h>
+#endif
 
 #ifdef	__cplusplus
 extern "C" {

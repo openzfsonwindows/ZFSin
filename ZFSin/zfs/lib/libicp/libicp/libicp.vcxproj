@@ -36,6 +36,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\module\icp\algs\aes\aes_impl.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\aes\aes_impl_aesni.c">
+      <FileType>CppCode</FileType>
+    </ClCompile>
+    <ClCompile Include="..\..\..\module\icp\algs\aes\aes_impl_generic.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\aes\aes_impl_x86-64.c" />
     <ClCompile Include="..\..\..\module\icp\algs\aes\aes_modes.c" />
     <ClCompile Include="..\..\..\module\icp\algs\edonr\edonr.c" />
     <ClCompile Include="..\..\..\module\icp\algs\modes\cbc.c" />
@@ -43,6 +48,8 @@
     <ClCompile Include="..\..\..\module\icp\algs\modes\ctr.c" />
     <ClCompile Include="..\..\..\module\icp\algs\modes\ecb.c" />
     <ClCompile Include="..\..\..\module\icp\algs\modes\gcm.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\modes\gcm_generic.c" />
+    <ClCompile Include="..\..\..\module\icp\algs\modes\gcm_pclmulqdq.c" />
     <ClCompile Include="..\..\..\module\icp\algs\modes\modes.c" />
     <ClCompile Include="..\..\..\module\icp\algs\sha1\sha1.c" />
     <ClCompile Include="..\..\..\module\icp\algs\sha2\sha2.c" />
@@ -51,6 +58,7 @@
     <ClCompile Include="..\..\..\module\icp\api\kcf_digest.c" />
     <ClCompile Include="..\..\..\module\icp\api\kcf_mac.c" />
     <ClCompile Include="..\..\..\module\icp\api\kcf_miscapi.c" />
+    <ClCompile Include="..\..\..\module\icp\asm-x86_64\aes\aeskey.c" />
     <ClCompile Include="..\..\..\module\icp\core\kcf_callprov.c" />
     <ClCompile Include="..\..\..\module\icp\core\kcf_mech_tabs.c" />
     <ClCompile Include="..\..\..\module\icp\core\kcf_prov_lib.c" />
@@ -69,6 +77,17 @@
     <ProjectReference Include="..\..\libspl\libspl\libspl.vcxproj">
       <Project>{5514a992-229b-47b4-9e37-8299a4c1263a}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\..\..\module\icp\asm-x86_64\aes\aes_aesni.S">
+      <FileType>Document</FileType>
+    </CustomBuild>
+    <CustomBuild Include="..\..\..\module\icp\asm-x86_64\aes\aes_amd64.S">
+      <FileType>Document</FileType>
+    </CustomBuild>
+    <CustomBuild Include="..\..\..\module\icp\asm-x86_64\modes\gcm_pclmulqdq.S">
+      <FileType>Document</FileType>
+    </CustomBuild>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{1696DCFF-4F3A-4199-A677-27A578AE2DE1}</ProjectGuid>
@@ -145,6 +164,14 @@
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;4242</DisableSpecificWarnings>
     </ClCompile>
+    <CustomBuild>
+      <Command>clang  -I$(SolutionDir)/ZFSin/zfs/lib/libspl/include -I$(SolutionDir)/ZFSin/zfs/module/icp/include -c %(FullPath) -o $(OutDir)/%(Filename).obj</Command>
+      <Message>CLANG Phase (libicp: %(Filename))</Message>
+      <Outputs>$(OutDir)/%(Filename).obj</Outputs>
+      <AdditionalInputs>$(SolutionDir)/ZFSin/zfs/module/icp/include/sys/ia32/asm_linkage.h</AdditionalInputs>
+      <OutputItemType>Object</OutputItemType>
+      <BuildInParallel>true</BuildInParallel>
+    </CustomBuild>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -153,6 +180,14 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;4242</DisableSpecificWarnings>
     </ClCompile>
+    <CustomBuild>
+      <Command>clang  -I$(SolutionDir)/ZFSin/zfs/lib/libspl/include -I$(SolutionDir)/ZFSin/zfs/module/icp/include -c %(FullPath) -o $(OutDir)/%(Filename).obj</Command>
+      <Message>CLANG Phase (libicp: %(Filename))</Message>
+      <Outputs>$(OutDir)/%(Filename).obj</Outputs>
+      <AdditionalInputs>$(SolutionDir)/ZFSin/zfs/module/icp/include/sys/ia32/asm_linkage.h</AdditionalInputs>
+      <OutputItemType>Object</OutputItemType>
+      <BuildInParallel>true</BuildInParallel>
+    </CustomBuild>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

@@ -25,8 +25,10 @@
 #include <sys/zfs_context.h>
 #include <modes/modes.h>
 #include <sys/crypto/common.h>
+#include <sys/crypto/icp.h>
 #include <sys/crypto/impl.h>
 #include <sys/byteorder.h>
+#include <modes/gcm_impl.h>
 
 #ifdef _WIN32
 // No assembler for now
@@ -107,11 +109,10 @@ gcm_mul(uint64_t *x_in, uint64_t *y, uint64_t *res)
 }
 
 
-#define	GHASH(c, d, t) \
+#define	GHASH(c, d, t, o) \
 	xor_block((uint8_t *)(d), (uint8_t *)(c)->gcm_ghash); \
-	gcm_mul((uint64_t *)(void *)(c)->gcm_ghash, (c)->gcm_H, \
+	(o)->mul((uint64_t *)(void *)(c)->gcm_ghash, (c)->gcm_H, \
 	(uint64_t *)(void *)(t));
-
 
 /*
  * Encrypt multiple blocks of data in GCM mode.  Decrypt for GCM mode
@@ -124,6 +125,7 @@ gcm_mode_encrypt_contiguous_blocks(gcm_ctx_t *ctx, char *data, size_t length,
     void (*copy_block)(uint8_t *, uint8_t *),
     void (*xor_block)(uint8_t *, uint8_t *))
 {
+	gcm_impl_ops_t *gops;
 	size_t remainder = length;
 	size_t need = 0;
 	uint8_t *datap = (uint8_t *)data;
@@ -151,6 +153,7 @@ gcm_mode_encrypt_contiguous_blocks(gcm_ctx_t *ctx, char *data, size_t length,
 	if (out != NULL)
 		crypto_init_ptrs(out, &iov_or_mp, &offset);
 
+	gops = gcm_impl_get_ops();
 	do {
 		/* Unprocessed data from last call. */
 		if (ctx->gcm_remainder_len > 0) {
@@ -211,7 +214,7 @@ gcm_mode_encrypt_contiguous_blocks(gcm_ctx_t *ctx, char *data, size_t length,
 		}
 
 		/* add ciphertext to the hash */
-		GHASH(ctx, ctx->gcm_tmp, ctx->gcm_ghash);
+		GHASH(ctx, ctx->gcm_tmp, ctx->gcm_ghash, gops);
 
 		/* Update pointer to next block of data to be processed. */
 		if (ctx->gcm_remainder_len != 0) {
@@ -244,6 +247,7 @@ gcm_encrypt_final(gcm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
     void (*copy_block)(uint8_t *, uint8_t *),
     void (*xor_block)(uint8_t *, uint8_t *))
 {
+	gcm_impl_ops_t *gops;
 	uint64_t counter_mask = ntohll(0x00000000ffffffffULL);
 	uint8_t *ghash, *macp = NULL;
 	int i, rv;
@@ -253,6 +257,7 @@ gcm_encrypt_final(gcm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
 		return (CRYPTO_DATA_LEN_RANGE);
 	}
 
+	gops = gcm_impl_get_ops();
 	ghash = (uint8_t *)ctx->gcm_ghash;
 
 	if (ctx->gcm_remainder_len > 0) {
@@ -285,14 +290,14 @@ gcm_encrypt_final(gcm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
 		}
 
 		/* add ciphertext to the hash */
-		GHASH(ctx, macp, ghash);
+		GHASH(ctx, macp, ghash, gops);
 
 		ctx->gcm_processed_data_len += ctx->gcm_remainder_len;
 	}
 
 	ctx->gcm_len_a_len_c[1] =
 	    htonll(CRYPTO_BYTES2BITS(ctx->gcm_processed_data_len));
-	GHASH(ctx, ctx->gcm_len_a_len_c, ghash);
+	GHASH(ctx, ctx->gcm_len_a_len_c, ghash, gops);
 	encrypt_block(ctx->gcm_keysched, (uint8_t *)ctx->gcm_J0,
 	    (uint8_t *)ctx->gcm_J0);
 	xor_block((uint8_t *)ctx->gcm_J0, ghash);
@@ -344,7 +349,7 @@ gcm_decrypt_incomplete_block(gcm_ctx_t *ctx, size_t block_size, size_t index,
 	bcopy(datap, (uint8_t *)ctx->gcm_tmp, ctx->gcm_remainder_len);
 
 	/* add ciphertext to the hash */
-	GHASH(ctx, ctx->gcm_tmp, ctx->gcm_ghash);
+	GHASH(ctx, ctx->gcm_tmp, ctx->gcm_ghash, gcm_impl_get_ops());
 
 	/* decrypt remaining ciphertext */
 	encrypt_block(ctx->gcm_keysched, (uint8_t *)ctx->gcm_cb, counterp);
@@ -394,6 +399,7 @@ gcm_decrypt_final(gcm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
     int (*encrypt_block)(const void *, const uint8_t *, uint8_t *),
     void (*xor_block)(uint8_t *, uint8_t *))
 {
+	gcm_impl_ops_t *gops;
 	size_t pt_len;
 	size_t remainder;
 	uint8_t *ghash;
@@ -405,6 +411,7 @@ gcm_decrypt_final(gcm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
 
 	ASSERT(ctx->gcm_processed_data_len == ctx->gcm_pt_buf_len);
 
+	gops = gcm_impl_get_ops();
 	pt_len = ctx->gcm_processed_data_len - ctx->gcm_tag_len;
 	ghash = (uint8_t *)ctx->gcm_ghash;
 	blockp = ctx->gcm_pt_buf;
@@ -424,7 +431,7 @@ gcm_decrypt_final(gcm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
 			goto out;
 		}
 		/* add ciphertext to the hash */
-		GHASH(ctx, blockp, ghash);
+		GHASH(ctx, blockp, ghash, gops);
 
 		/*
 		 * Increment counter.
@@ -447,7 +454,7 @@ gcm_decrypt_final(gcm_ctx_t *ctx, crypto_data_t *out, size_t block_size,
 	}
 out:
 	ctx->gcm_len_a_len_c[1] = htonll(CRYPTO_BYTES2BITS(pt_len));
-	GHASH(ctx, ctx->gcm_len_a_len_c, ghash);
+	GHASH(ctx, ctx->gcm_len_a_len_c, ghash, gops);
 	encrypt_block(ctx->gcm_keysched, (uint8_t *)ctx->gcm_J0,
 	    (uint8_t *)ctx->gcm_J0);
 	xor_block((uint8_t *)ctx->gcm_J0, ghash);
@@ -499,12 +506,14 @@ gcm_format_initial_blocks(uchar_t *iv, ulong_t iv_len,
     void (*copy_block)(uint8_t *, uint8_t *),
     void (*xor_block)(uint8_t *, uint8_t *))
 {
+	gcm_impl_ops_t *gops;
 	uint8_t *cb;
 	ulong_t remainder = iv_len;
 	ulong_t processed = 0;
 	uint8_t *datap, *ghash;
 	uint64_t len_a_len_c[2];
 
+	gops = gcm_impl_get_ops();
 	ghash = (uint8_t *)ctx->gcm_ghash;
 	cb = (uint8_t *)ctx->gcm_cb;
 	if (iv_len == 12) {
@@ -528,12 +537,12 @@ gcm_format_initial_blocks(uchar_t *iv, ulong_t iv_len,
 				processed += block_size;
 				remainder -= block_size;
 			}
-			GHASH(ctx, datap, ghash);
+			GHASH(ctx, datap, ghash, gops);
 		} while (remainder > 0);
 
 		len_a_len_c[0] = 0;
 		len_a_len_c[1] = htonll(CRYPTO_BYTES2BITS(iv_len));
-		GHASH(ctx, len_a_len_c, ctx->gcm_J0);
+		GHASH(ctx, len_a_len_c, ctx->gcm_J0, gops);
 
 		/* J0 will be used again in the final */
 		copy_block((uint8_t *)ctx->gcm_J0, (uint8_t *)cb);
@@ -551,6 +560,7 @@ gcm_init(gcm_ctx_t *ctx, unsigned char *iv, size_t iv_len,
     void (*copy_block)(uint8_t *, uint8_t *),
     void (*xor_block)(uint8_t *, uint8_t *))
 {
+	gcm_impl_ops_t *gops;
 	uint8_t *ghash, *datap, *authp;
 	size_t remainder, processed;
 
@@ -562,6 +572,7 @@ gcm_init(gcm_ctx_t *ctx, unsigned char *iv, size_t iv_len,
 	gcm_format_initial_blocks(iv, iv_len, ctx, block_size,
 	    copy_block, xor_block);
 
+	gops = gcm_impl_get_ops();
 	authp = (uint8_t *)ctx->gcm_tmp;
 	ghash = (uint8_t *)ctx->gcm_ghash;
 	bzero(authp, block_size);
@@ -586,7 +597,7 @@ gcm_init(gcm_ctx_t *ctx, unsigned char *iv, size_t iv_len,
 		}
 
 		/* add auth data to the hash */
-		GHASH(ctx, datap, ghash);
+		GHASH(ctx, datap, ghash, gops);
 
 	} while (remainder > 0);
 
@@ -698,56 +709,203 @@ gcm_set_kmflag(gcm_ctx_t *ctx, int kmflag)
 	ctx->gcm_kmflag = kmflag;
 }
 
+/* GCM implementation that contains the fastest methods */
+static gcm_impl_ops_t gcm_fastest_impl = {
+	.name = "fastest"
+};
 
-#ifdef __amd64
+/* All compiled in implementations */
+const gcm_impl_ops_t *gcm_all_impl[] = {
+	&gcm_generic_impl,
+#if defined(__x86_64) && defined(HAVE_PCLMULQDQ)
+	&gcm_pclmulqdq_impl,
+#endif
+};
 
-#define	INTEL_PCLMULQDQ_FLAG (1 << 1)
+/* Indicate that benchmark has been completed */
+static boolean_t gcm_impl_initialized = B_FALSE;
+
+/* Select aes implementation */
+#define	IMPL_FASTEST	(UINT32_MAX)
+#define	IMPL_CYCLE	(UINT32_MAX-1)
+
+#define	GCM_IMPL_READ(i) (*(volatile uint64_t *) &(i))
+
+static uint64_t icp_gcm_impl = IMPL_FASTEST;
+static uint64_t user_sel_impl = IMPL_FASTEST;
+
+/* Hold all supported implementations */
+static size_t gcm_supp_impl_cnt = 0;
+//static gcm_impl_ops_t *gcm_supp_impl[ARRAY_SIZE(gcm_all_impl)];
+static gcm_impl_ops_t *gcm_supp_impl[_countof(gcm_all_impl)];
 
 /*
- * Return 1 if executing on Intel with PCLMULQDQ instructions,
- * otherwise 0 (i.e., Intel without PCLMULQDQ or AMD64).
- * Cache the result, as the CPU can't change.
- *
- * Note: the userland version uses getisax().  The kernel version uses
- * is_x86_featureset().
+ * Selects the gcm operation
  */
-static int
-intel_pclmulqdq_instruction_present(void)
+gcm_impl_ops_t *
+gcm_impl_get_ops()
 {
-	static int cached_result = -1;
-	unsigned eax, ebx, ecx, edx;
-	unsigned func, subfunc;
+	gcm_impl_ops_t *ops = NULL;
+	const uint64_t impl = GCM_IMPL_READ(icp_gcm_impl);
 
-	if (cached_result == -1) { /* first time */
-		/* check for an intel cpu */
-		func = 0;
-		subfunc = 0;
+	switch (impl) {
+	case IMPL_FASTEST:
+		ASSERT(gcm_impl_initialized);
+		ops = &gcm_fastest_impl;
+		break;
+	case IMPL_CYCLE:
+	{
+		ASSERT(gcm_impl_initialized);
+		ASSERT3U(gcm_supp_impl_cnt, >, 0);
+		/* Cycle through supported implementations */
+		static size_t cycle_impl_idx = 0;
+		size_t idx = (++cycle_impl_idx) % gcm_supp_impl_cnt;
+		ops = gcm_supp_impl[idx];
+	}
+	break;
+	default:
+		ASSERT3U(impl, <, gcm_supp_impl_cnt);
+		ASSERT3U(gcm_supp_impl_cnt, >, 0);
+		if (impl < ARRAY_SIZE(gcm_all_impl))
+			ops = gcm_supp_impl[impl];
+		break;
+	}
 
-		__asm__ __volatile__(
-		    "cpuid"
-		    : "=a" (eax), "=b" (ebx), "=c" (ecx), "=d" (edx)
-		    : "a"(func), "c"(subfunc));
+	ASSERT3P(ops, !=, NULL);
 
-		if (memcmp((char *) (&ebx), "Genu", 4) == 0 &&
-		    memcmp((char *) (&edx), "ineI", 4) == 0 &&
-			memcmp((char *) (&ecx), "ntel", 4) == 0) {
+	return (ops);
+}
 
-			func = 1;
-			subfunc = 0;
+void
+gcm_impl_init(void)
+{
+	gcm_impl_ops_t *curr_impl;
+	int i, c;
 
-			/* check for aes-ni instruction set */
-			__asm__ __volatile__(
-				"cpuid"
-				: "=a" (eax), "=b" (ebx), "=c" (ecx), "=d" (edx)
-				: "a"(func), "c"(subfunc));
+	/* move supported impl into aes_supp_impls */
+	for (i = 0, c = 0; i < ARRAY_SIZE(gcm_all_impl); i++) {
+		curr_impl = (gcm_impl_ops_t *)gcm_all_impl[i];
 
-			cached_result = !!(ecx & INTEL_PCLMULQDQ_FLAG);
-		} else {
-			cached_result = 0;
+		if (curr_impl->is_supported())
+			gcm_supp_impl[c++] = (gcm_impl_ops_t *)curr_impl;
+	}
+	gcm_supp_impl_cnt = c;
+
+	/* set fastest implementation. assume hardware accelerated is fastest */
+#if defined(__x86_64) && defined(HAVE_PCLMULQDQ)
+	if (gcm_pclmulqdq_impl.is_supported())
+		memcpy(&gcm_fastest_impl, &gcm_pclmulqdq_impl,
+		    sizeof (gcm_fastest_impl));
+	else
+#endif
+		memcpy(&gcm_fastest_impl, &gcm_generic_impl,
+		    sizeof (gcm_fastest_impl));
+
+	strlcpy(gcm_fastest_impl.name, "fastest", sizeof(gcm_fastest_impl.name));
+
+	/* Finish initialization */
+	atomic_swap_64(&icp_gcm_impl, user_sel_impl);
+	gcm_impl_initialized = B_TRUE;
+}
+
+static const struct {
+	char *name;
+	uint64_t sel;
+} gcm_impl_opts[] = {
+		{ "cycle",	IMPL_CYCLE },
+		{ "fastest",	IMPL_FASTEST },
+};
+
+/*
+ * Function sets desired gcm implementation.
+ *
+ * If we are called before init(), user preference will be saved in
+ * user_sel_impl, and applied in later init() call. This occurs when module
+ * parameter is specified on module load. Otherwise, directly update
+ * icp_aes_impl.
+ *
+ * @val		Name of gcm implementation to use
+ * @param	Unused.
+ */
+int
+gcm_impl_set(const char *val)
+{
+	int err = -EINVAL;
+	char req_name[GCM_IMPL_NAME_MAX];
+	uint64_t impl = GCM_IMPL_READ(user_sel_impl);
+	size_t i;
+
+	/* sanitize input */
+	i = strnlen(val, GCM_IMPL_NAME_MAX);
+	if (i == 0 || i >= GCM_IMPL_NAME_MAX)
+		return (err);
+
+	strlcpy(req_name, val, GCM_IMPL_NAME_MAX);
+	while (i > 0 && isspace(req_name[i-1]))
+		i--;
+	req_name[i] = '\0';
+
+	/* Check mandatory options */
+	for (i = 0; i < ARRAY_SIZE(gcm_impl_opts); i++) {
+		if (strcmp(req_name, gcm_impl_opts[i].name) == 0) {
+			impl = gcm_impl_opts[i].sel;
+			err = 0;
+			break;
 		}
 	}
 
-	return (cached_result);
+	/* check all supported impl if init() was already called */
+	if (err != 0 && gcm_impl_initialized) {
+		/* check all supported implementations */
+		for (i = 0; i < gcm_supp_impl_cnt; i++) {
+			if (strcmp(req_name, gcm_supp_impl[i]->name) == 0) {
+				impl = i;
+				err = 0;
+				break;
+			}
+		}
+	}
+
+	if (err == 0) {
+		if (gcm_impl_initialized)
+			atomic_swap_64(&icp_gcm_impl, impl);
+		else
+			atomic_swap_64(&user_sel_impl, impl);
+	}
+
+	return (err);
 }
 
-#endif	/* __amd64 */
+#if defined(_KERNEL)
+
+int
+icp_gcm_impl_set(const char *val)
+{
+	return (gcm_impl_set(val));
+}
+
+int
+icp_gcm_impl_get(char *buffer, int max)
+{
+	int i, cnt = 0;
+	char *fmt;
+	const uint64_t impl = GCM_IMPL_READ(icp_gcm_impl);
+
+	ASSERT(gcm_impl_initialized);
+
+	/* list mandatory options */
+	for (i = 0; i < ARRAY_SIZE(gcm_impl_opts); i++) {
+		fmt = (impl == gcm_impl_opts[i].sel) ? "[%s] " : "%s ";
+		cnt += snprintf(buffer + cnt, max, fmt, gcm_impl_opts[i].name);
+	}
+
+	/* list all supported implementations */
+	for (i = 0; i < gcm_supp_impl_cnt; i++) {
+		fmt = (i == impl) ? "[%s] " : "%s ";
+		cnt += snprintf(buffer + cnt, max, fmt, gcm_supp_impl[i]->name);
+	}
+
+	return (cnt);
+}
+
+#endif

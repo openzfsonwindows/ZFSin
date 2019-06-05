@@ -55,8 +55,6 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRe
 	
 	spl_start();
 
-	kstat_osx_init(pRegistryPath);
-
 	/*
 	 * Initialise storport for the ZVOL virtual disks. This also
 	 * sets the Driver Callbacks, so we make a copy of them, so
@@ -80,6 +78,8 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRe
 	WIN_DriverObject->DriverUnload = ZFSin_Fini;
 
 	zfs_start();
+
+	kstat_osx_init(pRegistryPath);
 
 	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "ZFSin: Started\n"));
 	return STATUS_SUCCESS;
@@ -272,6 +272,32 @@ int spl_kstat_registry(PUNICODE_STRING pRegistryPath, kstat_t *ksp)
 				changed++;
 				break;
 			}
+		}
+		//  a little hack - until kstat_data_string works, hardcode
+		extern int zfs_vdev_raidz_impl_set(const char *val);
+		extern int icp_gcm_impl_set(const char *val);
+		extern int icp_aes_impl_set(const char *val);
+		extern int zfs_fletcher_4_impl_set(const char *val);
+
+		if (regBuffer->Type == REG_SZ &&
+			regBuffer->DataLength > 0 &&
+			(!strcmp(keyname, "icp_aes_impl") ||
+			 !strcmp(keyname, "icp_gcm_impl") ||
+			 !strcmp(keyname, "zfs_vdev_raidz_impl") ||
+			 !strcmp(keyname, "zfs_fletcher_4_impl"))) {
+			char value[KSTAT_STRLEN + 1];
+
+			status = RtlUnicodeToUTF8N(value, KSTAT_STRLEN, &outlen,
+				(PWCHAR)((PCHAR)regBuffer + regBuffer->DataOffset), regBuffer->DataLength);
+			if (!strcmp(keyname, "icp_aes_impl"))
+				icp_aes_impl_set(value);
+			if (!strcmp(keyname, "icp_gcm_impl"))
+				icp_gcm_impl_set(value);
+			if (!strcmp(keyname, "zfs_vdev_raidz_impl"))
+				zfs_vdev_raidz_impl_set(value);
+			if (!strcmp(keyname, "zfs_fletcher_4_impl"))
+				zfs_fletcher_4_impl_set(value);
+
 		}
 
 		ExFreePool(regBuffer);

@@ -37,7 +37,6 @@
 extern "C" {
 #endif
 
-
 /*
  *
  * GCC atomic versions. These are preferrable once we sort out compatibility

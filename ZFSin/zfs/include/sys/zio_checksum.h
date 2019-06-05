@@ -29,6 +29,7 @@
 
 #include <sys/zio.h>
 #include <zfeature_common.h>
+#include <zfs_fletcher.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -56,6 +57,28 @@ typedef enum zio_checksum_flags {
 	/* Strong enough for nopwrite? */
 	ZCHECKSUM_FLAG_NOPWRITE = (1 << 5),
 } zio_checksum_flags_t;
+
+typedef enum {
+	ZIO_CHECKSUM_NATIVE,
+	ZIO_CHECKSUM_BYTESWAP
+} zio_byteorder_t;
+
+typedef struct zio_abd_checksum_data {
+	zio_byteorder_t         acd_byteorder;
+	fletcher_4_ctx_t        *acd_ctx;
+	zio_cksum_t             *acd_zcp;
+	void                    *acd_private;
+} zio_abd_checksum_data_t;
+
+typedef void zio_abd_checksum_init_t(zio_abd_checksum_data_t *);
+typedef void zio_abd_checksum_fini_t(zio_abd_checksum_data_t *);
+typedef int zio_abd_checksum_iter_t(void *, size_t, void *);
+
+typedef const struct zio_abd_checksum_func {
+	zio_abd_checksum_init_t *acf_init;
+	zio_abd_checksum_fini_t *acf_fini;
+	zio_abd_checksum_iter_t *acf_iter;
+} zio_abd_checksum_func_t;
 
 /*
  * Information about each checksum function.
