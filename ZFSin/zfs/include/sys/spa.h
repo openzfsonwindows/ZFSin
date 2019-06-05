@@ -41,6 +41,7 @@
 #include <sys/sysmacros.h>
 #include <sys/types.h>
 #include <sys/fs/zfs.h>
+#include <sys/spa_checksum.h>
 
 #ifdef	__cplusplus
 extern "C" {
@@ -151,13 +152,6 @@ _NOTE(CONSTCOND) } while (0)
 typedef struct dva {
 	uint64_t	dva_word[2];
 } dva_t;
-
-/*
- * Each block has a 256-bit checksum -- strong enough for cryptographic hashes.
- */
-typedef struct zio_cksum {
-	uint64_t	zc_word[4];
-} zio_cksum_t;
 
 /*
  * Some checksums/hashes need a 256-bit initialization salt. This salt is kept

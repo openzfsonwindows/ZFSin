@@ -33,6 +33,7 @@
 #ifndef _LIBSPL_SYS_W32_TYPES_H
 #define	_LIBSPL_SYS_W32_TYPES_H
 
+#ifndef __clang__
 #include <sys/isa_defs.h>
 #include <sys/feature_tests.h>
 //#include_next <sys/types.h>
@@ -47,6 +48,8 @@
 /* Now replace POSIX calls with our versions. */
 #include <wosix.h>
 
+#endif
+
 typedef enum boolean { B_FALSE=0, B_TRUE } boolean_t;
 typedef enum boolean bool_t;
 
@@ -58,7 +61,7 @@ typedef short int16_t;
 typedef unsigned short uint16_t;
 typedef long long	longlong_t;
 typedef unsigned long long u_longlong_t;
-typedef char int8_t;
+typedef signed char int8_t;
 typedef unsigned char uint8_t;
 typedef unsigned char uchar_t;
 typedef unsigned int u_int;
@@ -89,6 +92,11 @@ typedef ushort_t o_mode_t; /* old file attribute type */
 typedef short		index_t;
 
 typedef unsigned long long rlim64_t;
+
+typedef unsigned int uint32_t;
+typedef unsigned long long uint64_t;
+
+typedef signed long long ssize_t;
 
 typedef uint64_t uid_t;
 typedef uint64_t gid_t;
@@ -211,5 +219,12 @@ int kobj_get_filesize(struct _buf *file, uint64_t *size);
 #define strcasecmp _stricmp
 
 int nanosleep(const struct timespec *rqtp, struct timespec *rmtp);
+
+// Handle both kind of aligns.
+#if defined(__clang__)
+#define __declspec(X)
+#else
+#define __attribute__(X)
+#endif
 
 #endif

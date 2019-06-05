@@ -75,6 +75,8 @@ extern "C" {
 #include <sys/sysevent/eventdefs.h>
 #include <zfs_comutil.h>
 
+#include <sys/asm_linkage.h>
+
 //#include <linux/dcache_compat.h>
 
 // There are to be found in spl/include/sys/kmem.h
@@ -88,8 +90,6 @@ extern "C" {
 
 #define	KMC_KMEM		0x0
 #define	KMC_VMEM		0x0
-
-#define noinline __declspec(noinline)
 
 typedef struct dirent dirent_t;
 typedef struct direntry dirent64_t;

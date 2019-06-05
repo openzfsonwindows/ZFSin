@@ -151,6 +151,12 @@ typedef struct osx_kstat {
 	kstat_named_t zfs_disable_wincache;
 	kstat_named_t zfs_disable_removablemedia;
 
+#ifndef _WIN32
+	kstat_named_t zfs_vdev_raidz_impl;
+	kstat_named_t icp_gcm_impl;
+	kstat_named_t icp_aes_impl;
+	kstat_named_t zfs_fletcher_4_impl;
+#endif
 } osx_kstat_t;
 
 

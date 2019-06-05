@@ -23,6 +23,7 @@
  */
 
 #include <sys/zfs_context.h>
+#include <sys/crypto/icp.h>
 #include <sys/crypto/spi.h>
 #include <modes/modes.h>
 #include <aes/aes_impl.h>
@@ -1385,6 +1386,7 @@ rijndael_decrypt(const uint32_t rk[], int Nr, const uint32_t ct[4],
 void
 aes_init_keysched(const uint8_t *cipherKey, uint_t keyBits, void *keysched)
 {
+	aes_impl_ops_t	*ops = aes_impl_get_ops();
 	aes_key_t	*newbie = keysched;
 	uint_t		keysize, i, j;
 	union {
@@ -1412,31 +1414,36 @@ aes_init_keysched(const uint8_t *cipherKey, uint_t keyBits, void *keysched)
 	keysize = CRYPTO_BITS2BYTES(keyBits);
 
 	/*
-	 * For _LITTLE_ENDIAN machines (except AMD64), reverse every
-	 * 4 bytes in the key.  On _BIG_ENDIAN and AMD64, copy the key
-	 * without reversing bytes.
-	 * For AMD64, do not byte swap for aes_setupkeys().
-	 *
-	 * SPARCv8/v9 uses a key schedule array with 64-bit elements.
-	 * X86/AMD64  uses a key schedule array with 32-bit elements.
+	 * Generic C implementation requires byteswap for little endian
+	 * machines, various accelerated implementations for various
+	 * architectures may not.
 	 */
-#ifndef	AES_BYTE_SWAP
-	if (IS_P2ALIGNED(cipherKey, sizeof (uint64_t))) {
-		for (i = 0, j = 0; j < keysize; i++, j += 8) {
-			/* LINTED: pointer alignment */
-			keyarr.ka64[i] = *((uint64_t *)&cipherKey[j]);
+	if (!ops->needs_byteswap) {
+		/* no byteswap needed */
+		if (IS_P2ALIGNED(cipherKey, sizeof (uint64_t))) {
+			for (i = 0, j = 0; j < keysize; i++, j += 8) {
+				/* LINTED: pointer alignment */
+				keyarr.ka64[i] = *((uint64_t *)&cipherKey[j]);
+			}
+		} else {
+			bcopy(cipherKey, keyarr.ka32, keysize);
 		}
 	} else {
-		bcopy(cipherKey, keyarr.ka32, keysize);
+		/* byte swap */
+		for (i = 0, j = 0; j < keysize; i++, j += 4) {
+			keyarr.ka32[i] =
+			    htonl(*(uint32_t *)(void *)&cipherKey[j]);
+		}
 	}
 
-#else	/* byte swap */
-	for (i = 0, j = 0; j < keysize; i++, j += 4) {
-		keyarr.ka32[i] = htonl(*(uint32_t *)(void *)&cipherKey[j]);
-	}
-#endif
+	ops->generate(newbie, keyarr.ka32, keyBits);
+	newbie->ops = ops;
 
-	aes_setupkeys(newbie, keyarr.ka32, keyBits);
+	/*
+	 * Note: if there are systems that need the AES_64BIT_KS type in the
+	 * future, move setting key schedule type to individual implementations
+	 */
+	newbie->type = AES_32BIT_KS;
 }
 
 
@@ -1453,42 +1460,36 @@ int
 aes_encrypt_block(const void *ks, const uint8_t *pt, uint8_t *ct)
 {
 	aes_key_t	*ksch = (aes_key_t *)ks;
+	const aes_impl_ops_t	*ops = ksch->ops;
 
-#ifndef	AES_BYTE_SWAP
-	if (IS_P2ALIGNED2(pt, ct, sizeof (uint32_t))) {
+	if (IS_P2ALIGNED2(pt, ct, sizeof (uint32_t)) && !ops->needs_byteswap) {
 		/* LINTED:  pointer alignment */
-		AES_ENCRYPT_IMPL(&ksch->encr_ks.ks32[0], ksch->nr,
+		ops->encrypt(&ksch->encr_ks.ks32[0], ksch->nr,
 		    /* LINTED:  pointer alignment */
-		    (uint32_t *)pt, (uint32_t *)ct, ksch->flags);
+		    (uint32_t *)pt, (uint32_t *)ct);
 	} else {
-#endif
 		uint32_t buffer[AES_BLOCK_LEN / sizeof (uint32_t)];
 
 		/* Copy input block into buffer */
-#ifndef	AES_BYTE_SWAP
-		bcopy(pt, &buffer, AES_BLOCK_LEN);
+		if (ops->needs_byteswap) {
+			buffer[0] = htonl(*(uint32_t *)(void *)&pt[0]);
+			buffer[1] = htonl(*(uint32_t *)(void *)&pt[4]);
+			buffer[2] = htonl(*(uint32_t *)(void *)&pt[8]);
+			buffer[3] = htonl(*(uint32_t *)(void *)&pt[12]);
+		} else
+			bcopy(pt, &buffer, AES_BLOCK_LEN);
 
-#else	/* byte swap */
-		buffer[0] = htonl(*(uint32_t *)(void *)&pt[0]);
-		buffer[1] = htonl(*(uint32_t *)(void *)&pt[4]);
-		buffer[2] = htonl(*(uint32_t *)(void *)&pt[8]);
-		buffer[3] = htonl(*(uint32_t *)(void *)&pt[12]);
-#endif
-
-		AES_ENCRYPT_IMPL(&ksch->encr_ks.ks32[0], ksch->nr,
-		    buffer, buffer, ksch->flags);
+		ops->encrypt(&ksch->encr_ks.ks32[0], ksch->nr, buffer, buffer);
 
 		/* Copy result from buffer to output block */
-#ifndef	AES_BYTE_SWAP
-		bcopy(&buffer, ct, AES_BLOCK_LEN);
+		if (ops->needs_byteswap) {
+			*(uint32_t *)(void *)&ct[0] = htonl(buffer[0]);
+			*(uint32_t *)(void *)&ct[4] = htonl(buffer[1]);
+			*(uint32_t *)(void *)&ct[8] = htonl(buffer[2]);
+			*(uint32_t *)(void *)&ct[12] = htonl(buffer[3]);
+		} else
+			bcopy(&buffer, ct, AES_BLOCK_LEN);
 	}
-
-#else	/* byte swap */
-		*(uint32_t *)(void *)&ct[0] = htonl(buffer[0]);
-		*(uint32_t *)(void *)&ct[4] = htonl(buffer[1]);
-		*(uint32_t *)(void *)&ct[8] = htonl(buffer[2]);
-		*(uint32_t *)(void *)&ct[12] = htonl(buffer[3]);
-#endif
 	return (CRYPTO_SUCCESS);
 }
 
@@ -1506,43 +1507,36 @@ int
 aes_decrypt_block(const void *ks, const uint8_t *ct, uint8_t *pt)
 {
 	aes_key_t	*ksch = (aes_key_t *)ks;
+	const aes_impl_ops_t	*ops = ksch->ops;
 
-#ifndef	AES_BYTE_SWAP
-	if (IS_P2ALIGNED2(ct, pt, sizeof (uint32_t))) {
+	if (IS_P2ALIGNED2(ct, pt, sizeof (uint32_t)) && !ops->needs_byteswap) {
 		/* LINTED:  pointer alignment */
-		AES_DECRYPT_IMPL(&ksch->decr_ks.ks32[0], ksch->nr,
+		ops->decrypt(&ksch->decr_ks.ks32[0], ksch->nr,
 		    /* LINTED:  pointer alignment */
-		    (uint32_t *)ct, (uint32_t *)pt, ksch->flags);
+		    (uint32_t *)ct, (uint32_t *)pt);
 	} else {
-#endif
 		uint32_t buffer[AES_BLOCK_LEN / sizeof (uint32_t)];
 
 		/* Copy input block into buffer */
-#ifndef	AES_BYTE_SWAP
-		bcopy(ct, &buffer, AES_BLOCK_LEN);
+		if (ops->needs_byteswap) {
+			buffer[0] = htonl(*(uint32_t *)(void *)&ct[0]);
+			buffer[1] = htonl(*(uint32_t *)(void *)&ct[4]);
+			buffer[2] = htonl(*(uint32_t *)(void *)&ct[8]);
+			buffer[3] = htonl(*(uint32_t *)(void *)&ct[12]);
+		} else
+			bcopy(ct, &buffer, AES_BLOCK_LEN);
 
-#else	/* byte swap */
-		buffer[0] = htonl(*(uint32_t *)(void *)&ct[0]);
-		buffer[1] = htonl(*(uint32_t *)(void *)&ct[4]);
-		buffer[2] = htonl(*(uint32_t *)(void *)&ct[8]);
-		buffer[3] = htonl(*(uint32_t *)(void *)&ct[12]);
-#endif
-
-		AES_DECRYPT_IMPL(&ksch->decr_ks.ks32[0], ksch->nr,
-		    buffer, buffer, ksch->flags);
+		ops->decrypt(&ksch->decr_ks.ks32[0], ksch->nr, buffer, buffer);
 
 		/* Copy result from buffer to output block */
-#ifndef	AES_BYTE_SWAP
-		bcopy(&buffer, pt, AES_BLOCK_LEN);
+		if (ops->needs_byteswap) {
+			*(uint32_t *)(void *)&pt[0] = htonl(buffer[0]);
+			*(uint32_t *)(void *)&pt[4] = htonl(buffer[1]);
+			*(uint32_t *)(void *)&pt[8] = htonl(buffer[2]);
+			*(uint32_t *)(void *)&pt[12] = htonl(buffer[3]);
+		} else
+			bcopy(&buffer, pt, AES_BLOCK_LEN);
 	}
-
-#else	/* byte swap */
-	*(uint32_t *)(void *)&pt[0] = htonl(buffer[0]);
-	*(uint32_t *)(void *)&pt[4] = htonl(buffer[1]);
-	*(uint32_t *)(void *)&pt[8] = htonl(buffer[2]);
-	*(uint32_t *)(void *)&pt[12] = htonl(buffer[3]);
-#endif
-
 	return (CRYPTO_SUCCESS);
 }
 
@@ -1571,53 +1565,211 @@ aes_alloc_keysched(size_t *size, int kmflag)
 	return (NULL);
 }
 
+/* AES implementation that contains the fastest methods */
+static aes_impl_ops_t aes_fastest_impl = {
+	.name = "fastest"
+};
 
-#ifdef __amd64
+/* All compiled in implementations */
+const aes_impl_ops_t *aes_all_impl[] = {
+	&aes_generic_impl,
+#if defined(__x86_64)
+	&aes_x86_64_impl,
+#endif
+#if defined(__x86_64) && defined(HAVE_AES)
+	&aes_aesni_impl,
+#endif
+};
 
-#define	INTEL_AESNI_FLAG (1 << 25)
+/* Indicate that benchmark has been completed */
+static boolean_t aes_impl_initialized = B_FALSE;
+
+/* Select aes implementation */
+#define	IMPL_FASTEST	(UINT32_MAX)
+#define	IMPL_CYCLE	(UINT32_MAX-1)
+
+#define	AES_IMPL_READ(i) (*(volatile uint64_t *) &(i))
+
+static uint64_t icp_aes_impl = IMPL_FASTEST;
+static uint64_t user_sel_impl = IMPL_FASTEST;
+
+/* Hold all supported implementations */
+static size_t aes_supp_impl_cnt = 0;
+//static aes_impl_ops_t *aes_supp_impl[ARRAY_SIZE(aes_all_impl)];
+static aes_impl_ops_t *aes_supp_impl[_countof(aes_all_impl)];
 
 /*
- * Return 1 if executing on Intel with AES-NI instructions,
- * otherwise 0 (i.e., Intel without AES-NI or AMD64).
- * Cache the result, as the CPU can't change.
+ * Selects the aes operations for encrypt/decrypt/key setup
  */
-static int
-intel_aes_instructions_present(void)
+aes_impl_ops_t *
+aes_impl_get_ops()
 {
-	static int cached_result = -1;
-	unsigned eax, ebx, ecx, edx;
-	unsigned func, subfunc;
+	aes_impl_ops_t *ops = NULL;
+	const uint64_t impl = AES_IMPL_READ(icp_aes_impl);
 
-	if (cached_result == -1) { /* first time */
-		/* check for an intel cpu */
-		func = 0;
-		subfunc = 0;
+	switch (impl) {
+	case IMPL_FASTEST:
+		ASSERT(aes_impl_initialized);
+		ops = &aes_fastest_impl;
+		break;
+	case IMPL_CYCLE:
+	{
+		ASSERT(aes_impl_initialized);
+		ASSERT3U(aes_supp_impl_cnt, >, 0);
+		/* Cycle through supported implementations */
+		static size_t cycle_impl_idx = 0;
+		size_t idx = (++cycle_impl_idx) % aes_supp_impl_cnt;
+		ops = aes_supp_impl[idx];
+	}
+	break;
+	default:
+		ASSERT3U(impl, <, aes_supp_impl_cnt);
+		ASSERT3U(aes_supp_impl_cnt, >, 0);
+		if (impl < ARRAY_SIZE(aes_all_impl))
+			ops = aes_supp_impl[impl];
+		break;
+	}
 
-		__asm__ __volatile__(
-		    "cpuid"
-		    : "=a" (eax), "=b" (ebx), "=c" (ecx), "=d" (edx)
-		    : "a"(func), "c"(subfunc));
+	ASSERT3P(ops, !=, NULL);
 
-		if (memcmp((char *) (&ebx), "Genu", 4) == 0 &&
-		    memcmp((char *) (&edx), "ineI", 4) == 0 &&
-			memcmp((char *) (&ecx), "ntel", 4) == 0) {
+	return (ops);
+}
 
-			func = 1;
-			subfunc = 0;
+void
+aes_impl_init(void)
+{
+	aes_impl_ops_t *curr_impl;
+	int i, c;
 
-			/* check for aes-ni instruction set */
-			__asm__ __volatile__(
-				"cpuid"
-				: "=a" (eax), "=b" (ebx), "=c" (ecx), "=d" (edx)
-				: "a"(func), "c"(subfunc));
+	/* move supported impl into aes_supp_impls */
+	for (i = 0, c = 0; i < ARRAY_SIZE(aes_all_impl); i++) {
+		curr_impl = (aes_impl_ops_t *)aes_all_impl[i];
 
-			cached_result = !!(ecx & INTEL_AESNI_FLAG);
-		} else {
-			cached_result = 0;
+		if (curr_impl->is_supported())
+			aes_supp_impl[c++] = (aes_impl_ops_t *)curr_impl;
+	}
+	aes_supp_impl_cnt = c;
+
+	/* set fastest implementation. assume hardware accelerated is fastest */
+#if defined(__x86_64)
+#if defined(HAVE_AES)
+	if (aes_aesni_impl.is_supported())
+		memcpy(&aes_fastest_impl, &aes_aesni_impl,
+		    sizeof (aes_fastest_impl));
+	else
+#endif
+		memcpy(&aes_fastest_impl, &aes_x86_64_impl,
+		    sizeof (aes_fastest_impl));
+#else
+	memcpy(&aes_fastest_impl, &aes_generic_impl,
+	    sizeof (aes_fastest_impl));
+#endif
+
+	strlcpy(aes_fastest_impl.name, "fastest", sizeof(aes_fastest_impl.name));
+
+	/* Finish initialization */
+	atomic_swap_64(&icp_aes_impl, user_sel_impl);
+	aes_impl_initialized = B_TRUE;
+}
+
+static const struct {
+	char *name;
+	uint64_t sel;
+} aes_impl_opts[] = {
+		{ "cycle",	IMPL_CYCLE },
+		{ "fastest",	IMPL_FASTEST },
+};
+
+/*
+ * Function sets desired aes implementation.
+ *
+ * If we are called before init(), user preference will be saved in
+ * user_sel_impl, and applied in later init() call. This occurs when module
+ * parameter is specified on module load. Otherwise, directly update
+ * icp_aes_impl.
+ *
+ * @val		Name of aes implementation to use
+ * @param	Unused.
+ */
+int
+aes_impl_set(const char *val)
+{
+	int err = -EINVAL;
+	char req_name[AES_IMPL_NAME_MAX];
+	uint64_t impl = AES_IMPL_READ(user_sel_impl);
+	size_t i;
+
+	/* sanitize input */
+	i = strnlen(val, AES_IMPL_NAME_MAX);
+	if (i == 0 || i >= AES_IMPL_NAME_MAX)
+		return (err);
+
+	strlcpy(req_name, val, AES_IMPL_NAME_MAX);
+	while (i > 0 && isspace(req_name[i-1]))
+		i--;
+	req_name[i] = '\0';
+
+	/* Check mandatory options */
+	for (i = 0; i < ARRAY_SIZE(aes_impl_opts); i++) {
+		if (strcmp(req_name, aes_impl_opts[i].name) == 0) {
+			impl = aes_impl_opts[i].sel;
+			err = 0;
+			break;
 		}
 	}
 
-	return (cached_result);
+	/* check all supported impl if init() was already called */
+	if (err != 0 && aes_impl_initialized) {
+		/* check all supported implementations */
+		for (i = 0; i < aes_supp_impl_cnt; i++) {
+			if (strcmp(req_name, aes_supp_impl[i]->name) == 0) {
+				impl = i;
+				err = 0;
+				break;
+			}
+		}
+	}
+
+	if (err == 0) {
+		if (aes_impl_initialized)
+			atomic_swap_64(&icp_aes_impl, impl);
+		else
+			atomic_swap_64(&user_sel_impl, impl);
+	}
+
+	return (err);
 }
 
-#endif	/* __amd64 */
+#if defined(_KERNEL)
+
+int
+icp_aes_impl_set(const char *val)
+{
+	return (aes_impl_set(val));
+}
+
+int
+icp_aes_impl_get(char *buffer, int max)
+{
+	int i, cnt = 0;
+	char *fmt;
+	const uint64_t impl = AES_IMPL_READ(icp_aes_impl);
+
+	ASSERT(aes_impl_initialized);
+
+	/* list mandatory options */
+	for (i = 0; i < ARRAY_SIZE(aes_impl_opts); i++) {
+		fmt = (impl == aes_impl_opts[i].sel) ? "[%s] " : "%s ";
+		cnt += snprintf(buffer + cnt, max, fmt, aes_impl_opts[i].name);
+	}
+
+	/* list all supported implementations */
+	for (i = 0; i < aes_supp_impl_cnt; i++) {
+		fmt = (i == impl) ? "[%s] " : "%s ";
+		cnt += snprintf(buffer + cnt, max, fmt, aes_supp_impl[i]->name);
+	}
+
+	return (cnt);
+}
+
+#endif

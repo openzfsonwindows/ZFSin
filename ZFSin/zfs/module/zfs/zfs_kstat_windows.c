@@ -182,10 +182,30 @@ osx_kstat_t osx_kstat = {
 	{ "zfs_disable_wincache",		KSTAT_DATA_UINT64 },
 	{ "zfs_disable_removablemedia",		KSTAT_DATA_UINT64 },
 
+#ifndef _WIN32
+	{"zfs_vdev_raidz_impl",		KSTAT_DATA_STRING  },
+	{"icp_gcm_impl",		KSTAT_DATA_STRING  },
+	{"icp_aes_impl",		KSTAT_DATA_STRING  },
+	{"zfs_fletcher_4_impl",		KSTAT_DATA_STRING  },
+#endif
+
 };
 
 
+extern void kstat_named_setstr(kstat_named_t *knp, const char *src);
+extern int zfs_vdev_raidz_impl_set(const char *val);
+extern int zfs_vdev_raidz_impl_get(char *buffer, int max);
+extern int icp_gcm_impl_set(const char *val);
+extern int icp_gcm_impl_get(char *buffer, int max);
+extern int icp_aes_impl_set(const char *val);
+extern int icp_aes_impl_get(char *buffer, int max);
+extern int zfs_fletcher_4_impl_set(const char *val);
+extern int zfs_fletcher_4_impl_get(char *buffer, int max);
 
+static char vdev_raidz_string[80] = { 0 };
+static char icp_gcm_string[80] = { 0 };
+static char icp_aes_string[80] = { 0 };
+static char zfs_fletcher_4_string[80] = { 0 };
 
 static kstat_t		*osx_kstat_ksp;
 
@@ -386,6 +406,22 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			ks->zfs_send_unmodified_spill_blocks.value.ui64;
 		zfs_special_class_metadata_reserve_pct =
 			ks->zfs_special_class_metadata_reserve_pct.value.ui64;
+#ifndef _WIN32
+		// Check if string has changed (from KREAD), if so, update.
+		if (strcmp(vdev_raidz_string,
+				ks->zfs_vdev_raidz_impl.value.str.addr.ptr) != 0)
+			zfs_vdev_raidz_impl_set(ks->zfs_vdev_raidz_impl.value.str.addr.ptr);
+
+		if (strcmp(icp_gcm_string, ks->icp_gcm_impl.value.str.addr.ptr) != 0)
+			icp_gcm_impl_set(ks->icp_gcm_impl.value.str.addr.ptr);
+
+		if (strcmp(icp_aes_string, ks->icp_aes_impl.value.str.addr.ptr) != 0)
+			icp_aes_impl_set(ks->icp_aes_impl.value.str.addr.ptr);
+
+		if (strcmp(zfs_fletcher_4_string,
+				ks->zfs_fletcher_4_impl.value.str.addr.ptr) != 0)
+			zfs_fletcher_4_impl_set(ks->zfs_fletcher_4_impl.value.str.addr.ptr);
+#endif
 
 		zfs_disable_wincache =
 			ks->zfs_disable_wincache.value.ui64;
@@ -582,6 +618,23 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		ks->zfs_disable_removablemedia.value.ui64 =
 			zfs_disable_removablemedia;
 
+		zfs_vdev_raidz_impl_get(vdev_raidz_string, sizeof(vdev_raidz_string));
+		icp_gcm_impl_get(icp_gcm_string, sizeof(icp_gcm_string));
+		icp_aes_impl_get(icp_aes_string, sizeof(icp_aes_string));
+		zfs_fletcher_4_impl_get(zfs_fletcher_4_string,
+			sizeof(zfs_fletcher_4_string));
+
+		xprintf("zfs_vdev_raidz_impl_get: %s\n", vdev_raidz_string);
+		xprintf("icp_gcm_impl_get: %s\n", icp_gcm_string);
+		xprintf("icp_aes_impl_get: %s\n", icp_aes_string);
+		xprintf("zfs_fletcher_4_impl_get: %s\n", zfs_fletcher_4_string);
+
+#ifndef _WIN32
+		kstat_named_setstr(&ks->zfs_vdev_raidz_impl, vdev_raidz_string);
+		kstat_named_setstr(&ks->icp_gcm_impl, icp_gcm_string);
+		kstat_named_setstr(&ks->icp_aes_impl, icp_aes_string);
+		kstat_named_setstr(&ks->zfs_fletcher_4_impl, zfs_fletcher_4_string);
+#endif
 	}
 
 	return 0;

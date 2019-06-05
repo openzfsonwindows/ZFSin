@@ -27,12 +27,11 @@
 #ifndef _SPL_TYPES_H
 #define	_SPL_TYPES_H
 
-
-// Linux kernel optimization, ignore them for now on OSX.
+ // Linux kernel optimization, ignore them for now on OSX.
 #define unlikely
 #define likely
 // use ntintsafe.h ?
-typedef enum { B_FALSE = 0, B_TRUE = 1 }	boolean_t;
+typedef enum { B_FALSE = 0, B_TRUE = 1 } 	boolean_t;
 typedef short				pri_t;
 typedef int int32_t;
 typedef unsigned long			ulong;
@@ -64,15 +63,15 @@ typedef unsigned char uint8_t;
 typedef char int8_t;
 typedef short int int16_t;
 typedef unsigned short int uint16_t;
+
 //#include_next <sys/types.h>
-#include <string.h>
-#include <sys/sysmacros.h>
+
 //#include <libkern/libkern.h>
 typedef unsigned long long uid_t;
 typedef unsigned long long gid_t;
 typedef unsigned int pid_t;
-// size_t is 32bit on IllumOS, but 64bit on windows, so changed to uint32_t
-typedef uintptr_t pc_t;
+
+//typedef uintptr_t pc_t;
 typedef uint64_t ssize_t;
 typedef uint64_t vm_offset_t;
 typedef uint64_t dev_t;
@@ -86,23 +85,25 @@ typedef uint64_t               ino64_t;
 typedef unsigned long u_long;
 typedef unsigned char   uuid_t[16];
 
-
-// Yeah nothing is going to work until we fix this atomic stuff
-#define _Atomic
-
 #define PATH_MAX                 1024 
 #define Z_OK 0
 
 struct buf;
 typedef struct buf buf_t;
 typedef unsigned int uInt;
+
+#include <string.h>
+#include <sys/fcntl.h>
 #include <sys/stropts.h>
 #include <sys/errno.h>
+
+#if !defined (__clang__)
+#include <sys/sysmacros.h>
 #include <ntintsafe.h>
 #include <ntstrsafe.h>
 #include <stdlib.h>
 #include <ntddk.h>
-
+#endif
 
 #define snprintf _snprintf
 #define vprintf(...) vKdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, __VA_ARGS__))
@@ -116,27 +117,6 @@ typedef unsigned int uInt;
 #define LLONG_MAX			((long long)(~0ULL>>1))
 #endif
 
-#if 0
-typedef unsigned long			intptr_t;
-typedef unsigned long long		u_offset_t;
-typedef struct task_struct		kthread_t;
-typedef struct task_struct		proc_t;
-typedef struct vmem { }			vmem_t;
-typedef struct timespec			timestruc_t; /* definition per SVr4 */
-typedef struct timespec			timespec_t;
-typedef u_longlong_t			len_t;
-typedef longlong_t			diskaddr_t;
-typedef ushort_t			o_bcopy;
-typedef uint_t				major_t;
-typedef ulong_t				pfn_t;
-typedef long				spgcnt_t;
-typedef short				index_t;
-typedef int				id_t;
-typedef unsigned short mode_t;
-extern proc_t p0;
-#endif
-
-#include  <sys/fcntl.h>
 #define FREAD           0x0001
 #define FWRITE          0x0002
 
@@ -192,9 +172,6 @@ extern uint32_t strlcat(register char* s, register const char* t, register uint3
 struct mount;
 typedef struct mount mount_t;
 
-#define always_inline __forceinline
-#define __attribute__
-
 struct kauth_cred;
 typedef struct kauth_cred kauth_cred_t;
 struct kauth_acl;
@@ -220,5 +197,19 @@ typedef struct {
 #define FNV1_32A_INIT ((uint32_t)0x811c9dc5)
 uint32_t fnv_32a_str(const char *str, uint32_t hval);
 uint32_t fnv_32a_buf(void *buf, size_t len, uint32_t hval);
+
+// Handle both kind of aligns.
+#if defined(__clang__)
+
+#define __declspec(X)
+
+#else
+
+#define __attribute__(X)
+#define always_inline __forceinline
+#define _Atomic
+#define noinline
+
+#endif
 
 #endif	/* _SPL_TYPES_H */

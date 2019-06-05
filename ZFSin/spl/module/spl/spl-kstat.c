@@ -933,6 +933,7 @@ kstat_install(kstat_t *ksp)
 		* The default snapshot routine does not handle KSTAT_WRITE
 		* for long strings.
 		*/
+#ifndef _WIN32
 		if ((ksp->ks_flags & KSTAT_FLAG_LONGSTRINGS) &&
 			(ksp->ks_flags & KSTAT_FLAG_WRITABLE) &&
 			(ksp->ks_snapshot == default_kstat_snapshot)) {
@@ -941,6 +942,7 @@ kstat_install(kstat_t *ksp)
 				"is writable but uses default snapshot routine",
 				ksp->ks_module, ksp->ks_instance, ksp->ks_name);
 		}
+#endif
 	}
 
 	if (ksp->ks_flags & KSTAT_FLAG_DORMANT) {

@@ -132,16 +132,12 @@ ntohll(uint64_t n) {
 }
 
 #else
-#if 0
-static __inline__ uint64_t
-htonll(uint64_t n) {
-	return _OSSwapInt64(n);
-}
 
-static __inline__ uint64_t
-ntohll(uint64_t n) {
-	return _OSSwapInt64(n);
-}
+#if !defined(htonll)
+#define htonll(x)       _byteswap_uint64(x)
+#endif
+#if !defined(ntohll)
+#define ntohll(x)       _byteswap_uint64(x)
 #endif
 
 #endif

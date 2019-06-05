@@ -68,7 +68,9 @@ __assert_c99(const char *expr, const char *file, int line, const char *func)
 static inline int
 assfail(const char *buf, const char *file, int line)
 {
-	__assert(buf); // Converting a string to a boolean is naughty, but we have decided to throw by calling this
+#ifndef __clang__
+	__assert(buf, file, line);
+#endif
 	return (0);
 }
 

@@ -65,6 +65,17 @@
     <ClCompile Include="..\..\..\module\zcommon\zfs_comutil.c" />
     <ClCompile Include="..\..\..\module\zcommon\zfs_deleg.c" />
     <ClCompile Include="..\..\..\module\zcommon\zfs_fletcher.c" />
+    <CustomBuild Include="..\..\..\module\zcommon\zfs_fletcher_avx512.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <CustomBuild Include="..\..\..\module\zcommon\zfs_fletcher_intel.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <CustomBuild Include="..\..\..\module\zcommon\zfs_fletcher_sse.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <ClCompile Include="..\..\..\module\zcommon\zfs_fletcher_superscalar.c" />
+    <ClCompile Include="..\..\..\module\zcommon\zfs_fletcher_superscalar4.c" />
     <ClCompile Include="..\..\..\module\zcommon\zfs_namecheck.c" />
     <ClCompile Include="..\..\..\module\zcommon\zfs_prop.c" />
     <ClCompile Include="..\..\..\module\zcommon\zfs_uio.c" />
@@ -147,6 +158,23 @@
     <ClCompile Include="..\..\..\module\zfs\vdev_missing.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_queue.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_raidz.c" />
+    <ClCompile Include="..\..\..\module\zfs\vdev_raidz_math.c" />
+    <CustomBuild Include="..\..\..\module\zfs\vdev_raidz_math_avx2.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <CustomBuild Include="..\..\..\module\zfs\vdev_raidz_math_avx512bw.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <CustomBuild Include="..\..\..\module\zfs\vdev_raidz_math_avx512f.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <ClCompile Include="..\..\..\module\zfs\vdev_raidz_math_scalar.c" />
+    <CustomBuild Include="..\..\..\module\zfs\vdev_raidz_math_sse2.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
+    <CustomBuild Include="..\..\..\module\zfs\vdev_raidz_math_ssse3.c">
+      <FileType>CppCode</FileType>
+    </CustomBuild>
     <ClCompile Include="..\..\..\module\zfs\vdev_removal.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_root.c" />
     <ClCompile Include="..\..\..\module\zfs\vdev_trim.c" />
@@ -195,6 +223,9 @@
     <ProjectReference Include="..\..\zlib-1.2.3\contrib\vstudio\vc8\zlibstat.vcxproj">
       <Project>{745dec58-ebb3-47a9-a9b8-4c6627c01bf8}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\module\zfs\vdev_raidz_math_impl.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{6352BFDB-D45E-47FD-BDE8-F9320CAECF9B}</ProjectGuid>
@@ -271,6 +302,14 @@
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;4242</DisableSpecificWarnings>
     </ClCompile>
+    <CustomBuild>
+      <Command>clang  -I$(SolutionDir)/ZFSin/zfs/lib/libspl/include -I$(SolutionDir)/ZFSin/zfs/module/icp/include -I$(SolutionDir)/ZFSin/zfs/include -c %(FullPath) -o $(OutDir)/%(Filename).obj</Command>
+      <Message>CLANG Phase (libzpool %(Filename))</Message>
+      <Outputs>$(OutDir)/%(Filename).obj</Outputs>
+      <AdditionalInputs>$(SolutionDir)/ZFSin/zfs/lib/libspl/include/ia32/sys/asm_linkage.h</AdditionalInputs>
+      <OutputItemType>Object</OutputItemType>
+      <BuildInParallel>true</BuildInParallel>
+    </CustomBuild>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -279,6 +318,14 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;4242</DisableSpecificWarnings>
     </ClCompile>
+    <CustomBuild>
+      <Command>clang  -I$(SolutionDir)/ZFSin/zfs/lib/libspl/include -I$(SolutionDir)/ZFSin/zfs/module/icp/include -I$(SolutionDir)/ZFSin/zfs/include -c %(FullPath) -o $(OutDir)/%(Filename).obj</Command>
+      <Message>CLANG Phase (libzpool %(Filename))</Message>
+      <Outputs>$(OutDir)/%(Filename).obj</Outputs>
+      <AdditionalInputs>$(SolutionDir)/ZFSin/zfs/lib/libspl/include/ia32/sys/asm_linkage.h</AdditionalInputs>
+      <OutputItemType>Object</OutputItemType>
+      <BuildInParallel>true</BuildInParallel>
+    </CustomBuild>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

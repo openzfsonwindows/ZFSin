@@ -42,6 +42,7 @@
 #include <sys/vdev_initialize.h>
 #include <sys/vdev_trim.h>
 #include <sys/vdev_file.h>
+#include <sys/vdev_raidz.h>
 #include <sys/vdev_initialize.h>
 #include <sys/metaslab.h>
 #include <sys/uberblock_impl.h>
@@ -2092,7 +2093,9 @@ spa_init(int mode)
 	zio_init();
 	dmu_init();
 	zil_init();
+	fletcher_4_init();
 	vdev_cache_stat_init();
+	vdev_raidz_math_init();
 	zfs_prop_init();
 	zpool_prop_init();
 	zpool_feature_init();
@@ -2109,6 +2112,8 @@ spa_fini(void)
 	spa_evict_all();
 
 	vdev_cache_stat_fini();
+	vdev_raidz_math_fini();
+	fletcher_4_fini();
 	zil_fini();
 	dmu_fini();
 	zio_fini();

@@ -36,6 +36,7 @@
 
 #include "zfs_prop.h"
 #include "zfs_deleg.h"
+#include "zfs_fletcher.h"
 
 #if defined(_KERNEL)
 #include <sys/systm.h>
@@ -880,50 +881,17 @@ zfs_prop_align_right(zfs_prop_t prop)
 
 #endif
 
-#if defined(_KERNEL) && defined(HAVE_SPL)
-#ifdef LINUX
-static int __init
+#if defined(_KERNEL)
+int
 zcommon_init(void)
 {
+	fletcher_4_init();
 	return (0);
 }
 
-static void __exit
+void
 zcommon_fini(void)
 {
+	fletcher_4_fini();
 }
-
-module_init(zcommon_init);
-module_exit(zcommon_fini);
-
-MODULE_DESCRIPTION("Generic ZFS support");
-MODULE_AUTHOR(ZFS_META_AUTHOR);
-MODULE_LICENSE(ZFS_META_LICENSE);
-MODULE_VERSION(ZFS_META_VERSION "-" ZFS_META_RELEASE);
-
-/* zfs dataset property functions */
-EXPORT_SYMBOL(zfs_userquota_prop_prefixes);
-EXPORT_SYMBOL(zfs_prop_init);
-EXPORT_SYMBOL(zfs_prop_get_type);
-EXPORT_SYMBOL(zfs_prop_get_table);
-EXPORT_SYMBOL(zfs_prop_delegatable);
-EXPORT_SYMBOL(zfs_prop_visible);
-
-/* Dataset property functions shared between libzfs and kernel. */
-EXPORT_SYMBOL(zfs_prop_default_string);
-EXPORT_SYMBOL(zfs_prop_default_numeric);
-EXPORT_SYMBOL(zfs_prop_readonly);
-EXPORT_SYMBOL(zfs_prop_inheritable);
-EXPORT_SYMBOL(zfs_prop_encryption_key_param);
-EXPORT_SYMBOL(zfs_prop_valid_keylocation);
-EXPORT_SYMBOL(zfs_prop_setonce);
-EXPORT_SYMBOL(zfs_prop_to_name);
-EXPORT_SYMBOL(zfs_name_to_prop);
-EXPORT_SYMBOL(zfs_prop_user);
-EXPORT_SYMBOL(zfs_prop_userquota);
-EXPORT_SYMBOL(zfs_prop_index_to_string);
-EXPORT_SYMBOL(zfs_prop_string_to_index);
-EXPORT_SYMBOL(zfs_prop_valid_for_type);
-#endif
-
 #endif

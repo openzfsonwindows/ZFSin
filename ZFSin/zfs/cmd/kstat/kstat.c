@@ -1071,17 +1071,17 @@ int write_mode(int argc, char **argv)
 
 	while (argc--) {
 		char mod[KSTAT_STRLEN + 1], name[KSTAT_STRLEN + 1], stat[KSTAT_STRLEN + 1];
-
+		char str_value[KSTAT_STRLEN + 1];
 		arg = *argv;
 
 		// TODO: make this more flexible. Spaces, and other types than uint64.
 		// Call C11 sscanf_s which takes string-width following ptr.
-		if ((rc = sscanf_s(arg, "%[^:]:%d:%[^:]:%[^=]=%llu",
+		if ((rc = sscanf_s(arg, "%[^:]:%d:%[^:]:%[^=]=%s",
 			mod, KSTAT_STRLEN, 
 			&instance, 
 			name, KSTAT_STRLEN,
 			stat, KSTAT_STRLEN,
-			&value)) != 5) {
+			&str_value, KSTAT_STRLEN)) != 5) {
 			(void)fprintf(stderr, "Unable to parse '%s'\n input not in 'module:instance:name:statisticname=value' format. %d\n", arg, rc);
 			failure++;
 		} else {
@@ -1103,9 +1103,20 @@ int write_mode(int argc, char **argv)
 							stat, mod, instance, name, errno);
 						failure++;
 					} else {
-						before_value = kn->value.ui64;
-						kn->value.ui64 = value;
 
+						switch (kn->data_type) {
+
+						case KSTAT_DATA_UINT64:
+						case KSTAT_DATA_INT64:
+							value = strtoul(str_value, NULL, 0);
+							before_value = kn->value.ui64;
+							kn->value.ui64 = value;
+							break;
+						case KSTAT_DATA_STRING:
+							before_value = kn->value.str.addr.ptr;
+							kn->value.str.addr.ptr = str_value;
+							break;
+						}
 						/* Update kernel */
 						rc = kstat_write(kc, ks, NULL);
 
@@ -1114,8 +1125,13 @@ int write_mode(int argc, char **argv)
 								mod, instance, name, stat, errno);
 							failure++;
 						} else {
-							(void)fprintf(stderr, "%s:%d:%s:%s: %llu -> %llu\n",
-								mod, instance, name, stat, before_value, value);
+							if (kn->data_type == KSTAT_DATA_STRING) {
+								(void)fprintf(stderr, "%s:%d:%s:%s: %s -> %s\n",
+									mod, instance, name, stat, before_value, str_value);
+							} else {
+								(void)fprintf(stderr, "%s:%d:%s:%s: %llu -> %llu\n",
+									mod, instance, name, stat, before_value, value);
+							}
 						} // rc
 					} // kstat_data_lookup
 				} // kstat_read

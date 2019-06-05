@@ -55,6 +55,7 @@
 #include "libzfs_impl.h"
 #include "zfs_prop.h"
 #include "zfeature_common.h"
+#include <zfs_fletcher.h>
 
 #ifdef __APPLE__
 #include <sys/zfs_mount.h>
@@ -1077,6 +1078,7 @@ libzfs_init(void)
 	zpool_prop_init();
 	zpool_feature_init();
 	libzfs_mnttab_init(hdl);
+	fletcher_4_init();
 #ifdef __APPLE__
 	libshare_init();
 #endif
@@ -1111,6 +1113,7 @@ libzfs_fini(libzfs_handle_t *hdl)
 	namespace_clear(hdl);
 	libzfs_mnttab_fini(hdl);
 	libzfs_core_fini();
+	fletcher_4_fini();
 	free(hdl);
 }
 
