@@ -2684,6 +2684,102 @@ out:
 	return error;
 }
 
+NTSTATUS file_endoffile_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+
+	if (IrpSp->FileObject == NULL || IrpSp->FileObject->FsContext == NULL)
+		return STATUS_INVALID_PARAMETER;
+
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	struct vnode *vp = FileObject->FsContext;
+	znode_t *zp = VTOZ(vp);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+	FILE_END_OF_FILE_INFORMATION *feofi = Irp->AssociatedIrp.SystemBuffer;
+	int changed = 0;
+
+	if (zfsvfs == NULL)
+		return STATUS_INVALID_PARAMETER;
+
+	dprintf("* File_EndOfFile_Information:\n");
+
+	// From FASTFAT
+	//  This is kinda gross, but if the file is not cached, but there is
+	//  a data section, we have to cache the file to avoid a bunch of
+	//  extra work.
+	BOOLEAN CacheMapInitialized = FALSE;
+	if ((FileObject->SectionObjectPointer->DataSectionObject != NULL) &&
+		(FileObject->SectionObjectPointer->SharedCacheMap == NULL) &&
+		!FlagOn(Irp->Flags, IRP_PAGING_IO)) {
+		vnode_pager_setsize(vp, zp->z_size);
+		CcInitializeCacheMap(FileObject,
+			(PCC_FILE_SIZES)&vp->FileHeader.AllocationSize,
+			FALSE,
+			&CacheManagerCallbacks, vp);
+		CacheMapInitialized = TRUE;
+	}
+
+	VN_HOLD(vp);
+	ZFS_ENTER_NOERROR(zfsvfs);
+	if (!zfsvfs->z_unmounted) {
+
+		// Can't be done on DeleteOnClose
+		if (vnode_deleteonclose(vp))
+			goto out;
+
+		// Advance only?
+		if (IrpSp->Parameters.SetFile.AdvanceOnly) {
+			if (feofi->EndOfFile.QuadPart > zp->z_size) {
+				Status = zfs_freesp(zp, feofi->EndOfFile.QuadPart, 0, 0, TRUE);
+				changed = 1;
+			}
+			dprintf("%s: AdvanceOnly\n", __func__);
+			goto out;
+		}
+		// Truncation?
+		if (zp->z_size > feofi->EndOfFile.QuadPart) {
+			// Are we able to truncate?
+			if (!MmCanFileBeTruncated(FileObject->SectionObjectPointer,
+				&feofi->EndOfFile)) {
+				Status = STATUS_USER_MAPPED_FILE;
+				goto out;
+			}
+			dprintf("%s: CanTruncate\n", __func__);
+		}
+
+		// Set new size
+		Status = zfs_freesp(zp, feofi->EndOfFile.QuadPart, 0, 0, TRUE); // Len = 0 is truncate
+		changed = 1;
+	}
+
+out:
+	ZFS_EXIT(zfsvfs);
+	VN_RELE(vp);
+
+	if (NT_SUCCESS(Status) && changed) {
+
+		dprintf("%s: new size 0x%llx set\n", __func__, zp->z_size);
+		// zfs_freesp() calls vnode_paget_setsize(), but we need to update it here.
+		CcSetFileSizes(FileObject,
+			(PCC_FILE_SIZES)&vp->FileHeader.AllocationSize);
+
+		// No notify for XATTR/Stream for now
+		if (!(zp->z_pflags & ZFS_XATTR)) {
+			zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+				FILE_NOTIFY_CHANGE_SIZE,
+				FILE_ACTION_MODIFIED);
+		}
+	}
+
+	if (CacheMapInitialized) {
+		CcUninitializeCacheMap(FileObject, NULL, NULL);
+	}
+
+	// We handled setsize in here.
+	vnode_setsizechange(vp, 0);
+
+	return Status;
+}
 
 NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_BASIC_INFORMATION *basic)
 {
@@ -4315,22 +4411,7 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		}
 		break;
 	case FileEndOfFileInformation: // extend?
-		dprintf("* SET FileEndOfFileInformation\n");
-		if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
-			FILE_END_OF_FILE_INFORMATION *feofi = Irp->AssociatedIrp.SystemBuffer;
-			struct vnode *vp = IrpSp->FileObject->FsContext;
-			VN_HOLD(vp);
-			// zfs_freesp() path uses vnode_pager_setsize() so we need to make sure fileobject is set.
-			znode_t *zp = VTOZ(vp);
-			zfsvfs_t *zfsvfs = zp->z_zfsvfs;
-			if (zfsvfs) {
-				ZFS_ENTER_NOERROR(zfsvfs); 
-				if (!zfsvfs->z_unmounted) 
-					Status = zfs_freesp(zp, feofi->EndOfFile.QuadPart, 0, 0, TRUE); // Len = 0 is truncate
-				ZFS_EXIT(zfsvfs);
-			}
-			VN_RELE(vp);
-		}
+		Status = file_endoffile_information(DeviceObject, Irp, IrpSp);
 		break;
 	case FileLinkInformation: // symlink
 		Status = file_link_information(DeviceObject, Irp, IrpSp);
@@ -4363,6 +4444,8 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	int nocache = Irp->Flags & IRP_NOCACHE;
 	int pagingio = FlagOn(Irp->Flags, IRP_PAGING_IO);
 	int releaselock = 0;
+
+	PAGED_CODE();
 
 	if (FlagOn(IrpSp->MinorFunction, IRP_MN_COMPLETE)) {
 		dprintf("%s: IRP_MN_COMPLETE\n", __func__);
@@ -4503,6 +4586,8 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	ASSERT(SystemBuffer != NULL);
 	uio_addiov(uio, SystemBuffer, bufferLength);
 
+	dprintf("%s: offset %llx size %lx\n", __func__, byteOffset.QuadPart, bufferLength);
+
 	error = zfs_read(vp, uio, 0, NULL, NULL);
 
 	// Update bytes read
@@ -4546,6 +4631,8 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 	//nocache = 1;
 
+	PAGED_CODE();
+
 	if (FlagOn(IrpSp->MinorFunction, IRP_MN_COMPLETE)) {
 		dprintf("%s: IRP_MN_COMPLETE\n", __func__);
 		CcMdlWriteComplete(IrpSp->FileObject, &IrpSp->Parameters.Write.ByteOffset, Irp->MdlAddress);
@@ -4577,6 +4664,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	VN_HOLD(vp);
 	znode_t *zp = VTOZ(vp);
 	ASSERT(ZTOV(zp) == vp);
+	Irp->IoStatus.Information = 0;
 
 	// Special encoding
 	byteOffset = IrpSp->Parameters.Write.ByteOffset;
@@ -4607,6 +4695,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 	if (!nocache && !CcCanIWrite(fileObject, bufferLength, TRUE, FALSE)) {
 		Status = STATUS_PENDING;
+		DbgBreakPoint();
 		goto out;
 	}
 
@@ -4635,14 +4724,12 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 		if (fileObject->PrivateCacheMap == NULL) {
 
-			CC_FILE_SIZES ccfs;
-			vp->FileHeader.FileSize.QuadPart = zp->z_size;
-			vp->FileHeader.ValidDataLength.QuadPart = zp->z_size;
-			ccfs.AllocationSize = vp->FileHeader.AllocationSize;
-			ccfs.FileSize = vp->FileHeader.FileSize;
-			ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
-			CcInitializeCacheMap(fileObject, &ccfs, FALSE,
+			vnode_pager_setsize(vp, zp->z_size);
+			vnode_setsizechange(vp, 0);
+			CcInitializeCacheMap(fileObject, 
+				(PCC_FILE_SIZES)&vp->FileHeader.AllocationSize, FALSE,
 				&CacheManagerCallbacks, vp);
+	
 			dprintf("%s: CcInitializeCacheMap\n", __func__);
 
 			//CcSetReadAheadGranularity(fileObject, READ_AHEAD_GRANULARITY);
@@ -4664,20 +4751,30 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 				dprintf("%s: CcZeroData failed\n", __func__);
 			}
 #endif
-			// We have written "Length" into the "file" by the way of cache, but the filesize
-			// need to match, so let's also extend the file in ZFS
+			// We have written "Length" into the "file" by the way of cache, so we need 
+			// zp->z_size to reflect the new length, so we extend the file on disk, even though
+			// the actual writes will come later (from CcMgr).
 			dprintf("%s: growing file\n", __func__);
+
+			// zfs_freesp() calls vnode_pager_setsize();
 			Status = zfs_freesp(zp,
 				byteOffset.QuadPart,  bufferLength,
 				FWRITE, B_TRUE);
 			ASSERT0(Status);
+			// Confirm size grown
+			ASSERT(byteOffset.QuadPart + bufferLength == zp->z_size);
 		} else {
-			vnode_pager_setsize(vp, zp->z_size);
+			//vnode_pager_setsize(vp, zp->z_size);
 		}
 
 		// DO A NORMAL CACHED WRITE, if the MDL bit is not set,
 		if (!FlagOn(IrpSp->MinorFunction, IRP_MN_MDL)) {
 
+			// Since we may have grown the filesize, we need to give CcMgr a head's up.
+			CcSetFileSizes(fileObject, (PCC_FILE_SIZES)&vp->FileHeader.AllocationSize);
+
+			dprintf("CcWrite:  offset [ 0x%llx - 0x%llx ] len 0x%lx\n", 
+				byteOffset.QuadPart, byteOffset.QuadPart + bufferLength, bufferLength);
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 			if (!CcCopyWriteEx(fileObject,
 				&byteOffset,
@@ -4713,12 +4810,14 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		}
 	}
 
-	uint64_t before_size = zp->z_size;
-
-
 	uio_t *uio;
 	uio = uio_create(1, byteOffset.QuadPart, UIO_SYSSPACE, UIO_WRITE);
 	uio_addiov(uio, SystemBuffer, bufferLength);
+
+	//dprintf("%s: offset %llx size %lx\n", __func__, byteOffset.QuadPart, bufferLength);
+
+	dprintf("ZfsWrite: offset [ 0x%llx - 0x%llx ] len 0x%lx\n", 
+		byteOffset.QuadPart, byteOffset.QuadPart + bufferLength, bufferLength);
 
 	if (FlagOn(Irp->Flags, IRP_PAGING_IO))
 		error = zfs_write(vp, uio, 0, NULL, NULL);  // Should we call vnop_pageout instead?
@@ -4728,31 +4827,31 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	//if (error == 0)
 	//	zp->z_pflags |= ZFS_ARCHIVE;
 
-	if ((error == 0) &&
-		(before_size != zp->z_size)) { // FIXME: If changed size only? Partial write etc.
-
-//		vnode_pager_setsize(vp, zp->z_size);
-		dprintf("New filesize set to %llu\n", zp->z_size);
-	}
-
 	// EOF?
 	if ((bufferLength == uio_resid(uio)) && error == ENOSPC)
 		Status = STATUS_DISK_FULL;
 
-	// Update bytes read
+	// Update bytes written
 	Irp->IoStatus.Information = bufferLength - uio_resid(uio);
 
 	uio_free(uio);
 
 	// Update the file offset
-	fileObject->CurrentByteOffset.QuadPart =
-		byteOffset.QuadPart + Irp->IoStatus.Information;
-
 out:
+	if ((Status == STATUS_SUCCESS) &&
+		(fileObject->Flags & FO_SYNCHRONOUS_IO) &&
+		!(Irp->Flags & IRP_PAGING_IO)) {
+		fileObject->CurrentByteOffset.QuadPart =
+			byteOffset.QuadPart + Irp->IoStatus.Information;
+	}
+
 	VN_RELE(vp);
 
 //	dprintf("  FileName: %wZ offset 0x%llx len 0x%lx mdl %p System %p\n", &fileObject->FileName,
 //		byteOffset.QuadPart, bufferLength, Irp->MdlAddress, Irp->AssociatedIrp.SystemBuffer);
+
+	// Unset the size-change, as we handled it directly in here
+	vnode_setsizechange(vp, 0);
 
 	return Status;
 }
@@ -6116,13 +6215,10 @@ fsDispatcher(
 		if (vp && vnode_sizechange(vp) &&
 			VN_HOLD(vp) == 0) {
 			if (CcIsFileCached(IrpSp->FileObject)) {
-				CC_FILE_SIZES ccfs;
-				ccfs.AllocationSize = vp->FileHeader.AllocationSize;
-				ccfs.FileSize = vp->FileHeader.FileSize;
-				ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
-				CcSetFileSizes(IrpSp->FileObject, &ccfs);
+				CcSetFileSizes(IrpSp->FileObject, (PCC_FILE_SIZES)&vp->FileHeader.AllocationSize);
+				dprintf("sizechanged, updated to %llx\n", vp->FileHeader.FileSize);
+				vnode_setsizechange(vp, 0);
 			}
-			vnode_setsizechange(vp, 0);
 			VN_RELE(vp);
 		}
 	}
