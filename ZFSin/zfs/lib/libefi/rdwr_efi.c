@@ -128,7 +128,10 @@ static struct uuid_to_ptag {
 	{ EFI_DELL_RESV },
 	{ EFI_AAPL_HFS },
 	{ EFI_AAPL_UFS },
-	{ EFI_FREEBSD_ZFS }
+	{ EFI_ILLUMOS_ZFS },
+	{ EFI_FREEBSD_ZFS },
+	{ EFI_MIDNIGHTBSD_ZFS },
+	{ EFI_LINUX_DATA }
 };
 
 /*
