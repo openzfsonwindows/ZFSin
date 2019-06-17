@@ -423,3 +423,8 @@ To specify multiple values:
 [Details](https://github.com/zfsonlinux/zfs/wiki/ZFS-on-Linux-Module-Parameters)  
 Some are unavailable, such as `zfs_arc_meta_limit_percent`.  
 These will be reset on reboot.
+
+# Nightly builds
+
+We do not have nightly builds.  
+However, from time to time, we do quick builds for people to test a fix. [Get it here](https://openzfsonosx.org/wiki/Windows_builds).
