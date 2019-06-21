@@ -61,7 +61,7 @@ will most likely reboot the Target VM as well.
 
 I've had dialog boxes pop up and I agree to installation, but I am not
 sure they are supposed to. They probably shouldn't, it would seem it
-failed to put WDKRemoteUser in Administators group. If that happens,
+failed to put WDKRemoteUser in Administrators group. If that happens,
 use "lusrmgr.msc" to correct it.
 
 The task "Creating system restore point" will most likely fail and
@@ -400,29 +400,12 @@ If the driver is still there, it would be:
 No pools available
 ```
 
-A reboot might be neccessary to uninstall it completely.
+A reboot might be necessary to uninstall it completely.
 
 # Tuning
 
-You can use `kstat` to tune various parameters.
-
-**SYNTAX**
-
-    kstat -w module:instance:name:statistic=value [ ... ]
-
-**EXAMPLES**
-
-To set max ARC size to 512 MiB:
-
-    kstat -w zfs:0:tunable:zfs_arc_max=536870912
-
-To specify multiple values:
-
-    kstat -w zfs:0:tunable:zfs_arc_max=536870912 zfs:0:tunable:zfs_arc_meta_limit=402653184
-
-[Details](https://github.com/zfsonlinux/zfs/wiki/ZFS-on-Linux-Module-Parameters)  
-Some are unavailable, such as `zfs_arc_meta_limit_percent`.  
-These will be reset on reboot.
+You can use the [registry](https://openzfsonosx.org/wiki/Windows_Registry) to tune various parameters.  
+Also, there is [`kstat`](https://openzfsonosx.org/wiki/Windows_kstat) to dynamically change parameters.
 
 # Nightly builds
 
