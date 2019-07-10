@@ -147,6 +147,10 @@ typedef struct osx_kstat {
 	kstat_named_t win32_hw_hostid;
 	kstat_named_t zfs_send_unmodified_spill_blocks;
 	kstat_named_t zfs_special_class_metadata_reserve_pct;
+
+	kstat_named_t zfs_disable_wincache;
+	kstat_named_t zfs_disable_removablemedia;
+
 } osx_kstat_t;
 
 
@@ -254,6 +258,9 @@ extern uint64_t  zfs_trim_queue_limit;
 
 extern uint64_t  zfs_send_unmodified_spill_blocks;
 extern uint64_t  zfs_special_class_metadata_reserve_pct;
+
+extern uint64_t zfs_disable_wincache;
+extern uint64_t zfs_disable_removablemedia;
 
 int        kstat_osx_init(void *);
 void       kstat_osx_fini(void);

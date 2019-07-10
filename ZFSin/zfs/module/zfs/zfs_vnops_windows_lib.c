@@ -65,6 +65,8 @@ extern int zfs_vnop_force_formd_normalized_output; /* disabled by default */
 int zfs_vfs_uuid_gen(const char *osname, uuid_t uuid);
 int zfs_vfs_uuid_unparse(uuid_t uuid, char *dst);
 
+uint64_t zfs_disable_removablemedia = 0;
+
 /* Originally from illumos:uts/common/sys/vfs.h */
 typedef uint64_t vfs_feature_t;
 #define	VFSFT_XVATTR		0x100000001	/* Supports xvattr for attrs */
@@ -628,9 +630,8 @@ int zfs_windows_mount(zfs_cmd_t *zc)
 	ULONG				deviceCharacteristics;
 	deviceCharacteristics = FILE_DEVICE_IS_MOUNTED;
 	/* Allow $recycle.bin - don't set removable. */
-#if 1
-	deviceCharacteristics |= FILE_REMOVABLE_MEDIA;
-#endif
+	if (!zfs_disable_removablemedia)
+		deviceCharacteristics |= FILE_REMOVABLE_MEDIA;
 
 	snprintf(buf, sizeof(buf), "\\Device\\Volume{%s}", uuid_a);
 	//	snprintf(buf, sizeof(buf), "\\Device\\ZFS_%s", zc->zc_name);
@@ -1034,9 +1035,8 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	ULONG				deviceCharacteristics;
 	deviceCharacteristics = FILE_DEVICE_IS_MOUNTED;
 	/* Allow $recycle.bin - don't set removable. */
-#if 1
-	deviceCharacteristics |= FILE_REMOVABLE_MEDIA;
-#endif
+	if (!zfs_disable_removablemedia)
+		deviceCharacteristics |= FILE_REMOVABLE_MEDIA;
 
 	status = IoCreateDevice(DriverObject,               // DriverObject
 		sizeof(mount_t),           // DeviceExtensionSize

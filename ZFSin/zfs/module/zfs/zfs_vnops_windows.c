@@ -116,6 +116,7 @@ unsigned int zfs_vnop_create_negatives = 1;
 #ifdef _KERNEL
 uint64_t vnop_num_reclaims = 0;
 uint64_t vnop_num_vnodes = 0;
+uint64_t zfs_disable_wincache = 0;
 #endif
 
 BOOLEAN zfs_AcquireForLazyWrite(void *Context, BOOLEAN Wait)
@@ -4491,7 +4492,8 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		(Irp->UserBuffer != 0),
 		FlagOn(Irp->Flags, IRP_PAGING_IO));
 #endif
-	//nocache = 1;
+	if (zfs_disable_wincache)
+		nocache = 1;
 
 	bufferLength = IrpSp->Parameters.Read.Length;
 	if (bufferLength == 0)
@@ -4659,7 +4661,8 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	int nocache = Irp->Flags & IRP_NOCACHE;
 	int pagingio = FlagOn(Irp->Flags, IRP_PAGING_IO);
 
-	//nocache = 1;
+	if (zfs_disable_wincache)
+		nocache = 1;
 
 	PAGED_CODE();
 
