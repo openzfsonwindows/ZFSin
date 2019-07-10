@@ -2858,7 +2858,7 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 		while (end && *end == '#') end++;
 		fd = CreateFile(end,
 			oflag & O_RDWR ? GENERIC_READ | GENERIC_WRITE : GENERIC_READ,
-			FILE_SHARE_READ | FILE_SHARE_WRITE,
+			FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
 			NULL,
 			OPEN_EXISTING,
 			FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
@@ -2868,7 +2868,7 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 
 		fd = CreateFile(path,
 			oflag & O_RDWR ? GENERIC_READ | GENERIC_WRITE : GENERIC_READ,
-			FILE_SHARE_READ | FILE_SHARE_WRITE,
+			FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
 			NULL,
 			OPEN_EXISTING,
 			FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,

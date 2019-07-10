@@ -130,7 +130,7 @@ get_device_number(char* device_path, STORAGE_DEVICE_NUMBER* device_number)
 
 	hDevice = CreateFile(device_path,
 		GENERIC_READ,
-		FILE_SHARE_READ | FILE_SHARE_WRITE,
+		FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
 		NULL,
 		OPEN_EXISTING,
 		FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
@@ -1498,7 +1498,7 @@ zpool_open_func_win(void *arg)
 		while (end && *end == '#') end++;
 		fd = CreateFile(end,
 			GENERIC_READ,
-			FILE_SHARE_READ | FILE_SHARE_WRITE,
+			FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
 			NULL,
 			OPEN_EXISTING,
 			FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
@@ -1519,7 +1519,7 @@ zpool_open_func_win(void *arg)
 		snprintf(fullpath, sizeof(fullpath), "%s%s", rn->rn_parent, rn->rn_name);
 		fd = CreateFile(fullpath,
 			GENERIC_READ,
-			FILE_SHARE_READ | FILE_SHARE_WRITE,
+			FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
 			NULL,
 			OPEN_EXISTING,
 			FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
@@ -2069,7 +2069,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 			// but perhaps it is better to use the full name of the device.
 			disk = CreateFile(deviceInterfaceDetailData->DevicePath,
 				0/*GENERIC_READ*/,
-				FILE_SHARE_READ | FILE_SHARE_WRITE,
+				FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
 				NULL,
 				OPEN_EXISTING,
 				FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
@@ -2151,7 +2151,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 			// Add the whole physical device, but lets also try to read EFI off it.
 			disk = CreateFile(deviceInterfaceDetailData->DevicePath,
 				GENERIC_READ,
-				FILE_SHARE_READ | FILE_SHARE_WRITE,
+				FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
 				NULL,
 				OPEN_EXISTING,
 				FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,

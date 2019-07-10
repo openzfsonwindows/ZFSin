@@ -2176,6 +2176,33 @@ NTSTATUS ioctl_mountdev_query_suggested_link_name(PDEVICE_OBJECT DeviceObject, P
 
 }
 
+NTSTATUS ioctl_mountdev_query_stable_guid(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	MOUNTDEV_STABLE_GUID	*guid = Irp->UserBuffer;
+	ULONG					 bufferLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
+	mount_t *zmo = (mount_t *)DeviceObject->DeviceExtension;
+
+	dprintf("%s: \n", __func__);
+
+	if (bufferLength < sizeof(MOUNTDEV_STABLE_GUID)) {
+		Irp->IoStatus.Information = sizeof(MOUNTDEV_STABLE_GUID);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+	if (zfsvfs == NULL)
+		return STATUS_INVALID_PARAMETER;
+
+	extern int	zfs_vfs_uuid_gen(const char *osname, uuid_t uuid);
+
+	// A bit naughty
+	zfs_vfs_uuid_gen(spa_name(dmu_objset_spa(zfsvfs->z_os)), (char *)&guid->StableGuid);
+	
+	Irp->IoStatus.Information = sizeof(MOUNTDEV_STABLE_GUID);
+	return STATUS_SUCCESS;
+}
+
+
 NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	NTSTATUS Status;
@@ -2708,7 +2735,8 @@ NTSTATUS file_endoffile_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_S
 	//  a data section, we have to cache the file to avoid a bunch of
 	//  extra work.
 	BOOLEAN CacheMapInitialized = FALSE;
-	if ((FileObject->SectionObjectPointer->DataSectionObject != NULL) &&
+	if (FileObject && FileObject->SectionObjectPointer &&
+		(FileObject->SectionObjectPointer->DataSectionObject != NULL) &&
 		(FileObject->SectionObjectPointer->SharedCacheMap == NULL) &&
 		!FlagOn(Irp->Flags, IRP_PAGING_IO)) {
 		vnode_pager_setsize(vp, zp->z_size);
@@ -2739,7 +2767,7 @@ NTSTATUS file_endoffile_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_S
 		// Truncation?
 		if (zp->z_size > feofi->EndOfFile.QuadPart) {
 			// Are we able to truncate?
-			if (!MmCanFileBeTruncated(FileObject->SectionObjectPointer,
+			if (FileObject->SectionObjectPointer && !MmCanFileBeTruncated(FileObject->SectionObjectPointer,
 				&feofi->EndOfFile)) {
 				Status = STATUS_USER_MAPPED_FILE;
 				goto out;
@@ -2759,9 +2787,11 @@ out:
 	if (NT_SUCCESS(Status) && changed) {
 
 		dprintf("%s: new size 0x%llx set\n", __func__, zp->z_size);
+
 		// zfs_freesp() calls vnode_paget_setsize(), but we need to update it here.
-		CcSetFileSizes(FileObject,
-			(PCC_FILE_SIZES)&vp->FileHeader.AllocationSize);
+		if (FileObject->SectionObjectPointer)
+			CcSetFileSizes(FileObject,
+				(PCC_FILE_SIZES)&vp->FileHeader.AllocationSize);
 
 		// No notify for XATTR/Stream for now
 		if (!(zp->z_pflags & ZFS_XATTR)) {
@@ -5699,6 +5729,7 @@ diskDispatcher(
 			break;
 		case IOCTL_MOUNTDEV_QUERY_STABLE_GUID:
 			dprintf("IOCTL_MOUNTDEV_QUERY_STABLE_GUID\n");
+			ioctl_mountdev_query_stable_guid(DeviceObject, Irp, IrpSp);
 			break;
 		case IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME:
 			dprintf("IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME\n");
