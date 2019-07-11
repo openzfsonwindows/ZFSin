@@ -202,6 +202,9 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		/* win32 */
 
 		debug_vnop_osx_printf = ks->win32_debug.value.ui64;
+		extern void saveBuffer(void);
+		if (ks->win32_debug.value.ui64 == 1337)
+			saveBuffer();
 		if (ks->win32_debug.value.ui64 == 9119)
 			panic("ZFS: User requested panic\n");
 		zfs_vnop_ignore_negatives = ks->win32_ignore_negatives.value.ui64;

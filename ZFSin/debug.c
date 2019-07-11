@@ -129,3 +129,45 @@ void printBuffer(const char *fmt, ...)
 	va_end(args);
 	mutex_exit(&cbuf_mutex);
 }
+
+// Signalled by userland to write out the kernel buffer.
+void saveBuffer(void)
+{
+	UNICODE_STRING      UnicodeFilespec;
+	OBJECT_ATTRIBUTES   ObjectAttributes;
+	NTSTATUS status;
+	HANDLE h;
+
+	printBuffer("saving buffer to disk\n");
+
+	RtlInitUnicodeString(&UnicodeFilespec, L"\\??\\C:\\Windows\\debug\\ZFSin.txt");
+
+	// Attempt to create file, make a weak attempt, give up easily.
+	ObjectAttributes.Length = sizeof(OBJECT_ATTRIBUTES);
+	ObjectAttributes.RootDirectory = NULL;
+	ObjectAttributes.Attributes = /*OBJ_CASE_INSENSITIVE |*/ OBJ_KERNEL_HANDLE;
+	ObjectAttributes.ObjectName = &UnicodeFilespec;
+	ObjectAttributes.SecurityDescriptor = NULL;
+	ObjectAttributes.SecurityQualityOfService = NULL;
+	IO_STATUS_BLOCK iostatus;
+
+	status = ZwCreateFile(&h,
+		GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE,
+		&ObjectAttributes,
+		&iostatus,
+		0,
+		FILE_ATTRIBUTE_NORMAL,
+		/* FILE_SHARE_WRITE | */ FILE_SHARE_READ,
+		FILE_OVERWRITE_IF,
+		FILE_SYNCHRONOUS_IO_NONALERT | FILE_NO_INTERMEDIATE_BUFFERING,
+		NULL,
+		0);
+
+	if (status != STATUS_SUCCESS) {
+		printBuffer("failed to save buffer: 0x%lx\n", status);
+		return;
+	}
+
+	ZwWriteFile(h, 0, NULL, NULL, &iostatus, cbuf, cbuf_size, NULL, NULL);
+	ZwClose(h);
+}
