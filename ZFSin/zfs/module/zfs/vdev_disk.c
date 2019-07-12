@@ -413,14 +413,8 @@ typedef struct vdev_disk_callback_struct vd_callback_t;
 * locking, like from kmem_free())
 */
 static void
-vdev_disk_io_intr(void *Context)
+vdev_disk_io_intr(zio_t *zio, IO_STATUS_BLOCK *IoStatus)
 {
-	vd_callback_t *vb = (vd_callback_t *)Context;
-	zio_t *zio = vb->zio;
-	PIRP irp = vb->irp;
-
-	// Wait for IoCompletionRoutine to have been called.
-	KeWaitForSingleObject(&vb->Event, Executive, KernelMode, FALSE, NULL); // SYNC
 
 	dprintf("%s: done\n", __func__);
 
@@ -429,45 +423,13 @@ vdev_disk_io_intr(void *Context)
 	 * Rather than teach the rest of the stack about other error
 	 * possibilities (EFAULT, etc), we normalize the error value here.
 	 */
-//	zio->io_error = (geterror(bp) != 0 ? EIO : 0);
+	zio->io_error = (IoStatus->Status != 0 ? EIO : 0);
 
-//	if (zio->io_error == 0 && bp->b_resid != 0)
-//		zio->io_error = SET_ERROR(EIO);
-	zio->io_error = (irp->IoStatus.Status != 0 ? EIO : 0);
-
-	if (zio->io_type == ZIO_TYPE_READ) {
-		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
-		abd_return_buf_copy_off(zio->io_abd, vb->b_addr,
-			0, zio->io_size, zio->io_abd->abd_size);
-	} else {
-		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
-		abd_return_buf_off(zio->io_abd, vb->b_addr,
-			0, zio->io_size, zio->io_abd->abd_size);
-	}
-
-	if (irp->IoStatus.Information != zio->io_size)
+	if (IoStatus->Information != zio->io_size)
 		dprintf("%s: size mismatch 0x%llx != 0x%llx\n",
-			irp->IoStatus.Information, zio->io_size);
-
-	// Release irp
-	if (irp) {
-		while (irp->MdlAddress != NULL) {
-			PMDL NextMdl;
-			NextMdl = irp->MdlAddress->Next;
-			MmUnlockPages(irp->MdlAddress);
-			IoFreeMdl(irp->MdlAddress);
-			irp->MdlAddress = NextMdl;
-		}
-		IoFreeIrp(irp);
-	}
-	irp = NULL;
-
-	kmem_free(vb, sizeof(vd_callback_t));
-	vb = NULL;
+			IoStatus->Information, zio->io_size);
 
 	zio_delay_interrupt(zio);
-
-	thread_exit();
 }
 
 IO_COMPLETION_ROUTINE vdev_disk_io_intrxxx;
@@ -634,101 +596,54 @@ vdev_disk_io_start(zio_t *zio)
 
 	IO_STATUS_BLOCK IoStatusBlock;
 	LARGE_INTEGER offset;
+	void *b_addr = NULL;
 
 	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
 
-	vd_callback_t *vb = (vd_callback_t *)kmem_alloc(sizeof(vd_callback_t), KM_SLEEP);
-	vb->zio = zio;
 	if (zio->io_type == ZIO_TYPE_READ) {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
-		vb->b_addr =
+		b_addr =
 			abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
 	} else {
-		vb->b_addr =
+		b_addr =
 			abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
 	}
-	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
 
 	if (flags & B_READ) {
-		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ,
-			dvd->vd_DeviceObject,
-			vb->b_addr,
-			(ULONG)zio->io_size,
-			&offset,
-			&IoStatusBlock);
+
+		status = ZwReadFile (dvd->vd_lh, 0, NULL, NULL, &IoStatusBlock, b_addr, zio->io_size, &offset, NULL);
+
 	} else {
-			irp = IoBuildAsynchronousFsdRequest(IRP_MJ_WRITE,
-			dvd->vd_DeviceObject,
-			vb->b_addr,
-			(ULONG)zio->io_size,
-			&offset,
-			&IoStatusBlock);
+
+		status = ZwWriteFile(dvd->vd_lh, 0, NULL, NULL, &IoStatusBlock, b_addr, zio->io_size, &offset, NULL);
+
 	}
 	
-	if (!irp) {
-		kmem_free(vb, sizeof(vd_callback_t));
+	if (!NT_SUCCESS(status)) {
 		zio->io_error = EIO;
 		zio_interrupt(zio);
 		return;
 	}
 
-	vb->irp = irp;
-
-	irpStack = IoGetNextIrpStackLocation(irp);
-	if (irpStack == 0xffffffffffffffff)
-		panic("%s: bad irpStack\n", __func__);
-
-	irpStack->Flags |= SL_OVERRIDE_VERIFY_VOLUME; // SetFlag(IoStackLocation->Flags, SL_OVERRIDE_VERIFY_VOLUME);
-												  //SetFlag(ReadIrp->Flags, IRP_NOCACHE);
-	irpStack->FileObject = dvd->vd_FileObject;
-
-	IoSetCompletionRoutine(irp,
-		vdev_disk_io_intrxxx,
-		&vb->Event, // "Context" in vdev_disk_io_intr()
-		TRUE, // On Success
-		TRUE, // On Error
-		TRUE);// On Cancel
-
-	// Start a thread to wait for IO completion, which is signalled
-	// by CompletionRouting setting event.
-	(void)thread_create(NULL, 0, vdev_disk_io_intr, vb, 0, &p0,
-		TS_RUN, minclsyspri);
-
-	status = IoCallDriver(dvd->vd_DeviceObject, irp);
-
-	//dprintf("%s: IoCallDriver %d\n", __func__, status);
-
-	// Since the IoCompletionRoute is always call from now, we can just
-	// return. vdev_disk_io_intr() will handle the io status
-
-
-	return;
-#if 0
-	switch (status) {
-	case STATUS_PENDING:
-		KeWaitForSingleObject(&completionEvent, Executive, KernelMode, FALSE, NULL); // SYNC
-		break;
-	case STATUS_SUCCESS:
-		break;
-	default:
-		break;
+	// IoStatusBlock has transfer size
+	if (zio->io_type == ZIO_TYPE_READ) {
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_copy_off(zio->io_abd, b_addr,
+			0, zio->io_size, zio->io_abd->abd_size);
+	}
+	else {
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_off(zio->io_abd, b_addr,
+			0, zio->io_size, zio->io_abd->abd_size);
 	}
 
-	// Sets zio->io_error = irp->IoStatus.Status
-	vdev_disk_io_intr(dvd->vd_DeviceObject, irp, zio);
+	zio->io_error = (IoStatusBlock.Status != 0 ? EIO : 0);
 
-	// Release irp
-	if (irp) {
-		while (irp->MdlAddress != NULL) {
-				PMDL NextMdl;
-				NextMdl = irp->MdlAddress->Next;
-				MmUnlockPages(irp->MdlAddress);
-				IoFreeMdl(irp->MdlAddress);
-				irp->MdlAddress = NextMdl;
-		}
-		IoFreeIrp(irp);
-	}
-#endif
+	// Size should be identical
+	ASSERT3U(IoStatusBlock.Information, ==, zio->io_size);
+
+	// Kick off ZIO pipeline
+	zio_delay_interrupt(zio);
 }
 
 static void
