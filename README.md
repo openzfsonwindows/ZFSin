@@ -233,12 +233,12 @@ Thinking on mount structure. Second design:
 Add dataset property WinDriveLetter, which is ignored on Unix system.
 So for a simple drive letter dataset:
 
-zfs set windriveletter=Z: pool
+zfs set driveletter=Z pool
 
 The default creating of a new pool, AND, importing a UNIX pool, would
 set the root dataset to
 
-windriveletter=?:
+driveletter=?:
 
 So it is assigned first-available drive letter. All lower datasets
 will be mounted inside the drive letter. If pool's WinDriveLetter is
