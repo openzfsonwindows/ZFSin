@@ -2631,6 +2631,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 	case FileBothDirectoryInformation:
 	case FileDirectoryInformation:
 	case FileNamesInformation:
+	case FileIdFullDirectoryInformation:
 		break;
 	default:
 		dprintf("%s: ** Directory type %d not handled!\n", __func__, dirlisttype);
@@ -2988,6 +2989,24 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					fni->FileNameLength = namelenholder;
 					break;
 
+				case FileIdFullDirectoryInformation:
+					structsize = FIELD_OFFSET(FILE_ID_FULL_DIR_INFORMATION, FileName[0]);
+					if (outcount + structsize + namelenholder > bufsize) break;
+
+					eodp = (FILE_ID_FULL_DIR_INFORMATION *)bufptr;
+					FILE_ID_FULL_DIR_INFORMATION *fifdi = (FILE_ID_FULL_DIR_INFORMATION *)bufptr;
+					fifdi->FileIndex = offset;
+					fifdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp)); // File size in block alignment
+					fifdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size; // File size in bytes
+					TIME_UNIX_TO_WINDOWS(mtime, fifdi->LastWriteTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(ctime, fifdi->ChangeTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(crtime, fifdi->CreationTime.QuadPart);
+					TIME_UNIX_TO_WINDOWS(tzp->z_atime, fifdi->LastAccessTime.QuadPart);
+					fifdi->EaSize = tzp->z_pflags & ZFS_REPARSEPOINT ? 0xa0000003 : xattr_getsize(ZTOV(tzp)); // Magic code to change dir icon to link
+					fifdi->FileAttributes = zfs_getwinflags(tzp);
+					fifdi->FileId.QuadPart = zp->z_id;
+					nameptr = fifdi->FileName;
+					fifdi->FileNameLength = namelenholder;
 				}
 
 				// Release the zp
