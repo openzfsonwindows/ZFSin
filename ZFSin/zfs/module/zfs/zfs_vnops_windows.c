@@ -2977,6 +2977,10 @@ NTSTATUS file_id_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LO
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
 
 	dprintf("   %s\n", __func__);
+	if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_ID_INFORMATION)) {
+		Irp->IoStatus.Information = sizeof(FILE_ID_INFORMATION);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
 
 	struct vnode *vp = FileObject->FsContext;
 
@@ -2989,6 +2993,125 @@ NTSTATUS file_id_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LO
 	uint64_t guid = dmu_objset_fsid_guid(zfsvfs->z_os);
 	RtlCopyMemory(&fii->FileId.Identifier[sizeof(UINT64)], &guid, sizeof(UINT64));
 
+	Irp->IoStatus.Information = sizeof(FILE_ID_INFORMATION);
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS file_case_sensitive_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_CASE_SENSITIVE_INFORMATION *fcsi)
+{
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+
+	dprintf("   %s\n", __func__);
+
+	if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_CASE_SENSITIVE_INFORMATION)) {
+		Irp->IoStatus.Information = sizeof(FILE_CASE_SENSITIVE_INFORMATION);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	struct vnode *vp = FileObject->FsContext;
+
+	znode_t *zp = VTOZ(vp);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+
+	fcsi->Flags = 0;
+	if (zfsvfs->z_case == ZFS_CASE_SENSITIVE)
+		fcsi->Flags |= FILE_CS_FLAG_CASE_SENSITIVE_DIR;
+
+	Irp->IoStatus.Information = sizeof(FILE_CASE_SENSITIVE_INFORMATION);
+
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS file_stat_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_STAT_INFORMATION *fsi)
+{
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+
+	dprintf("   %s\n", __func__);
+
+	if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_STAT_INFORMATION)) {
+		Irp->IoStatus.Information = sizeof(FILE_STAT_INFORMATION);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	/* vp is already help in query_information */
+	struct vnode *vp = FileObject->FsContext;
+
+	znode_t *zp = VTOZ(vp);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+
+	sa_bulk_attr_t bulk[3];
+	int count = 0;
+	uint64_t mtime[2];
+	uint64_t ctime[2];
+	uint64_t crtime[2];
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
+	sa_bulk_lookup(zp->z_sa_hdl, bulk, count);
+
+	fsi->FileId.QuadPart = zp->z_id;
+	TIME_UNIX_TO_WINDOWS(crtime, fsi->CreationTime.QuadPart);
+	TIME_UNIX_TO_WINDOWS(zp->z_atime, fsi->LastAccessTime.QuadPart);
+	TIME_UNIX_TO_WINDOWS(mtime, fsi->LastWriteTime.QuadPart);
+	TIME_UNIX_TO_WINDOWS(ctime, fsi->ChangeTime.QuadPart);
+	fsi->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
+	fsi->EndOfFile.QuadPart = zp->z_size;
+	fsi->FileAttributes = zfs_getwinflags(zp);
+	fsi->ReparseTag = 0;
+	fsi->NumberOfLinks = zp->z_links;
+	fsi->EffectiveAccess = 0;
+
+	Irp->IoStatus.Information = sizeof(FILE_STAT_INFORMATION);
+	return STATUS_SUCCESS;
+}
+
+NTSTATUS file_stat_lx_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_STAT_LX_INFORMATION *fsli)
+{
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+
+	dprintf("   %s\n", __func__);
+
+	if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_STAT_LX_INFORMATION)) {
+		Irp->IoStatus.Information = sizeof(FILE_STAT_LX_INFORMATION);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	/* vp is already help in query_information */
+	struct vnode *vp = FileObject->FsContext;
+
+	znode_t *zp = VTOZ(vp);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+
+	sa_bulk_attr_t bulk[3];
+	int count = 0;
+	uint64_t mtime[2];
+	uint64_t ctime[2];
+	uint64_t crtime[2];
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
+	SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
+	sa_bulk_lookup(zp->z_sa_hdl, bulk, count);
+
+	fsli->FileId.QuadPart = zp->z_id;
+	TIME_UNIX_TO_WINDOWS(crtime, fsli->CreationTime.QuadPart);
+	TIME_UNIX_TO_WINDOWS(zp->z_atime, fsli->LastAccessTime.QuadPart);
+	TIME_UNIX_TO_WINDOWS(mtime, fsli->LastWriteTime.QuadPart);
+	TIME_UNIX_TO_WINDOWS(ctime, fsli->ChangeTime.QuadPart);
+	fsli->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
+	fsli->EndOfFile.QuadPart = zp->z_size;
+	fsli->FileAttributes = zfs_getwinflags(zp);
+	fsli->ReparseTag = 0;
+	fsli->NumberOfLinks = zp->z_links;
+	fsli->EffectiveAccess = 0;
+	fsli->LxFlags = LX_FILE_METADATA_HAS_UID | LX_FILE_METADATA_HAS_GID | LX_FILE_METADATA_HAS_MODE;
+	if (zfsvfs->z_case == ZFS_CASE_SENSITIVE) fsli->LxFlags |= LX_FILE_CASE_SENSITIVE_DIR;
+	fsli->LxUid = zp->z_uid;
+	fsli->LxGid = zp->z_gid;
+	fsli->LxMode = zp->z_mode;
+	fsli->LxDeviceIdMajor = 0;
+	fsli->LxDeviceIdMinor = 0;
+
+	Irp->IoStatus.Information = sizeof(FILE_STAT_LX_INFORMATION);
 	return STATUS_SUCCESS;
 }
 
@@ -3283,7 +3406,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		vp = IrpSp->FileObject->FsContext;
 		VN_HOLD(vp);
 	}
-
+	
 	switch (IrpSp->Parameters.QueryFile.FileInformationClass) {
 			
 	case FileAllInformation: 
@@ -3481,16 +3604,27 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 	case FileReparsePointInformation:
 		break;
 	case FileIdInformation:
-		dprintf("* %s: FileIdInformation\n", __func__);
-		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_ID_INFORMATION)) {
-			Irp->IoStatus.Information = sizeof(FILE_ID_INFORMATION);
-			Status = STATUS_BUFFER_TOO_SMALL;
-			break;
-		}
-		FILE_ID_INFORMATION *fii = Irp->AssociatedIrp.SystemBuffer;
 		if (vp) {
+			FILE_ID_INFORMATION *fii = Irp->AssociatedIrp.SystemBuffer;
 			Status = file_id_information(DeviceObject, Irp, IrpSp, fii);
-			Irp->IoStatus.Information = sizeof(FILE_ID_INFORMATION);
+		}
+		break;
+	case FileCaseSensitiveInformation:
+		if (vp) {
+			FILE_CASE_SENSITIVE_INFORMATION *fcsi = Irp->AssociatedIrp.SystemBuffer;
+			Status = file_case_sensitive_information(DeviceObject, Irp, IrpSp, fcsi);
+		}
+		break;
+	case FileStatInformation:
+		if (vp) {
+			FILE_STAT_INFORMATION *fsi = Irp->AssociatedIrp.SystemBuffer;
+			Status = file_stat_information(DeviceObject, Irp, IrpSp, fsi);
+		}
+		break;
+	case FileStatLxInformation:
+		if (vp) {
+			FILE_STAT_LX_INFORMATION *fsli = Irp->AssociatedIrp.SystemBuffer;
+			Status = file_stat_lx_information(DeviceObject, Irp, IrpSp, fsli);
 		}
 		break;
 	default:
