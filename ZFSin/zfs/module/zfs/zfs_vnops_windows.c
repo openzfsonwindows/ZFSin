@@ -4386,23 +4386,24 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 
 			// can request that the file system not update .. LastAccessTime, LastWriteTime, and ChangeTime ..  setting the appropriate members to -1.
 			// ie, LastAccessTime = -1 -> atime = disabled - not implemented
+			// LastAccessTime = -2 -> cancel the disable (-1), return to normal.
 			// a value of "0" means to keep existing value.
-			if (fbi->ChangeTime.QuadPart != -1 && fbi->ChangeTime.QuadPart != 0) {
+			if (fbi->ChangeTime.QuadPart > 0) {
 				TIME_WINDOWS_TO_UNIX(fbi->ChangeTime.QuadPart, unixtime);
 				va.va_change_time.tv_sec = unixtime[0]; va.va_change_time.tv_nsec = unixtime[1];
 				va.va_active |= AT_CTIME;
 			}
-			if (fbi->LastWriteTime.QuadPart != -1 && fbi->LastWriteTime.QuadPart != 0) {
+			if (fbi->LastWriteTime.QuadPart > 0) {
 				TIME_WINDOWS_TO_UNIX(fbi->LastWriteTime.QuadPart, unixtime);
 				va.va_modify_time.tv_sec = unixtime[0]; va.va_modify_time.tv_nsec = unixtime[1];
 				va.va_active |= AT_MTIME;
 			}
-			if (fbi->CreationTime.QuadPart != -1 && fbi->CreationTime.QuadPart != 0) {
+			if (fbi->CreationTime.QuadPart > 0) {
 				TIME_WINDOWS_TO_UNIX(fbi->CreationTime.QuadPart, unixtime);
 				va.va_create_time.tv_sec = unixtime[0]; va.va_create_time.tv_nsec = unixtime[1];
 				va.va_active |= AT_CRTIME;  // AT_CRTIME
 			}
-			if (fbi->LastAccessTime.QuadPart != -1 && fbi->LastAccessTime.QuadPart != 0) 
+			if (fbi->LastAccessTime.QuadPart > 0) 
 				TIME_WINDOWS_TO_UNIX(fbi->LastAccessTime.QuadPart, zp->z_atime);
 
 			if (fbi->FileAttributes)
