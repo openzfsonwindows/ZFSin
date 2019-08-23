@@ -64,8 +64,6 @@
 
 #endif
 
-#define ENOTACTIVE EOWNERDEAD
-#define ECHRNG EPROTO
 #define noinline
 
 #ifndef MAX_UPL_TRANSFER

@@ -439,6 +439,7 @@
     <ClCompile Include="zfs\module\zfs\zfs_vnops.c" />
     <ClCompile Include="zfs\module\zfs\zfs_vnops_windows.c" />
     <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_lib.c" />
+    <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_mount.c" />
     <ClCompile Include="zfs\module\zfs\zfs_windows.c" />
     <ClCompile Include="zfs\module\zfs\zfs_windows_zvol.c" />
     <ClCompile Include="zfs\module\zfs\zfs_windows_zvol_scsi.c" />

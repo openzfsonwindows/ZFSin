@@ -185,57 +185,41 @@ extern int    zfs_vfsops_init(void);
 extern int    zfs_vfsops_fini(void);
 
 /* zfs_vnops_osx_lib calls */
-extern int    zfs_ioflags( int ap_ioflag );
-extern int    zfs_getattr_znode_unlocked ( struct vnode *vp, vattr_t *vap );
-extern uint32_t zfs_getwinflags(znode_t *zp);
-extern int    zfs_setwinflags(znode_t *zp, uint32_t winflags);
-
-extern int    pn_alloc   ( pathname_t *p );
-extern int    pn_free    ( pathname_t *p );
 extern int    ace_trivial_common(void *acep, int aclcnt,
-                                 uint64_t (*walk)(void *, uint64_t, int aclcnt,
-                                         uint16_t *, uint16_t *, uint32_t *));
+	uint64_t(*walk)(void *, uint64_t, int aclcnt,
+		uint16_t *, uint16_t *, uint32_t *));
 extern void   acl_trivial_access_masks(mode_t mode, boolean_t isdir,
-                                       trivial_acl_t *masks);
+	trivial_acl_t *masks);
 extern int    zfs_obtain_xattr(znode_t *dzp, const char *name, mode_t mode,
-                               cred_t *cr, struct vnode **vpp, int flag);
+	cred_t *cr, struct vnode **vpp, int flag);
 
-
-extern void  commonattrpack(attrinfo_t *aip, zfsvfs_t *zfsvfs, znode_t *zp,
-                            const char *name, ino64_t objnum, enum vtype vtype,
-                            boolean_t user64);
-extern void  dirattrpack(attrinfo_t *aip, znode_t *zp);
-extern void  fileattrpack(attrinfo_t *aip, zfsvfs_t *zfsvfs, znode_t *zp);
-extern void  nameattrpack(attrinfo_t *aip, const char *name, int namelen);
-extern int   getpackedsize(struct attrlist *alp, boolean_t user64);
-extern uint32_t getuseraccess(znode_t *zp, vfs_context_t *ctx);
 extern int   zpl_xattr_set_sa(struct vnode *vp, const char *name,
-							  const void *value, size_t size, int flags,
-							  cred_t *cr);
+	const void *value, size_t size, int flags,
+	cred_t *cr);
 extern int zpl_xattr_get_sa(struct vnode *vp, const char *name, void *value,
-							uint32_t size);
+	uint32_t size);
 
-    /*
-     * OSX ACL Helper funcions
-     *
-     * OSX uses 'guids' for the 'who' part of ACLs, and uses a 'well known'
-     * binary sequence to signify the special rules of "owner", "group" and
-     * "everybody". We translate between this "well-known" guid and ZFS'
-     * flags ACE_OWNER, ACE_GROUP and ACE_EVERYBODY.
-     *
-     */
+/*
+ * OSX ACL Helper funcions
+ *
+ * OSX uses 'guids' for the 'who' part of ACLs, and uses a 'well known'
+ * binary sequence to signify the special rules of "owner", "group" and
+ * "everybody". We translate between this "well-known" guid and ZFS'
+ * flags ACE_OWNER, ACE_GROUP and ACE_EVERYBODY.
+ *
+ */
 #define KAUTH_WKG_NOT           0       /* not a well-known GUID */
 #define KAUTH_WKG_OWNER         1
 #define KAUTH_WKG_GROUP         2
 #define KAUTH_WKG_NOBODY        3
 #define KAUTH_WKG_EVERYBODY     4
 
-//extern int kauth_wellknown_guid(guid_t *guid);
+ //extern int kauth_wellknown_guid(guid_t *guid);
 extern void aces_from_acl(ace_t *aces, int *nentries, struct kauth_acl *k_acl,
-						  int *seen_type);
+	int *seen_type);
 //extern void nfsacl_set_wellknown(int wkg, guid_t *guid);
 extern int  zfs_addacl_trivial(znode_t *zp, ace_t *aces, int *nentries,
-							   int seen_type);
+	int seen_type);
 
 
 #ifdef	__cplusplus

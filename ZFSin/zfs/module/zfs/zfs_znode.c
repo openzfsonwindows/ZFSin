@@ -1916,7 +1916,7 @@ zfs_extend(znode_t *zp, uint64_t end)
 			 * the next power of 2.
 			 */
 			ASSERT(!ISP2(zp->z_blksz));
-			newblksz = MIN(end, 1 << highbit64(zp->z_blksz));
+			newblksz = MIN(end, 1ULL << highbit64(zp->z_blksz));
 		} else {
 			newblksz = MIN(end, zp->z_zfsvfs->z_max_blksz);
 		}

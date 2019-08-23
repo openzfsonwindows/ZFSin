@@ -75,7 +75,7 @@ typedef unsigned int pid_t;
 typedef uintptr_t pc_t;
 typedef uint64_t ssize_t;
 typedef uint64_t vm_offset_t;
-typedef uint32_t dev_t;
+typedef uint64_t dev_t;
 #define NGROUPS 16
 
 typedef unsigned short umode_t;
