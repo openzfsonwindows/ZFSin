@@ -3003,7 +3003,7 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		return STATUS_INVALID_PARAMETER;
 
 
-	if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_NAME_INFORMATION)) {
+	if (IrpSp->Parameters.QueryFile.Length < (ULONG)FIELD_OFFSET(FILE_NAME_INFORMATION, FileName[0])) {
 		Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION);
 		return STATUS_BUFFER_TOO_SMALL;
 	}
@@ -3404,7 +3404,7 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		// If overflow, set Information to input_size and NameLength to required size.
 		//
 		dprintf("* %s: FileNameInformation (normalize %d)\n", __func__, normalize);
-		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_NAME_INFORMATION)) {
+		if (IrpSp->Parameters.QueryFile.Length < (ULONG)FIELD_OFFSET(FILE_NAME_INFORMATION, FileName[0])) {
 			Irp->IoStatus.Information = sizeof(FILE_NAME_INFORMATION);
 			Status = STATUS_BUFFER_TOO_SMALL;
 			break;
