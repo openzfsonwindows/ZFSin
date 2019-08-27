@@ -444,11 +444,10 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
  * and will assign FileObject->FsContext as appropriate, with usecount set
  * when required, but it will not hold iocount.
  */
-int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
+int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char *filename)
 {
 	int error;
 	cred_t *cr = NULL;
-	char *filename = NULL;
 	char *finalname;
 	char *brkt = NULL;
 	char *word = NULL;
@@ -510,7 +509,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// Should be passed an 8 byte FileId instead.
 	if (FileOpenByFileId && FileObject->FileName.Length != sizeof(ULONGLONG))
 		return STATUS_INVALID_PARAMETER;
-
 
 	TemporaryFile = BooleanFlagOn(IrpSp->Parameters.Create.FileAttributes,
 		FILE_ATTRIBUTE_TEMPORARY);
@@ -579,11 +577,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		return STATUS_SUCCESS;
 	}
 
-
-	// Allocate space to hold name, must be freed from here on
-	filename = kmem_alloc(PATH_MAX, KM_SLEEP);
-
-
 	// No name conversion with FileID
 
 	if (!FileOpenByFileId) {
@@ -596,7 +589,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (error != STATUS_SUCCESS &&
 				error != STATUS_SOME_NOT_MAPPED) {
 				dprintf("RtlUnicodeToUTF8N returned 0x%x input len %d\n", error, FileObject->FileName.Length);
-				kmem_free(filename, PATH_MAX);
 				return STATUS_OBJECT_NAME_INVALID;
 			}
 			//ASSERT(error != STATUS_SOME_NOT_MAPPED);
@@ -625,12 +617,10 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 					// A valid lookup gets a ccb attached
 					IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 
-					kmem_free(filename, PATH_MAX);
 					Irp->IoStatus.Information = FILE_OPENED;
 					return STATUS_SUCCESS;
 				}
 
-				kmem_free(filename, PATH_MAX);
 				Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 				return STATUS_OBJECT_PATH_NOT_FOUND;
 			} // OpenRoot
@@ -640,7 +630,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			// If no filename, we should fail, unless related is set.
 			if (FileObject->RelatedFileObject == NULL) {
 				// Fail
-				kmem_free(filename, PATH_MAX);
 				return STATUS_OBJECT_NAME_INVALID;
 			}
 			// Related set, return it as opened.
@@ -652,11 +641,9 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 					FileObject->FsContext2 = zfs_dirlist_alloc();
 				VN_RELE(dvp);
 			} else {
-				kmem_free(filename, PATH_MAX);
 				Irp->IoStatus.Information = 0;
 				return STATUS_OBJECT_PATH_NOT_FOUND;
 			}
-			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = FILE_OPENED;
 			return STATUS_SUCCESS;
 		}
@@ -678,7 +665,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		 */
 		error = stream_parse(filename, &stream_name);
 		if (error) {
-			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = 0;
 			return STATUS_INVALID_PARAMETER;
 		}
@@ -721,7 +707,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			}
 			if (error != 0) {
 				VN_RELE(ZTOV(zp));
-				kmem_free(filename, PATH_MAX);
 				return error;
 			} // failed to get parentid, or find parent
 			// Copy over the vp info for below, both are held.
@@ -745,38 +730,31 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			REPARSE_DATA_BUFFER *rpb = (REPARSE_DATA_BUFFER *)finalname;
 			Irp->IoStatus.Information = rpb->ReparseTag;
 			Irp->Tail.Overlay.AuxiliaryBuffer = (void*)rpb;
-			kmem_free(filename, PATH_MAX);
 			return error;
 		}
 
 		if (!dvp && error == ESRCH) {
 			dprintf("%s: failed to find dvp for '%s' \n", __func__, filename);
-			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 			return STATUS_OBJECT_PATH_NOT_FOUND;
 		}
 		if (error == STATUS_OBJECT_NAME_INVALID) {
 			dprintf("%s: filename component too long\n", __func__);
-			kmem_free(filename, PATH_MAX);
 			return error;
 		}
 		// Open dir with FILE_CREATE but it exists
 		if (error == EEXIST) {
 			dprintf("%s: dir exists, wont create\n", __func__);
-			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = FILE_EXISTS;
 			return STATUS_OBJECT_NAME_COLLISION;
 		}
 		// A directory component did not exist, or was a file
 		if ((dvp == NULL) || (error == ENOTDIR)) {
 			dprintf("%s: failed to find dvp - or dvp is a file\n", __func__);
-			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = 0;
 			return STATUS_OBJECT_NAME_NOT_FOUND;
-			return STATUS_OBJECT_PATH_NOT_FOUND;
 		}
 		dprintf("%s: failed to find vp in dvp\n", __func__);
-		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_OBJECT_NAME_NOT_FOUND;
 	}
@@ -792,7 +770,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		// Create the xattrdir only if we are to create a new entry
 		if (error = zfs_get_xattrdir(VTOZ(vp), &dvp, cr, CreateFile ? CREATE_XATTR_DIR : 0)) {
 			VN_RELE(vp);
-			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 			return STATUS_OBJECT_NAME_NOT_FOUND;
 		}
@@ -813,7 +790,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (vp == NULL) {
 				dprintf("%s: opening PARENT directory - but file is ENOENT\n", __func__);
 				VN_RELE(dvp);
-				kmem_free(filename, PATH_MAX);
 				Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 				return STATUS_OBJECT_NAME_NOT_FOUND;
 			}
@@ -831,12 +807,10 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 			if (vp) VN_RELE(vp); //xxx
 			VN_RELE(dvp);
-			kmem_free(filename, PATH_MAX);
 			return Status;
 		}
 		ASSERT(vp == NULL);
 		ASSERT(dvp == NULL);
-		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_OBJECT_NAME_NOT_FOUND;
 	}
@@ -854,7 +828,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if ((CreateDisposition == FILE_CREATE) && (vp != NULL)) {
 		VN_RELE(vp);
 		VN_RELE(dvp);
-		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_EXISTS;
 		return STATUS_OBJECT_NAME_COLLISION; // create file error
 	}
@@ -868,7 +841,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		if (zfsvfs->z_rdonly || vfs_isrdonly(zfsvfs->z_vfs) || 
 			!spa_writeable(dmu_objset_spa(zfsvfs->z_os))) {
 			VN_RELE(dvp);
-			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = 0; // ?
 			return STATUS_MEDIA_WRITE_PROTECTED;
 		}
@@ -906,11 +878,9 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			}
 			VN_RELE(vp);
 			VN_RELE(dvp);
-			kmem_free(filename, PATH_MAX);
 			return Status;
 		}
 		VN_RELE(dvp);
-		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_OBJECT_PATH_NOT_FOUND;  // failed to create error?
 	}
@@ -920,7 +890,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		dprintf("%s: asked for directory but found file\n", __func__);
 		VN_RELE(vp);
 		VN_RELE(dvp);
-		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_FILE_IS_A_DIRECTORY; // wanted dir, found file error
 	}
@@ -929,7 +898,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	if (NonDirectoryFile && !CreateFile && vp == NULL) {
 		dprintf("%s: asked for file but found directory\n", __func__);
 		VN_RELE(dvp);
-		kmem_free(filename, PATH_MAX);
 		Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
 		return STATUS_FILE_IS_A_DIRECTORY; // wanted file, found dir error
 	}
@@ -948,7 +916,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			((zp->z_pflags&ZFS_SYSTEM) && !FlagOn(IrpSp->Parameters.Create.FileAttributes, FILE_ATTRIBUTE_SYSTEM))) {
 			VN_RELE(vp);
 			VN_RELE(dvp);
-			kmem_free(filename, PATH_MAX);
 			dprintf("%s: denied due to hidden+system combo\n", __func__);
 			return STATUS_ACCESS_DENIED;
 		}
@@ -961,7 +928,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		if (zp->z_pflags&ZFS_READONLY) {
 			VN_RELE(vp);
 			VN_RELE(dvp);
-			kmem_free(filename, PATH_MAX);
 			dprintf("%s: denied due to ZFS_READONLY + OVERWRITE\n", __func__);
 			return STATUS_ACCESS_DENIED;
 		}
@@ -972,7 +938,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		(zp->z_pflags&ZFS_READONLY)) {
 		VN_RELE(vp);
 		VN_RELE(dvp);
-		kmem_free(filename, PATH_MAX);
 		dprintf("%s: denied due to ZFS_READONLY + WRITE_DATA\n", __func__);
 		return STATUS_ACCESS_DENIED;
 	}
@@ -986,7 +951,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			if (dvp)
 				VN_RELE(dvp);
 
-			kmem_free(filename, PATH_MAX);
 			dprintf("%s: denied due to ZFS_IMMUTABLE + ZFS_NOUNLINK\n", __func__);
 			return STATUS_ACCESS_DENIED;
 	}
@@ -1021,7 +985,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				SeUnlockSubjectContext(&IrpSp->Parameters.Create.SecurityContext->AccessState->SubjectSecurityContext);
 				if (vp) VN_RELE(vp);
 				VN_RELE(dvp);
-				kmem_free(filename, PATH_MAX);
 				dprintf("%s: denied due to SeAccessCheck()\n", __func__);
 				return Status;
 			}
@@ -1039,7 +1002,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				vnode_unlock(vp ? vp : dvp);
 				if (vp) VN_RELE(vp);
 				VN_RELE(dvp);
-				kmem_free(filename, PATH_MAX);
 				dprintf("%s: denied due to IoCheckShareAccess\n", __func__);
 				return Status;
 			}
@@ -1067,7 +1029,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			UNDO_SHARE_ACCESS(vp);
 			if (vp) VN_RELE(vp);
 			VN_RELE(dvp);
-			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = 0; // ?
 			return STATUS_MEDIA_WRITE_PROTECTED;
 		}
@@ -1082,7 +1043,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			UNDO_SHARE_ACCESS(vp);
 			if (vp) VN_RELE(vp);
 			VN_RELE(dvp);
-			kmem_free(filename, PATH_MAX);
 			Irp->IoStatus.Information = 0; // ?
 			return STATUS_MEDIA_WRITE_PROTECTED;
 		}
@@ -1149,7 +1109,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			}
 			VN_RELE(vp);
 			VN_RELE(dvp);
-			kmem_free(filename, PATH_MAX);
 			return Status;
 		}
 		if (error == EEXIST)
@@ -1159,7 +1118,6 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 		UNDO_SHARE_ACCESS(dvp);
 		VN_RELE(dvp);
-		kmem_free(filename, PATH_MAX);
 		return STATUS_OBJECT_NAME_COLLISION; // create file error
 	}
 
@@ -1236,9 +1194,67 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	IrpSp->Parameters.Create.SecurityContext->AccessState->PreviouslyGrantedAccess |= granted_access;
 	IrpSp->Parameters.Create.SecurityContext->AccessState->RemainingDesiredAccess &= ~(granted_access | MAXIMUM_ALLOWED);
 
-	kmem_free(filename, PATH_MAX);
 	return Status;
 }
+
+int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
+{
+	int status;
+	char *filename = NULL;
+
+	// Allocate space to hold name, must be freed from here on
+	filename = kmem_alloc(PATH_MAX, KM_SLEEP);
+
+	/* Check for ExtraCreateParameters */
+	PECP_LIST ecp = NULL;
+	PQUERY_ON_CREATE_ECP_CONTEXT qocContext = NULL;
+	FsRtlGetEcpListFromIrp(Irp, &ecp);
+	if (ecp) {
+		GUID ecpType;
+		VOID *ecpContext = NULL;
+		ULONG ecpContextSize;
+		while (NT_SUCCESS(FsRtlGetNextExtraCreateParameter(ecp, ecpContext,
+			&ecpType, &ecpContext, &ecpContextSize))) {
+			if (IsEqualGUID(&ecpType, &GUID_ECP_ATOMIC_CREATE)) {
+				dprintf("GUID_ECP_ATOMIC_CREATE\n");
+				// More code to come here:
+			} else if (IsEqualGUID(&ecpType, &GUID_ECP_QUERY_ON_CREATE)) {
+				dprintf("GUID_ECP_QUERY_ON_CREATE\n");
+				// It wants a getattr call on success
+				qocContext = (PQUERY_ON_CREATE_ECP_CONTEXT)ecpContext;
+			} else if (IsEqualGUID(&ecpType, &GUID_ECP_CREATE_REDIRECTION)) {
+				dprintf("GUID_ECP_CREATE_REDIRECTION\n");
+				// We get this one a lot.
+			} else {
+				dprintf("Other GUID_ECP type\n");
+			}
+		}// while
+	} // if ecp
+
+
+	status = zfs_vnop_lookup_impl(Irp, IrpSp, zmo, filename);
+
+
+	// Did ECP ask for getattr to be returned? None, one or both can be set.
+	// This requires vnode_couplefileobject() was called
+	if (NT_SUCCESS(status) && qocContext) {
+		if (BooleanFlagOn(qocContext->Flags, QoCFileStatInformation)) {
+			file_stat_information(IrpSp->DeviceObject, Irp, IrpSp,
+				&qocContext->StatInformation);
+		}
+		if (BooleanFlagOn(qocContext->Flags, QoCFileLxInformation)) {
+			file_stat_lx_information(IrpSp->DeviceObject, Irp, IrpSp,
+				&qocContext->LxInformation);
+		}
+		FsRtlAcknowledgeEcp(qocContext);
+	}
+
+	// Free filename
+	kmem_free(filename, PATH_MAX);
+
+	return status;
+}
+
 
 /*
  * reclaim is called when a vnode is to be terminated,

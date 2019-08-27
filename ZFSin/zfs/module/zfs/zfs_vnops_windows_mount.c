@@ -65,7 +65,7 @@
 
 extern int getzfsvfs(const char *dsname, zfsvfs_t **zfvp);
 
-uint64_t zfs_disable_removablemedia = 0;
+uint64_t zfs_disable_removablemedia = 1;
 
 
 /*
