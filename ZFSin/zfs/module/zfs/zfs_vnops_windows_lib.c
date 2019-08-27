@@ -366,8 +366,7 @@ zfs_setwinflags(znode_t *zp, uint32_t winflags)
 {
     uint64_t zflags = 0;
 
-	VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_FLAGS(zp->z_zfsvfs),
-		&zflags, sizeof(zflags)) == 0);
+	zflags = zp->z_pflags;
 
 	if (winflags & FILE_ATTRIBUTE_HIDDEN)
 		zflags |= ZFS_HIDDEN;

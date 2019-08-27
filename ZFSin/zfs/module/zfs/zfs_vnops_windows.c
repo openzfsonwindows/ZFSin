@@ -2705,7 +2705,8 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 				TIME_WINDOWS_TO_UNIX(fbi->LastAccessTime.QuadPart, zp->z_atime);
 
 			if (fbi->FileAttributes)
-				zfs_setwinflags(VTOZ(vp), fbi->FileAttributes);
+				if (zfs_setwinflags(VTOZ(vp), fbi->FileAttributes))
+					va.va_active |= AT_MODE;
 
 			Status = zfs_setattr(vp, &va, 0, NULL, NULL);
 

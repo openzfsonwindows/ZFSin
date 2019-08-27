@@ -2860,7 +2860,6 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				tzp = zp;
 
 			// If marked deleted, skip over node.
-#if 1
 			if ((get_zp == 0) && ZTOV(tzp) && vnode_deleted(ZTOV(tzp))) {
 				skip_this_entry = 1; 
 				/* We should not show entries that are tagged deleted, which typically
@@ -2869,8 +2868,10 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				 */
 				VN_RELE(ZTOV(tzp));
 			}
-
+#if 0
 			// If HIDDEN, we should skip/notshow
+			// Not true, kernel always shows entries, HIDDEN is filtered
+			// above us. No special treatment required by us.
 			if ((get_zp == 0) && ZTOV(tzp) && (tzp->z_pflags & (ZFS_HIDDEN|ZFS_SYSTEM))) {
 				skip_this_entry = 1;
 				VN_RELE(ZTOV(tzp));
