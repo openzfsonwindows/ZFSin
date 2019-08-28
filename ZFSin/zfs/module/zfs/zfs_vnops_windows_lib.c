@@ -123,7 +123,8 @@ static dacl def_dacls[] = {
 	{ 0, 0, NULL }
 };
 
-#if 0
+//#define USE_RECYCLE_ACL
+#ifdef USE_RECYCLE_ACL
 /*
 Brand new $Recycle.bin
 
@@ -1190,11 +1191,12 @@ failed:
 * This is connected to IRP_MN_NOTIFY_DIRECTORY_CHANGE
 * and sending the notifications of changes
 */
-void zfs_send_notify(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG FilterMatch, ULONG Action)
+void zfs_send_notify_stream(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG FilterMatch, ULONG Action, char *stream)
 {
 	mount_t *zmo;
 	zmo = zfsvfs->z_vfs;
 	UNICODE_STRING ustr;
+	UNICODE_STRING ustream;
 
 	ASSERT(nameoffset <= strlen(name));
 
@@ -1204,13 +1206,25 @@ void zfs_send_notify(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG FilterM
 		/*&name[nameoffset],*/ &ustr.Buffer[nameoffset],
 		FilterMatch, Action);
 
+	if (stream != NULL) {
+		AsciiStringToUnicodeString(stream, &ustream);
+		dprintf("%s: with stream '%wZ'\n", __func__, &ustream);
+	}
+
 	FsRtlNotifyFullReportChange(zmo->NotifySync, &zmo->DirNotifyList,
 		(PSTRING)&ustr, nameoffset * sizeof(WCHAR),
-		NULL, // StreamName
+		stream == NULL ? NULL : (PSTRING)&ustream , // StreamName
 		NULL, // NormalizedParentName
 		FilterMatch, Action,
 		NULL); // TargetContext
 	FreeUnicodeString(&ustr);
+	if (stream != NULL)
+		FreeUnicodeString(&ustream);
+}
+
+void zfs_send_notify(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG FilterMatch, ULONG Action)
+{
+	zfs_send_notify_stream(zfsvfs, name, nameoffset, FilterMatch, Action, NULL);
 }
 
 
@@ -1351,9 +1365,10 @@ void zfs_set_security_root(struct vnode *vp)
 	Status = RtlCreateSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
 	if (Status != STATUS_SUCCESS) goto err;
 
+	acl = def_dacls;
+
 	zfs_uid2sid(zp->z_uid, &usersid);
 	zfs_gid2sid(zp->z_gid, &groupsid);
-	acl = def_dacls;
 
 	RtlSetOwnerSecurityDescriptor(&sd, usersid, FALSE);
 	RtlSetGroupSecurityDescriptor(&sd, groupsid, FALSE);
@@ -2072,6 +2087,10 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		NULL, NULL, 0);
 
 	if (error == 0) {
+		// TODO: rename file in same directory, send OLD_NAME, NEW_NAME
+		// Moving to different directory, send: FILE_ACTION_REMOVED, FILE_ACTION_ADDED
+		// send CHANGE_LAST_WRITE
+
 		zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
 			vnode_isdir(fvp) ?
 			FILE_NOTIFY_CHANGE_DIR_NAME :
@@ -2088,6 +2107,11 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 				FILE_NOTIFY_CHANGE_FILE_NAME,
 				FILE_ACTION_RENAMED_NEW_NAME);
 		}
+
+		znode_t *tdzp = VTOZ(tdvp);
+		zfs_send_notify(zfsvfs, tdzp->z_name_cache, tdzp->z_name_offset,
+			FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_ACTION_MODIFIED);
+
 	}
 	// Release all holds
 out:
@@ -2193,6 +2217,19 @@ NTSTATUS file_basic_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK
 		Irp->IoStatus.Information = sizeof(FILE_BASIC_INFORMATION);
 		return STATUS_SUCCESS;
 	}
+
+	// This can be called from diskDispatcher, referring to the volume.
+	// if so, make something up. Is this the right thing to do?
+	if (IrpSp->FileObject && IrpSp->FileObject->FsContext == NULL) {
+		LARGE_INTEGER JanOne1980 = { 0xe1d58000,0x01a8e79f };
+		ExLocalTimeToSystemTime(&JanOne1980,
+			&basic->LastWriteTime);
+		basic->CreationTime = basic->LastAccessTime = basic->LastWriteTime;
+		basic->FileAttributes = FILE_ATTRIBUTE_NORMAL;
+		Irp->IoStatus.Information = sizeof(FILE_BASIC_INFORMATION);
+		return STATUS_SUCCESS;
+	}
+
 	ASSERT(basic->FileAttributes != 0);
 	dprintf("   %s failing\n", __func__);
 	return STATUS_OBJECT_NAME_NOT_FOUND;
@@ -3125,16 +3162,12 @@ NTSTATUS ioctl_storage_query_property(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO
 
 	case PropertyExistsQuery:
 
+		// ExistsQuery: return OK if exists.
+		Irp->IoStatus.Information = 0;
+
 		switch (spq->PropertyId) {
 		case StorageDeviceUniqueIdProperty:
 			dprintf("    PropertyExistsQuery StorageDeviceUniqueIdProperty\n");
-			PSTORAGE_DEVICE_UNIQUE_IDENTIFIER storage;
-			if (outputLength < sizeof(STORAGE_DEVICE_UNIQUE_IDENTIFIER)) {
-				status = STATUS_BUFFER_TOO_SMALL;
-				Irp->IoStatus.Information = 0;
-				break;
-			}
-			storage = Irp->AssociatedIrp.SystemBuffer;
 			status = STATUS_SUCCESS;
 			break;
 		case StorageDeviceWriteCacheProperty:
@@ -3142,34 +3175,52 @@ NTSTATUS ioctl_storage_query_property(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO
 			dprintf("    PropertyExistsQuery Not implemented 0x%x\n", spq->PropertyId);
 			status = STATUS_NOT_IMPLEMENTED;
 			break;
-			//case StorageDeviceAttributesProperty:
-				//break;
+		case StorageDeviceAttributesProperty:
+			dprintf("    PropertyExistsQuery StorageDeviceAttributesProperty\n");
+			status = STATUS_SUCCESS;
+			break;
 		default:
 			dprintf("    PropertyExistsQuery unknown 0x%x\n", spq->PropertyId);
 			status = STATUS_NOT_IMPLEMENTED;
 			break;
 		} // switch PropertyId
 		break;
+
+	// Query property, check input buffer size.
 	case PropertyStandardQuery:
 
 		switch (spq->PropertyId) {
 		case StorageDeviceProperty:
 			dprintf("    PropertyStandardQuery StorageDeviceProperty\n");
-			PSTORAGE_DEVICE_DESCRIPTOR storage;
+			Irp->IoStatus.Information = sizeof(STORAGE_DEVICE_DESCRIPTOR);
 			if (outputLength < sizeof(STORAGE_DEVICE_DESCRIPTOR)) {
 				status = STATUS_BUFFER_TOO_SMALL;
-				Irp->IoStatus.Information = 0;
 				break;
 			}
+			PSTORAGE_DEVICE_DESCRIPTOR storage;
 			storage = Irp->AssociatedIrp.SystemBuffer;
 			status = STATUS_SUCCESS;
 			break;
 		case StorageAdapterProperty:
-			dprintf("    PropertyExistsQuery Not implemented 0x%x\n", spq->PropertyId);
+			dprintf("    PropertyStandardQuery Not implemented 0x%x\n", spq->PropertyId);
 			status = STATUS_NOT_IMPLEMENTED;
 			break;
+		case StorageDeviceAttributesProperty:
+			dprintf("    PropertyStandardQuery StorageDeviceAttributesProperty\n");
+			Irp->IoStatus.Information = sizeof(STORAGE_DEVICE_ATTRIBUTES_DESCRIPTOR);
+			if (outputLength < sizeof(STORAGE_DEVICE_ATTRIBUTES_DESCRIPTOR)) {
+				status = STATUS_BUFFER_TOO_SMALL;
+				break;
+			}
+			STORAGE_DEVICE_ATTRIBUTES_DESCRIPTOR *sdad;
+			sdad = Irp->AssociatedIrp.SystemBuffer;
+			sdad->Version = 1;
+			sdad->Size = sizeof(STORAGE_DEVICE_ATTRIBUTES_DESCRIPTOR);
+			sdad->Attributes = STORAGE_ATTRIBUTE_BYTE_ADDRESSABLE_IO;
+			status = STATUS_SUCCESS;
+			break;
 		default:
-			dprintf("    PropertyExistsQuery unknown 0x%x\n", spq->PropertyId);
+			dprintf("    PropertyStandardQuery unknown 0x%x\n", spq->PropertyId);
 			status = STATUS_NOT_IMPLEMENTED;
 			break;
 		} // switch propertyId
@@ -3225,6 +3276,34 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		return STATUS_BUFFER_OVERFLOW;
 	}
 }
+
+NTSTATUS ioctl_query_stable_guid(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	PMOUNTDEV_STABLE_GUID mountGuid;
+	ULONG bufferLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
+	mount_t *zmo;
+
+	dprintf("%s: \n", __func__);
+
+	zmo = (mount_t *)DeviceObject->DeviceExtension;
+
+	if (bufferLength < sizeof(MOUNTDEV_STABLE_GUID)) {
+		Irp->IoStatus.Information = sizeof(MOUNTDEV_STABLE_GUID);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	mountGuid = (PMOUNTDEV_STABLE_GUID)Irp->AssociatedIrp.SystemBuffer;
+	RtlZeroMemory(&mountGuid->StableGuid, sizeof(mountGuid->StableGuid));
+	zfsvfs_t *zfsvfs = vfs_fsprivate(zmo);
+	if (zfsvfs) {
+		uint64_t guid = dmu_objset_fsid_guid(zfsvfs->z_os);
+		RtlCopyMemory(&mountGuid->StableGuid, &guid, sizeof(guid));
+		Irp->IoStatus.Information = sizeof(MOUNTDEV_STABLE_GUID);
+		return STATUS_SUCCESS;
+	}
+	return STATUS_NOT_FOUND;
+}
+
 
 NTSTATUS ioctl_mountdev_query_suggested_link_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
@@ -3304,3 +3383,19 @@ NTSTATUS ioctl_mountdev_query_stable_guid(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 	Irp->IoStatus.Information = sizeof(MOUNTDEV_STABLE_GUID);
 	return STATUS_SUCCESS;
 }
+
+// FileFsSectorSizeInformation
+// FFFF92849AD40040:     PropertyExistsQuery unknown 0x37: StorageDeviceAttributesProperty
+// FFFF9284A054B080: * user_fs_request: unknown class 0x903bc:  CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 238,
+// FFFF9284A054B080: * user_fs_request: unknown class 0x901f0:  CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 124,
+// FSCTL_QUERY_DEPENDENT_VOLUME
+
+// 0x2d118c - MASS_STORAGE 0x463
+// fsWindows IOCTL: 0x534058
+// disk Windows IOCTL: 0x530018
+
+/*
+ (open Extend\$Reparse:$R:$INDEX_ALLOCATION and use ZwQueryDirectoryFile on that handle to get
+ reparse info). It gives you the FileReference (file id) and tag value of all the reparse
+ points on the volume (see ntifs.h for FILE_REPARSE_POINT_INFORMATION).
+ */

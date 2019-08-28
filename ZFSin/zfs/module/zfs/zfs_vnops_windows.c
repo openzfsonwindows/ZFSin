@@ -129,9 +129,10 @@ BOOLEAN zfs_AcquireForLazyWrite(void *Context, BOOLEAN Wait)
 		dprintf("Failed\n");
 		return FALSE;
 	}
-	VN_HOLD(vp);
-	vnode_ref(vp);
-	VN_RELE(vp);
+	if (VN_HOLD(vp) == 0) {
+		vnode_ref(vp);
+		VN_RELE(vp);
+	}
 	return TRUE;
 }
 
@@ -140,20 +141,22 @@ void zfs_ReleaseFromLazyWrite(void *Context)
 	struct vnode *vp = Context;
 	dprintf("%s:\n", __func__);
 	ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
-	VN_HOLD(vp);
-	vnode_rele(vp);
-	VN_RELE(vp);
+	if (VN_HOLD(vp) == 0) {
+		vnode_rele(vp);
+		VN_RELE(vp);
+	}
 }
 
 BOOLEAN zfs_AcquireForReadAhead(void *Context, BOOLEAN Wait)
 {
 	struct vnode *vp = Context;
 	dprintf("%s:\n", __func__);
-	if (!ExAcquireResourceSharedLite(vp->FileHeader.Resource, Wait)) {
+	if ((VN_HOLD(vp) != 0) ||
+		!ExAcquireResourceSharedLite(vp->FileHeader.Resource, Wait)) {
 		dprintf("Failed\n");
 		return FALSE;
 	}
-	VN_HOLD(vp);
+
 	return TRUE;
 }
 
@@ -1106,6 +1109,12 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
 						FILE_NOTIFY_CHANGE_FILE_NAME,
 						FILE_ACTION_ADDED);
+				else
+					zfs_send_notify_stream(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+						FILE_NOTIFY_CHANGE_STREAM_NAME,
+						FILE_ACTION_ADDED_STREAM,
+						stream_name);
+
 			}
 			VN_RELE(vp);
 			VN_RELE(dvp);
@@ -1601,9 +1610,6 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 
 		break;
 	case FileFsSizeInformation:   
-		//
-		// If overflow, set Information to input_size and NameLength to required size.
-		//
 		dprintf("* %s: FileFsSizeInformation\n", __func__);
 		if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_SIZE_INFORMATION)) {
 			Irp->IoStatus.Information = sizeof(FILE_FS_SIZE_INFORMATION);
@@ -1620,8 +1626,22 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		Status = STATUS_SUCCESS;
 		break;
 	case FileFsSectorSizeInformation:
-		dprintf("* %s: FileFsSectorSizeInformation NOT IMPLEMENTED\n", __func__);
-		Status = STATUS_NOT_IMPLEMENTED;
+		dprintf("* %s: FileFsSectorSizeInformation\n", __func__);
+		if (IrpSp->Parameters.QueryVolume.Length < sizeof(FILE_FS_SECTOR_SIZE_INFORMATION)) {
+			Irp->IoStatus.Information = sizeof(FILE_FS_SECTOR_SIZE_INFORMATION);
+			Status = STATUS_BUFFER_TOO_SMALL;
+			break;
+		}
+		FILE_FS_SECTOR_SIZE_INFORMATION *ffssi = Irp->AssociatedIrp.SystemBuffer;
+		ffssi->LogicalBytesPerSector = 512;
+		ffssi->PhysicalBytesPerSectorForAtomicity = 512;
+		ffssi->PhysicalBytesPerSectorForPerformance = 512;
+		ffssi->FileSystemEffectivePhysicalBytesPerSectorForAtomicity = 512;
+		ffssi->Flags = SSINFO_FLAGS_NO_SEEK_PENALTY;
+		ffssi->ByteOffsetForSectorAlignment = SSINFO_OFFSET_UNKNOWN;
+		ffssi->ByteOffsetForPartitionAlignment = SSINFO_OFFSET_UNKNOWN;
+		Irp->IoStatus.Information = sizeof(FILE_FS_SECTOR_SIZE_INFORMATION);
+		Status = STATUS_SUCCESS;
 		break;
 	default:
 		dprintf("* %s: unknown class 0x%x\n", __func__, IrpSp->Parameters.QueryVolume.FsInformationClass);
@@ -2150,6 +2170,8 @@ NTSTATUS set_ea(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 	vp = IrpSp->FileObject->FsContext;
 	if (vp == NULL) return STATUS_INVALID_PARAMETER;
 
+	znode_t *zp = VTOZ(vp);
+
 	dprintf("%s\n", __func__);
 
 	if (input_len == 0) return STATUS_INVALID_PARAMETER;
@@ -2187,12 +2209,17 @@ NTSTATUS set_ea(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 	} while (offset != 0);
 
 out:
+	if (NT_SUCCESS(Status)) {
+		zfs_send_notify(zp->z_zfsvfs, zp->z_name_cache, zp->z_name_offset,
+			FILE_NOTIFY_CHANGE_EA,
+			FILE_ACTION_MODIFIED);
+	}
+
 	if (xdvp != NULL) {
 		VN_RELE(xdvp);
 	}
 
 	return Status;
-	return STATUS_EAS_NOT_SUPPORTED;
 }
 
 NTSTATUS get_reparse_point(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
@@ -3801,7 +3828,7 @@ ioctlDispatcher(
 	switch (IrpSp->MajorFunction) {
 
 	case IRP_MJ_CREATE:
-		dprintf("IRP_MJ_CREATE: FileObject %p name '%wZ' length %u flags 0x%x\n",
+		dprintf("IRP_MJ_CREATE: zfsdev FileObject %p name '%wZ' length %u flags 0x%x\n",
 			IrpSp->FileObject, IrpSp->FileObject->FileName, 
 			IrpSp->FileObject->FileName.Length, IrpSp->Flags);
 		Status = zfsdev_open(IrpSp->FileObject, Irp);
@@ -3861,6 +3888,7 @@ ioctlDispatcher(
 				break;
 			case IOCTL_MOUNTDEV_QUERY_STABLE_GUID:
 				dprintf("IOCTL_MOUNTDEV_QUERY_STABLE_GUID\n");
+				Status = ioctl_query_stable_guid(DeviceObject, Irp, IrpSp);
 				break;
 			case IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME:
 				dprintf("IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME\n");
@@ -3986,7 +4014,7 @@ diskDispatcher(
 	switch (IrpSp->MajorFunction) {
 
 	case IRP_MJ_CREATE:
-		dprintf("IRP_MJ_CREATE: FileObject %p related %p name '%wZ' flags 0x%x\n",
+		dprintf("IRP_MJ_CREATE: volume FileObject %p related %p name '%wZ' flags 0x%x\n",
 			IrpSp->FileObject, IrpSp->FileObject ? IrpSp->FileObject->RelatedFileObject : NULL,
 			IrpSp->FileObject->FileName, IrpSp->Flags);
 
@@ -4014,7 +4042,7 @@ diskDispatcher(
 			break;
 		case IOCTL_MOUNTDEV_QUERY_STABLE_GUID:
 			dprintf("IOCTL_MOUNTDEV_QUERY_STABLE_GUID\n");
-			ioctl_mountdev_query_stable_guid(DeviceObject, Irp, IrpSp);
+			Status = ioctl_mountdev_query_stable_guid(DeviceObject, Irp, IrpSp);
 			break;
 		case IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME:
 			dprintf("IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME\n");
@@ -4121,6 +4149,12 @@ diskDispatcher(
 		Status = STATUS_SUCCESS;
 		break;
 
+	case IRP_MJ_WRITE:
+		dprintf("disk fake write\n");
+		Irp->IoStatus.Information = IrpSp->Parameters.Write.Length;
+		Status = STATUS_SUCCESS;
+		break;
+
 	case IRP_MJ_FILE_SYSTEM_CONTROL:
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_MOUNT_VOLUME:
@@ -4134,6 +4168,11 @@ diskDispatcher(
 		}
 		break;
 
+	case IRP_MJ_QUERY_INFORMATION:
+		dprintf("volume calling query_information warning\n");
+		Status = query_information(DeviceObject, Irp, IrpSp);
+		break;
+
 	case IRP_MJ_PNP:
 		switch (IrpSp->MinorFunction) {
 		case IRP_MN_QUERY_CAPABILITIES:
@@ -4142,7 +4181,6 @@ diskDispatcher(
 		case IRP_MN_QUERY_DEVICE_RELATIONS:
 			Status = STATUS_NOT_IMPLEMENTED;
 			dprintf("DeviceRelations.Type 0x%x\n", IrpSp->Parameters.QueryDeviceRelations.Type);
-			//if (IrpSp->Parameters.QueryDeviceRelations.Type != BusRelations)
 			break;
 		case IRP_MN_QUERY_ID:
 			Status = pnp_query_id(DeviceObject, Irp, IrpSp);
@@ -4346,6 +4384,7 @@ fsDispatcher(
 			break;
 		case IOCTL_MOUNTDEV_QUERY_STABLE_GUID:
 			dprintf("IOCTL_MOUNTDEV_QUERY_STABLE_GUID\n");
+			Status = ioctl_query_stable_guid(DeviceObject, Irp, IrpSp);
 			break;
 		case IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME:
 			dprintf("IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME\n");
@@ -4442,6 +4481,31 @@ fsDispatcher(
 			break;
 		case IRP_MN_QUERY_DEVICE_RELATIONS:
 			Status = STATUS_NOT_IMPLEMENTED;
+
+			if (IrpSp->Parameters.QueryDeviceRelations.Type == TargetDeviceRelation) {
+				PDEVICE_RELATIONS DeviceRelations;
+				DeviceRelations =
+					(PDEVICE_RELATIONS)ExAllocatePool(PagedPool,
+						sizeof(DEVICE_RELATIONS));
+				if (!DeviceRelations) {
+					dprintf("  can't allocate DeviceRelations\n");
+					Status = STATUS_INSUFFICIENT_RESOURCES;
+					break;
+				}
+
+				dprintf("DeviceRelations TargetDeviceRelations\n");
+
+				/* The PnP manager will remove this when it is done with device */
+				ObReferenceObject(DeviceObject);
+
+				DeviceRelations->Count = 1;
+				DeviceRelations->Objects[0] = DeviceObject;
+				Irp->IoStatus.Information = (ULONG_PTR)DeviceRelations;
+
+				Status = STATUS_SUCCESS;
+				break;
+			}
+
 			dprintf("DeviceRelations.Type 0x%x\n", IrpSp->Parameters.QueryDeviceRelations.Type);
 			break; 
 		case IRP_MN_QUERY_ID:
@@ -4580,6 +4644,20 @@ char *common_status_str(NTSTATUS Status)
 		return "AccessDenied";
 	case STATUS_NOT_IMPLEMENTED:
 		return "NotImplemented";
+	case STATUS_PENDING:
+		return "STATUS_PENDING";
+	case STATUS_INVALID_PARAMETER:
+		return "STATUS_INVALID_PARAMETER";
+	case STATUS_OBJECT_NAME_NOT_FOUND:
+		return "STATUS_OBJECT_NAME_NOT_FOUND";
+	case STATUS_OBJECT_NAME_COLLISION:
+		return "STATUS_OBJECT_NAME_COLLISION";
+	case STATUS_FILE_IS_A_DIRECTORY:
+		return "STATUS_FILE_IS_A_DIRECTORY";
+	case STATUS_NOT_A_REPARSE_POINT:
+		return "STATUS_NOT_A_REPARSE_POINT";
+	case STATUS_NOT_FOUND:
+		return "STATUS_NOT_FOUND";
 	default:
 		return "<*****>";
 	}
