@@ -3394,6 +3394,9 @@ NTSTATUS ioctl_mountdev_query_stable_guid(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 // fsWindows IOCTL: 0x534058
 // disk Windows IOCTL: 0x530018
 
+// FFFF9284A14A9040: **** unknown fsWindows IOCTL: 0x534058 function 0x16
+// VOLSNAPCONTROLTYPE : 
+
 /*
  (open Extend\$Reparse:$R:$INDEX_ALLOCATION and use ZwQueryDirectoryFile on that handle to get
  reparse info). It gives you the FileReference (file id) and tag value of all the reparse

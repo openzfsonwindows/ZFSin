@@ -2482,6 +2482,38 @@ NTSTATUS user_fs_request(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 		Irp->IoStatus.Information = sizeof(FILESYSTEM_STATISTICS);
 		Status = STATUS_SUCCESS;
 		break;
+	case FSCTL_QUERY_DEPENDENT_VOLUME:
+		dprintf("    FSCTL_QUERY_DEPENDENT_VOLUME: \n");
+		STORAGE_QUERY_DEPENDENT_VOLUME_REQUEST *req = Irp->AssociatedIrp.SystemBuffer;
+		dprintf("RequestLevel %d: RequestFlags 0x%x\n", req->RequestLevel, req->RequestFlags);
+//#define QUERY_DEPENDENT_VOLUME_REQUEST_FLAG_HOST_VOLUMES    0x1
+//#define QUERY_DEPENDENT_VOLUME_REQUEST_FLAG_GUEST_VOLUMES   0x2
+		STORAGE_QUERY_DEPENDENT_VOLUME_LEV1_ENTRY *lvl1 = Irp->AssociatedIrp.SystemBuffer;
+		STORAGE_QUERY_DEPENDENT_VOLUME_LEV2_ENTRY *lvl2 = Irp->AssociatedIrp.SystemBuffer;
+
+		switch (req->RequestLevel) {
+		case 1:
+			if (IrpSp->Parameters.FileSystemControl.OutputBufferLength < sizeof(STORAGE_QUERY_DEPENDENT_VOLUME_LEV1_ENTRY))
+				return STATUS_BUFFER_TOO_SMALL;
+			memset(lvl1, 0, sizeof(STORAGE_QUERY_DEPENDENT_VOLUME_LEV1_ENTRY));
+			lvl1->EntryLength = sizeof(STORAGE_QUERY_DEPENDENT_VOLUME_LEV1_ENTRY);
+			Irp->IoStatus.Information = sizeof(STORAGE_QUERY_DEPENDENT_VOLUME_LEV1_ENTRY);
+			Status = STATUS_SUCCESS;
+			break;
+		case 2:
+			if (IrpSp->Parameters.FileSystemControl.OutputBufferLength < sizeof(STORAGE_QUERY_DEPENDENT_VOLUME_LEV2_ENTRY))
+				return STATUS_BUFFER_TOO_SMALL;
+			memset(lvl2, 0, sizeof(STORAGE_QUERY_DEPENDENT_VOLUME_LEV2_ENTRY));
+			lvl2->EntryLength = sizeof(STORAGE_QUERY_DEPENDENT_VOLUME_LEV2_ENTRY);
+			Irp->IoStatus.Information = sizeof(STORAGE_QUERY_DEPENDENT_VOLUME_LEV2_ENTRY);
+			Status = STATUS_SUCCESS;
+			break;
+		default:
+			Status = STATUS_INVALID_PARAMETER;
+			break;
+		}
+		break;
+
 	default:
 		dprintf("* %s: unknown class 0x%x\n", __func__, IrpSp->Parameters.FileSystemControl.FsControlCode);
 		break;
@@ -4164,6 +4196,7 @@ diskDispatcher(
 		case IRP_MN_USER_FS_REQUEST:
 			dprintf("IRP_MN_USER_FS_REQUEST: FsControlCode 0x%x\n",
 				IrpSp->Parameters.FileSystemControl.FsControlCode);
+			Status = user_fs_request(DeviceObject, Irp, IrpSp);
 			break;
 		}
 		break;
