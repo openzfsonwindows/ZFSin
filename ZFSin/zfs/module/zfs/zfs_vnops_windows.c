@@ -1261,6 +1261,9 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// Free filename
 	kmem_free(filename, PATH_MAX);
 
+	dprintf("%s: %s with %s\n", __func__,
+		common_status_str(status), create_reply(status, Irp->IoStatus.Information));
+
 	return status;
 }
 
@@ -1800,12 +1803,26 @@ NTSTATUS query_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 			Irp->AssociatedIrp.SystemBuffer);
 		break;
 	case FileStatInformation:
+		// We call these functions from zfs_vnop_lookup, so size testing goes here
+		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_STAT_INFORMATION)) {
+			Irp->IoStatus.Information = sizeof(FILE_STAT_INFORMATION);
+			Status = STATUS_BUFFER_TOO_SMALL;
+			break;
+		}
 		Status = file_stat_information(DeviceObject, Irp, IrpSp, 
 			Irp->AssociatedIrp.SystemBuffer);
+		Irp->IoStatus.Information = sizeof(FILE_STAT_INFORMATION);
 		break;
 	case FileStatLxInformation:
-		Status = file_stat_lx_information(DeviceObject, Irp, IrpSp, 
+		// We call these functions from zfs_vnop_lookup, so size testing goes here
+		if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_STAT_LX_INFORMATION)) {
+			Irp->IoStatus.Information = sizeof(FILE_STAT_LX_INFORMATION);
+			Status = STATUS_BUFFER_TOO_SMALL;
+			break;
+		}
+		Status = file_stat_lx_information(DeviceObject, Irp, IrpSp,
 			Irp->AssociatedIrp.SystemBuffer);
+		Irp->IoStatus.Information = sizeof(FILE_STAT_LX_INFORMATION);
 		break;
 	default:
 		dprintf("* %s: unknown class 0x%x NOT IMPLEMENTED\n", __func__, IrpSp->Parameters.QueryFile.FileInformationClass);
@@ -2863,6 +2880,7 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 
 	if (byteOffset.QuadPart >= filesize) {
 		Status = STATUS_END_OF_FILE;
+		Status = STATUS_SUCCESS;
 		goto out;
 	}
 
@@ -2964,8 +2982,9 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	// Update bytes read
 	Irp->IoStatus.Information = bufferLength - uio_resid(uio);
 
-	if (Irp->IoStatus.Information == 0)
-		Status = STATUS_END_OF_FILE;
+	// apparently we dont use EOF
+//	if (Irp->IoStatus.Information == 0)
+//		Status = STATUS_END_OF_FILE;
 
 	uio_free(uio);
 
@@ -4325,10 +4344,10 @@ fsDispatcher(
 				*((uint64_t *)IrpSp->FileObject->FileName.Buffer), IrpSp->Flags, IrpSp->Parameters.Create.ShareAccess,
 				IrpSp->Parameters.Create.Options);
 		else
-			dprintf("IRP_MJ_CREATE: FileObject %p related %p name '%wZ' flags 0x%x sharing 0x%x options 0x%x attr 0x%x DesAcc 0x%x\n",
+			dprintf("IRP_MJ_CREATE: FileObject %p related %p name '%wZ' flags 0x%x sharing 0x%x options %s attr 0x%x DesAcc 0x%x\n",
 				IrpSp->FileObject, IrpSp->FileObject ? IrpSp->FileObject->RelatedFileObject : NULL,
 				IrpSp->FileObject->FileName, IrpSp->Flags, IrpSp->Parameters.Create.ShareAccess,
-				IrpSp->Parameters.Create.Options, IrpSp->Parameters.Create.FileAttributes, IrpSp->Parameters.Create.SecurityContext->DesiredAccess);
+				create_options(IrpSp->Parameters.Create.Options), IrpSp->Parameters.Create.FileAttributes, IrpSp->Parameters.Create.SecurityContext->DesiredAccess);
 
 		Irp->IoStatus.Information = FILE_OPENED;
 		Status = STATUS_SUCCESS;
@@ -4656,46 +4675,6 @@ fsDispatcher(
 
 	return Status;
 }
-
-
-char *common_status_str(NTSTATUS Status)
-{
-	switch (Status) {
-	case STATUS_SUCCESS:
-		return "OK";
-	case STATUS_BUFFER_OVERFLOW:
-		return "Overflow";
-	case STATUS_END_OF_FILE:
-		return "EOF";
-	case STATUS_NO_MORE_FILES:
-		return "NoMoreFiles";
-	case STATUS_OBJECT_PATH_NOT_FOUND:
-		return "ObjectPathNotFound";
-	case STATUS_NO_SUCH_FILE:
-		return "NoSuchFile";
-	case STATUS_ACCESS_DENIED:
-		return "AccessDenied";
-	case STATUS_NOT_IMPLEMENTED:
-		return "NotImplemented";
-	case STATUS_PENDING:
-		return "STATUS_PENDING";
-	case STATUS_INVALID_PARAMETER:
-		return "STATUS_INVALID_PARAMETER";
-	case STATUS_OBJECT_NAME_NOT_FOUND:
-		return "STATUS_OBJECT_NAME_NOT_FOUND";
-	case STATUS_OBJECT_NAME_COLLISION:
-		return "STATUS_OBJECT_NAME_COLLISION";
-	case STATUS_FILE_IS_A_DIRECTORY:
-		return "STATUS_FILE_IS_A_DIRECTORY";
-	case STATUS_NOT_A_REPARSE_POINT:
-		return "STATUS_NOT_A_REPARSE_POINT";
-	case STATUS_NOT_FOUND:
-		return "STATUS_NOT_FOUND";
-	default:
-		return "<*****>";
-	}
-}
-
 
 /*
  * ALL ioctl requests come in here, and we do the Windows specific work to handle IRPs

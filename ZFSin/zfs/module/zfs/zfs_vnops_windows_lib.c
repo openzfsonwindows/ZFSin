@@ -291,6 +291,141 @@ char *major2str(int major, int minor)
 	return "Unknown";
 }
 
+char *common_status_str(NTSTATUS Status)
+{
+	switch (Status) {
+	case STATUS_SUCCESS:
+		return "OK";
+	case STATUS_BUFFER_OVERFLOW:
+		return "Overflow";
+	case STATUS_END_OF_FILE:
+		return "EOF";
+	case STATUS_NO_MORE_FILES:
+		return "NoMoreFiles";
+	case STATUS_OBJECT_PATH_NOT_FOUND:
+		return "ObjectPathNotFound";
+	case STATUS_NO_SUCH_FILE:
+		return "NoSuchFile";
+	case STATUS_ACCESS_DENIED:
+		return "AccessDenied";
+	case STATUS_NOT_IMPLEMENTED:
+		return "NotImplemented";
+	case STATUS_PENDING:
+		return "STATUS_PENDING";
+	case STATUS_INVALID_PARAMETER:
+		return "STATUS_INVALID_PARAMETER";
+	case STATUS_OBJECT_NAME_NOT_FOUND:
+		return "STATUS_OBJECT_NAME_NOT_FOUND";
+	case STATUS_OBJECT_NAME_COLLISION:
+		return "STATUS_OBJECT_NAME_COLLISION";
+	case STATUS_FILE_IS_A_DIRECTORY:
+		return "STATUS_FILE_IS_A_DIRECTORY";
+	case STATUS_NOT_A_REPARSE_POINT:
+		return "STATUS_NOT_A_REPARSE_POINT";
+	case STATUS_NOT_FOUND:
+		return "STATUS_NOT_FOUND";
+	case STATUS_NO_MORE_EAS:
+		return "STATUS_NO_MORE_EAS";
+	default:
+		return "<*****>";
+	}
+}
+
+char *create_options(ULONG Options)
+{
+	static char out[256];
+
+	BOOLEAN CreateDirectory;
+	BOOLEAN OpenDirectory;
+	BOOLEAN CreateFile;
+	ULONG CreateDisposition;
+
+	out[0] = 0;
+
+	BOOLEAN DirectoryFile;
+	DirectoryFile = BooleanFlagOn(Options, FILE_DIRECTORY_FILE);
+
+	if (BooleanFlagOn(Options, FILE_DIRECTORY_FILE))
+		strncat(out, "DirectoryFile ", sizeof(out));
+	if (BooleanFlagOn(Options, FILE_NON_DIRECTORY_FILE))
+		strncat(out, "NonDirectoryFile ", sizeof(out));
+	if (BooleanFlagOn(Options, FILE_NO_INTERMEDIATE_BUFFERING))
+		strncat(out, "NoIntermediateBuffering ", sizeof(out));
+	if (BooleanFlagOn(Options, FILE_NO_EA_KNOWLEDGE))
+		strncat(out, "NoEaKnowledge ", sizeof(out));
+	if (BooleanFlagOn(Options, FILE_DELETE_ON_CLOSE))
+		strncat(out, "DeleteOnClose ", sizeof(out));
+	if (BooleanFlagOn(Options, FILE_OPEN_BY_FILE_ID))
+		strncat(out, "FileOpenByFileId ", sizeof(out));
+
+	CreateDisposition = (Options >> 24) & 0x000000ff;
+
+	switch (CreateDisposition) {
+	case FILE_SUPERSEDE:
+		strncat(out, "@FILE_SUPERSEDE ", sizeof(out));
+		break;
+	case FILE_CREATE:
+		strncat(out, "@FILE_CREATE ", sizeof(out));
+		break;
+	case FILE_OPEN:
+		strncat(out, "@FILE_OPEN ", sizeof(out));
+		break;
+	case FILE_OPEN_IF:
+		strncat(out, "@FILE_OPEN_IF ", sizeof(out));
+		break;
+	case FILE_OVERWRITE:
+		strncat(out, "@FILE_OVERWRITE ", sizeof(out));
+		break;
+	case FILE_OVERWRITE_IF:
+		strncat(out, "@FILE_OVERWRITE_IF ", sizeof(out));
+		break;
+	}
+
+	CreateDirectory = (BOOLEAN)(DirectoryFile &&
+		((CreateDisposition == FILE_CREATE) ||
+		(CreateDisposition == FILE_OPEN_IF)));
+
+	OpenDirectory = (BOOLEAN)(DirectoryFile &&
+		((CreateDisposition == FILE_OPEN) ||
+		(CreateDisposition == FILE_OPEN_IF)));
+
+	CreateFile = (BOOLEAN)(
+		((CreateDisposition == FILE_CREATE) ||
+		(CreateDisposition == FILE_OPEN_IF) ||
+			(CreateDisposition == FILE_SUPERSEDE) ||
+			(CreateDisposition == FILE_OVERWRITE_IF)));
+	if (CreateDirectory)
+		strncat(out, "#CreateDirectory ", sizeof(out));
+	if (OpenDirectory)
+		strncat(out, "#OpenDirectory ", sizeof(out));
+	if (CreateFile)
+		strncat(out, "#CreateFile ", sizeof(out));
+
+	return out;
+}
+
+char *create_reply(NTSTATUS status, ULONG reply)
+{
+	switch (reply) {
+	case FILE_SUPERSEDED:
+		return "FILE_SUPERSEDED";
+	case FILE_OPENED:
+		return "FILE_OPENED";
+	case FILE_CREATED:
+		return "FILE_CREATED";
+	case FILE_OVERWRITTEN:
+		return "FILE_OVERWRITTEN";
+	case FILE_EXISTS:
+		return "FILE_EXISTS";
+	case FILE_DOES_NOT_EXIST:
+		return "FILE_DOES_NOT_EXIST";
+	default:
+		if (status == STATUS_REPARSE)
+			return "ReparseTag";
+		return "FileUnknown";
+	}
+}
+
 int AsciiStringToUnicodeString(char *in, PUNICODE_STRING out)
 {
 	ANSI_STRING conv;
@@ -1961,6 +2096,9 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	char buffer[MAXNAMELEN], *filename;
 	struct vnode *tdvp = NULL, *tvp = NULL, *fdvp = NULL;
 	uint64_t parent = 0;
+	PFILE_OBJECT dFileObject = NULL;
+	HANDLE destParentHandle = 0;
+	int use_fdvp_for_tdvp = 0;
 
 	// Convert incoming filename to utf8
 	error = RtlUnicodeToUTF8N(buffer, MAXNAMELEN, &outlen,
@@ -1990,67 +2128,74 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		filename = &filename[6];
 #endif
 
-	HANDLE destParentHandle = 0;
-	OBJECT_ATTRIBUTES oa;
-	IO_STATUS_BLOCK ioStatus;
-	UNICODE_STRING uFileName;
-	RtlInitUnicodeString(&uFileName, ren->FileName);
-	InitializeObjectAttributes(&oa, &uFileName, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-		NULL, NULL);
+	// If it starts with "\" drive the lookup, if it is just a name like "HEAD", assume
+	// tdvp is same as fdvp.
+	if ((filename[0] == '\\')) {
+		OBJECT_ATTRIBUTES oa;
+		IO_STATUS_BLOCK ioStatus;
+		UNICODE_STRING uFileName;
+		RtlInitUnicodeString(&uFileName, ren->FileName);
+		InitializeObjectAttributes(&oa, &uFileName, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+			NULL, NULL);
 
-	Status = IoCreateFile(
-		&destParentHandle,
-		FILE_READ_DATA,
-		&oa,
-		&ioStatus,
-		NULL,
-		0,
-		FILE_SHARE_READ,
-		FILE_OPEN,
-		FILE_OPEN_FOR_BACKUP_INTENT,
-		NULL,
-		0,
-		CreateFileTypeNone,
-		NULL,
-		IO_FORCE_ACCESS_CHECK | IO_OPEN_TARGET_DIRECTORY | IO_NO_PARAMETER_CHECKING
-	);
+		Status = IoCreateFile(
+			&destParentHandle,
+			FILE_READ_DATA,
+			&oa,
+			&ioStatus,
+			NULL,
+			0,
+			FILE_SHARE_READ,
+			FILE_OPEN,
+			FILE_OPEN_FOR_BACKUP_INTENT,
+			NULL,
+			0,
+			CreateFileTypeNone,
+			NULL,
+			IO_FORCE_ACCESS_CHECK | IO_OPEN_TARGET_DIRECTORY | IO_NO_PARAMETER_CHECKING
+		);
 
-	if (!NT_SUCCESS(Status))
-		return STATUS_INVALID_PARAMETER;
+		if (!NT_SUCCESS(Status))
+			return STATUS_INVALID_PARAMETER;
 
-	// We have the targetdirectoryparent - get FileObject.
-	PFILE_OBJECT dFileObject = NULL;
-	Status = ObReferenceObjectByHandle(destParentHandle,
-		STANDARD_RIGHTS_REQUIRED,
-		*IoFileObjectType,
-		KernelMode,
-		&dFileObject,
-		NULL);
-	if (!NT_SUCCESS(Status)) {
-		ZwClose(destParentHandle);
-		return STATUS_INVALID_PARAMETER;
-	}
+		// We have the targetdirectoryparent - get FileObject.
+		Status = ObReferenceObjectByHandle(destParentHandle,
+			STANDARD_RIGHTS_REQUIRED,
+			*IoFileObjectType,
+			KernelMode,
+			&dFileObject,
+			NULL);
+		if (!NT_SUCCESS(Status)) {
+			ZwClose(destParentHandle);
+			return STATUS_INVALID_PARAMETER;
+		}
 
-	// All exits need to go through "out:" at this point on.
+		// All exits need to go through "out:" at this point on.
 
-	// Assign tdvp
-	tdvp = dFileObject->FsContext;
-	// Hold it
-	VERIFY0(VN_HOLD(tdvp));
+		// Assign tdvp
+		tdvp = dFileObject->FsContext;
 
-	// Filename is '\??\E:\dir\dir\file' and we only care about the last part.
-	char *r = strrchr(filename, '\\');
-	if (r == NULL)
-		r = strrchr(filename, '/');
-	if (r != NULL) {
-		r++;
-		filename = r;
-	}
 
-	error = zfs_find_dvp_vp(zfsvfs, filename, 1, 0, &remainder, &tdvp, &tvp, 0);
-	if (error) {
-		Status = STATUS_OBJECTID_NOT_FOUND;
-		goto out;
+		// Hold it
+		VERIFY0(VN_HOLD(tdvp));
+
+		// Filename is '\??\E:\dir\dir\file' and we only care about the last part.
+		char *r = strrchr(filename, '\\');
+		if (r == NULL)
+			r = strrchr(filename, '/');
+		if (r != NULL) {
+			r++;
+			filename = r;
+		}
+
+		error = zfs_find_dvp_vp(zfsvfs, filename, 1, 0, &remainder, &tdvp, &tvp, 0);
+		if (error) {
+			Status = STATUS_OBJECTID_NOT_FOUND;
+			goto out;
+		}
+	} else {
+		// Name might be just "HEAD" so use fdvp
+		use_fdvp_for_tdvp = 1;
 	}
 
 	// Goto out will release this
@@ -2081,6 +2226,12 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 
 	fdvp = ZTOV(dzp);
 	// "tvp" (if not NULL) and "tdvp" is held by zfs_find_dvp_vp
+
+	if (use_fdvp_for_tdvp) {
+		tdvp = fdvp;
+		VERIFY0(VN_HOLD(tdvp));
+	}
+
 
 	error = zfs_rename(fdvp, &zp->z_name_cache[zp->z_name_offset],
 		tdvp, remainder ? remainder : filename,
@@ -2449,11 +2600,6 @@ NTSTATUS file_stat_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 
 	dprintf("   %s\n", __func__);
 
-	if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_STAT_INFORMATION)) {
-		Irp->IoStatus.Information = sizeof(FILE_STAT_INFORMATION);
-		return STATUS_BUFFER_TOO_SMALL;
-	}
-
 	/* vp is already help in query_information */
 	struct vnode *vp = FileObject->FsContext;
 
@@ -2482,7 +2628,6 @@ NTSTATUS file_stat_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	fsi->NumberOfLinks = zp->z_links;
 	fsi->EffectiveAccess = 0;
 
-	Irp->IoStatus.Information = sizeof(FILE_STAT_INFORMATION);
 	return STATUS_SUCCESS;
 }
 
@@ -2491,11 +2636,6 @@ NTSTATUS file_stat_lx_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
 
 	dprintf("   %s\n", __func__);
-
-	if (IrpSp->Parameters.QueryFile.Length < sizeof(FILE_STAT_LX_INFORMATION)) {
-		Irp->IoStatus.Information = sizeof(FILE_STAT_LX_INFORMATION);
-		return STATUS_BUFFER_TOO_SMALL;
-	}
 
 	/* vp is already help in query_information */
 	struct vnode *vp = FileObject->FsContext;
@@ -2532,7 +2672,6 @@ NTSTATUS file_stat_lx_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 	fsli->LxDeviceIdMajor = 0;
 	fsli->LxDeviceIdMinor = 0;
 
-	Irp->IoStatus.Information = sizeof(FILE_STAT_LX_INFORMATION);
 	return STATUS_SUCCESS;
 }
 
@@ -3384,16 +3523,12 @@ NTSTATUS ioctl_mountdev_query_stable_guid(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 	return STATUS_SUCCESS;
 }
 
-// FileFsSectorSizeInformation
-// FFFF92849AD40040:     PropertyExistsQuery unknown 0x37: StorageDeviceAttributesProperty
 // FFFF9284A054B080: * user_fs_request: unknown class 0x903bc:  CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 238,
-// FFFF9284A054B080: * user_fs_request: unknown class 0x901f0:  CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 124,
-// FSCTL_QUERY_DEPENDENT_VOLUME
 
 // 0x2d118c - MASS_STORAGE 0x463
-// fsWindows IOCTL: 0x534058
 // disk Windows IOCTL: 0x530018
 
+// fsWindows IOCTL: 0x534058
 // FFFF9284A14A9040: **** unknown fsWindows IOCTL: 0x534058 function 0x16
 // VOLSNAPCONTROLTYPE : 
 

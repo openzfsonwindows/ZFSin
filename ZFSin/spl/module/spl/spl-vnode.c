@@ -965,9 +965,11 @@ int vnode_getwithref(vnode_t *vp)
 #endif
 
 	mutex_enter(&vp->v_mutex);
-	if ((vp->v_flags & VNODE_DEAD))
+	if ((vp->v_flags & VNODE_DEAD)) {
 		error = ENOENT;
-	else {
+//	} else if (vnode_deleted(vp)) {
+//		error = ENOENT;
+	} else {
 #ifdef DEBUG_IOCOUNT
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
@@ -999,11 +1001,13 @@ int vnode_getwithvid(vnode_t *vp, uint64_t id)
 #endif
 
 	mutex_enter(&vp->v_mutex);
-	if ((vp->v_flags & VNODE_DEAD))
+	if ((vp->v_flags & VNODE_DEAD)) {
 		error = ENOENT;
-	else if (id != vp->v_id)
+	}  else if (id != vp->v_id) {
 		error = ENOENT;
-	else {
+//	} else if (vnode_deleted(vp)) {
+//		error = ENOENT;
+	}  else {
 #ifdef DEBUG_IOCOUNT
 		if (vp) {
 			znode_t *zp = VTOZ(vp);
