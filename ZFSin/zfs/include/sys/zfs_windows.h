@@ -100,6 +100,7 @@ extern int zfs_find_dvp_vp(zfsvfs_t *, char *, int finalpartmaynotexist,
 
 /* IRP_MJ_SET_INFORMATION helpers */
 extern NTSTATUS file_disposition_information(PDEVICE_OBJECT, PIRP, PIO_STACK_LOCATION);
+extern NTSTATUS file_disposition_information_ex(PDEVICE_OBJECT, PIRP, PIO_STACK_LOCATION);
 extern NTSTATUS file_endoffile_information(PDEVICE_OBJECT, PIRP, PIO_STACK_LOCATION);
 extern NTSTATUS file_link_information(PDEVICE_OBJECT, PIRP, PIO_STACK_LOCATION);
 extern NTSTATUS file_rename_information(PDEVICE_OBJECT, PIRP, PIO_STACK_LOCATION);

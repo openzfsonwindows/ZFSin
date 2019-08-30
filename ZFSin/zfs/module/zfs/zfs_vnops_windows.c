@@ -637,6 +637,18 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 			}
 			// Related set, return it as opened.
 			dvp = FileObject->RelatedFileObject->FsContext;
+			zp = VTOZ(dvp);
+			dprintf("%s: Relative null-name open: '%s'\n", __func__, zp->z_name_cache);
+			// Check types
+			if (NonDirectoryFile && vnode_isdir(dvp)) {
+				Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+				return STATUS_FILE_IS_A_DIRECTORY; // wanted file, found dir error
+			}
+			if (DirectoryFile && !vnode_isdir(dvp)) {
+				Irp->IoStatus.Information = FILE_DOES_NOT_EXIST;
+				return STATUS_NOT_A_DIRECTORY; // wanted dir, found file error
+			}
+			// Grab vnode to ref
 			if (VN_HOLD(dvp) == 0) {
 				vnode_ref(dvp); // Hold open reference, until CLOSE
 				vnode_couplefileobject(dvp, FileObject);
@@ -1508,11 +1520,21 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 			break;
 		}
 
+#define ZFS_FS_ATTRIBUTE_POSIX
+#define ZFS_FS_ATTRIBUTE_CLEANUP_INFO
+
 		FILE_FS_ATTRIBUTE_INFORMATION *ffai = Irp->AssociatedIrp.SystemBuffer;
 		ffai->FileSystemAttributes = FILE_CASE_PRESERVED_NAMES | FILE_NAMED_STREAMS |
 			FILE_PERSISTENT_ACLS | FILE_SUPPORTS_OBJECT_IDS | FILE_SUPPORTS_SPARSE_FILES | FILE_VOLUME_QUOTAS |
 			FILE_SUPPORTS_REPARSE_POINTS | FILE_UNICODE_ON_DISK | FILE_SUPPORTS_HARD_LINKS | FILE_SUPPORTS_OPEN_BY_FILE_ID |
-			FILE_SUPPORTS_EXTENDED_ATTRIBUTES;
+			FILE_SUPPORTS_EXTENDED_ATTRIBUTES | FILE_CASE_SENSITIVE_SEARCH ;
+#if defined (ZFS_FS_ATTRIBUTE_POSIX)
+		ffai->FileSystemAttributes |= FILE_SUPPORTS_POSIX_UNLINK_RENAME;
+#endif
+#if defined (ZFS_FS_ATTRIBUTE_CLEANUP_INFO)
+		ffai->FileSystemAttributes |= FILE_RETURNS_CLEANUP_RESULT_INFO;
+#endif
+
 			/*
 			// NTFS has these:
 			FILE_CASE_SENSITIVE_SEARCH | FILE_FILE_COMPRESSION | FILE_RETURNS_CLEANUP_RESULT_INFO | FILE_SUPPORTS_POSIX_UNLINK_RENAME |
@@ -2015,6 +2037,7 @@ NTSTATUS query_ea(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	zfsvfs_t *zfsvfs = NULL;
 	zap_cursor_t  zc;
 	zap_attribute_t  za;
+	int overflow = 0;
 
 	struct vnode *vp = NULL, *xdvp = NULL;
 
@@ -2035,18 +2058,18 @@ NTSTATUS query_ea(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 	dprintf("%s\n", __func__);
 
-	Buffer = MapUserBuffer(Irp);
-
 	// Grab the xattr dir - if any
 	if (zfs_get_xattrdir(zp, &xdvp, NULL, 0) != 0) {
+		return STATUS_NO_EAS_ON_FILE;
 		Status = STATUS_NO_EAS_ON_FILE;
 		goto out;
 	}
 
+	Buffer = MapUserBuffer(Irp);
+
 	struct vnode *xvp = NULL;
 	FILE_GET_EA_INFORMATION *ea;
 	int error = 0;
-	int overflow = 0;
 
 	uint64_t start_index = 0;
 
@@ -2812,6 +2835,9 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 	case FileValidDataLengthInformation:  // truncate?
 		dprintf("* SET FileValidDataLengthInformation NOTIMPLEMENTED\n");
 		break;
+	case FileDispositionInformationEx:
+		Status = file_disposition_information_ex(DeviceObject, Irp, IrpSp);
+		break;
 	default:
 		dprintf("* %s: unknown type NOTIMPLEMENTED\n", __func__);
 		break;
@@ -2875,15 +2901,16 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		byteOffset = IrpSp->Parameters.Read.ByteOffset;
 	}
 
-	// Read is beyond file length? shorten
 	uint64_t filesize = zp->z_size;
 
+	// If the read starts beyond the End of File, return EOF
+	// as per fastfat.
 	if (byteOffset.QuadPart >= filesize) {
 		Status = STATUS_END_OF_FILE;
-		Status = STATUS_SUCCESS;
 		goto out;
 	}
 
+	// Read is beyond file length? shorten
 	if (byteOffset.QuadPart + bufferLength > filesize)
 		bufferLength = filesize - byteOffset.QuadPart;
 
@@ -3600,6 +3627,15 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 			// Mark it as deleted, zfs_vnop_lookup() will return error now.
 			vnode_setdeleted(vp);
 
+			// FILE_CLEANUP_UNKNOWN FILE_CLEANUP_WRONG_DEVICE FILE_CLEANUP_FILE_REMAINS
+			// FILE_CLEANUP_FILE_DELETED FILE_CLEANUP_LINK_DELETED FILE_CLEANUP_STREAM_DELETED
+			// FILE_CLEANUP_POSIX_STYLE_DELETE
+#if defined (ZFS_FS_ATTRIBUTE_CLEANUP_INFO) && defined(ZFS_FS_ATTRIBUTE_POSIX)
+			Irp->IoStatus.Information = FILE_CLEANUP_FILE_DELETED | FILE_CLEANUP_POSIX_STYLE_DELETE;
+#elif defined (ZFS_FS_ATTRIBUTE_CLEANUP_INFO)
+			Irp->IoStatus.Information = FILE_CLEANUP_FILE_DELETED;
+#endif
+
 			if (zp->z_name_cache != NULL) {
 				if (isdir) {
 					dprintf("sending DIR notify: '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
@@ -3624,6 +3660,8 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		dprintf("Removing notifications for file\n");
 		FsRtlNotifyFullChangeDirectory(zmo->NotifySync, &zmo->DirNotifyList,
 			zp, NULL, FALSE, FALSE, 0, NULL, NULL, NULL);
+
+		SetFlag(IrpSp->FileObject->Flags, FO_CLEANUP_COMPLETE);
 
 		VN_RELE(vp);
 		Status = STATUS_SUCCESS;

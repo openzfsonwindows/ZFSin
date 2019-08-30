@@ -1828,6 +1828,42 @@ NTSTATUS file_disposition_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO
 	return Status;
 }
 
+NTSTATUS file_disposition_information_ex(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+
+	if (IrpSp->FileObject == NULL || IrpSp->FileObject->FsContext == NULL)
+		return STATUS_INVALID_PARAMETER;
+
+	PFILE_OBJECT FileObject = IrpSp->FileObject;
+	struct vnode *vp = FileObject->FsContext;
+	znode_t *zp = VTOZ(vp);
+	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+	FILE_DISPOSITION_INFORMATION_EX *fdie = Irp->AssociatedIrp.SystemBuffer;
+	mount_t *zmo = DeviceObject->DeviceExtension;
+
+	if (vp) {
+
+		Status = STATUS_SUCCESS;
+
+		dprintf("%s: Flags 0x%x\n", __func__, fdie->Flags);
+
+		if (fdie->Flags | FILE_DISPOSITION_ON_CLOSE)
+			if (fdie->Flags | FILE_DISPOSITION_DELETE)
+				Status = zfs_setunlink(vp, NULL);
+			else
+				vnode_cleardeleteonclose(vp);
+
+		// Do we care about FILE_DISPOSITION_POSIX_SEMANTICS ?
+
+		// Dirs marked for Deletion should release all pending Notify events
+		if (Status == STATUS_SUCCESS && (fdie->Flags | FILE_DISPOSITION_DELETE)) {
+			FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, VTOZ(vp));
+		}
+	}
+	return Status;
+}
+
 NTSTATUS file_endoffile_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
