@@ -938,6 +938,12 @@ int win_isatty(HANDLE h)
 #endif
 	//fprintf(stderr, "%s: return %d\r\n", __func__, ret);
 	//fflush(stderr);
+
+	// FIXME - always say it ISN'T a tty, this way zfs send will work
+	// everywhere - the only negative side-effect is garbage printed 
+	// on console if users do something dumb.
+	return 0;  
+
 	return ret;
 }
 

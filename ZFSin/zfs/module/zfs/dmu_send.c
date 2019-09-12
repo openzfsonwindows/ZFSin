@@ -148,7 +148,15 @@ dump_bytes(dmu_sendarg_t *dsp, void *buf, int len)
 	dbi.dbi_buf = buf;
 	dbi.dbi_len = len;
 
-#if defined(HAVE_LARGE_STACKS)
+	/* The sending of stream has to be the same thread as the userland
+	 * process that requested it, or kernel will receive invalid handle.
+	 * The ZOL version uses "HAVE_LARGE_STACKS", or passes it to
+	 * spa_taskq_dispatch_sync() which we can not do in Windows.
+	 * (Alternatively, figure out how to work around it, open
+	 * OBJ_KERNEL_HANDLE maybe?)
+	 */
+
+#if defined(HAVE_LARGE_STACKS) || defined(_WIN32)
 	dump_bytes_cb(&dbi);
 #else
 	/*

@@ -3058,23 +3058,6 @@ NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	return Status;
 }
 
-#if 00
-* *** unknown Windows IOCTL : 0x700a0 40 : IOCTL_DISK_GET_DRIVE_GEOMETRY_EX
-* *** unknown Windows IOCTL : 0x74004 1 : IOCTL_DISK_GET_PARTITION_INFO
-* *** unknown Windows IOCTL : 0x2d0c14 IOCTL_VOLUME_IS_IO_CAPABLE
-* user_fs_request : unknown class 0x90240 OP_LOCK
-* *** unknown Windows IOCTL : 0x560000 IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS
-* *** unknown Windows IOCTL : 0x70048 IOCTL_DISK_GET_PARTITION_INFO_EX
-* *** unknown Windows IOCTL : 0x2d0c14 IOCTL_STORAGE_GET_HOTPLUG_INFO
-* user_fs_request : unknown class 0x903bc unknown ?
-IOCTL_VOLUME_IS_OFFLINE	0x560010
-IOCTL_STORAGE_GET_DEVICE_NUMBER	0x2d1080
-IOCTL_DISK_GET_LENGTH_INFO	0x7405c
-90064
-9023c
-
-#endif
-
 NTSTATUS ioctl_disk_get_drive_geometry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	dprintf("%s: \n", __func__);
