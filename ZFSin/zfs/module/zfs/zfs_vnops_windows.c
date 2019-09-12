@@ -125,23 +125,31 @@ BOOLEAN zfs_AcquireForLazyWrite(void *Context, BOOLEAN Wait)
 {
 	struct vnode *vp = Context;
 	dprintf("%s:\n", __func__);
-	if (!ExAcquireResourceSharedLite(vp->FileHeader.PagingIoResource, Wait)) {
-		dprintf("Failed\n");
-		return FALSE;
-	}
+
+	if (vp == NULL) return FALSE;
+
 	if (VN_HOLD(vp) == 0) {
+
+		if (!ExAcquireResourceSharedLite(vp->FileHeader.PagingIoResource, Wait)) {
+			dprintf("Failed\n");
+			VN_RELE(vp);
+			return FALSE;
+		}
+
 		vnode_ref(vp);
 		VN_RELE(vp);
+		return TRUE;
 	}
-	return TRUE;
+
+	return FALSE;
 }
 
 void zfs_ReleaseFromLazyWrite(void *Context)
 {
 	struct vnode *vp = Context;
 	dprintf("%s:\n", __func__);
-	ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
 	if (VN_HOLD(vp) == 0) {
+		ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
 		vnode_rele(vp);
 		VN_RELE(vp);
 	}
@@ -151,21 +159,34 @@ BOOLEAN zfs_AcquireForReadAhead(void *Context, BOOLEAN Wait)
 {
 	struct vnode *vp = Context;
 	dprintf("%s:\n", __func__);
-	if ((VN_HOLD(vp) != 0) ||
-		!ExAcquireResourceSharedLite(vp->FileHeader.Resource, Wait)) {
-		dprintf("Failed\n");
-		return FALSE;
+
+	if (vp == NULL) return FALSE;
+
+	if (VN_HOLD(vp) == 0) {
+
+		if (!ExAcquireResourceSharedLite(vp->FileHeader.Resource, Wait)) {
+			dprintf("Failed\n");
+			VN_RELE(vp);
+			return FALSE;
+		}
+
+		vnode_ref(vp);
+		VN_RELE(vp);
+		return TRUE;
 	}
 
-	return TRUE;
+	return FALSE;
 }
 
 void zfs_ReleaseFromReadAhead(void *Context)
 {
 	struct vnode *vp = Context;
 	dprintf("%s:\n", __func__);
-	ExReleaseResourceLite(vp->FileHeader.Resource);
-	VN_RELE(vp);
+	if (VN_HOLD(vp) == 0) {
+		ExReleaseResourceLite(vp->FileHeader.Resource);
+		vnode_rele(vp);
+		VN_RELE(vp);
+	}
 }
 
 CACHE_MANAGER_CALLBACKS CacheManagerCallbacks =
@@ -1258,7 +1279,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	// Did ECP ask for getattr to be returned? None, one or both can be set.
 	// This requires vnode_couplefileobject() was called
-	if (NT_SUCCESS(status) && qocContext) {
+	if (NT_SUCCESS(status) && qocContext && IrpSp->FileObject->FsContext) {
 		if (BooleanFlagOn(qocContext->Flags, QoCFileStatInformation)) {
 			file_stat_information(IrpSp->DeviceObject, Irp, IrpSp,
 				&qocContext->StatInformation);
