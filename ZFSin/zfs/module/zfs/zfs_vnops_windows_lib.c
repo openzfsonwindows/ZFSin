@@ -1897,6 +1897,7 @@ NTSTATUS file_endoffile_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_S
 			(PCC_FILE_SIZES)&vp->FileHeader.AllocationSize,
 			FALSE,
 			&CacheManagerCallbacks, vp);
+		CcSetAdditionalCacheAttributes(FileObject, TRUE, TRUE); // FIXME: for now
 		CacheMapInitialized = TRUE;
 	}
 

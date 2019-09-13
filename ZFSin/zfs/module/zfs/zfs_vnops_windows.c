@@ -1268,7 +1268,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				dprintf("GUID_ECP_CREATE_REDIRECTION\n");
 				// We get this one a lot.
 			} else {
-				dprintf("Other GUID_ECP type\n");
+				dprintf("Other GUID_ECP type\n"); // IopSymlinkECPGuid "73d5118a-88ba-439f-92f4-46d38952d250"
 			}
 		}// while
 	} // if ecp
@@ -2972,6 +2972,7 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 			ccfs.ValidDataLength = vp->FileHeader.ValidDataLength;
 			CcInitializeCacheMap(fileObject, &ccfs, FALSE,
 				&CacheManagerCallbacks, vp);
+			CcSetAdditionalCacheAttributes(fileObject, TRUE, TRUE); // FIXME: for now
 			dprintf("%s: CcInitializeCacheMap\n", __func__);
 		}
 
@@ -3168,7 +3169,9 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 			CcInitializeCacheMap(fileObject, 
 				(PCC_FILE_SIZES)&vp->FileHeader.AllocationSize, FALSE,
 				&CacheManagerCallbacks, vp);
-	
+
+			CcSetAdditionalCacheAttributes(fileObject, TRUE, TRUE); // FIXME: for now
+
 			dprintf("%s: CcInitializeCacheMap\n", __func__);
 
 			//CcSetReadAheadGranularity(fileObject, READ_AHEAD_GRANULARITY);
@@ -3659,12 +3662,12 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 			if (zp->z_name_cache != NULL) {
 				if (isdir) {
-					dprintf("sending DIR notify: '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
+					dprintf("sending DIR notify: FileDeleted '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
 					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
 						FILE_NOTIFY_CHANGE_DIR_NAME,
 						FILE_ACTION_REMOVED);
 				} else {
-					dprintf("sending FILE notify: '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
+					dprintf("sending FILE notify: FileDeleted '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
 					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
 						FILE_NOTIFY_CHANGE_FILE_NAME,
 						FILE_ACTION_REMOVED);

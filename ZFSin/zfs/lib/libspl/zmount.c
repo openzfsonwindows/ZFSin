@@ -415,10 +415,11 @@ zunmount(zfs_handle_t *zhp, const char *dir, int mflag)
 		if (mtpt_prop && mtpt_prop[0] == '/' && 
 			(strstr(driveletter, "-") != 0 || strstr(driveletter, "off") != 0) &&
 			(dir && strstr(dir, ":\\") == 0)) {
-			fprintf(stderr, "recreate mointpoint %s\n", mtpt_prop); fflush(stderr);
+			fprintf(stderr, "recreate mountpoint %s\n", mtpt_prop); fflush(stderr);
 			BOOL val = RemoveDirectoryA(mtpt_prop);
 			if (!val) {
-				fprintf(stderr, "RemoveDirectoryA returns false, last error %lu\n", GetLastError()); fflush(stderr);
+				if (GetLastError() != ERROR_FILE_NOT_FOUND)
+					fprintf(stderr, "RemoveDirectoryA returns false, last error %lu\n", GetLastError()); fflush(stderr);
 			} else {
 				val = CreateDirectoryA(mtpt_prop, NULL);
 				if (!val) 

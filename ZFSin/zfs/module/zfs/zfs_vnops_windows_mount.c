@@ -294,7 +294,7 @@ SendVolumeArrivalNotification(PUNICODE_STRING DeviceName)
 	PMOUNTMGR_TARGET_NAME targetName;
 	ULONG			length;
 
-	dprintf("=> SendVolumeArrivalNotification\n");
+	dprintf("=> SendVolumeArrivalNotification: '%wZ'\n", DeviceName);
 
 	length = sizeof(MOUNTMGR_TARGET_NAME) + DeviceName->Length - 1;
 	targetName = ExAllocatePool(PagedPool, length);
@@ -463,7 +463,12 @@ SendVolumeDeletePoints(__in PUNICODE_STRING MountPoint,
 	ULONG length;
 	ULONG olength;
 
-	dprintf("=> SendVolumeDeletePoints\n");
+	dprintf("=> SendVolumeDeletePoints: '%wZ'\n", DeviceName);
+
+	if (_wcsnicmp(L"\\DosDevices\\", MountPoint->Buffer, 12)) {
+		dprintf("Not a drive letter, skipping\n");
+		return STATUS_SUCCESS;
+	}
 
 	length = sizeof(MOUNTMGR_MOUNT_POINT) + MountPoint->Length;
 	if (DeviceName != NULL) {
@@ -501,6 +506,9 @@ SendVolumeDeletePoints(__in PUNICODE_STRING MountPoint,
 			DeviceName->Length);
 	}
 
+	// Only symbolic link can be deleted with IOCTL_MOUNTMGR_DELETE_POINTS. 
+	// If any other entry is specified, the mount manager will ignore subsequent
+	// IOCTL_MOUNTMGR_VOLUME_ARRIVAL_NOTIFICATION for the same volume ID.
 	status = SendIoctlToMountManager(IOCTL_MOUNTMGR_DELETE_POINTS, point,
 		length, deletedPoints, olength);
 
@@ -711,11 +719,37 @@ VOID InitVpb(__in PVPB Vpb, __in PDEVICE_OBJECT VolumeDevice)
 		RtlStringCchCopyW(Vpb->VolumeLabel,
 			sizeof(Vpb->VolumeLabel) / sizeof(WCHAR), VOLUME_LABEL);
 		Vpb->SerialNumber = 0x19831116;
+		Vpb->Flags |= VPB_MOUNTED;
 	}
 }
 
 
+/*
+							[ffff9284a0e84080 zpool.exe]
+1de4.000b48  ffff9284a56db080 fffd57fc Blocked    nt!KiSwapContext+0x76
+										nt!KiSwapThread+0x3f2
+										nt!KiCommitThreadWait+0x144
+										nt!KeWaitForSingleObject+0x255
+										nt!IopWaitForLockAlertable+0x48
+										nt!IopMountVolume+0x106
+										nt!IopCheckVpbMounted+0x1b3
+										nt!IopParseDevice+0x31f
+										nt!ObpLookupObjectName+0x78f
+										nt!ObOpenObjectByNameEx+0x201
+										nt!NtDeleteFile+0x114
+										nt!KiSystemServiceCopyEnd+0x25
+										nt!KiServiceLinkage
+										ZFSin!CreateReparsePoint+0x4c
+										ZFSin!zfs_vnop_mount_cont+0x3f8
+										ZFSin!zfs_vnop_mount+0x424
+										ZFSin!fsDispatcher+0xa15
+										ZFSin!dispatcher+0x178
+										nt!IofCallDriver+0x59
+										+0xfffff804357c076e
+										+0xffff9284a03e9010
+										+0xffff928400000000
 
+*/
 NTSTATUS CreateReparsePoint(POBJECT_ATTRIBUTES poa, LPCWSTR SubstituteName,
 	LPCWSTR PrintName)
 {
@@ -725,8 +759,8 @@ NTSTATUS CreateReparsePoint(POBJECT_ATTRIBUTES poa, LPCWSTR SubstituteName,
 
 	dprintf("%s: \n", __func__);
 
-//	status = ZwDeleteFile(poa); // this is stalled forever waiting for event of deletion - possibly ZFS doesnt send event?
-//	if (status != STATUS_SUCCESS) dprintf("pre-rmdir failed 0x%x\n", status);
+	status = ZwDeleteFile(poa); // this is stalled forever waiting for event of deletion - possibly ZFS doesnt send event?
+	if (status != STATUS_SUCCESS) dprintf("pre-rmdir failed 0x%x\n", status);
 	status = ZwCreateFile(&hFile, FILE_ALL_ACCESS, poa, &iosb, 0, 0, 0,
 		FILE_CREATE, FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, 0, 0);
 	if (0 > status)
@@ -899,6 +933,9 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	PDEVICE_OBJECT volDeviceObject;
 	NTSTATUS status;
 	PDEVICE_OBJECT DeviceToMount;
+
+	dprintf("%s\n", __func__);
+
 #if 0
 	DeviceToMount = IrpSp->Parameters.MountVolume.DeviceObject;
 
@@ -941,17 +978,21 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		return STATUS_UNRECOGNIZED_VOLUME;
 	}
 
+	// DeviceToMount must be released from here down
+
 	if (DeviceToMount->DriverObject == WIN_DriverObject) {
 		dprintf("*** The device belong to us\n");
 	} else {
 		dprintf("*** The device does NOT belong to us\n");
-		return STATUS_UNRECOGNIZED_VOLUME;
+		status = STATUS_UNRECOGNIZED_VOLUME;
+		goto out;
 	}
 #endif
 	mount_t *dcb = DeviceToMount->DeviceExtension;
 	if (dcb == NULL) {
 		dprintf("%s: Not a ZFS dataset -- ignoring\n", __func__);
-		return STATUS_UNRECOGNIZED_VOLUME;
+		status = STATUS_UNRECOGNIZED_VOLUME;
+		goto out;
 	}
 		
 	if ((dcb->type != MOUNT_TYPE_DCB) ||
@@ -959,7 +1000,8 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		dprintf("%s: Not a ZFS dataset -- dcb %p ignoring: type 0x%x != 0x%x, size %d != %d\n", 
 			__func__, dcb,
 			dcb->type, MOUNT_TYPE_DCB, dcb->size, sizeof(mount_t));
-		return STATUS_UNRECOGNIZED_VOLUME;
+		status = STATUS_UNRECOGNIZED_VOLUME;
+		goto out;
 	}
 
 	// ZFS Dataset being mounted:
@@ -982,7 +1024,7 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 
 	if (!NT_SUCCESS(status)) {
 		dprintf("%s: IoCreateDevice failed: 0x%x\n", __func__, status);
-		return status;
+		goto out;
 	}
 
 	mount_t *vcb = volDeviceObject->DeviceExtension;
@@ -996,7 +1038,11 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	vfs_setfsprivate(vcb, vfs_fsprivate(dcb)); // HACK
 	vfs_setfsprivate(dcb, NULL);
 	zfsvfs_t *zfsvfs = vfs_fsprivate(vcb);
-	if (zfsvfs == NULL) return STATUS_MOUNT_POINT_NOT_RESOLVED;
+	if (zfsvfs == NULL) {
+		dprintf("zfsvfs not resolved yet\n");
+		status = STATUS_MOUNT_POINT_NOT_RESOLVED;
+		goto out;
+	}
 	zfsvfs->z_vfs = vcb;
 
 	// Remember the parent device, so during unmount we can free both.
@@ -1013,20 +1059,6 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	RtlDuplicateUnicodeString(0, &dcb->uuid, &vcb->uuid);
 
 	vcb->mountflags = dcb->mountflags;
-	//InitializeListHead(&vcb->DirNotifyList);
-	//FsRtlNotifyInitializeSync(&vcb->NotifySync);
-#if 0
-	ExInitializeFastMutex(&vcb->AdvancedFCBHeaderMutex);
-#if _WIN32_WINNT >= 0x0501
-	FsRtlSetupAdvancedHeader(&vcb->VolumeFileHeader,
-		&vcb->AdvancedFCBHeaderMutex);
-#else
-	if (FsRtlTeardownPerStreamContexts) {
-		FsRtlSetupAdvancedHeader(&vcb->VolumeFileHeader,
-			&vcb->AdvancedFCBHeaderMutex);
-	}
-#endif
-#endif
 
 	// Directory notification
 	InitializeListHead(&vcb->DirNotifyList);
@@ -1057,7 +1089,7 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 #if 0
 	UNICODE_STRING  mountp;
 	UNICODE_STRING  devv;
-   //RtlInitUnicodeString(&mountp, L"\\DosDevices\\F:");
+	//RtlInitUnicodeString(&mountp, L"\\DosDevices\\F:");
 	RtlInitUnicodeString(&mountp, L"\\DosDevices\\Global\\C:\\BOOM\\");
 	dprintf("Trying to connect %wZ with %wZ\n", &mountp, &dcb->device_name);
 	status = IoCreateSymbolicLink(&mountp, &dcb->device_name);
@@ -1090,7 +1122,7 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	OBJECT_ATTRIBUTES poa;
 	UNICODE_STRING usStr;
 	RtlInitUnicodeString(&usStr, L"\\??\\c:\\BOOM");
-	InitializeObjectAttributes(&poa, &usStr,  OBJ_KERNEL_HANDLE, NULL, NULL);
+	InitializeObjectAttributes(&poa, &usStr, OBJ_KERNEL_HANDLE, NULL, NULL);
 	//CreateReparsePoint(&poa, L"\\??\\Volume{7cc383a0-beac-11e7-b56d-02150b22a130}", L"AnyBOOM");
 	CreateReparsePoint(&poa, L"\\??\\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}", L"AnyBOOM");
 #endif
@@ -1150,6 +1182,7 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		namex[0] = 0;
 		status = mountmgr_get_drive_letter(mountmgr, &dcb->device_name, namex);
 	} else {
+
 		OBJECT_ATTRIBUTES poa;
 		DECLARE_UNICODE_STRING_SIZE(volStr, ZFS_MAX_DATASET_NAME_LEN); // 36(uuid) + 6 (punct) + 6 (Volume)
 		RtlUnicodeStringPrintf(&volStr, L"\\??\\Volume{%wZ}", vcb->uuid); // "\??\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}"
@@ -1163,14 +1196,18 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		ULONG lenx;
 		RtlUTF8ToUnicodeN(volStr.Buffer, ZFS_MAX_DATASET_NAME_LEN, &lenx, namex, strlen(namex));
 		volStr.Length = lenx;
+
 		status = SendVolumeDeletePoints(&volStr, &dcb->device_name);
+
 	}
 
 	// match IoGetDeviceAttachmentBaseRef()
 	ObDereferenceObject(fileObject);
-	ObDereferenceObject(DeviceToMount);
 
-	return (status);
+out:
+	ObDereferenceObject(DeviceToMount);
+	dprintf("%s: exit: 0x%x\n", __func__, status);
+	return status;
 }
 
 int zfs_remove_driveletter(mount_t *zmo)
@@ -1274,6 +1311,11 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 			&fileObject, &mountmgr);
 		char namex[PATH_MAX] = "";
 		status = mountmgr_get_drive_letter(mountmgr, &zmo->device_name, namex);
+
+		// We used to loop here and keep deleting anything we find, but we
+		// are only allowed to remove symlinks, anything else and MountMgr
+		// ignores the device.
+#if 0
 		while (strlen(namex) > 0) {
 			UNICODE_STRING unicode_mpt;
 			wchar_t wbuf[PATH_MAX];
@@ -1283,6 +1325,7 @@ int zfs_windows_unmount(zfs_cmd_t *zc)
 			namex[0] = 0;
 			status = mountmgr_get_mountpoint(mountmgr, &zmo->device_name, namex, FALSE, FALSE);
 		}
+#endif
 		ObDereferenceObject(fileObject);
 
 
