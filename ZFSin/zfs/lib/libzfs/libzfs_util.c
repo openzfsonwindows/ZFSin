@@ -45,6 +45,7 @@
 #include <sys/mnttab.h>
 #include <sys/mntent.h>
 #include <sys/types.h>
+#include <sys/statvfs.h>
 
 #include <sys/wait.h>
 
@@ -827,6 +828,8 @@ libzfs_print_on_error(libzfs_handle_t *hdl, boolean_t printerr)
 }
 
 #define	MAX_LINE_LEN	4096
+
+#if defined __APPLE__
 static int
 libzfs_module_loaded(const char *module)
 {
@@ -863,6 +866,7 @@ out:
 		free(modname);
 	return (ret);
 }
+#endif
 
 int
 libzfs_run_process(const char *path, char *argv[], int flags)

@@ -40,6 +40,9 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <fcntl.h>
+#ifdef _WIN32
+#include <io.h>
+#endif
 
 #define DIFF(xx) ((mrefp->xx != NULL) && \
 		  (mgetp->xx == NULL || strcmp(mrefp->xx, mgetp->xx) != 0))

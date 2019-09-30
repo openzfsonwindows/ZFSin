@@ -57,6 +57,10 @@
 #include <sys/mnttab.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <sys/statvfs.h>
+#include <getopt.h>
+#endif
 #include <sys/fs/zfs.h>
 #include <sys/types.h>
 #include <time.h>

@@ -1,0 +1,5 @@
+add_subdirectory(kstat)
+add_subdirectory(zdb)
+add_subdirectory(zfs)
+add_subdirectory(zpool)
+add_subdirectory(zstreamdump)

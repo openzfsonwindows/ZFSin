@@ -41,6 +41,7 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <WinSock2.h>
 #endif /* _KERNEL */
 
 #include <sys/types.h>

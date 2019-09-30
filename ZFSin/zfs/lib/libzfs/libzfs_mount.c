@@ -101,6 +101,7 @@ static unsigned char snowflake_icon_md[] = {0x77, 0x1b, 0x99, 0x36, 0x77, 0x8c, 
 static int zfs_share_proto(zfs_handle_t *, zfs_share_proto_t *);
 zfs_share_type_t zfs_is_shared_proto(zfs_handle_t *, char **,
     zfs_share_proto_t);
+int zunmount(zfs_handle_t* zhp, const char* dir, int mflag);
 
 /*
  * The share protocols table must be in the same order as the zfs_share_prot_t

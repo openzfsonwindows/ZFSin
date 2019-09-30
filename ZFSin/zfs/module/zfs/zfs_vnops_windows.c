@@ -1247,6 +1247,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// Allocate space to hold name, must be freed from here on
 	filename = kmem_alloc(PATH_MAX, KM_SLEEP);
 
+#ifdef QUERY_ON_CREATE_ECP_CONTEXT 
 	/* Check for ExtraCreateParameters */
 	PECP_LIST ecp = NULL;
 	PQUERY_ON_CREATE_ECP_CONTEXT qocContext = NULL;
@@ -1272,11 +1273,11 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			}
 		}// while
 	} // if ecp
-
+#endif
 
 	status = zfs_vnop_lookup_impl(Irp, IrpSp, zmo, filename);
 
-
+#ifdef QUERY_ON_CREATE_ECP_CONTEXT 
 	// Did ECP ask for getattr to be returned? None, one or both can be set.
 	// This requires vnode_couplefileobject() was called
 	if (NT_SUCCESS(status) && qocContext && IrpSp->FileObject->FsContext) {
@@ -1290,6 +1291,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		}
 		FsRtlAcknowledgeEcp(qocContext);
 	}
+#endif
 
 	// Free filename
 	kmem_free(filename, PATH_MAX);
