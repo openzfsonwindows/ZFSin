@@ -422,7 +422,7 @@ int ddi_copyinstr(const void *uaddr, void *kaddr, uint32_t len, uint32_t *done)
 {
 	int ret = 0;
 
-	ret = ddi_copyin((user_addr_t)uaddr, kaddr, len, FCOPYSTR);
+	ret = ddi_copyin((const void *)uaddr, kaddr, len, FCOPYSTR);
 	if ((ret == STATUS_SUCCESS) && done) {
 		*done = strlen(kaddr) + 1; // copyinstr includes the NULL byte
 	}

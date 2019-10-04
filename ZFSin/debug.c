@@ -168,6 +168,6 @@ void saveBuffer(void)
 		return;
 	}
 
-	ZwWriteFile(h, 0, NULL, NULL, &iostatus, cbuf, cbuf_size, NULL, NULL);
+	ZwWriteFile(h, 0, NULL, NULL, &iostatus, cbuf, (ULONG)cbuf_size, NULL, NULL);
 	ZwClose(h);
 }

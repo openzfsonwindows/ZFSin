@@ -175,7 +175,7 @@ xdrmem_control(XDR *xdrs, int req, void *info)
 	}
 
 	rec->xc_is_last_record = TRUE; /* always TRUE in xdrmem streams */
-	rec->xc_num_avail = xdrs->x_addr_end - xdrs->x_addr;
+	rec->xc_num_avail = (uint32_t)(xdrs->x_addr_end - xdrs->x_addr);
 
 	return TRUE;
 }
@@ -294,7 +294,7 @@ xdrmem_dec_char(XDR *xdrs, char *cp)
 	if (val > 0xff)
 		return FALSE;
 
-	*((unsigned char *) cp) = val;
+	*((unsigned char *) cp) = (uint8_t)val;
 
 	return TRUE;
 }
@@ -324,7 +324,7 @@ xdrmem_dec_ushort(XDR *xdrs, unsigned short *usp)
 	if (val > 0xffff)
 		return FALSE;
 
-	*usp = val;
+	*usp = (uint16_t)val;
 
 	return TRUE;
 }

@@ -3,7 +3,7 @@
 #include <sys/priv.h>
 
 int
-spl_priv_check_cred(void *cred, int priv, /*__unused*/ int flags)
+spl_priv_check_cred(const void *cred, int priv, /*__unused*/ int flags)
 {
 	int error = 0;
 	(void)flags;
@@ -18,7 +18,7 @@ spl_priv_check_cred(void *cred, int priv, /*__unused*/ int flags)
 	 */
 	// Assuming everything is root for now, fix me. WIN32
 	 //error = EPERM;
-out:
+//out:
 	return (error);
 }
 

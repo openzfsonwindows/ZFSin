@@ -43,7 +43,7 @@ uio_t *uio_create(int iovcount, off_t offset, int spacetype, int iodirection)
 
 	// Future, make sure the uio struct is aligned, and do one alloc for uio and iovec
 	my_size = sizeof(uio_t);
-	my_uio = kmem_alloc(my_size, KM_SLEEP);
+	my_uio = kmem_alloc((uint32_t)my_size, KM_SLEEP);
 
 	memset(my_uio, 0, my_size);
 	//my_uio->uio_size = my_size;
@@ -81,7 +81,7 @@ int uio_addiov(uio_t *uio, user_addr_t baseaddr, user_size_t length)
 	for (int i = 0; i < uio->uio_max_iovs; i++) {
 		if (uio->uio_iov[i].iov_len == 0 && uio->uio_iov[i].iov_base == 0) {
 			uio->uio_iov[i].iov_len = (uint64_t)length;
-			uio->uio_iov[i].iov_base = (uint64_t)baseaddr;
+			uio->uio_iov[i].iov_base = (void *)(user_addr_t)baseaddr;
 			uio->uio_iovcnt++;
 			uio->uio_resid += length;
 			return(0);
@@ -109,7 +109,7 @@ int uio_getiov(uio_t *uio, int index, user_addr_t *baseaddr, user_size_t *length
 	}
 
 	if (baseaddr != NULL) {
-		*baseaddr = uio->uio_iov[index].iov_base;
+		*baseaddr = (user_addr_t) uio->uio_iov[index].iov_base;
 	}
 	if (length != NULL) {
 		*length = uio->uio_iov[index].iov_len;
@@ -277,7 +277,7 @@ uio_t *uio_duplicate(uio_t *a_uio)
 
 int spl_uiomove(const uint8_t *c_cp, uint32_t n, struct uio *uio)
 {
-	uint8_t *cp = c_cp;
+	const uint8_t *cp = c_cp;
 	uint64_t acnt;
 	int error = 0;
 
@@ -304,7 +304,7 @@ int spl_uiomove(const uint8_t *c_cp, uint32_t n, struct uio *uio)
 		}
 		uio_update(uio, acnt);
 		cp += acnt;
-		n -= acnt;
+		n -= (uint32_t)acnt;
 	}
 	ASSERT0(n);
 	return (error);

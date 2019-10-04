@@ -82,12 +82,12 @@ extern uint64_t physmem;
 	void spl_kmem_thread_fini();
 	void spl_kmem_fini();
 
-    uint32_t kmem_size(void);
-    uint32_t kmem_used(void);
+    uint64_t kmem_size(void);
+    uint64_t kmem_used(void);
     int64_t kmem_avail(void);
-    uint32_t kmem_num_pages_wanted();
+    uint64_t kmem_num_pages_wanted();
 	int	spl_vm_pool_low(void);
-  int32_t spl_minimal_physmem_p(void);
+  int64_t spl_minimal_physmem_p(void);
   int64_t spl_adjust_pressure(int64_t);
   int64_t spl_free_wrapper(void);
   int64_t spl_free_manual_pressure_wrapper(void);

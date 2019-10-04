@@ -1393,13 +1393,13 @@ taskq_member(taskq_t *tq, struct kthread *thread)
 
     mutex_enter(&tq->tq_lock);
 	if (tq->tq_thread != NULL) /* nthreads==1 case */
-		if (tq->tq_thread == thread) {
+		if (tq->tq_thread == (void *)thread) {
             mutex_exit(&tq->tq_lock);
             return 1;
         }
 
 	for (i = 0;i < tq->tq_nthreads; i++)
-		if (tq->tq_threadlist[i] == thread) {
+		if (tq->tq_threadlist[i] == (void *)thread) {
             mutex_exit(&tq->tq_lock);
 			return (1);
         }

@@ -97,9 +97,6 @@ extern uint32_t cpu_number();
 // Invoke the kernel debugger
 extern void Debugger(const char *message);
 
-// Read from /dev/random
-ULONG RtlRandomEx(PULONG Seed);
-
 // ===============================================================
 // Non Illumos Variables
 // ===============================================================
@@ -730,7 +727,7 @@ random_get_bytes(uint8_t *ptr, uint32_t len)
 
 	KeQueryTickCount(&TickCount);
 
-	b = ptr;
+	b = (PULONG) ptr;
 
 	for (i = 0; i < len / sizeof(ULONG); i++)
         b[i] = RtlRandomEx(&TickCount.LowPart);
@@ -2857,7 +2854,7 @@ kmem_reap_timeout(void *flag_arg)
 {
 	uint32_t *flag = (uint32_t *)flag_arg;
 
-	ASSERT(flag == &kmem_reaping || flag == &kmem_reaping_idspace);
+	ASSERT(flag == (void *)&kmem_reaping || flag == (void *)&kmem_reaping_idspace);
 	*flag = 0;
 }
 
@@ -3381,7 +3378,7 @@ spl_minimal_physmem_p_logic()
  * "\KernelObjects\LowMemoryCondition"
  */
 
-int32_t
+int64_t
 spl_minimal_physmem_p(void)
 {
 
@@ -4458,7 +4455,7 @@ spl_maybe_send_large_pressure(uint64_t now, uint64_t minutes, boolean_t full)
 }
 
 static void
-spl_free_thread()
+spl_free_thread(void *notused)
 {
 	callb_cpr_t cpr;
 	uint64_t last_update = zfs_lbolt();
@@ -4930,7 +4927,7 @@ spl_free_thread()
 }
 
 static void
-spl_event_thread()
+spl_event_thread(void *notused)
 {
 	callb_cpr_t cpr;
 	NTSTATUS Status;
@@ -5192,14 +5189,14 @@ spl_kmem_init(uint64_t xtotal_memory)
 
 	if (kmem_flags & (KMF_AUDIT | KMF_RANDOMIZE)) {
 		if (kmem_transaction_log_size == 0)
-			kmem_transaction_log_size = MIN(kmem_maxavail() / 50ULL,
+			kmem_transaction_log_size = (uint32_t) MIN(kmem_maxavail() / 50ULL,
 											PAGESIZE<<4);
 		kmem_transaction_log = kmem_log_init(kmem_transaction_log_size);
 	}
 
 	if (kmem_flags & (KMF_CONTENTS | KMF_RANDOMIZE)) {
 		if (kmem_content_log_size == 0)
-			kmem_content_log_size = MIN(kmem_maxavail() / 50ULL,
+			kmem_content_log_size = (uint32_t) MIN(kmem_maxavail() / 50ULL,
 										PAGESIZE<<4);
 		kmem_content_log = kmem_log_init(kmem_content_log_size);
 	}
@@ -5272,13 +5269,13 @@ spl_kmem_fini(void)
 
 	if (kmem_flags & (KMF_CONTENTS | KMF_RANDOMIZE)) {
 		if (kmem_content_log_size == 0)
-			kmem_content_log_size = kmem_maxavail() / 50;
+			kmem_content_log_size = (uint32_t) kmem_maxavail() / 50;
 		kmem_log_fini(kmem_content_log);
 	}
 
 	if (kmem_flags & (KMF_AUDIT | KMF_RANDOMIZE)) {
 		if (kmem_transaction_log_size == 0)
-			kmem_transaction_log_size = kmem_maxavail() / 50;
+			kmem_transaction_log_size = (uint32_t) kmem_maxavail() / 50;
 		kmem_log_fini(kmem_transaction_log);
 	}
 
@@ -6463,7 +6460,7 @@ kmem_cache_scan(kmem_cache_t *cp)
 // ===============================================================
 
 
-uint32_t
+uint64_t
 kmem_size(void)
 {
 	return (total_memory); // smd

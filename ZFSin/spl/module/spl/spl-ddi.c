@@ -551,10 +551,6 @@ overflow:
 	return (ERANGE);
 }
 
-#define LONG_BIT 64
-#define IDX(c)  ((uint8_t)(c) / LONG_BIT)
-#define BIT(c)  ((u_long)1 << ((uint8_t)(c) % LONG_BIT))
-
 uint32_t
 ddi_strcspn(const char * __restrict s, const char * __restrict charset)
 {
@@ -585,7 +581,7 @@ ddi_strcspn(const char * __restrict s, const char * __restrict charset)
 		if ((tbl[idx] & bit) != 0)
 			break;
 		}
-	return (s1 - s);
+	return (uint32_t)(s1 - s);
 }
 
 extern uint32_t
@@ -604,7 +600,7 @@ strlcpy(register char* s, register const char* t, register uint32_t n)
 		} while (*s++ = *t++);
 		if (!n)
 			while (*t++);
-		return t - o - 1;
+		return (uint32_t)(t - o - 1);
 }
 
 extern uint32_t

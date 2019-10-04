@@ -97,7 +97,7 @@ spl_thread_create(
 		PETHREAD eThread;
 		HANDLE PsGetThreadId();
 		ObReferenceObjectByHandle(thread, 0, 0, KernelMode, &eThread, 0);
-		threadid = PsGetThreadId(eThread);
+		threadid = (int) PsGetThreadId(eThread);
 		ObDereferenceObject(eThread);
 		ZwClose(thread);
         return ((kthread_t *)threadid);

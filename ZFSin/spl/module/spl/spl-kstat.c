@@ -327,7 +327,7 @@ kstat_hold(avl_tree_t *t, ekstat_t *template)
 			break;
 		e = (ekstat_t *)ksp;
 		if (e->e_owner == NULL) {
-			e->e_owner = curthread;
+			e->e_owner = (void *)curthread;
 			break;
 		}
 		cv_wait(&e->e_cv, &kstat_chain_lock);
@@ -342,7 +342,7 @@ kstat_rele(kstat_t *ksp)
 	ekstat_t *e = (ekstat_t *)ksp;
 
 	mutex_enter(&kstat_chain_lock);
-	ASSERT(e->e_owner == curthread);
+	ASSERT(e->e_owner == (void *)curthread);
 	e->e_owner = NULL;
 	cv_broadcast(&e->e_cv);
 	mutex_exit(&kstat_chain_lock);

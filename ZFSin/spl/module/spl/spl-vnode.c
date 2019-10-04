@@ -655,7 +655,7 @@ void *getf(uint64_t fd)
     sfp->f_offset = 0;
     sfp->f_proc   = current_proc();
     sfp->f_fp     = (void *)fp;
-	sfp->f_file   = fp;
+	sfp->f_file   = (uint64_t) fp;
 
 	mutex_enter(&spl_getf_lock);
 	list_insert_tail(&spl_getf_list, sfp);
@@ -690,7 +690,7 @@ void releasef(uint64_t fd)
 
     //printf("SPL: releasef(%d)\n", fd);
 
-    p = current_proc();
+    p = (void *)current_proc();
 	mutex_enter(&spl_getf_lock);
 	for (fp = list_head(&spl_getf_list); fp != NULL;
 	     fp = list_next(&spl_getf_list, fp)) {
@@ -756,11 +756,11 @@ int spl_vn_rdwr(enum uio_rw rw,
 	IO_STATUS_BLOCK iob;
 
 	if (rw == UIO_READ) {
-		error = ZwReadFile(sfp->f_fd, NULL, NULL, NULL, &iob, base, len, NULL, NULL);
+		error = ZwReadFile((HANDLE)sfp->f_fd, NULL, NULL, NULL, &iob, base, (ULONG)len, NULL, NULL);
 		//   error = fo_read(sfp->f_fp, auio, ioflag, vctx);
     } else {
        // error = fo_write(sfp->f_fp, auio, ioflag, vctx);
-		error = ZwWriteFile(sfp->f_fd, NULL, NULL, NULL, &iob, base, len, NULL, NULL);
+		error = ZwWriteFile((HANDLE)sfp->f_fd, NULL, NULL, NULL, &iob, base, (ULONG)len, NULL, NULL);
 		sfp->f_writes = 1;
     }
 

@@ -868,7 +868,7 @@ static void
 vmem_span_destroy(vmem_t *vmp, vmem_seg_t *vsp)
 {
 	vmem_seg_t *span = vsp->vs_aprev;
-	uint32_t size = VS_SIZE(vsp);
+	uint32_t size = (uint32_t) VS_SIZE(vsp);
 
 	ASSERT(MUTEX_HELD(&vmp->vm_lock));
 	ASSERT(span->vs_type == VMEM_SPAN);
@@ -893,7 +893,7 @@ vmem_seg_alloc(vmem_t *vmp, vmem_seg_t *vsp, uintptr_t addr, uint32_t size)
 {
 	uintptr_t vs_start = vsp->vs_start;
 	uintptr_t vs_end = vsp->vs_end;
-	uint32_t vs_size = vs_end - vs_start;
+	uint32_t vs_size = (uint32_t)(vs_end - vs_start);
 	uint32_t realsize = P2ROUNDUP(size, vmp->vm_quantum);
 	uintptr_t addr_end = addr + realsize;
 
@@ -1090,7 +1090,7 @@ vmem_advance(vmem_t *vmp, vmem_seg_t *walker, vmem_seg_t *afterme)
 		vsp->vs_aprev->vs_type == VMEM_SPAN &&
 		vsp->vs_anext->vs_type == VMEM_SPAN) {
 		void *vaddr = (void *)vsp->vs_start;
-		uint32_t size = VS_SIZE(vsp);
+		uint32_t size = (uint32_t)VS_SIZE(vsp);
 		ASSERT(size == VS_SIZE(vsp->vs_aprev));
 		vmem_freelist_delete(vmp, vsp);
 		vmem_span_destroy(vmp, vsp);
@@ -1135,7 +1135,7 @@ vmem_nextfit_alloc(vmem_t *vmp, uint32_t size, int vmflag)
 	 */
 	rotor = &vmp->vm_rotor;
 	vsp = rotor->vs_anext;
-	if (vsp->vs_type == VMEM_FREE && (vs_size = VS_SIZE(vsp)) > realsize &&
+	if (vsp->vs_type == VMEM_FREE && (vs_size = (uint32_t)VS_SIZE(vsp)) > realsize &&
 		P2SAMEHIGHBIT(vs_size, vs_size - realsize)) {
 		ASSERT(highbit(vs_size) == highbit(vs_size - realsize));
 		addr = vsp->vs_start;
@@ -1466,8 +1466,8 @@ vmem_xalloc(vmem_t *vmp, uint32_t size, uint32_t align_arg, uint32_t phase,
 			uint32_t aphase = phase;
 			if ((align > aquantum) &&
 				!(vmp->vm_cflags & VMC_XALIGN)) {
-				aphase = (P2PHASE(phase, aquantum) != 0) ?
-				align - vmp->vm_quantum : align - aquantum;
+				aphase = (uint32_t) ((P2PHASE(phase, aquantum) != 0) ?
+				align - vmp->vm_quantum : align - aquantum);
 				ASSERT(aphase >= phase);
 			}
 			aneeded = MAX(size + aphase, vmp->vm_min_import);
@@ -1511,7 +1511,7 @@ vmem_xalloc(vmem_t *vmp, uint32_t size, uint32_t align_arg, uint32_t phase,
 				//uint32_t oasize = asize;
 				vaddr = ((vmem_ximport_t *)
 						 vmp->vm_source_alloc)(vmp->vm_source,
-											   &asize, align, vmflag & VM_KMFLAGS);
+											   &asize, (uint32_t) align, vmflag & VM_KMFLAGS);
 				//ASSERT(asize >= oasize);
 				ASSERT(P2PHASE(asize,
 							   vmp->vm_source->vm_quantum) == 0);
@@ -1524,7 +1524,7 @@ vmem_xalloc(vmem_t *vmp, uint32_t size, uint32_t align_arg, uint32_t phase,
 			}
 			mutex_enter(&vmp->vm_lock);
 			vmp->vm_nsegfree += resv;	/* claim reservation */
-			aneeded = size + align - vmp->vm_quantum;
+			aneeded = size + (uint32_t)align - vmp->vm_quantum;
 			aneeded = P2ROUNDUP(aneeded, vmp->vm_quantum);
 			if (vaddr != NULL) {
 				/*
@@ -1684,7 +1684,7 @@ vmem_xfree(vmem_t *vmp, void *vaddr, uint32_t size)
 		vsp->vs_aprev->vs_type == VMEM_SPAN &&
 		vsp->vs_anext->vs_type == VMEM_SPAN) {
 		vaddr = (void *)vsp->vs_start;
-		size = VS_SIZE(vsp);
+		size = (uint32_t) VS_SIZE(vsp);
 		ASSERT(size == VS_SIZE(vsp->vs_aprev));
 		vmem_span_destroy(vmp, vsp);
 		vmp->vm_kstat.vk_parent_free.value.ui64++;
@@ -1842,7 +1842,7 @@ vmem_walk(vmem_t *vmp, int typemask,
 	for (vsp = seg0->vs_anext; vsp != seg0; vsp = vsp->vs_anext) {
 		if (vsp->vs_type & typemask) {
 			void *start = (void *)vsp->vs_start;
-			uint32_t size = VS_SIZE(vsp);
+			uint32_t size = (uint32_t) VS_SIZE(vsp);
 			if (typemask & VMEM_REENTRANT) {
 				vmem_advance(vmp, &walker, vsp);
 				mutex_exit(&vmp->vm_lock);
@@ -2323,7 +2323,7 @@ vmem_bucket_number(uint32_t size)
         if (bucket < 0)
                 bucket = 0;
 
-	return (bucket);
+	return (uint16_t)(bucket);
 }
 
 static inline vmem_t *
@@ -2871,7 +2871,7 @@ vmem_bucket_alloc(vmem_t *null_vmp, uint32_t size, const int vmflags)
 		if (timedout > 0 || local_memory_blocked > 0) {
 			wait_time = MSEC2NSEC(1);
 		}
-		int ret = cv_timedwait_hires(&calling_arena->vm_cv, &calling_arena->vm_lock,
+		int ret = (int) cv_timedwait_hires(&calling_arena->vm_cv, &calling_arena->vm_lock,
 		    wait_time, 0, 0);
 		// We almost certainly have exited because of a signal/broadcast,
 		// but maybe just timed out.  Either way, recheck memory.
@@ -3042,7 +3042,7 @@ vmem_buckets_size(int typemask)
 
 	for (int i = 0; i < VMEM_BUCKETS; i++) {
 		int64_t u = vmem_bucket_arena_used(i);
-		int64_t f = vmem_bucket_arena_free(i);
+		int64_t f = vmem_bucket_arena_free((uint16_t)i);
 		if (typemask & VMEM_ALLOC)
 			total_size += u;
 		if (typemask & VMEM_FREE)
@@ -3076,7 +3076,7 @@ spl_modify_bucket_span_size(int bucket, uint64_t size)
 	vmem_t *bvmp = vmem_bucket_arena[bucket];
 
 	mutex_enter(&bvmp->vm_lock);
-	bvmp->vm_min_import = size;
+	bvmp->vm_min_import = (uint32_t) size;
 	mutex_exit(&bvmp->vm_lock);
 }
 

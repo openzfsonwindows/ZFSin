@@ -164,6 +164,7 @@
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
       <RuntimeLibrary>
       </RuntimeLibrary>
+      <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -181,6 +182,7 @@
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
       <RuntimeLibrary>
       </RuntimeLibrary>
+      <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
