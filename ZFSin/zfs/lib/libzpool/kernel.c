@@ -23,6 +23,10 @@
  * Copyright (c) 2016 Actifio, Inc. All rights reserved.
  */
 
+#ifdef _WIN32
+#define _CRT_RAND_S
+#endif
+
 #include <assert.h>
 #include <fcntl.h>
 #include <poll.h>

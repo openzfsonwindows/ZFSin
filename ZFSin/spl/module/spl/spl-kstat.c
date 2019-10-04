@@ -1241,7 +1241,7 @@ kstat_timer_stop(kstat_timer_t *ktp)
 #include <sys/conf.h>
 #include <sys/ddi.h>
 #include <sys/sunddi.h>
-#include <sys/modctl.h>
+//#include <sys/modctl.h>
 #include <sys/kobj.h>
 #include <sys/kstat.h>
 #include <sys/atomic.h>

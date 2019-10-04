@@ -33,8 +33,8 @@ gethrtime(void)
     static uint64_t start = 0;
 
     if (start == 0)
-        start = GetTickCount();
+        start = GetTickCount64();
 
-    return GetTickCount() - start;
+    return GetTickCount64() - start;
 }
 

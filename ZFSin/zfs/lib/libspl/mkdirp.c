@@ -45,6 +45,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <io.h>
+#include <direct.h>
 
 static char *simplify(const char *str);
 

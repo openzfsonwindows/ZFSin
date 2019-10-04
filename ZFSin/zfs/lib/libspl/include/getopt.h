@@ -1,4 +1,5 @@
-
+#ifndef LIBSPL_GETOPT_H_INCLUDED
+#define LIBSPL_GETOPT_H_INCLUDED
 
 #define no_argument             0
 #define required_argument       1
@@ -12,5 +13,9 @@ struct option
 	int             val;
 };
 
+extern int	    getopt(int, char* const*, const char*);
 extern int      getopt_long(int, char* const*, const char*, const struct option*, int*);
 extern int      getopt_long_only(int, char* const*, const char*, const struct option*, int*);
+extern int		getsubopt(char** optionsp, char* tokens[], char** valuep);
+
+#endif // LIBSPL_GETOPT_H_INCLUDED

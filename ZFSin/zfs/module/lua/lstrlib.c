@@ -273,11 +273,7 @@ static const char *classend (MatchState *ms, const char *p) {
 }
 
 #ifdef _KERNEL
-static int
-iscntrl(int c)
-{
-	return ((c < 0x20) || (c == 0x7f));
-}
+#define iscntrl(c) ((c < 0x20) || (c == 0x7f))
 #endif
 
 static int match_class (int c, int cl) {

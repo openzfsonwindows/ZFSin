@@ -866,7 +866,7 @@ wzvol_StopAdapter(__in pHW_HBA_EXT pHBAExt)               // Adapter device-obje
 		KeAcquireInStackQueuedSpinLock(               // Serialize the linked list of MPIO collector objects.
 			&pwzvolDrvInfo->MPIOExtLock, &LockHandle);
 #else
-		KeAcquireSpinLock(&pMPDrvInfo->MPIOExtLock, &SaveIrql);
+		KeAcquireSpinLock(&pwzvolDrvInfo->MPIOExtLock, &SaveIrql);
 #endif
 
 		for (                                         // Go through linked list of MPIO collector objects for this miniport driver.
@@ -892,7 +892,7 @@ wzvol_StopAdapter(__in pHW_HBA_EXT pHBAExt)               // Adapter device-obje
 #if defined(_AMD64_)
 		KeReleaseInStackQueuedSpinLock(&LockHandle);
 #else
-		KeReleaseSpinLock(&pMPDrvInfo->MPIOExtLock, SaveIrql);
+		KeReleaseSpinLock(&pwzvolDrvInfo->MPIOExtLock, SaveIrql);
 #endif
 	}
 

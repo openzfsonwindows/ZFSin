@@ -27,12 +27,14 @@
  * This file implements Solaris compatible zmount() function.
  */
 
-
+#include <Shlobj.h>
 #include <sys/mount.h>
 #include <sys/zfs_mount.h>
 #include <libzfs_impl.h>
 #include <sys/zfs_ioctl.h>
 #include <sys/w32_types.h>
+
+extern int libzfs_mnttab_update(libzfs_handle_t* hdl);
 
 int
 zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
@@ -139,8 +141,6 @@ zmount(zfs_handle_t *zhp, const char *dir, int mflag, char *fstype,
 		// Tell Explorer we have a new drive
 		// Whats the deal here with this header file - did not like to be included.
 //#include <Shlobj.h>
-#define SHCNE_DRIVEADD            0x00000100L
-#define SHCNF_PATH       0x0001  
 		struct mnttab entry;
 
 		// Refresh the mount table.

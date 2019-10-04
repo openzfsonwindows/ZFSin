@@ -27,6 +27,7 @@
 
 #include <sys/sysmacros.h>
 #include <sys/time.h>
+#include <wdm.h>
 //#include <kern/clock.h>
 
 
@@ -64,7 +65,11 @@ gethrestime(struct timespec *ts)
 {
 	LARGE_INTEGER now;
 	uint64_t tv[2];
+#if _WIN32_WINNT >= 0x0602
 	KeQuerySystemTimePrecise(&now);
+#else
+	KeQuerySystemTime(&now);
+#endif
 	TIME_WINDOWS_TO_UNIX(now.QuadPart, tv); 
 	// change macro to take 2 dst args, "sec and nsec" to avoid this step?
 	ts->tv_sec = tv[0];
