@@ -339,8 +339,8 @@ extern int zpool_label_disk_wait(char *, int);
 extern int zpool_label_disk(libzfs_handle_t *, zpool_handle_t *, const char *);
 extern uint64_t zpool_vdev_path_to_guid(zpool_handle_t *zhp, const char *path);
 
-extern int remove_partition_offset_hack(char* hacked_path, char* out_dev_path);
-extern int get_device_number(char* device_path, STORAGE_DEVICE_NUMBER* device_number);
+extern int remove_partition_offset_hack(char *hacked_path, char **out_dev_path);
+extern int get_device_number(char *device_path, STORAGE_DEVICE_NUMBER *device_number);
 
 /*
  * Functions to manage pool properties
@@ -493,7 +493,7 @@ extern int zpool_events_clear(libzfs_handle_t *, int *);
 extern int zpool_events_seek(libzfs_handle_t *, uint64_t, int);
 extern void zpool_obj_to_path(zpool_handle_t *, uint64_t, uint64_t, char *,
     size_t len);
-extern int zfs_ioctl(libzfs_handle_t *, int, struct zfs_cmd *);
+extern int zfs_ioctl(libzfs_handle_t *, unsigned long, struct zfs_cmd *);
 extern int zpool_get_physpath(zpool_handle_t *, char *, size_t);
 extern void zpool_explain_recover(libzfs_handle_t *, const char *, int,
     nvlist_t *);

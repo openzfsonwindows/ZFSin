@@ -1559,7 +1559,7 @@ aes_decrypt_block(const void *ks, const uint8_t *ct, uint8_t *pt)
  */
 /* ARGSUSED */
 void *
-aes_alloc_keysched(uint32_t *size, int kmflag)
+aes_alloc_keysched(size_t *size, int kmflag)
 {
 	aes_key_t *keysched;
 

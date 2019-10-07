@@ -107,7 +107,7 @@ struct zap_leaf;
  */
 #define	ZAP_EMBEDDED_PTRTBL_ENT(zap, idx) \
 	((uint64_t *)zap_f_phys(zap)) \
-	[(idx) + (1<<ZAP_EMBEDDED_PTRTBL_SHIFT(zap))]
+	[(idx) + (1ULL<<ZAP_EMBEDDED_PTRTBL_SHIFT(zap))]
 
 /*
  * TAKE NOTE:

@@ -419,7 +419,7 @@ libdiskmgt_error(int error)
 static int
 check_slice(const char *path, blkid_cache cache, int force, boolean_t isspare)
 {
-  char *msg;
+  //char *msg;
   int error = 0;
   dm_who_type_t who;
 

@@ -51,6 +51,9 @@
 #include <rpc/xdr.h>
 #include <sys/byteorder.h>
 
+// incompatible types - from 'XDR *' to 'XDR *'
+#pragma warning (disable: 4133)
+
 #define _IEEE_754
 #ifdef _IEEE_754
 

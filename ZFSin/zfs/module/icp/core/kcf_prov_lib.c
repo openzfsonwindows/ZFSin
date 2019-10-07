@@ -49,7 +49,7 @@ crypto_uio_data(crypto_data_t *data, uchar_t *buf, int len, cmd_type_t cmd,
 	uint_t vec_idx;
 	size_t cur_len;
 	uchar_t *datap;
-	user_addr_t iov_base = NULL;
+	user_addr_t iov_base = 0ULL;
 	user_size_t iov_len;
 
 	ASSERT(data->cd_format == CRYPTO_DATA_UIO);
@@ -243,7 +243,7 @@ crypto_put_output_data(uchar_t *buf, crypto_data_t *output, int len)
 
 int
 crypto_update_iov(void *ctx, crypto_data_t *input, crypto_data_t *output,
-    int (*cipher)(void *, caddr_t, uint32_t, crypto_data_t *),
+    int (*cipher)(void *, caddr_t, size_t, crypto_data_t *),
     void (*copy_block)(uint8_t *, uint64_t *))
 {
 	common_ctx_t *common_ctx = ctx;
@@ -257,7 +257,7 @@ crypto_update_iov(void *ctx, crypto_data_t *input, crypto_data_t *output,
 	if (input->cd_raw.iov_len < input->cd_length)
 		return (CRYPTO_ARGUMENTS_BAD);
 
-	rv = (cipher)(ctx, (uint64_t)input->cd_raw.iov_base + input->cd_offset,
+	rv = (cipher)(ctx, (caddr_t)((uint64_t)input->cd_raw.iov_base + input->cd_offset),
 	    input->cd_length, (input == output) ? NULL : output);
 
 	return (rv);
@@ -267,7 +267,7 @@ crypto_update_iov(void *ctx, crypto_data_t *input, crypto_data_t *output,
 
 int
 crypto_update_uio(void *ctx, crypto_data_t *input, crypto_data_t *output,
-    int (*cipher)(void *, caddr_t, uint32_t, crypto_data_t *),
+    int (*cipher)(void *, caddr_t, size_t, crypto_data_t *),
     void (*copy_block)(uint8_t *, uint64_t *))
 {
 	common_ctx_t *common_ctx = ctx;
@@ -276,7 +276,7 @@ crypto_update_uio(void *ctx, crypto_data_t *input, crypto_data_t *output,
 	size_t length = input->cd_length;
 	uint_t vec_idx;
 	size_t cur_len;
-	user_addr_t iov_base = NULL;
+	user_addr_t iov_base = 0ULL;
 	user_size_t iov_len;
 
 	if (input->cd_miscdata != NULL) {
@@ -317,7 +317,7 @@ crypto_update_uio(void *ctx, crypto_data_t *input, crypto_data_t *output,
 		cur_len = MIN(iov_len -
 		    offset, length);
 
-		(cipher)(ctx, (uint64_t)iov_base + offset,
+		(cipher)(ctx, (caddr_t)((uint64_t)iov_base + offset),
 		    cur_len, (input == output) ? NULL : output);
 
 		length -= cur_len;

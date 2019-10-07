@@ -196,9 +196,15 @@ update_sharetab(sa_handle_impl_t impl_handle)
 	sa_fstype_t *fstype;
 	const char *resource;
 
+#ifdef _WIN32
+	if (mkdir("/etc/dfs") < 0 && errno != EEXIST) {
+		return;
+	}
+#else
 	if (mkdir("/etc/dfs", 0755) < 0 && errno != EEXIST) {
 		return;
 	}
+#endif
 
 	temp_fd = mkstemp(tempfile);
 

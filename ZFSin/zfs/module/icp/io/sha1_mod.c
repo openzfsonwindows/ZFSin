@@ -151,7 +151,7 @@ static crypto_mac_ops_t sha1_mac_ops = {
 
 static int sha1_create_ctx_template(crypto_provider_handle_t,
     crypto_mechanism_t *, crypto_key_t *, crypto_spi_ctx_template_t *,
-    uint32_t *, crypto_req_handle_t);
+    size_t *, crypto_req_handle_t);
 static int sha1_free_context(crypto_ctx_t *);
 
 static crypto_ctx_ops_t sha1_ctx_ops = {
@@ -1180,7 +1180,7 @@ bail:
 static int
 sha1_create_ctx_template(crypto_provider_handle_t provider,
     crypto_mechanism_t *mechanism, crypto_key_t *key,
-    crypto_spi_ctx_template_t *ctx_template, uint32_t *ctx_template_size,
+    crypto_spi_ctx_template_t *ctx_template, size_t *ctx_template_size,
     crypto_req_handle_t req)
 {
 	sha1_hmac_ctx_t *sha1_hmac_ctx_tmpl;

@@ -13,7 +13,6 @@
 #include <sys/lua/lauxlib.h>
 #include <sys/lua/lualib.h>
 
-
 /* number of bits to consider in a number */
 #if !defined(LUA_NBITS)
 #define LUA_NBITS	32

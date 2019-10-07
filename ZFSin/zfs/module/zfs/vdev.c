@@ -3901,7 +3901,7 @@ vdev_get_stats_ex(vdev_t *vd, vdev_stat_t *vs, vdev_stat_ex_t *vsx)
 void
 vdev_get_stats(vdev_t *vd, vdev_stat_t *vs)
 {
-	return (vdev_get_stats_ex(vd, vs, NULL));
+	vdev_get_stats_ex(vd, vs, NULL);
 }
 
 void

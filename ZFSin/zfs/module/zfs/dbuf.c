@@ -55,7 +55,6 @@ uint_t zfs_dbuf_evict_key;
 
 //
 // FIXME
-#define noinline
 #undef ZFS_DEBUG
 #pragma pack(8)
 struct dbuf_hold_impl_data {
@@ -75,7 +74,7 @@ struct dbuf_hold_impl_data {
 	dbuf_dirty_record_t *dh_dr;
 	int dh_depth;
 };
-#pragma pack(0)
+#pragma pack()
 
 static void __dbuf_hold_impl_init(struct dbuf_hold_impl_data *dh,
     dnode_t *dn, uint8_t level, uint64_t blkid, boolean_t fail_sparse,
@@ -1227,7 +1226,7 @@ dbuf_read_impl(dmu_buf_impl_t *db, zio_t *zio, uint32_t flags)
 			BP_IS_HOLE(db->db_blkptr) &&
 			db->db_blkptr->blk_birth != 0) {
 			blkptr_t *bps = db->db.db_data;
-			for (int i = 0; i < ((1 <<
+			for (int i = 0; i < ((1ULL <<
 				DB_DNODE(db)->dn_indblkshift) / sizeof (blkptr_t));
 				i++) {
 				blkptr_t *bp = &bps[i];
@@ -3191,7 +3190,9 @@ dbuf_add_ref(dmu_buf_impl_t *db, void *tag)
 	VERIFY(zfs_refcount_add(&db->db_holds, tag) > 1);
 }
 
+#ifndef _WIN32
 #pragma weak dmu_buf_try_add_ref = dbuf_try_add_ref
+#endif
 boolean_t
 dbuf_try_add_ref(dmu_buf_t *db_fake, objset_t *os, uint64_t obj, uint64_t blkid,
     void *tag)
@@ -3936,7 +3937,7 @@ dbuf_write_children_ready(zio_t *zio, arc_buf_t *buf, void *vdb)
 	epbs = dn->dn_phys->dn_indblkshift - SPA_BLKPTRSHIFT;
 
 	/* Determine if all our children are holes */
-	for (i = 0, bp = db->db.db_data; i < 1 << epbs; i++, bp++) {
+	for (i = 0, bp = db->db.db_data; i < 1ULL << epbs; i++, bp++) {
 		if (!BP_IS_HOLE(bp))
 			break;
 	}
@@ -3945,7 +3946,7 @@ dbuf_write_children_ready(zio_t *zio, arc_buf_t *buf, void *vdb)
 	 * If all the children are holes, then zero them all out so that
 	 * we may get compressed away.
 	 */
-	if (i == 1 << epbs) {
+	if (i == 1ULL << epbs) {
 		/* didn't find any non-holes */
 		bzero(db->db.db_data, db->db.db_size);
 	}

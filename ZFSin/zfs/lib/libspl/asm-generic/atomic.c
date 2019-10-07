@@ -492,11 +492,11 @@ casptr(void *target, void *arg1, void *arg2)
 void
 atomic_and_long(ulong_t *target, ulong_t bits)
 {
-	return (atomic_and_ulong(target, bits));
+	atomic_and_ulong(target, bits);
 }
 
 void
 atomic_or_long(ulong_t *target, ulong_t bits)
 {
-	return (atomic_or_ulong(target, bits));
+	atomic_or_ulong(target, bits);
 }

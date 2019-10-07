@@ -38,7 +38,7 @@
 #include <pthread.h>
 #include <Windows.h>
 
-int posix_memalign(void **memptr, uint32_t alignment, uint32_t size)
+int posix_memalign(void **memptr, size_t alignment, size_t size)
 {
 	void *ptr;
 	ptr = _aligned_malloc(size, alignment);
@@ -125,7 +125,7 @@ char *realpath(const char *file_name, char *resolved_name)
 	return resolved_name;
 }
 
-int pread(int fd, void *buf, uint32_t nbyte, off_t offset)
+int pread(int fd, void *buf, size_t nbyte, off_t offset)
 {
 	uint64_t off;
 	int red;
@@ -141,7 +141,7 @@ int pread(int fd, void *buf, uint32_t nbyte, off_t offset)
 	return red;
 }
 
-int pread_win(HANDLE h, void *buf, uint32_t nbyte, off_t offset)
+int pread_win(HANDLE h, void *buf, size_t nbyte, off_t offset)
 {
 	uint64_t off;
 	DWORD red;
@@ -168,7 +168,7 @@ int pread_win(HANDLE h, void *buf, uint32_t nbyte, off_t offset)
 	return red;
 }
 
-int pwrite(HANDLE h, const void *buf, uint32_t nbyte, off_t offset)
+int pwrite(HANDLE h, const void *buf, size_t nbyte, off_t offset)
 {
 	uint64_t off;
 	DWORD wrote;
@@ -202,7 +202,7 @@ int fstat_blk(int fd, struct _stat64 *st)
 	HANDLE handle;
 	DWORD len;
 
-	handle = _get_osfhandle(fd);
+	handle = (HANDLE) _get_osfhandle(fd);
 	if (!DeviceIoControl(handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
 		&geometry_ex, sizeof(geometry_ex), &len, NULL))
 		return -1;
@@ -232,7 +232,7 @@ int statfs(const char *path, struct statfs *buf)
 	DWORD len;
 
 	int fd = open(path, O_RDONLY | O_BINARY);
-	handle = _get_osfhandle(fd);
+	handle = (HANDLE) _get_osfhandle(fd);
 	if (!DeviceIoControl(handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
 		&geometry_ex, sizeof(geometry_ex), &len, NULL))
 		return -1;
@@ -349,6 +349,7 @@ int usleep(__int64 usec)
 	SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
 	WaitForSingleObject(timer, INFINITE);
 	CloseHandle(timer);
+	return 0;
 }
 
 int
@@ -378,7 +379,7 @@ nanosleep(const struct timespec *rqtp, struct timespec *rmtp)
 	return 0;
 }
 
-int strncasecmp(char *s1, char *s2, uint32_t n)
+int strncasecmp(char *s1, char *s2, size_t n)
 {
 	if (n == 0)
 		return 0;
@@ -556,7 +557,7 @@ char* getIoctlAsString(int cmdNo) {
 	}
 }
 
-int ioctl(HANDLE hDevice, int request, zfs_cmd_t *zc)
+int ioctl(HANDLE hDevice, unsigned long request, zfs_cmd_t *zc)
 {
 	int error;
 	//HANDLE hDevice;
@@ -709,9 +710,9 @@ struct passwd *getpwuid(uid_t uid)
 	return NULL;
 }
 
-const char *win_ctime_r(char *buffer, uint32_t bufsize, time_t cur_time)
+const char *win_ctime_r(char *buffer, size_t bufsize, time_t cur_time)
 {
-	errno_t e = ctime_s(buffer, bufsize, cur_time);
+	errno_t e = ctime_s(buffer, bufsize, &cur_time);
 	return buffer;
 }
 
@@ -859,8 +860,8 @@ int socketpair(int *sv)
 	return 0;  /* normal case */
 }
 
-extern uint32_t
-strlcpy(register char* s, register const char* t, register uint32_t n)
+extern size_t
+strlcpy(register char* s, register const char* t, register size_t n)
 {
 	const char*     o = t;
 
@@ -878,8 +879,8 @@ strlcpy(register char* s, register const char* t, register uint32_t n)
 		return t - o - 1;
 }
 
-extern uint32_t
-strlcat(register char* s, register const char* t, register uint32_t n)
+extern size_t
+strlcat(register char* s, register const char* t, register size_t n)
 {
 	register size_t m;
 	const char*     o = t;
@@ -909,7 +910,7 @@ strlcat(register char* s, register const char* t, register uint32_t n)
 	return (t - o) + m - 1;
 }
 
-char *strndup(char *src, int size)
+char *strndup(char *src, size_t size)
 {
 	char *r = _strdup(src);
 	if (r) {
@@ -918,9 +919,10 @@ char *strndup(char *src, int size)
 	return r;
 }
 
-int win_isatty(HANDLE h) 
+int win_isatty(uintptr_t x) 
 { 
 	DWORD mode;
+	HANDLE h = (HANDLE)x;
 	int ret;
 #if 0
 	const unsigned long bufSize = sizeof(DWORD) + MAX_PATH * sizeof(WCHAR);
@@ -973,7 +975,7 @@ int tcsetattr(int fildes, int optional_actions,
 
 // Not really getline, just used for password input in libzfs_crypto.c
 #define MAX_GETLINE 128
-int32_t getline(char **linep, uint32_t* linecapp,
+ssize_t getline(char **linep, size_t* linecapp,
 	FILE *stream)
 {
 	static char getpassbuf[MAX_GETLINE + 1];

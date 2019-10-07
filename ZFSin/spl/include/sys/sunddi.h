@@ -90,11 +90,11 @@ typedef int ddi_devid_t;
 //extern int ddi_strtoll(const char *, char **, int, long long *);
 
 // Define proper Solaris API calls, and clean ZFS up to use
-int ddi_copyin(const void *from, void *to, uint32_t len, int flags);
-int ddi_copyout(const void *from, void *to, uint32_t len, int flags);
-int ddi_copyinstr(const void *uaddr, void *kaddr, uint32_t len, uint32_t *done);
+int ddi_copyin(const void *from, void *to, size_t len, int flags);
+int ddi_copyout(const void *from, void *to, size_t len, int flags);
+int ddi_copyinstr(const void *uaddr, void *kaddr, size_t len, size_t *done);
 
-int ddi_copysetup(void *to, uint32_t len, void **out_buffer, PMDL *out_mdl);
+int ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl);
 
 
 extern int ddi_strtol(const char *str, char **nptr, int base, long *result);

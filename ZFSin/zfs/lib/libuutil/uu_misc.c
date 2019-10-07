@@ -249,11 +249,13 @@ uu_release_child(void)
 	uu_release();
 }
 
+#ifndef _WIN32
 #ifdef __GNUC__
 static void
 uu_init(void) __attribute__((constructor));
 #else
 #pragma init(uu_init)
+#endif
 #endif
 
 static void

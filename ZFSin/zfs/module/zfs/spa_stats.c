@@ -67,7 +67,7 @@ typedef struct spa_read_history {
 } spa_read_history_t;
 
 static int
-spa_read_history_headers(char *buf, uint32_t size)
+spa_read_history_headers(char *buf, size_t size)
 {
 	(void) snprintf(buf, size, "%-8s %-16s %-8s %-8s %-8s %-8s %-8s "
 	    "%-24s %-8s %-16s\n", "UID", "start", "objset", "object",
@@ -77,7 +77,7 @@ spa_read_history_headers(char *buf, uint32_t size)
 }
 
 static int
-spa_read_history_data(char *buf, uint32_t size, void *data)
+spa_read_history_data(char *buf, size_t size, void *data)
 {
 	spa_read_history_t *srh = (spa_read_history_t *)data;
 
@@ -259,7 +259,7 @@ typedef struct spa_txg_history {
 } spa_txg_history_t;
 
 static int
-spa_txg_history_headers(char *buf, uint32_t size)
+spa_txg_history_headers(char *buf, size_t size)
 {
 	(void) snprintf(buf, size, "%-8s %-16s %-5s %-12s %-12s %-12s "
 	    "%-8s %-8s %-12s %-12s %-12s %-12s\n", "txg", "birth", "state",
@@ -270,7 +270,7 @@ spa_txg_history_headers(char *buf, uint32_t size)
 }
 
 static int
-spa_txg_history_data(char *buf, uint32_t size, void *data)
+spa_txg_history_data(char *buf, size_t size, void *data)
 {
 	spa_txg_history_t *sth = (spa_txg_history_t *)data;
 	uint64_t open = 0, quiesce = 0, wait = 0, sync = 0;
@@ -608,7 +608,7 @@ spa_tx_assign_add_nsecs(spa_t *spa, uint64_t nsecs)
 	spa_stats_history_t *ssh = &spa->spa_stats.tx_assign_histogram;
 	uint64_t idx = 0;
 
-	while (((1 << idx) < nsecs) && (idx < ssh->size - 1))
+	while (((1ULL << idx) < nsecs) && (idx < ssh->size - 1))
 		idx++;
 
 	atomic_inc_64(&((kstat_named_t *)ssh->_private)[idx].value.ui64);
@@ -695,7 +695,7 @@ typedef struct spa_mmp_history {
 } spa_mmp_history_t;
 
 static int
-spa_mmp_history_headers(char *buf, uint32_t size)
+spa_mmp_history_headers(char *buf, size_t size)
 {
 	(void) snprintf(buf, size, "%-10s %-10s %-10s %-6s %-10s %-12s %-24s "
 	    "%-10s %s\n", "id", "txg", "timestamp", "error", "duration",
@@ -704,7 +704,7 @@ spa_mmp_history_headers(char *buf, uint32_t size)
 }
 
 static int
-spa_mmp_history_data(char *buf, uint32_t size, void *data)
+spa_mmp_history_data(char *buf, size_t size, void *data)
 {
 	spa_mmp_history_t *smh = (spa_mmp_history_t *)data;
 	char skip_fmt[] = "%-10llu %-10llu %10llu %#6llx %10lld %12llu %-24llu "

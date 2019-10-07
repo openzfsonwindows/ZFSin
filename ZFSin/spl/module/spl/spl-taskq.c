@@ -749,7 +749,7 @@ uint_t taskq_smtbf = UINT_MAX;    /* mean time between injected failures */
 	tqe->tqent_arg = (arg);						\
 	tq->tq_tasks++;							\
 	if (tq->tq_tasks - tq->tq_executed > tq->tq_maxtasks)		\
-		tq->tq_maxtasks = tq->tq_tasks - tq->tq_executed;	\
+		tq->tq_maxtasks = (int)(tq->tq_tasks - tq->tq_executed);	\
 	cv_signal(&tq->tq_dispatch_cv);					\
 	DTRACE_PROBE2(taskq__enqueue, taskq_t *, tq, taskq_ent_t *, tqe); \
 }

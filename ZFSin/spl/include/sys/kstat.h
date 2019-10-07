@@ -266,8 +266,8 @@ extern kstat_t *kstat_hold_byname(const char *, int, const char *, zoneid_t);
 extern void kstat_rele(kstat_t *);
 
 extern void kstat_set_raw_ops(kstat_t *ksp,
-	int(*headers)(char *buf, uint32_t size),
-	int(*data)(char *buf, uint32_t size, void *data),
+	int(*headers)(char *buf, size_t size),
+	int(*data)(char *buf, size_t size, void *data),
 	void *(*addr)(kstat_t *ksp, off_t index));
 
 int spl_kstat_chain_id(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp);

@@ -50,7 +50,7 @@
 }
 
 void
-list_create(list_t *list, uint32_t size, uint32_t offset)
+list_create(list_t *list, size_t size, size_t offset)
 {
 	ASSERT(list);
 	ASSERT(size > 0);

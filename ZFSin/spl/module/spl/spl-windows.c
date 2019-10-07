@@ -200,7 +200,7 @@ fnv_32a_buf(void *buf, size_t len, uint32_t hval)
 }
 
 int
-ddi_copyin(const void *from, void *to, uint32_t len, int flags)
+ddi_copyin(const void *from, void *to, size_t len, int flags)
 {
 	int error = 0;
 	PMDL  mdl = NULL;
@@ -225,7 +225,7 @@ ddi_copyin(const void *from, void *to, uint32_t len, int flags)
 	dprintf("SPL: trying windows copyin: %p:%d\n", from, len);
 
 	try {
-		ProbeForRead(from, len, sizeof(UCHAR));
+		ProbeForRead((void *)from, len, sizeof(UCHAR));
 	}
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -234,7 +234,7 @@ ddi_copyin(const void *from, void *to, uint32_t len, int flags)
 	}
 	if (error) goto end;
 
-	mdl = IoAllocateMdl(from, len, FALSE, TRUE, NULL);
+	mdl = IoAllocateMdl((void *)from, len, FALSE, TRUE, NULL);
 	if (!mdl) {
 		error = STATUS_INSUFFICIENT_RESOURCES;
 		goto end;
@@ -278,7 +278,7 @@ end:
 
 
 int
-ddi_copyout(const void *from, void *to, uint32_t len, int flags)
+ddi_copyout(const void *from, void *to, size_t len, int flags)
 {
 	int error = 0;
 	PMDL  mdl = NULL;
@@ -338,7 +338,7 @@ out:
 }
 
 int
-ddi_copysetup(void *to, uint32_t len, void **out_buffer, PMDL *out_mdl)
+ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl)
 {
 	int error = 0;
 	PMDL  mdl = NULL;
@@ -418,7 +418,7 @@ out:
 /* Technically, this call does not exist in IllumOS, but we use it for
  * consistency.
  */
-int ddi_copyinstr(const void *uaddr, void *kaddr, uint32_t len, uint32_t *done)
+int ddi_copyinstr(const void *uaddr, void *kaddr, size_t len, size_t *done)
 {
 	int ret = 0;
 

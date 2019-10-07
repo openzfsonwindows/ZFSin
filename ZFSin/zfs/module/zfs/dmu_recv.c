@@ -974,7 +974,7 @@ receive_read(struct receive_arg *ra, int len, void *buf)
 			ra->err = SET_ERROR(ECKSUM);
 		}
 		ra->voff += len - done - resid;
-		done = len - resid;
+		done = (int) (len - resid);
 		if (ra->err != 0)
 			return (ra->err);
 	}

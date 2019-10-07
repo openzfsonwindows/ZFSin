@@ -56,13 +56,13 @@ typedef struct list_node {
 
 
 typedef struct list {
-	uint32_t list_size;
-	uint32_t list_offset;
+	size_t list_size;
+	size_t list_offset;
 	list_node_t list_head;
 } list_t;
 //#pragma pack()
 
-void list_create(list_t *, uint32_t, uint32_t);
+void list_create(list_t *, size_t, size_t);
 void list_destroy(list_t *);
 
 void list_insert_after(list_t *, void *, void *);

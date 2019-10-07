@@ -1308,8 +1308,8 @@ spa_vdev_copy_impl(vdev_t *vd, spa_vdev_removal_t *svr, vdev_copy_arg_t *vca,
 			/*
 			 * The minimum-size allocation can not fail.
 			 */
-			ASSERT3U(attempted, >, 1 << spa->spa_max_ashift);
-			*max_alloc = attempted - (1 << spa->spa_max_ashift);
+			ASSERT3U(attempted, >, 1ULL << spa->spa_max_ashift);
+			*max_alloc = attempted - (1ULL << spa->spa_max_ashift);
 		} else {
 			ASSERT0(error);
 

@@ -729,7 +729,6 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 	 * Defer setting z_zfsvfs until the znode is ready to be a candidate for
 	 * the zfs_znode_move() callback.
 	 */
-	ASSERT(ZTOV(zp) != 0xdeadbeefdeadbeef);
 	zp->z_vnode = NULL;
 	zp->z_sa_hdl = NULL;
 	zp->z_unlinked = 0;
@@ -774,7 +773,6 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 		if (hdl == NULL)
 			sa_handle_destroy(zp->z_sa_hdl);
 		dprintf("znode_alloc: sa_bulk_lookup failed - aborting\n");
-		ASSERT(ZTOV(zp) != 0xdeadbeefdeadbeef);
 		//zfs_vnode_forget(vp);
 		//zp->z_vnode = NULL;
 		kmem_cache_free(znode_cache, zp);
@@ -1432,7 +1430,6 @@ again:
 		 */
 		if (!vp || (err=vnode_getwithvid(vp, zp->z_vid)) != 0) {
 			// vid is no longer valid
-			ASSERT(ZTOV(zp) != 0xdeadbeefdeadbeef);
 
 			mutex_exit(&zp->z_lock);
 			sa_buf_rele(db, NULL);
@@ -1736,7 +1733,6 @@ zfs_znode_free(znode_t *zp)
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 
 	mutex_enter(&zfsvfs->z_znodes_lock);
-	ASSERT(ZTOV(zp) != 0xdeadbeefdeadbeef);
 	zp->z_vnode = NULL;
 	POINTER_INVALIDATE(&zp->z_zfsvfs);
 	list_remove(&zfsvfs->z_all_znodes, zp); /* XXX */
@@ -2299,7 +2295,6 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 	rootzp->z_unlinked = 0;
 	rootzp->z_atime_dirty = 0;
 	rootzp->z_is_sa = USE_SA(version, os);
-	ASSERT(ZTOV(rootzp) != 0xdeadbeefdeadbeef);
 	rootzp->z_vnode = NULL;
 #ifndef _WIN32
 	vnode.v_type = VDIR;
@@ -2348,7 +2343,6 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 	POINTER_INVALIDATE(&rootzp->z_zfsvfs);
 
 	sa_handle_destroy(rootzp->z_sa_hdl);
-	ASSERT(ZTOV(rootzp) != 0xdeadbeefdeadbeef);
 	rootzp->z_vnode = NULL;
 	kmem_cache_free(znode_cache, rootzp);
 

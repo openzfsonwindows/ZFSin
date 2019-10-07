@@ -69,7 +69,7 @@ aes_xor_block(uint8_t *data, uint8_t *dst)
  * Encrypt multiple blocks of data according to mode.
  */
 int
-aes_encrypt_contiguous_blocks(void *ctx, char *data, uint32_t length,
+aes_encrypt_contiguous_blocks(void *ctx, char *data, size_t length,
     crypto_data_t *out)
 {
 	aes_ctx_t *aes_ctx = ctx;
@@ -102,7 +102,7 @@ aes_encrypt_contiguous_blocks(void *ctx, char *data, uint32_t length,
  * Decrypt multiple blocks of data according to mode.
  */
 int
-aes_decrypt_contiguous_blocks(void *ctx, char *data, uint32_t length,
+aes_decrypt_contiguous_blocks(void *ctx, char *data, size_t length,
     crypto_data_t *out)
 {
 	aes_ctx_t *aes_ctx = ctx;

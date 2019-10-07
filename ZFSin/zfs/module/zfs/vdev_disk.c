@@ -675,8 +675,6 @@ vdev_disk_io_start(zio_t *zio)
 	vb->irp = irp;
 
 	irpStack = IoGetNextIrpStackLocation(irp);
-	if (irpStack == 0xffffffffffffffff)
-		panic("%s: bad irpStack\n", __func__);
 
 	irpStack->Flags |= SL_OVERRIDE_VERIFY_VOLUME; // SetFlag(IoStackLocation->Flags, SL_OVERRIDE_VERIFY_VOLUME);
 												  //SetFlag(ReadIrp->Flags, IRP_NOCACHE);

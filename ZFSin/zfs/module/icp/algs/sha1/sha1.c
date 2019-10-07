@@ -66,6 +66,8 @@
 #endif
 #endif
 
+// warning C4242 : '=' : conversion from 'uint64_t' to 'sha1word', possible loss of data
+#pragma warning (disable: 4242 4244)
 
 #ifdef	_BOOT
 #define	bcopy(_s, _d, _l)	((void) memcpy((_d), (_s), (_l)))

@@ -2840,10 +2840,11 @@ zpool_get_physpath(zpool_handle_t *zhp, char *physpath, size_t phypath_size)
  * can block ZFS from accessing the device. This function allows limited retries
  * in order to work around this behavior.
  */
-static int
+static HANDLE
 zpool_open_delay(int timeout, const char *path, int oflag)
 {
-	int i = 0, fd;
+	int i = 0;
+	HANDLE fd;
 
 	if (path[0] == '#') {
 		uint64_t offset;
@@ -2895,7 +2896,8 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 static int
 zpool_relabel_disk(libzfs_handle_t *hdl, const char *path, const char *msg)
 {
-	int fd, error;
+	HANDLE fd;
+	int error;
 
 	if ((fd = zpool_open_delay(10, path, O_RDWR|O_DIRECT|O_SHLOCK)) < 0) {
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, "cannot "
@@ -2912,7 +2914,11 @@ zpool_relabel_disk(libzfs_handle_t *hdl, const char *path, const char *msg)
 	 * The module will do it for us in vdev_disk_open().
 	 */
 	error = efi_use_whole_disk(fd);
+#ifdef _WIN32
+	CloseHandle(fd);
+#else
 	(void) close(fd);
+#endif
 	if (error && error != VT_ENOSPC) {
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, "cannot "
 		    "relabel '%s': unable to read disk capacity"), path);
@@ -4810,7 +4816,7 @@ zpool_label_disk_wait(char *path, int timeout)
 		usleep(1000);
 
 		errno = 0;
-		if ((stat(path, &statbuf) == 0) && (errno == 0))
+		if ((_stat64(path, &statbuf) == 0) && (errno == 0))
 			return (0);
 	}
 
@@ -4821,7 +4827,8 @@ int
 zpool_label_disk_check(char *path)
 {
 	struct dk_gpt *vtoc;
-	int fd, err;
+	int err;
+	HANDLE fd;
 
 	if ((fd = zpool_open_delay(10, path, O_RDWR|O_DIRECT)) < 0)
 		return (errno);
@@ -4863,7 +4870,8 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 {
 	char path[MAXPATHLEN];
 	struct dk_gpt *vtoc;
-	int rval, fd;
+	int rval;
+	HANDLE fd;
 	size_t resv = EFI_MIN_RESV_SIZE;
 	uint64_t slice_size;
 	diskaddr_t start_block;

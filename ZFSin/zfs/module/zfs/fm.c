@@ -511,7 +511,7 @@ zfs_zevent_post(nvlist_t *nvl, nvlist_t *detector, zevent_cb_t *cb)
 	int64_t tv_array[2];
 	timestruc_t tv;
 	uint64_t eid;
-	uint32_t nvl_size = 0;
+	size_t nvl_size = 0;
 	zevent_t *ev;
 	int error;
 
@@ -619,7 +619,7 @@ zfs_zevent_next(zfs_zevent_t *ze, nvlist_t **event, uint64_t *event_size,
     uint64_t *dropped)
 {
 	zevent_t *ev;
-	uint32_t size = 0;
+	size_t size = 0;
 	int error = 0;
 
 	mutex_enter(&zevent_lock);
@@ -779,14 +779,14 @@ zfs_zevent_destroy(zfs_zevent_t *ze)
  */
 /* ARGSUSED */
 static void *
-i_fm_alloc(nv_alloc_t *nva, uint32_t size)
+i_fm_alloc(nv_alloc_t *nva, size_t size)
 {
 	return (kmem_zalloc(size, KM_SLEEP));
 }
 
 /* ARGSUSED */
 static void
-i_fm_free(nv_alloc_t *nva, void *buf, uint32_t size)
+i_fm_free(nv_alloc_t *nva, void *buf, size_t size)
 {
 	kmem_free(buf, size);
 }
@@ -890,7 +890,7 @@ fm_nvlist_destroy(nvlist_t *nvl, int flag)
 	}
 }
 
-#if !defined (__OPTIMIZE__)
+#if !defined (__OPTIMIZE__) && !defined(_WIN32)
 #pragma GCC diagnostic ignored "-Wframe-larger-than="
 #endif
 int

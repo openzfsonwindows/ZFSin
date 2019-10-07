@@ -306,7 +306,7 @@ typedef struct kcf_prov_mech_desc {
 #define	KCF_CPU_PAD (256 - sizeof (crypto_mech_name_t) - \
     sizeof (crypto_mech_type_t) - \
     sizeof (kmutex_t) - 2 * sizeof (kcf_prov_mech_desc_t *) - \
-    sizeof (int) - sizeof (uint32_t) - sizeof (uint32_t))
+    sizeof (int) - sizeof (uint32_t) - sizeof (size_t))
 
 /*
  * A mechanism entry in an xxx_mech_tab[]. KCF_CPU_PAD needs
@@ -331,7 +331,7 @@ typedef	struct kcf_mech_entry {
 	/*
 	 *  threshold for using hardware providers for this mech
 	 */
-	uint32_t			me_threshold;
+	size_t			me_threshold;
 	uint8_t			me_pad[KCF_CPU_PAD];
 } kcf_mech_entry_t;
 
@@ -1245,9 +1245,9 @@ extern int crypto_decrypt_verify_update(crypto_context_t, crypto_context_t,
 
 /* Random Number Generation */
 int crypto_seed_random(crypto_provider_handle_t provider, uchar_t *buf,
-    uint32_t len, crypto_call_req_t *req);
+    size_t len, crypto_call_req_t *req);
 int crypto_generate_random(crypto_provider_handle_t provider, uchar_t *buf,
-    uint32_t len, crypto_call_req_t *req);
+    size_t len, crypto_call_req_t *req);
 
 /* Provider Management */
 int crypto_get_provider_info(crypto_provider_id_t id,
@@ -1255,17 +1255,17 @@ int crypto_get_provider_info(crypto_provider_id_t id,
 int crypto_get_provider_mechanisms(crypto_minor_t *, crypto_provider_id_t id,
     uint_t *count, crypto_mech_name_t **list);
 int crypto_init_token(crypto_provider_handle_t provider, char *pin,
-    uint32_t pin_len, char *label, crypto_call_req_t *);
+    size_t pin_len, char *label, crypto_call_req_t *);
 int crypto_init_pin(crypto_provider_handle_t provider, char *pin,
-    uint32_t pin_len, crypto_call_req_t *req);
+    size_t pin_len, crypto_call_req_t *req);
 int crypto_set_pin(crypto_provider_handle_t provider, char *old_pin,
-    uint32_t old_len, char *new_pin, uint32_t new_len, crypto_call_req_t *req);
+    size_t old_len, char *new_pin, size_t new_len, crypto_call_req_t *req);
 void crypto_free_provider_list(crypto_provider_entry_t *list, uint_t count);
 void crypto_free_provider_info(crypto_provider_info_t *info);
 
 /* Administrative */
 int crypto_get_dev_list(uint_t *count, crypto_dev_list_entry_t **list);
-int crypto_get_soft_list(uint_t *count, char **list, uint32_t *len);
+int crypto_get_soft_list(uint_t *count, char **list, size_t *len);
 int crypto_get_dev_info(char *name, uint_t instance, uint_t *count,
     crypto_mech_name_t **list);
 int crypto_get_soft_info(caddr_t name, uint_t *count,
@@ -1304,9 +1304,9 @@ extern void undo_register_provider(kcf_provider_desc_t *, boolean_t);
 extern void redo_register_provider(kcf_provider_desc_t *);
 extern void kcf_rnd_init(void);
 extern boolean_t kcf_rngprov_check(void);
-extern int kcf_rnd_get_pseudo_bytes(uint8_t *, uint32_t);
-extern int kcf_rnd_get_bytes(uint8_t *, uint32_t, boolean_t, boolean_t);
-extern int random_add_pseudo_entropy(uint8_t *, uint32_t, uint_t);
+extern int kcf_rnd_get_pseudo_bytes(uint8_t *, size_t);
+extern int kcf_rnd_get_bytes(uint8_t *, size_t, boolean_t, boolean_t);
+extern int random_add_pseudo_entropy(uint8_t *, size_t, uint_t);
 extern void kcf_rnd_schedule_timeout(boolean_t);
 extern int crypto_uio_data(crypto_data_t *, uchar_t *, int, cmd_type_t,
     void *, void (*update)(void));
@@ -1314,18 +1314,18 @@ extern int crypto_mblk_data(crypto_data_t *, uchar_t *, int, cmd_type_t,
     void *, void (*update)(void));
 extern int crypto_put_output_data(uchar_t *, crypto_data_t *, int);
 extern int crypto_get_input_data(crypto_data_t *, uchar_t **, uchar_t *);
-extern int crypto_copy_key_to_ctx(crypto_key_t *, crypto_key_t **, uint32_t *,
+extern int crypto_copy_key_to_ctx(crypto_key_t *, crypto_key_t **, size_t *,
     int kmflag);
 extern int crypto_digest_data(crypto_data_t *, void *, uchar_t *,
     void (*update)(void), void (*final)(void), uchar_t);
 extern int crypto_update_iov(void *, crypto_data_t *, crypto_data_t *,
-    int (*cipher)(void *, caddr_t, uint32_t, crypto_data_t *),
+    int (*cipher)(void *, caddr_t, size_t, crypto_data_t *),
     void (*copy_block)(uint8_t *, uint64_t *));
 extern int crypto_update_uio(void *, crypto_data_t *, crypto_data_t *,
-    int (*cipher)(void *, caddr_t, uint32_t, crypto_data_t *),
+    int (*cipher)(void *, caddr_t, size_t, crypto_data_t *),
     void (*copy_block)(uint8_t *, uint64_t *));
 extern int crypto_update_mp(void *, crypto_data_t *, crypto_data_t *,
-    int (*cipher)(void *, caddr_t, uint32_t, crypto_data_t *),
+    int (*cipher)(void *, caddr_t, size_t, crypto_data_t *),
     void (*copy_block)(uint8_t *, uint64_t *));
 extern int crypto_get_key_attr(crypto_key_t *, crypto_attr_type_t, uchar_t **,
     ssize_t *);

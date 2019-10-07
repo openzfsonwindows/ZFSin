@@ -379,7 +379,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 				/* FileObject->FileName.Length - parsed*/
 				rpb->Reserved = (fullstrlen - ( ( word - filename ) + strlen(word))) * sizeof(WCHAR);
 				// We overload the lastname thing a bit, to return the reparsebuffer
-				if (lastname) *lastname = rpb;
+				if (lastname) *lastname = (char *)rpb;
 				dprintf("%s: returning REPARSE\n", __func__);
 				return STATUS_REPARSE;
 			}
@@ -1491,7 +1491,7 @@ NTSTATUS pnp_query_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	zmo = (mount_t *)DeviceObject->DeviceExtension;
 
-	Irp->IoStatus.Information = ExAllocatePoolWithTag(PagedPool, zmo->bus_name.Length + sizeof(UNICODE_NULL), '!OIZ');
+	Irp->IoStatus.Information = (void *)ExAllocatePoolWithTag(PagedPool, zmo->bus_name.Length + sizeof(UNICODE_NULL), '!OIZ');
 	if (Irp->IoStatus.Information == NULL) return STATUS_NO_MEMORY;
 
 	RtlCopyMemory(Irp->IoStatus.Information, zmo->bus_name.Buffer, zmo->bus_name.Length);

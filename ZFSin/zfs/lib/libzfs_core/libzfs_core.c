@@ -90,8 +90,11 @@
 #include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/zfs_ioctl.h>
-
+#ifdef _WIN32
+static HANDLE g_fd = INVALID_HANDLE_VALUE;
+#else
 static int g_fd = -1;
+#endif
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static int g_refcount;
 
@@ -140,7 +143,7 @@ libzfs_core_init(void)
 		g_fd = CreateFile("\\\\.\\ZFS", GENERIC_READ | GENERIC_WRITE,
 			0, NULL, OPEN_EXISTING, 0, NULL);
 
-		if (g_fd == STATUS_INVALID_HANDLE) {
+		if (g_fd == INVALID_HANDLE_VALUE) {
 			(void) pthread_mutex_unlock(&g_lock);
 			return (errno);
 		}
@@ -163,10 +166,10 @@ libzfs_core_fini(void)
 	if (g_refcount > 0)
 		g_refcount--;
 
-	if (g_refcount == 0 && g_fd != -1) {
+	if (g_refcount == 0 && g_fd != INVALID_HANDLE_VALUE) {
 		//(void) close(g_fd);
 		(void)CloseHandle(g_fd);
-		g_fd = -1;
+		g_fd = INVALID_HANDLE_VALUE;
 	}
 	(void) pthread_mutex_unlock(&g_lock);
 }
@@ -178,7 +181,7 @@ libzfs_core_fini(void)
  * can handle this, so this wrapper is not required.
  */
 static int
-zioctl(int fildes, zfs_ioc_t ioc, zfs_cmd_t *zc)
+zioctl(HANDLE fildes, zfs_ioc_t ioc, zfs_cmd_t *zc)
 {
 	return ioctl(g_fd, ioc, zc);
 }

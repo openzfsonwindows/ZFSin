@@ -81,7 +81,7 @@ struct xdr_ops {
 
 struct xdr_bytesrec {
 	bool_t xc_is_last_record;
-	uint32_t xc_num_avail;
+	size_t xc_num_avail;
 };
 
 /*

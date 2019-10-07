@@ -264,8 +264,8 @@ void
 zfs_refcount_transfer_ownership(zfs_refcount_t *rc, void *current_holder,
     void *new_holder)
 {
-	return (zfs_refcount_transfer_ownership_many(rc, 1, current_holder,
-        new_holder));
+	zfs_refcount_transfer_ownership_many(rc, 1, current_holder,
+        new_holder);
 }
 
 /*

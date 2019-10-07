@@ -94,7 +94,7 @@ typedef struct rrw_node {
 
 
 #ifndef _KERNEL
-#define current_thread(x) curthread
+#define current_thread() curthread
 #endif
 
 static rrw_node_t *

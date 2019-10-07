@@ -139,7 +139,7 @@ typedef struct crypto_control_ops {
 typedef struct crypto_ctx_ops {
 	int (*create_ctx_template)(crypto_provider_handle_t,
 	    crypto_mechanism_t *, crypto_key_t *,
-	    crypto_spi_ctx_template_t *, uint32_t *, crypto_req_handle_t);
+	    crypto_spi_ctx_template_t *, size_t *, crypto_req_handle_t);
 	int (*free_context)(crypto_ctx_t *);
 } crypto_ctx_ops_t;
 
@@ -364,9 +364,9 @@ typedef struct crypto_dual_cipher_mac_ops {
  */
 typedef struct crypto_random_number_ops {
 	int (*seed_random)(crypto_provider_handle_t, crypto_session_id_t,
-	    uchar_t *, uint32_t, uint_t, uint32_t, crypto_req_handle_t);
+	    uchar_t *, size_t, uint_t, uint32_t, crypto_req_handle_t);
 	int (*generate_random)(crypto_provider_handle_t, crypto_session_id_t,
-	    uchar_t *, uint32_t, crypto_req_handle_t);
+	    uchar_t *, size_t, crypto_req_handle_t);
 } crypto_random_number_ops_t;
 
 /*
@@ -386,7 +386,7 @@ typedef struct crypto_session_ops {
 	int (*session_close)(crypto_provider_handle_t, crypto_session_id_t,
 	    crypto_req_handle_t);
 	int (*session_login)(crypto_provider_handle_t, crypto_session_id_t,
-	    crypto_user_type_t, char *, uint32_t, crypto_req_handle_t);
+	    crypto_user_type_t, char *, size_t, crypto_req_handle_t);
 	int (*session_logout)(crypto_provider_handle_t, crypto_session_id_t,
 	    crypto_req_handle_t);
 } crypto_session_ops_t;
@@ -407,7 +407,7 @@ typedef struct crypto_object_ops {
 	int (*object_destroy)(crypto_provider_handle_t, crypto_session_id_t,
 	    crypto_object_id_t, crypto_req_handle_t);
 	int (*object_get_size)(crypto_provider_handle_t, crypto_session_id_t,
-	    crypto_object_id_t, uint32_t *, crypto_req_handle_t);
+	    crypto_object_id_t, size_t *, crypto_req_handle_t);
 	int (*object_get_attribute_value)(crypto_provider_handle_t,
 	    crypto_session_id_t, crypto_object_id_t,
 	    crypto_object_attribute_t *, uint_t, crypto_req_handle_t);
@@ -439,9 +439,9 @@ typedef struct crypto_key_ops {
 	    crypto_object_id_t *, crypto_req_handle_t);
 	int (*key_wrap)(crypto_provider_handle_t, crypto_session_id_t,
 	    crypto_mechanism_t *, crypto_key_t *, crypto_object_id_t *,
-	    uchar_t *, uint32_t *, crypto_req_handle_t);
+	    uchar_t *, size_t *, crypto_req_handle_t);
 	int (*key_unwrap)(crypto_provider_handle_t, crypto_session_id_t,
-	    crypto_mechanism_t *, crypto_key_t *, uchar_t *, uint32_t *,
+	    crypto_mechanism_t *, crypto_key_t *, uchar_t *, size_t *,
 	    crypto_object_attribute_t *, uint_t,
 	    crypto_object_id_t *, crypto_req_handle_t);
 	int (*key_derive)(crypto_provider_handle_t, crypto_session_id_t,
@@ -460,12 +460,12 @@ typedef struct crypto_key_ops {
 typedef struct crypto_provider_management_ops {
 	int (*ext_info)(crypto_provider_handle_t,
 	    crypto_provider_ext_info_t *, crypto_req_handle_t);
-	int (*init_token)(crypto_provider_handle_t, char *, uint32_t,
+	int (*init_token)(crypto_provider_handle_t, char *, size_t,
 	    char *, crypto_req_handle_t);
 	int (*init_pin)(crypto_provider_handle_t, crypto_session_id_t,
-	    char *, uint32_t, crypto_req_handle_t);
+	    char *, size_t, crypto_req_handle_t);
 	int (*set_pin)(crypto_provider_handle_t, crypto_session_id_t,
-	    char *, uint32_t, char *, uint32_t, crypto_req_handle_t);
+	    char *, size_t, char *, size_t, crypto_req_handle_t);
 } crypto_provider_management_ops_t;
 
 typedef struct crypto_mech_ops {

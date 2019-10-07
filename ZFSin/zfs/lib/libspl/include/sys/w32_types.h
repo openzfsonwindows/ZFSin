@@ -100,7 +100,10 @@ typedef uint32_t dev_t;
 #define W_OK 2
 #define R_OK 4
 
-#define MAXPATHLEN MAX_PATH
+
+/* MAXPATHLEN need to match between kernel and userland. MAX_PATH is only 260 */
+//#define MAXPATHLEN MAX_PATH
+#define MAXPATHLEN      1024
 #define PATH_MAX  MAX_PATH
 
 typedef struct timespec			timestruc_t; /* definition per SVr4 */
@@ -165,9 +168,11 @@ typedef union {
 
 #define alloca _alloca
 #define posix_memalign_free _aligned_free
-int posix_memalign(void **memptr, uint32_t alignment, uint32_t size);
+int posix_memalign(void **memptr, size_t alignment, size_t size);
 
+#ifndef MIN
 #define MIN(a, b)  (((a) < (b)) ? (a) : (b)) 
+#endif
 
 #define sleep(x) Sleep(x * 1000)
 
@@ -176,7 +181,6 @@ int fsync(int);
 #define lstat _stat64
 
 #define MFSTYPENAMELEN  16
-#define MAXPATHLEN      1024
 #define MNAMELEN        MAXPATHLEN
 
 #define roundup(x, y)         ((((x) + ((y) - 1)) / (y)) * (y))
