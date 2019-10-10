@@ -8363,14 +8363,8 @@ zpool_do_events_next(ev_opts_t *opts)
 	nvlist_t *nvl;
 	int zevent_fd, ret, dropped;
 
-#ifdef WIN32
-	zevent_fd = CreateFile(ZFS_DEV, GENERIC_READ | GENERIC_WRITE,
-		0, NULL, OPEN_EXISTING, 0, NULL);
-	VERIFY(zevent_fd != INVALID_HANDLE_VALUE);
-#else
 	zevent_fd = open(ZFS_DEV, O_RDWR);
 	VERIFY(zevent_fd >= 0);
-#endif
 
 	if (!opts->scripted)
 		(void) printf(gettext("%-30s %s\n"), "TIME", "CLASS");
@@ -8395,11 +8389,7 @@ zpool_do_events_next(ev_opts_t *opts)
 		nvlist_free(nvl);
 	}
 
-#ifdef WIN32
-	VERIFY(CloseHandle(zevent_fd));
-#else
 	VERIFY(0 == close(zevent_fd));
-#endif
 	return (ret);
 }
 

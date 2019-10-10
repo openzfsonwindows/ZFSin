@@ -280,7 +280,7 @@ main(int argc, char *argv[])
 		}
 	}
 
-	if (win_isatty((uintptr_t)STDIN_FILENO)) {
+	if (isatty(STDIN_FILENO)) {
 		(void) fprintf(stderr,
 		    "Error: Backup stream can not be read "
 		    "from a terminal.\n"

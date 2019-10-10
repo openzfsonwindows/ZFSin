@@ -233,15 +233,15 @@ struct partition64 {
 #endif
 
 #ifndef _KERNEL
-extern	int	efi_alloc_and_init(HANDLE, uint32_t, struct dk_gpt **);
-extern	int	efi_alloc_and_read(HANDLE, struct dk_gpt **);
-extern	int	efi_write(HANDLE, struct dk_gpt *);
-extern	int	efi_rescan(HANDLE);
+extern	int	efi_alloc_and_init(int, uint32_t, struct dk_gpt **);
+extern	int	efi_alloc_and_read(int, struct dk_gpt **);
+extern	int	efi_write(int, struct dk_gpt *);
+extern	int	efi_rescan(int);
 extern	void	efi_free(struct dk_gpt *);
-extern	int	efi_type(HANDLE);
+extern	int	efi_type(int);
 extern	void	efi_err_check(struct dk_gpt *);
-extern	int	efi_auto_sense(HANDLE fd, struct dk_gpt **);
-extern	int	efi_use_whole_disk(HANDLE fd);
+extern	int	efi_auto_sense(int fd, struct dk_gpt **);
+extern	int	efi_use_whole_disk(int fd);
 #endif
 
 #ifdef __cplusplus

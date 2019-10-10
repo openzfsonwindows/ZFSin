@@ -135,12 +135,7 @@ get_key_material_raw(FILE *fd, const char *fsname, zfs_keyformat_t keyformat,
 #endif
 
 	*len_out = 0;
-
-#ifdef _WIN32
-	if (win_isatty(_get_osfhandle(_fileno(fd)))) {
-#else
-	if (isatty(fileno(fd)) {
-#endif
+	if (isatty(fileno(fd))) {
 		/*
 		 * handle SIGINT and ignore SIGSTP. This is necessary to
 		 * restore the state of the terminal.
@@ -224,11 +219,7 @@ get_key_material_raw(FILE *fd, const char *fsname, zfs_keyformat_t keyformat,
 	*len_out = bytes;
 
 out:
-#ifdef _WIN32
-	if (win_isatty(_get_osfhandle(_fileno(fd)))) {
-#else
 	if (isatty(fileno(fd))) {
-#endif
 		/* reset the teminal */
 		(void) tcsetattr(fileno(fd), TCSAFLUSH, &old_term);
 #ifndef _WIN32
@@ -276,11 +267,7 @@ get_key_material(libzfs_handle_t *hdl, boolean_t do_verify, boolean_t newkey,
 	switch (keyloc) {
 	case ZFS_KEYLOCATION_PROMPT:
 		fd = stdin;
-#ifdef _WIN32
-		if (win_isatty(_get_osfhandle(_fileno(fd)))) {
-#else
 		if (isatty(fileno(fd))) {
-#endif
 			can_retry = B_TRUE;
 
 			/* raw keys cannot be entered on the terminal */
@@ -386,11 +373,7 @@ get_key_material(libzfs_handle_t *hdl, boolean_t do_verify, boolean_t newkey,
 		break;
 	}
 
-#ifdef _WIN32
-	if (do_verify && win_isatty(_get_osfhandle(_fileno(fd)))) {
-#else
 	if (do_verify && isatty(fileno(fd))) {
-#endif
 		ret = get_key_material_raw(fd, fsname, keyformat, B_TRUE,
 		    newkey, &km2, &kmlen2);
 		if (ret != 0)

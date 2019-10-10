@@ -44,6 +44,9 @@
 #include <stdint.h>
 #include <malloc.h>
 
+/* Now replace POSIX calls with our versions. */
+#include <wosix.h>
+
 typedef enum boolean { B_FALSE=0, B_TRUE } boolean_t;
 typedef enum boolean bool_t;
 
@@ -157,9 +160,9 @@ typedef union {
 #define	FLT_MAX		3.4028234663852885981170E+38F
 #define	FLT_MIN		1.1754943508222875079688E-38F
 
-#define STDIN_FILENO  GetStdHandle(STD_INPUT_HANDLE)
-#define STDOUT_FILENO GetStdHandle(STD_OUTPUT_HANDLE)
-#define STDERR_FILENO GetStdHandle(STD_ERROR_HANDLE)
+#define STDIN_FILENO  HTOI(GetStdHandle(STD_INPUT_HANDLE))
+#define STDOUT_FILENO HTOI(GetStdHandle(STD_OUTPUT_HANDLE))
+#define STDERR_FILENO HTOI(GetStdHandle(STD_ERROR_HANDLE))
 #define O_EXLOCK 0
 
 #define bzero(b,len) (memset((b), '\0', (len)))
@@ -176,9 +179,9 @@ int posix_memalign(void **memptr, size_t alignment, size_t size);
 
 #define sleep(x) Sleep(x * 1000)
 
-int fsync(int);
-
 #define lstat _stat64
+#define unlink _unlink
+#define strdup _strdup
 
 #define MFSTYPENAMELEN  16
 #define MNAMELEN        MAXPATHLEN

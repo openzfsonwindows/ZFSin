@@ -799,7 +799,7 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 		return NULL;
 	}
 
-	PARTITION_INFORMATION partInfo;
+	//PARTITION_INFORMATION partInfo;
 	DWORD retcount = 0;
 	//int err;
 	char buf[1024];

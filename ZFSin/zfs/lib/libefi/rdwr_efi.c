@@ -51,56 +51,6 @@
 int osx_device_isvirtual(char *pathbuf);
 #endif
 
-#ifdef _WIN32
-#include <sys/types32.h>
-#include <sys/w32_types.h>
-
-static inline int lseek(HANDLE fd, uint64_t offset, int seek)
-{
-	LARGE_INTEGER LOFF, LNEW;
-	int type;
-
-	LOFF.QuadPart = offset;
-	switch (seek) {
-	case SEEK_SET:
-		type = FILE_BEGIN;
-		break;
-	case SEEK_CUR:
-		type = FILE_CURRENT;
-		break;
-	case SEEK_END:
-		type = FILE_END;
-		break;
-	}
-	if (!SetFilePointerEx(fd, LOFF, &LNEW, type))
-		return -1;
-	return LNEW.QuadPart;
-}
-
-static inline int read(HANDLE fd, void *data, uint32_t len)
-{
-	DWORD red;
-
-	if (!ReadFile(fd, data, len, &red, NULL))
-		return -1;
-
-	return red;
-}
-
-static inline int write(HANDLE fd, void *data, uint32_t len)
-{
-	DWORD wrote;
-
-	if (!WriteFile(fd, data, len, &wrote, NULL))
-		return -1;
-
-	return wrote;
-}
-
-
-
-#endif
-
 static struct uuid_to_ptag {
 	struct uuid	uuid;
 } conversion_array[] = {
@@ -189,13 +139,13 @@ efi_crc32(const unsigned char *buf, unsigned int size)
 }
 
 static int
-read_disk_info(HANDLE fd, diskaddr_t *capacity, uint_t *lbsize)
+read_disk_info(int fd, diskaddr_t *capacity, uint_t *lbsize)
 {
 	DISK_GEOMETRY_EX geometry_ex;
 	DWORD len; 
 
 	LARGE_INTEGER large;
-	if (DeviceIoControl(fd, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
+	if (DeviceIoControl(ITOH(fd), IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
 		&geometry_ex, sizeof(geometry_ex), &len, NULL)) {
 
 		*lbsize = (uint_t)geometry_ex.Geometry.BytesPerSector;
@@ -208,7 +158,7 @@ read_disk_info(HANDLE fd, diskaddr_t *capacity, uint_t *lbsize)
 }
 
 static int
-efi_get_info(HANDLE fd, struct dk_cinfo *dki_info)
+efi_get_info(int fd, struct dk_cinfo *dki_info)
 {
 	int rval = 0;
 #if defined(__linux__)
@@ -378,7 +328,7 @@ efi_get_info(HANDLE fd, struct dk_cinfo *dki_info)
 	PARTITION_INFORMATION partInfo;
 	DWORD retcount = 0;
 	int err;
-	err = DeviceIoControl(fd,
+	err = DeviceIoControl(ITOH(fd),
 		IOCTL_DISK_GET_PARTITION_INFO,
 		(LPVOID)NULL,
 		(DWORD)0,
@@ -423,7 +373,7 @@ error:
 			    sizeof (struct dk_part))
 
 int
-efi_alloc_and_init(HANDLE fd, uint32_t nparts, struct dk_gpt **vtoc)
+efi_alloc_and_init(int fd, uint32_t nparts, struct dk_gpt **vtoc)
 {
 	diskaddr_t	capacity = 0;
 	uint_t		lbsize = 0;
@@ -494,7 +444,7 @@ efi_alloc_and_init(HANDLE fd, uint32_t nparts, struct dk_gpt **vtoc)
  * Read EFI - return partition number upon success.
  */
 int
-efi_alloc_and_read(HANDLE fd, struct dk_gpt **vtoc)
+efi_alloc_and_read(int fd, struct dk_gpt **vtoc)
 {
 	int			rval;
 	uint32_t		nparts;
@@ -539,7 +489,7 @@ efi_alloc_and_read(HANDLE fd, struct dk_gpt **vtoc)
 }
 
 static int
-efi_ioctl(HANDLE fd, int cmd, dk_efi_t *dk_ioc)
+efi_ioctl(int fd, int cmd, dk_efi_t *dk_ioc)
 {
 	void *data = dk_ioc->dki_data;
 	int error;
@@ -630,11 +580,8 @@ efi_ioctl(HANDLE fd, int cmd, dk_efi_t *dk_ioc)
 		}
 
 		/* Sync the new EFI table to disk */
-#ifdef _WIN32
-		FlushFileBuffers(fd); // I think I added fsync to posix.c, but this is the only call?
-#else
 		error = fsync(fd);
-#endif
+
 		if (error == -1)
 			return (error);
 
@@ -662,7 +609,7 @@ efi_ioctl(HANDLE fd, int cmd, dk_efi_t *dk_ioc)
 }
 
 int
-efi_rescan(HANDLE fd)
+efi_rescan(int fd)
 {
 #if defined(__linux__)
 	int retry = 10;
@@ -683,7 +630,7 @@ efi_rescan(HANDLE fd)
 }
 
 static int
-check_label(HANDLE fd, dk_efi_t *dk_ioc)
+check_label(int fd, dk_efi_t *dk_ioc)
 {
 	efi_gpt_t		*efi;
 	uint_t			crc;
@@ -735,7 +682,7 @@ check_label(HANDLE fd, dk_efi_t *dk_ioc)
 }
 
 static int
-efi_read(HANDLE fd, struct dk_gpt *vtoc)
+efi_read(int fd, struct dk_gpt *vtoc)
 {
 	int			i, j;
 	int			label_len;
@@ -1000,7 +947,7 @@ efi_read(HANDLE fd, struct dk_gpt *vtoc)
 
 /* writes a "protective" MBR */
 static int
-write_pmbr(HANDLE fd, struct dk_gpt *vtoc)
+write_pmbr(int fd, struct dk_gpt *vtoc)
 {
 	dk_efi_t	dk_ioc;
 	struct mboot	mb;
@@ -1191,7 +1138,7 @@ check_input(struct dk_gpt *vtoc)
  * add all the unallocated space to the current label
  */
 int
-efi_use_whole_disk(HANDLE fd)
+efi_use_whole_disk(int fd)
 {
 	struct dk_gpt		*efi_label;
 	int			rval;
@@ -1273,7 +1220,7 @@ efi_use_whole_disk(HANDLE fd)
  * write EFI label and backup label
  */
 int
-efi_write(HANDLE fd, struct dk_gpt *vtoc)
+efi_write(int fd, struct dk_gpt *vtoc)
 {
 	dk_efi_t		dk_ioc;
 	efi_gpt_t		*efi;
@@ -1487,7 +1434,7 @@ efi_free(struct dk_gpt *ptr)
  * Otherwise 0.
  */
 int
-efi_type(HANDLE fd)
+efi_type(int fd)
 {
 #if 0
 	struct vtoc vtoc;
@@ -1604,7 +1551,7 @@ efi_err_check(struct dk_gpt *vtoc)
  * label type
  */
 int
-efi_auto_sense(HANDLE fd, struct dk_gpt **vtoc)
+efi_auto_sense(int fd, struct dk_gpt **vtoc)
 {
 
 	int	i;
