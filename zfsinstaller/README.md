@@ -2,7 +2,6 @@
 - Inno Setup Compile 5.6.1 (or higher) installed
 - Successful build of the the ZFSin project
   - Only architecture x64 and type release or debug are currently supported by the Inno installer. Other architectures might work with some tweaking of the .iss files.
-- add vcruntime dll info here
 
 # Building with GUI:
 
