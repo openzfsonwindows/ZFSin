@@ -172,6 +172,7 @@
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;4242</DisableSpecificWarnings>
     </ClCompile>
     <ResourceCompile>
       <Culture>0x040c</Culture>
@@ -230,6 +231,7 @@
       <ProgramDataBaseFileName>$(OutDir)</ProgramDataBaseFileName>
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
+      <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;4242</DisableSpecificWarnings>
     </ClCompile>
     <ResourceCompile>
       <Culture>0x040c</Culture>
@@ -288,6 +290,7 @@
       <ProgramDataBaseFileName>$(OutDir)</ProgramDataBaseFileName>
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
+      <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;4242</DisableSpecificWarnings>
     </ClCompile>
     <ResourceCompile>
       <Culture>0x040c</Culture>

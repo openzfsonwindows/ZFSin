@@ -2401,7 +2401,7 @@ metaslab_should_condense(metaslab_t *msp)
 {
 	space_map_t *sm = msp->ms_sm;
 	vdev_t *vd = msp->ms_group->mg_vd;
-	uint64_t vdev_blocksize = 1 << vd->vdev_ashift;
+	uint64_t vdev_blocksize = 1ULL << vd->vdev_ashift;
 	uint64_t current_txg = spa_syncing_txg(vd->vdev_spa);
 
 	ASSERT(MUTEX_HELD(&msp->ms_lock));

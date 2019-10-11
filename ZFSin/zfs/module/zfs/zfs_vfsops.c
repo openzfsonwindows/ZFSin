@@ -2101,7 +2101,7 @@ zfs_vfs_mount(struct mount *vfsp, vnode_t *mvp /*devvp*/,
 	int		mflag = 0;
 
 #ifdef _WIN32
-	struct zfs_mount_args *mnt_args = data;
+	struct zfs_mount_args *mnt_args = (struct zfs_mount_args *)data;
 	size_t		osnamelen = 0;
 	uint32_t	cmdflags = 0;
 

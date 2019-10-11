@@ -819,7 +819,7 @@ dsl_pool_sync_context(dsl_pool_t *dp)
 #ifdef _KERNEL
 	//DbgBreakPoint();
 #endif
-	kthread_t *tt;
+	kthread_t *tt = NULL;
 #ifdef _KERNEL
 	HANDLE PsGetCurrentThreadId();
 	tt = PsGetCurrentThreadId();

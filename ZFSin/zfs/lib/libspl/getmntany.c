@@ -147,7 +147,7 @@ fstatat64(int dirfd, const char *path, struct _stat64 *statbuf, int flag)
 	//if (flag == AT_SYMLINK_NOFOLLOW)
 	//	error = lstat(path, statbuf);
 	//else
-		error = stat(path, statbuf);
+		error = _stat64(path, statbuf);
 
 	chdir_block_end(cwdfd);
 	return (error);

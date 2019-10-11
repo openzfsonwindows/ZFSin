@@ -508,7 +508,7 @@ mappedread_sf(vnode_t *vp, int nbytes, uio_t *uio)
 
 
 static int
-mappedread(vnode_t *vp, int nbytes, struct uio *uio)
+mappedread(vnode_t *vp, ssize_t nbytes, struct uio *uio)
 {
 	int error = 0;
 #if 0
@@ -1010,7 +1010,7 @@ zfs_write(vnode_t *vp, uio_t *uio, int ioflag, cred_t *cr, caller_context_t *ct)
 				 */
 				ASSERT(!ISP2(zp->z_blksz));
 				new_blksz = MIN(end_size,
-				    1 << highbit64(zp->z_blksz));
+				    1ULL << highbit64(zp->z_blksz));
 			} else {
 				new_blksz = MIN(end_size, max_blksz);
 			}
@@ -2796,7 +2796,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 		// Did they provide a search pattern
 		if (zccb->searchname.Buffer && zccb->searchname.Length) {
 			UNICODE_STRING thisname;
-			unsigned char tmpname[PATH_MAX];
+			WCHAR tmpname[PATH_MAX];
 			ULONG tmpnamelen;
 			// We need to convert name to a tmp buffer here, as the output
 			// buffer might not have enough room to hold the whole name, and
@@ -2941,7 +2941,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					structsize = FIELD_OFFSET(FILE_BOTH_DIR_INFORMATION, FileName[0]);
 					if (outcount + structsize + namelenholder > bufsize) break;
 
-					eodp = (FILE_BOTH_DIR_INFORMATION *)bufptr;
+					eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 					FILE_BOTH_DIR_INFORMATION *fbdi = (FILE_BOTH_DIR_INFORMATION *)bufptr;
 					fbdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
 					fbdi->EndOfFile.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : tzp->z_size;
@@ -2961,7 +2961,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				case FileDirectoryInformation:
 					structsize = FIELD_OFFSET(FILE_DIRECTORY_INFORMATION, FileName[0]);
 					if (outcount + structsize + namelenholder > bufsize) break;
-					eodp = (FILE_DIRECTORY_INFORMATION *)bufptr;
+					eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 					//FILE_DIRECTORY_INFORMATION *fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
 					fdi = (FILE_DIRECTORY_INFORMATION *)bufptr;
 					fdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp));
@@ -2982,7 +2982,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				case FileNamesInformation:
 					structsize = FIELD_OFFSET(FILE_NAMES_INFORMATION, FileName[0]);
 					if (outcount + structsize + namelenholder > bufsize) break;
-					eodp = (FILE_NAMES_INFORMATION *)bufptr;
+					eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 					FILE_NAMES_INFORMATION *fni = (FILE_NAMES_INFORMATION *)bufptr;
 					fni = (FILE_NAMES_INFORMATION *)bufptr;
 					fni->FileIndex = offset;
@@ -2994,7 +2994,7 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					structsize = FIELD_OFFSET(FILE_ID_FULL_DIR_INFORMATION, FileName[0]);
 					if (outcount + structsize + namelenholder > bufsize) break;
 
-					eodp = (FILE_ID_FULL_DIR_INFORMATION *)bufptr;
+					eodp = (FILE_FULL_DIR_INFORMATION *)bufptr;
 					FILE_ID_FULL_DIR_INFORMATION *fifdi = (FILE_ID_FULL_DIR_INFORMATION *)bufptr;
 					fifdi->FileIndex = offset;
 					fifdi->AllocationSize.QuadPart = S_ISDIR(tzp->z_mode) ? 0 : P2ROUNDUP(tzp->z_size, zfs_blksz(tzp)); // File size in block alignment

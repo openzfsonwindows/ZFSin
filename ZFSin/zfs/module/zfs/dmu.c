@@ -1677,8 +1677,8 @@ dmu_read_win(objset_t *os, uint64_t object, uint64_t *offset,
                                    (char *)db->db_data + bufoff,
                                    tocpy);
 #endif
-			RtlMoveMemory((uintptr_t)iomem + *offset,
-				(uintptr_t)db->db_data + bufoff,
+			RtlMoveMemory((void *)((uintptr_t)iomem + *offset),
+				(void *)((uintptr_t)db->db_data + bufoff),
                 tocpy);
 			done = tocpy;
 
@@ -1738,8 +1738,8 @@ dmu_read_win_dbuf(dmu_buf_t *zdb, uint64_t object, uint64_t *offset,
 							   (char *)db->db_data + bufoff,
 							   tocpy);
 #endif
-		RtlMoveMemory((uintptr_t)iomem + *offset,
-			(uintptr_t)db->db_data + bufoff,
+		RtlMoveMemory((void *)((uintptr_t)iomem + *offset),
+			(void *)((uintptr_t)db->db_data + bufoff),
 			tocpy);
 		done = tocpy;
 
@@ -1805,8 +1805,8 @@ dmu_write_win_dnode(dnode_t *dn, uint64_t *offset, uint64_t position,
               err = uiomove((char *)db->db_data + bufoff, tocpy,
               UIO_WRITE, uio);
             */
-			RtlMoveMemory((uintptr_t)db->db_data + bufoff,
-				(uintptr_t)iomem + *offset,
+			RtlMoveMemory((void *)((uintptr_t)db->db_data + bufoff),
+				(void *)((uintptr_t)iomem + *offset),
                 tocpy);
 			done = tocpy;
 

@@ -296,7 +296,7 @@ int spl_uiomove(const uint8_t *c_cp, uint32_t n, struct uio *uio)
 				/*error =*/ bcopy(cp, uio->uio_iov[uio->uio_index].iov_base,
 					acnt);
 			else
-				/*error =*/ bcopy(uio->uio_iov[uio->uio_index].iov_base, cp,
+				/*error =*/ bcopy(uio->uio_iov[uio->uio_index].iov_base, (void *)cp,
 					acnt);
 			break;
 		default:

@@ -878,6 +878,423 @@
     <ClInclude Include="zfs\module\lua\lzio.h">
       <Filter>Source Files\ZFS\module\lua</Filter>
     </ClInclude>
+    <ClInclude Include="zfs\include\sys\abd.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\aggsum.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\arc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\arc_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\avl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\avl_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\blkptr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\bplist.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\bpobj.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\bptree.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\bqueue.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\cityhash.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dbuf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\ddt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dmu.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dmu_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dmu_objset.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dmu_recv.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dmu_send.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dmu_traverse.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dmu_tx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dmu_zfetch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dnode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_bookmark.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_crypt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_dataset.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_deadlist.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_deleg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_destroy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_dir.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_pool.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_prop.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_scan.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_synctask.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\dsl_userhold.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\edonr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\efi_partition.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\finderinfo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\gfs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\hfs_internal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\hkdf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\kstat_windows.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\metaslab.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\metaslab_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\mmp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\multilist.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\nvpair.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\nvpair_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\range_tree.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\refcount.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\rrwlock.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\sa.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\sa_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\sha2.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\skein.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\spa.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\spa_boot.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\spa_checkpoint.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\spa_checksum.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\spa_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\space_map.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\space_reftree.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\sysevent.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\trace.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\trace_acl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\trace_arc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\trace_dbgmsg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\trace_dbuf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\trace_dmu.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\trace_dnode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\trace_multilist.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\trace_txg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\trace_zil.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\trace_zrlock.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\txg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\txg_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\u8_textprep.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\u8_textprep_data.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\uberblock.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\uberblock_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\uio_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\unique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\uuid.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\vdev.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\vdev_disk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\vdev_file.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\vdev_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\vdev_indirect_births.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\vdev_indirect_mapping.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\vdev_initialize.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\vdev_removal.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\vdev_trim.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\wzvol.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\wzvolwmi.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\xvattr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zap_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zap_leaf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zconf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zcp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zcp_global.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zcp_iter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zcp_prop.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfeature.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_acl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_boot.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_context.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_context_kernel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_context_userland.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_ctldir.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_debug.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_delay.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_dir.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_fuid.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_ioctl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_mount.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_onexit.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_rlock.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_sa.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_stat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_vfsops.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_vnops.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_windows.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zfs_znode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\ZFSPool.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zil.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zil_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zio.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zio_checksum.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zio_compress.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zio_crypt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zio_impl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zio_priority.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zlib.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zpl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zrlock.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zthr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zvol.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="zfs\include\sys\zvolIO.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.md" />

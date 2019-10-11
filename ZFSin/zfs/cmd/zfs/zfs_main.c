@@ -7308,7 +7308,7 @@ zfs_do_diff(int argc, char **argv)
 #endif
 
 	err = zfs_show_diffs(zhp, STDOUT_FILENO, fromsnap, tosnap, flags);
-out:
+//out:
 	zfs_close(zhp);
 
 	return (err != 0);

@@ -32,8 +32,6 @@
  * California.
  */
 
-#pragma ident	"%Z%%M%	%I%	%E% SMI"
-
 /*
  * xdr_mem.h, XDR implementation using memory buffers.
  *
@@ -51,6 +49,9 @@
 #include <inttypes.h>
 
 static struct xdr_ops *xdrmem_ops(void);
+
+// formal parameter 1 different from declaration (XDR* != struct XDR *)?
+#pragma warning (disable: 4028)
 
 /*
  * Meaning of the private areas of the xdr struct for xdr_mem

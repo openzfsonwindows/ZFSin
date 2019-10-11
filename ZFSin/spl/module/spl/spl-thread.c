@@ -21,7 +21,7 @@
 
 /*
  *
- * Copyright (C) 2017 Jorgen Lundman <lundman@lundman.net>
+ * Copyright (C) 2019 Jorgen Lundman <lundman@lundman.net>
  *
  */
 
@@ -33,6 +33,8 @@
 #include <sys/vnode.h>
 #include <sys/callb.h>
 #include <sys/systm.h>
+
+#include <ntddk.h>
 
 uint64_t zfs_threads = 0;
 
@@ -58,7 +60,6 @@ spl_thread_create(
 		dprintf("Start thread pri %d by '%s':%d\n", pri,
 			   filename, line);
 #endif
-        //result= kernel_thread_start((thread_continue_t)proc, arg, &thread);
 		result = PsCreateSystemThread(
 			&thread,
 			0,    // DesiredAccess,
@@ -86,6 +87,9 @@ spl_thread_create(
 			//				  (thread_policy_t)&policy,
 			//				  THREAD_PRECEDENCE_POLICY_COUNT);
 
+
+			// TODO: Windows thread priority?
+
 			// why is this call missing?
 			//KeSetBasePriorityThread(thread, 1);
 		}
@@ -93,11 +97,10 @@ spl_thread_create(
 
         atomic_inc_64(&zfs_threads);
 		int threadid;
-#include <ntddk.h>
 		PETHREAD eThread;
-		HANDLE PsGetThreadId();
 		ObReferenceObjectByHandle(thread, 0, 0, KernelMode, &eThread, 0);
-		threadid = (int) PsGetThreadId(eThread);
+		// Perhaps threadid should move to 64bit.
+		threadid = (int)(uintptr_t) PsGetThreadId(eThread);
 		ObDereferenceObject(eThread);
 		ZwClose(thread);
         return ((kthread_t *)threadid);

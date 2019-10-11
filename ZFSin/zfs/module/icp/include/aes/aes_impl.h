@@ -127,7 +127,7 @@ struct aes_key {
  * They are declared void* as they are intended to be opaque types.
  * Use function aes_alloc_keysched() to allocate memory for ks and keysched.
  */
-extern void *aes_alloc_keysched(uint32_t *size, int kmflag);
+extern void *aes_alloc_keysched(size_t *size, int kmflag);
 extern void aes_init_keysched(const uint8_t *cipherKey, uint_t keyBits,
 	void *keysched);
 extern int aes_encrypt_block(const void *ks, const uint8_t *pt, uint8_t *ct);
@@ -141,9 +141,9 @@ extern void aes_copy_block(uint8_t *in, uint8_t *out);
 extern void aes_xor_block(uint8_t *data, uint8_t *dst);
 
 /* Note: ctx is a pointer to aes_ctx_t defined in modes.h */
-extern int aes_encrypt_contiguous_blocks(void *ctx, char *data, uint32_t length,
+extern int aes_encrypt_contiguous_blocks(void *ctx, char *data, size_t length,
     crypto_data_t *out);
-extern int aes_decrypt_contiguous_blocks(void *ctx, char *data, uint32_t length,
+extern int aes_decrypt_contiguous_blocks(void *ctx, char *data, size_t length,
     crypto_data_t *out);
 
 /*

@@ -175,7 +175,7 @@ xdrmem_control(XDR *xdrs, int req, void *info)
 	}
 
 	rec->xc_is_last_record = TRUE; /* always TRUE in xdrmem streams */
-	rec->xc_num_avail = (uint32_t)(xdrs->x_addr_end - xdrs->x_addr);
+	rec->xc_num_avail = (size_t)(xdrs->x_addr_end - xdrs->x_addr);
 
 	return TRUE;
 }

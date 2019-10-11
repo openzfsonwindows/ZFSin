@@ -85,6 +85,6 @@ extern void statfs2mnttab(struct statfs *sfs, struct mnttab *mp);
 #define AT_SYMLINK_NOFOLLOW     0x100
 #endif
 
-extern int fstatat64(int, const char *, struct stat *, int);
+extern int fstatat64(int, const char *, struct _stat64 *, int);
 
 #endif

@@ -314,7 +314,7 @@ free_children(dmu_buf_impl_t *db, uint64_t blkid, uint64_t nblks,
 	}
 
 	if (free_indirects) {
-		for (i = 0, bp = db->db.db_data; i < 1 << epbs; i++, bp++)
+		for (i = 0, bp = db->db.db_data; i < 1ULL << epbs; i++, bp++)
 			ASSERT(BP_IS_HOLE(bp));
 		bzero(db->db.db_data, db->db.db_size);
 		free_blocks(dn, db->db_blkptr, 1, tx);
@@ -636,7 +636,7 @@ dnode_sync(dnode_t *dn, dmu_tx_t *tx)
 	    dnp->dn_datablkszsec << SPA_MINBLOCKSHIFT);
 	ASSERT(dnp->dn_nlevels < 2 ||
 	    BP_IS_HOLE(&dnp->dn_blkptr[0]) ||
-	    BP_GET_LSIZE(&dnp->dn_blkptr[0]) == 1 << dnp->dn_indblkshift);
+	    BP_GET_LSIZE(&dnp->dn_blkptr[0]) == 1ULL << dnp->dn_indblkshift);
 
 	if (dn->dn_next_type[txgoff] != 0) {
 		dnp->dn_type = dn->dn_type;

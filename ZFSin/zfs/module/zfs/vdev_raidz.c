@@ -2006,7 +2006,7 @@ vdev_raidz_io_start(zio_t *zio)
 			cvd = vd->vdev_child[rc->rc_devidx];
 			zio_nowait(zio_vdev_child_io(zio, NULL, cvd,
 			    rc->rc_offset + rc->rc_size, NULL,
-			    1 << tvd->vdev_ashift,
+			    1ULL << tvd->vdev_ashift,
 			    zio->io_type, zio->io_priority,
 			    ZIO_FLAG_NODATA | ZIO_FLAG_OPTIONAL, NULL, NULL));
 		}
@@ -2631,8 +2631,8 @@ vdev_raidz_xlate(vdev_t *cvd, const range_seg_t *in, range_seg_t *res)
 	uint64_t ashift = raidvd->vdev_top->vdev_ashift;
 
 	/* make sure the offsets are block-aligned */
-	ASSERT0(in->rs_start % (1 << ashift));
-	ASSERT0(in->rs_end % (1 << ashift));
+	ASSERT0(in->rs_start % (1ULL << ashift));
+	ASSERT0(in->rs_end % (1ULL << ashift));
 	uint64_t b_start = in->rs_start >> ashift;
 	uint64_t b_end = in->rs_end >> ashift;
 

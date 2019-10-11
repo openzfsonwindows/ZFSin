@@ -59,7 +59,7 @@
 
 int aok;
 uint64_t physmem;
-vnode_t *rootdir = (vnode_t *)0xabcd1234;
+vnode_t *rootdir = (vnode_t *)0xabcd1234ULL;
 char hw_serial[HW_HOSTID_LEN];
 
 struct utsname utsname = {

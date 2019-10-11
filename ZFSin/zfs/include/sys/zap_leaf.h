@@ -47,7 +47,7 @@ struct zap_stats;
  * entries - header space (2*chunksize)
  */
 #define ZAP_LEAF_NUMCHUNKS_BS(bs) \
-	(((1<<(bs)) - 2*ZAP_LEAF_HASH_NUMENTRIES_BS(bs)) / \
+	(((1ULL<<(bs)) - 2*ZAP_LEAF_HASH_NUMENTRIES_BS(bs)) / \
         ZAP_LEAF_CHUNKSIZE - 2)
 
 #define ZAP_LEAF_NUMCHUNKS(l) (ZAP_LEAF_NUMCHUNKS_BS(((l)->l_bs)))
@@ -79,7 +79,7 @@ struct zap_stats;
  * chunks per entry (3).
  */
 #define ZAP_LEAF_HASH_SHIFT_BS(bs) ((bs) - 5)
-#define ZAP_LEAF_HASH_NUMENTRIES_BS(bs) (1 << ZAP_LEAF_HASH_SHIFT_BS(bs))
+#define ZAP_LEAF_HASH_NUMENTRIES_BS(bs) (1ULL << ZAP_LEAF_HASH_SHIFT_BS(bs))
 #define ZAP_LEAF_HASH_SHIFT(l) (ZAP_LEAF_HASH_SHIFT_BS(((l)->l_bs)))
 #define ZAP_LEAF_HASH_NUMENTRIES(l) (ZAP_LEAF_HASH_NUMENTRIES_BS(((l)->l_bs)))
 

@@ -1164,7 +1164,7 @@ zfs_path_to_zhandle(libzfs_handle_t *hdl, char *path, zfs_type_t argtype)
 		return (zfs_open(hdl, path, argtype));
 	}
 
-	if (stat(path, &statbuf) != 0) {
+	if (_stat64(path, &statbuf) != 0) {
 		(void) fprintf(stderr, "%s: %s\n", path, strerror(errno));
 		return (NULL);
 	}
@@ -1513,7 +1513,7 @@ zcmd_read_dst_nvlist(libzfs_handle_t *hdl, zfs_cmd_t *zc, nvlist_t **nvlp)
  */
 
 int
-zfs_ioctl(libzfs_handle_t *hdl, int request, zfs_cmd_t *zc)
+zfs_ioctl(libzfs_handle_t *hdl, unsigned long request, zfs_cmd_t *zc)
 {
 	int error;
 

@@ -485,7 +485,7 @@ mzap_open(objset_t *os, uint64_t obj, dmu_buf_t *db)
 		 * the block
 		 */
 		ASSERT3U((uintptr_t)&ZAP_EMBEDDED_PTRTBL_ENT(zap,
-		    1<<ZAP_EMBEDDED_PTRTBL_SHIFT(zap)) -
+		    1ULL<<ZAP_EMBEDDED_PTRTBL_SHIFT(zap)) -
 		    (uintptr_t)zap_f_phys(zap), ==,
 		    zap->zap_dbuf->db_size);
 	}

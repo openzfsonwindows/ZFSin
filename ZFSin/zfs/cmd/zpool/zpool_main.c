@@ -3810,7 +3810,7 @@ print_iostat_histo(struct stat_array *nva, unsigned int len,
 			zfs_nicetime(val, buf, sizeof (buf));
 		} else {
 			/* Request size (starting range of bucket) */
-			val = (1UL << j);
+			val = (1ULL << j);
 			zfs_nicenum(val, buf, sizeof (buf));
 		}
 

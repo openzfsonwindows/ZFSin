@@ -146,7 +146,7 @@ static int aes_decrypt_atomic(crypto_provider_handle_t, crypto_session_id_t,
 
 static int aes_create_ctx_template(crypto_provider_handle_t,
     crypto_mechanism_t *, crypto_key_t *, crypto_spi_ctx_template_t *,
-    uint32_t *, crypto_req_handle_t);
+    size_t *, crypto_req_handle_t);
 static int aes_free_context(crypto_ctx_t *);
 
 
@@ -182,7 +182,7 @@ static crypto_mac_ops_t aes_mac_ops = {
 
 static int aes_create_ctx_template(crypto_provider_handle_t,
     crypto_mechanism_t *, crypto_key_t *, crypto_spi_ctx_template_t *,
-    uint32_t *, crypto_req_handle_t);
+    size_t *, crypto_req_handle_t);
 static int aes_free_context(crypto_ctx_t *);
 
 static crypto_ctx_ops_t aes_ctx_ops = {
@@ -256,7 +256,7 @@ aes_check_mech_param(crypto_mechanism_t *mechanism, aes_ctx_t **ctx, int kmflag)
 {
 	void *p = NULL;
 	boolean_t param_required = B_TRUE;
-	uint32_t param_len;
+	size_t param_len;
 	void *(*alloc_fun)(int);
 	int rv = CRYPTO_SUCCESS;
 
@@ -413,7 +413,7 @@ aes_encrypt(crypto_ctx_t *ctx, crypto_data_t *plaintext,
 	int ret = CRYPTO_FAILED;
 
 	aes_ctx_t *aes_ctx;
-	uint32_t saved_length, saved_offset, length_needed;
+	size_t saved_length, saved_offset, length_needed;
 
 	ASSERT(ctx->cc_provider_private != NULL);
 	aes_ctx = ctx->cc_provider_private;
@@ -529,7 +529,7 @@ aes_decrypt(crypto_ctx_t *ctx, crypto_data_t *ciphertext,
 
 	aes_ctx_t *aes_ctx;
 	off_t saved_offset;
-	uint32_t saved_length, length_needed;
+	size_t saved_length, length_needed;
 
 	ASSERT(ctx->cc_provider_private != NULL);
 	aes_ctx = ctx->cc_provider_private;
@@ -641,7 +641,7 @@ aes_encrypt_update(crypto_ctx_t *ctx, crypto_data_t *plaintext,
     crypto_data_t *ciphertext, crypto_req_handle_t req)
 {
 	off_t saved_offset;
-	uint32_t saved_length, out_len;
+	size_t saved_length, out_len;
 	int ret = CRYPTO_SUCCESS;
 	aes_ctx_t *aes_ctx;
 
@@ -713,7 +713,7 @@ aes_decrypt_update(crypto_ctx_t *ctx, crypto_data_t *ciphertext,
     crypto_data_t *plaintext, crypto_req_handle_t req)
 {
 	off_t saved_offset;
-	uint32_t saved_length, out_len;
+	size_t saved_length, out_len;
 	int ret = CRYPTO_SUCCESS;
 	aes_ctx_t *aes_ctx;
 
@@ -819,7 +819,7 @@ aes_encrypt_final(crypto_ctx_t *ctx, crypto_data_t *data,
 			return (ret);
 		}
 	} else if (aes_ctx->ac_flags & (GCM_MODE|GMAC_MODE)) {
-		uint32_t saved_offset = data->cd_offset;
+		size_t saved_offset = data->cd_offset;
 
 		ret = gcm_encrypt_final((gcm_ctx_t *)aes_ctx, data,
 		    AES_BLOCK_LEN, aes_encrypt_block, aes_copy_block,
@@ -854,7 +854,7 @@ aes_decrypt_final(crypto_ctx_t *ctx, crypto_data_t *data,
 	aes_ctx_t *aes_ctx;
 	int ret;
 	off_t saved_offset;
-	uint32_t saved_length;
+	size_t saved_length;
 
 	ASSERT(ctx->cc_provider_private != NULL);
 	aes_ctx = ctx->cc_provider_private;
@@ -887,7 +887,7 @@ aes_decrypt_final(crypto_ctx_t *ctx, crypto_data_t *data,
 		 * This is where all the plaintext is returned, make sure
 		 * the plaintext buffer is big enough
 		 */
-		uint32_t pt_len = aes_ctx->ac_data_len;
+		size_t pt_len = aes_ctx->ac_data_len;
 		if (data->cd_length < pt_len) {
 			data->cd_length = pt_len;
 			return (CRYPTO_BUFFER_TOO_SMALL);
@@ -916,7 +916,7 @@ aes_decrypt_final(crypto_ctx_t *ctx, crypto_data_t *data,
 		 * the plaintext buffer is big enough
 		 */
 		gcm_ctx_t *ctx = (gcm_ctx_t *)aes_ctx;
-		uint32_t pt_len = ctx->gcm_processed_data_len - ctx->gcm_tag_len;
+		size_t pt_len = ctx->gcm_processed_data_len - ctx->gcm_tag_len;
 
 		if (data->cd_length < pt_len) {
 			data->cd_length = pt_len;
@@ -958,8 +958,8 @@ aes_encrypt_atomic(crypto_provider_handle_t provider,
 {
 	aes_ctx_t aes_ctx;	/* on the stack */
 	off_t saved_offset;
-	uint32_t saved_length;
-	uint32_t length_needed;
+	size_t saved_length;
+	size_t length_needed;
 	int ret;
 
 	AES_ARG_INPLACE(plaintext, ciphertext);
@@ -1084,8 +1084,8 @@ aes_decrypt_atomic(crypto_provider_handle_t provider,
 {
 	aes_ctx_t aes_ctx;	/* on the stack */
 	off_t saved_offset;
-	uint32_t saved_length;
-	uint32_t length_needed;
+	size_t saved_length;
+	size_t length_needed;
 	int ret;
 
 	AES_ARG_INPLACE(ciphertext, plaintext);
@@ -1241,10 +1241,10 @@ out:
 static int
 aes_create_ctx_template(crypto_provider_handle_t provider,
     crypto_mechanism_t *mechanism, crypto_key_t *key,
-    crypto_spi_ctx_template_t *tmpl, uint32_t *tmpl_size, crypto_req_handle_t req)
+    crypto_spi_ctx_template_t *tmpl, size_t *tmpl_size, crypto_req_handle_t req)
 {
 	void *keysched;
-	uint32_t size;
+	size_t size;
 	int rv;
 
 	if (mechanism->cm_type != AES_ECB_MECH_INFO_TYPE &&
@@ -1304,7 +1304,7 @@ aes_common_init_ctx(aes_ctx_t *aes_ctx, crypto_spi_ctx_template_t *template,
 {
 	int rv = CRYPTO_SUCCESS;
 	void *keysched;
-	uint32_t size;
+	size_t size;
 
 	if (template == NULL) {
 		if ((keysched = aes_alloc_keysched(&size, kmflag)) == NULL)

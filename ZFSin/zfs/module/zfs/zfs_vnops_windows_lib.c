@@ -1554,7 +1554,11 @@ void zfs_set_security(struct vnode *vp, struct vnode *dvp)
 		return;
 	}
 
-	ZFS_ENTER(zfsvfs);
+	ZFS_ENTER_NOERROR(zfsvfs);
+	if ((zfsvfs)->z_unmounted) {
+		ZFS_EXIT(zfsvfs);
+		return;
+	}
 
 	// If no parent, find it. This will take one hold on
 	// dvp, either directly or from zget().

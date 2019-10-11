@@ -107,7 +107,7 @@ fzap_upgrade(zap_t *zap, dmu_tx_t *tx, zap_flags_t flags)
 	 */
 	dmu_buf_t *db;
 	VERIFY0(dmu_buf_hold(zap->zap_objset, zap->zap_object,
-	    1<<FZAP_BLOCK_SHIFT(zap), FTAG, &db, DMU_READ_NO_PREFETCH));
+	    1ULL<<FZAP_BLOCK_SHIFT(zap), FTAG, &db, DMU_READ_NO_PREFETCH));
 	dmu_buf_will_dirty(db, tx);
 
 	zap_leaf_t *l = kmem_zalloc(sizeof (zap_leaf_t), KM_SLEEP);
@@ -950,7 +950,7 @@ fzap_prefetch(zap_name_t *zn)
 	if (zap_idx_to_blk(zap, idx, &blk) != 0)
 		return;
 	int bs = FZAP_BLOCK_SHIFT(zap);
-	dmu_prefetch(zap->zap_objset, zap->zap_object, 0, blk << bs, 1 << bs,
+	dmu_prefetch(zap->zap_objset, zap->zap_object, 0, blk << bs, 1ULL << bs,
 		ZIO_PRIORITY_SYNC_READ);
 }
 

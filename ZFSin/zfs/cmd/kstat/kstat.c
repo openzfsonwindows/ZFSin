@@ -575,12 +575,12 @@ lookup_raw_kstat_fn(char *module, char *name)
 static boolean_t
 ks_match(const char *str, ks_pattern_t *pattern)
 {
+#ifndef WIN32
 	int	regcode;
 	char	*regstr;
 	char	*errbuf;
 	size_t	bufsz;
 
-#ifndef WIN32
 	if (pattern->pstr != NULL && gmatch(pattern->pstr, "/*/") != 0) {
 		/* All regex patterns are strdup'd copies */
 		regstr = pattern->pstr + 1;

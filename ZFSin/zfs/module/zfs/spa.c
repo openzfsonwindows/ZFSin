@@ -1732,7 +1732,7 @@ spa_load_l2cache(spa_t *spa)
 	nvlist_t **l2cache = NULL;
 	uint_t nl2cache = 0;
 	int i, j, oldnvdevs;
-	uint64_t guid = NULL;
+	uint64_t guid = 0ULL;
 	vdev_t *vd, **oldvdevs, **newvdevs;
 	spa_aux_vdev_t *sav = &spa->spa_l2cache;
 

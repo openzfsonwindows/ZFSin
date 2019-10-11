@@ -164,7 +164,7 @@
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
       <RuntimeLibrary>
       </RuntimeLibrary>
-      <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4018;4100;4146;4152;4200;4201;4204;4210;4211;4242;4244;4389;4706;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -182,7 +182,7 @@
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
       <RuntimeLibrary>
       </RuntimeLibrary>
-      <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <DisableSpecificWarnings>4018;4100;4146;4152;4200;4201;4204;4210;4211;4242;4244;4389;4706;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -459,6 +459,145 @@
     <ClCompile Include="zfs\module\zfs\zvol.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="zfs\include\sys\abd.h" />
+    <ClInclude Include="zfs\include\sys\aggsum.h" />
+    <ClInclude Include="zfs\include\sys\arc.h" />
+    <ClInclude Include="zfs\include\sys\arc_impl.h" />
+    <ClInclude Include="zfs\include\sys\avl.h" />
+    <ClInclude Include="zfs\include\sys\avl_impl.h" />
+    <ClInclude Include="zfs\include\sys\blkptr.h" />
+    <ClInclude Include="zfs\include\sys\bplist.h" />
+    <ClInclude Include="zfs\include\sys\bpobj.h" />
+    <ClInclude Include="zfs\include\sys\bptree.h" />
+    <ClInclude Include="zfs\include\sys\bqueue.h" />
+    <ClInclude Include="zfs\include\sys\cityhash.h" />
+    <ClInclude Include="zfs\include\sys\dbuf.h" />
+    <ClInclude Include="zfs\include\sys\ddt.h" />
+    <ClInclude Include="zfs\include\sys\dmu.h" />
+    <ClInclude Include="zfs\include\sys\dmu_impl.h" />
+    <ClInclude Include="zfs\include\sys\dmu_objset.h" />
+    <ClInclude Include="zfs\include\sys\dmu_recv.h" />
+    <ClInclude Include="zfs\include\sys\dmu_send.h" />
+    <ClInclude Include="zfs\include\sys\dmu_traverse.h" />
+    <ClInclude Include="zfs\include\sys\dmu_tx.h" />
+    <ClInclude Include="zfs\include\sys\dmu_zfetch.h" />
+    <ClInclude Include="zfs\include\sys\dnode.h" />
+    <ClInclude Include="zfs\include\sys\dsl_bookmark.h" />
+    <ClInclude Include="zfs\include\sys\dsl_crypt.h" />
+    <ClInclude Include="zfs\include\sys\dsl_dataset.h" />
+    <ClInclude Include="zfs\include\sys\dsl_deadlist.h" />
+    <ClInclude Include="zfs\include\sys\dsl_deleg.h" />
+    <ClInclude Include="zfs\include\sys\dsl_destroy.h" />
+    <ClInclude Include="zfs\include\sys\dsl_dir.h" />
+    <ClInclude Include="zfs\include\sys\dsl_pool.h" />
+    <ClInclude Include="zfs\include\sys\dsl_prop.h" />
+    <ClInclude Include="zfs\include\sys\dsl_scan.h" />
+    <ClInclude Include="zfs\include\sys\dsl_synctask.h" />
+    <ClInclude Include="zfs\include\sys\dsl_userhold.h" />
+    <ClInclude Include="zfs\include\sys\edonr.h" />
+    <ClInclude Include="zfs\include\sys\efi_partition.h" />
+    <ClInclude Include="zfs\include\sys\finderinfo.h" />
+    <ClInclude Include="zfs\include\sys\gfs.h" />
+    <ClInclude Include="zfs\include\sys\hfs_internal.h" />
+    <ClInclude Include="zfs\include\sys\hkdf.h" />
+    <ClInclude Include="zfs\include\sys\kstat_windows.h" />
+    <ClInclude Include="zfs\include\sys\metaslab.h" />
+    <ClInclude Include="zfs\include\sys\metaslab_impl.h" />
+    <ClInclude Include="zfs\include\sys\mmp.h" />
+    <ClInclude Include="zfs\include\sys\multilist.h" />
+    <ClInclude Include="zfs\include\sys\nvpair.h" />
+    <ClInclude Include="zfs\include\sys\nvpair_impl.h" />
+    <ClInclude Include="zfs\include\sys\range_tree.h" />
+    <ClInclude Include="zfs\include\sys\refcount.h" />
+    <ClInclude Include="zfs\include\sys\rrwlock.h" />
+    <ClInclude Include="zfs\include\sys\sa.h" />
+    <ClInclude Include="zfs\include\sys\sa_impl.h" />
+    <ClInclude Include="zfs\include\sys\sha2.h" />
+    <ClInclude Include="zfs\include\sys\skein.h" />
+    <ClInclude Include="zfs\include\sys\spa.h" />
+    <ClInclude Include="zfs\include\sys\space_map.h" />
+    <ClInclude Include="zfs\include\sys\space_reftree.h" />
+    <ClInclude Include="zfs\include\sys\spa_boot.h" />
+    <ClInclude Include="zfs\include\sys\spa_checkpoint.h" />
+    <ClInclude Include="zfs\include\sys\spa_checksum.h" />
+    <ClInclude Include="zfs\include\sys\spa_impl.h" />
+    <ClInclude Include="zfs\include\sys\sysevent.h" />
+    <ClInclude Include="zfs\include\sys\trace.h" />
+    <ClInclude Include="zfs\include\sys\trace_acl.h" />
+    <ClInclude Include="zfs\include\sys\trace_arc.h" />
+    <ClInclude Include="zfs\include\sys\trace_dbgmsg.h" />
+    <ClInclude Include="zfs\include\sys\trace_dbuf.h" />
+    <ClInclude Include="zfs\include\sys\trace_dmu.h" />
+    <ClInclude Include="zfs\include\sys\trace_dnode.h" />
+    <ClInclude Include="zfs\include\sys\trace_multilist.h" />
+    <ClInclude Include="zfs\include\sys\trace_txg.h" />
+    <ClInclude Include="zfs\include\sys\trace_zil.h" />
+    <ClInclude Include="zfs\include\sys\trace_zrlock.h" />
+    <ClInclude Include="zfs\include\sys\txg.h" />
+    <ClInclude Include="zfs\include\sys\txg_impl.h" />
+    <ClInclude Include="zfs\include\sys\u8_textprep.h" />
+    <ClInclude Include="zfs\include\sys\u8_textprep_data.h" />
+    <ClInclude Include="zfs\include\sys\uberblock.h" />
+    <ClInclude Include="zfs\include\sys\uberblock_impl.h" />
+    <ClInclude Include="zfs\include\sys\uio_impl.h" />
+    <ClInclude Include="zfs\include\sys\unique.h" />
+    <ClInclude Include="zfs\include\sys\uuid.h" />
+    <ClInclude Include="zfs\include\sys\vdev.h" />
+    <ClInclude Include="zfs\include\sys\vdev_disk.h" />
+    <ClInclude Include="zfs\include\sys\vdev_file.h" />
+    <ClInclude Include="zfs\include\sys\vdev_impl.h" />
+    <ClInclude Include="zfs\include\sys\vdev_indirect_births.h" />
+    <ClInclude Include="zfs\include\sys\vdev_indirect_mapping.h" />
+    <ClInclude Include="zfs\include\sys\vdev_initialize.h" />
+    <ClInclude Include="zfs\include\sys\vdev_removal.h" />
+    <ClInclude Include="zfs\include\sys\vdev_trim.h" />
+    <ClInclude Include="zfs\include\sys\wzvol.h" />
+    <ClInclude Include="zfs\include\sys\wzvolwmi.h" />
+    <ClInclude Include="zfs\include\sys\xvattr.h" />
+    <ClInclude Include="zfs\include\sys\zap.h" />
+    <ClInclude Include="zfs\include\sys\zap_impl.h" />
+    <ClInclude Include="zfs\include\sys\zap_leaf.h" />
+    <ClInclude Include="zfs\include\sys\zconf.h" />
+    <ClInclude Include="zfs\include\sys\zcp.h" />
+    <ClInclude Include="zfs\include\sys\zcp_global.h" />
+    <ClInclude Include="zfs\include\sys\zcp_iter.h" />
+    <ClInclude Include="zfs\include\sys\zcp_prop.h" />
+    <ClInclude Include="zfs\include\sys\zfeature.h" />
+    <ClInclude Include="zfs\include\sys\ZFSPool.h" />
+    <ClInclude Include="zfs\include\sys\zfs_acl.h" />
+    <ClInclude Include="zfs\include\sys\zfs_boot.h" />
+    <ClInclude Include="zfs\include\sys\zfs_context.h" />
+    <ClInclude Include="zfs\include\sys\zfs_context_kernel.h" />
+    <ClInclude Include="zfs\include\sys\zfs_context_userland.h" />
+    <ClInclude Include="zfs\include\sys\zfs_ctldir.h" />
+    <ClInclude Include="zfs\include\sys\zfs_debug.h" />
+    <ClInclude Include="zfs\include\sys\zfs_delay.h" />
+    <ClInclude Include="zfs\include\sys\zfs_dir.h" />
+    <ClInclude Include="zfs\include\sys\zfs_fuid.h" />
+    <ClInclude Include="zfs\include\sys\zfs_ioctl.h" />
+    <ClInclude Include="zfs\include\sys\zfs_mount.h" />
+    <ClInclude Include="zfs\include\sys\zfs_onexit.h" />
+    <ClInclude Include="zfs\include\sys\zfs_rlock.h" />
+    <ClInclude Include="zfs\include\sys\zfs_sa.h" />
+    <ClInclude Include="zfs\include\sys\zfs_stat.h" />
+    <ClInclude Include="zfs\include\sys\zfs_vfsops.h" />
+    <ClInclude Include="zfs\include\sys\zfs_vnops.h" />
+    <ClInclude Include="zfs\include\sys\zfs_windows.h" />
+    <ClInclude Include="zfs\include\sys\zfs_znode.h" />
+    <ClInclude Include="zfs\include\sys\zil.h" />
+    <ClInclude Include="zfs\include\sys\zil_impl.h" />
+    <ClInclude Include="zfs\include\sys\zio.h" />
+    <ClInclude Include="zfs\include\sys\zio_checksum.h" />
+    <ClInclude Include="zfs\include\sys\zio_compress.h" />
+    <ClInclude Include="zfs\include\sys\zio_crypt.h" />
+    <ClInclude Include="zfs\include\sys\zio_impl.h" />
+    <ClInclude Include="zfs\include\sys\zio_priority.h" />
+    <ClInclude Include="zfs\include\sys\zlib.h" />
+    <ClInclude Include="zfs\include\sys\zpl.h" />
+    <ClInclude Include="zfs\include\sys\zrlock.h" />
+    <ClInclude Include="zfs\include\sys\zthr.h" />
+    <ClInclude Include="zfs\include\sys\zvol.h" />
+    <ClInclude Include="zfs\include\sys\zvolIO.h" />
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h" />
     <ClInclude Include="zfs\module\icp\algs\skein\skein_impl.h" />
     <ClInclude Include="zfs\module\icp\algs\skein\skein_port.h" />

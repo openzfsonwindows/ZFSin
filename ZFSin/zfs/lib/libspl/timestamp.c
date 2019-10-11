@@ -47,7 +47,7 @@ print_timestamp(uint_t timestamp_fmt)
 		fmt = "%c";
 
 	if (timestamp_fmt == UDATE) {
-		(void) printf("%ld\n", t);
+		(void) printf("%lld\n", t);
 	} else if (timestamp_fmt == DDATE) {
 		char dstr[64];
 		int len;

@@ -45,7 +45,9 @@ extern "C" {
 /*
  * We define our own memory allocation and deallocation routines that use kmem.
  */
+#ifndef MY_ZCALLOC
 #define	MY_ZCALLOC
+#endif
 
 /*
  * We don't define HAVE_MEMCPY here, but do in zutil.c, and implement our

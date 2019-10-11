@@ -1903,8 +1903,8 @@ spl_kstat_fini()
 
 
 void kstat_set_raw_ops(kstat_t *ksp,
-	int(*headers)(char *buf, uint32_t size),
-	int(*data)(char *buf, uint32_t size, void *data),
+	int(*headers)(char *buf, size_t size),
+	int(*data)(char *buf, size_t size, void *data),
 	void *(*addr)(kstat_t *ksp, off_t index))
 {
 }

@@ -87,6 +87,8 @@
 #include <sys/syscall.h>
 #endif
 
+#include <sys/types32.h>
+
 #include "all-io.h"
 #include "uuidP.h"
 #include "uuidd.h"
@@ -557,7 +559,7 @@ void uuid_generate_random(uuid_t out)
  */
 static int have_random_source(void)
 {
-	struct _stat64 s;
+	struct stat s;
 
 	return (!stat("/dev/random", &s) || !stat("/dev/urandom", &s));
 }

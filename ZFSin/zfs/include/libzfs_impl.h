@@ -65,7 +65,7 @@ typedef struct libzfs_fru {
 
 struct libzfs_handle {
 	int libzfs_error;
-	int libzfs_fd;
+	HANDLE libzfs_fd;
 	FILE *libzfs_mnttab;
 	FILE *libzfs_sharetab;
 	zpool_handle_t *libzfs_pool_handles;

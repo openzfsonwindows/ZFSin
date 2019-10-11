@@ -643,11 +643,11 @@ init_prov_mechs(crypto_provider_info_t *info, kcf_provider_desc_t *desc)
 				err = CRYPTO_ARGUMENTS_BAD;
 				break;
 			} else {
-				desc->pd_hash_limit = mi->cm_max_input_length;
+				desc->pd_hash_limit = (uint_t)mi->cm_max_input_length;
 			}
 		}
 
-		if ((err = kcf_add_mech_provider(mech_idx, desc, &pmd)) !=
+		if ((err = kcf_add_mech_provider((short)mech_idx, desc, &pmd)) !=
 		    KCF_SUCCESS)
 			break;
 

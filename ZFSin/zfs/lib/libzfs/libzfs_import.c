@@ -1093,15 +1093,12 @@ typedef struct rdsk_node {
 	char *rn_parent;
 #endif
 	int rn_num_labels;
-	int rn_dfd;
+	HANDLE rn_dfd;
 	libzfs_handle_t *rn_hdl;
 	nvlist_t *rn_config;
 	avl_tree_t *rn_avl;
 	avl_node_t rn_node;
 	boolean_t rn_nozpool;
-#ifdef _WIN32
-	HANDLE rn_handle;
-#endif
 } rdsk_node_t;
 
 static int
@@ -1533,10 +1530,10 @@ zpool_open_func_win(void *arg)
 	}
 
 	DWORD type = GetFileType(fd);
-	fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type);
+	fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type, type);
 	
 	type = GetDriveType(rn->rn_name);
-	fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type);
+	fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type, type);
 	//if ((fd = openat64(rn->rn_dfd, rn->rn_name, O_RDONLY)) < 0) {
 	//	/* symlink to a device that's no longer there */
 	//	if (errno == ENOENT)
@@ -1588,7 +1585,7 @@ zpool_open_func_win(void *arg)
  * Given a file descriptor, clear (zero) the label information.
  */
 int
-zpool_clear_label(int fd)
+zpool_clear_label(HANDLE fd)
 {
 	struct _stat64 statbuf;
 	int l;
@@ -2131,7 +2128,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 
 					// Do the lundman trick
 					snprintf(diskname, sizeof(diskname), "#%llu#%llu#%s",
-						0, GetFileDriveSize(disk), deviceInterfaceDetailData->DevicePath);
+						0ULL, GetFileDriveSize(disk), deviceInterfaceDetailData->DevicePath);
 
 					slice->rn_name = zfs_strdup(hdl, diskname);
 					slice->rn_avl = &slice_cache;
@@ -2368,7 +2365,7 @@ zpool_find_import_cached(libzfs_handle_t *hdl, const char *cachefile,
 		return (NULL);
 	}
 
-	if (fstat(fd, &statbuf) != 0) {
+	if (_fstat64(fd, &statbuf) != 0) {
 		zfs_error_aux(hdl, "%s", strerror(errno));
 		(void) close(fd);
 		(void) zfs_error(hdl, EZFS_BADCACHE,

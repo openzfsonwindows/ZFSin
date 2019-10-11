@@ -63,7 +63,7 @@ typedef void (*thread_func_t)(void *);
 // This should be ThreadId, but that dies in taskq_member,
 // for now, dsl_pool_sync_context calls it instead.
 #define current_thread PsGetCurrentThread
-#define   curthread       ((struct kthread *)current_thread())      /* current thread pointer */
+#define   curthread       ((void *)current_thread())      /* current thread pointer */
 #define   curproj         (ttoproj(curthread))    /* current project pointer */
 
 #define thread_join(t)			VERIFY(0)

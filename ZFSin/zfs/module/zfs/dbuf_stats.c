@@ -43,7 +43,7 @@ typedef struct dbuf_stats_t {
 static dbuf_stats_t dbuf_stats_hash_table;
 
 static int
-dbuf_stats_hash_table_headers(char *buf, uint32_t size)
+dbuf_stats_hash_table_headers(char *buf, size_t size)
 {
 	(void) snprintf(buf, size,
 	    "%-88s | %-124s | %s\n"
@@ -128,7 +128,7 @@ __dbuf_stats_hash_table_data(char *buf, size_t size, dmu_buf_impl_t *db)
 }
 
 static int
-dbuf_stats_hash_table_data(char *buf, uint32_t size, void *data)
+dbuf_stats_hash_table_data(char *buf, size_t size, void *data)
 {
 	dbuf_stats_t *dsh = (dbuf_stats_t *)data;
 	dbuf_hash_table_t *h = dsh->hash;

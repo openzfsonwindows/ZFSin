@@ -53,6 +53,9 @@
 
 #include <sys/sysevent/eventdefs.h>
 
+// warning C4146: unary minus operator applied to unsigned type, result still unsigned
+// warning C4242: 'function': conversion from 'uint64_t' to 'int',
+#pragma warning (disable: 4146 4242)
 
 #ifdef _KERNEL
 

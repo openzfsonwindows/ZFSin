@@ -708,7 +708,7 @@ int flush;
                     if (state->head != Z_NULL &&
                             state->head->name != Z_NULL &&
                             state->length < state->head->name_max)
-                        state->head->name[state->length++] = len;
+                        state->head->name[state->length++] = (Byte)len;
                 } while (len && copy < have);
                 if (state->flags & 0x0200)
                     state->check = crc32(state->check, next, copy);
@@ -729,7 +729,7 @@ int flush;
                     if (state->head != Z_NULL &&
                             state->head->comment != Z_NULL &&
                             state->length < state->head->comm_max)
-                        state->head->comment[state->length++] = len;
+                        state->head->comment[state->length++] = (Byte)len;
                 } while (len && copy < have);
                 if (state->flags & 0x0200)
                     state->check = crc32(state->check, next, copy);

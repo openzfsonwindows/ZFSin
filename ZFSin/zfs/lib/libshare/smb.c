@@ -70,7 +70,7 @@ static int get_attribute(const char *attr, char *line, char **value, FILE *file)
 	char *r = line;
 	char line2[512];
 
-	if (strncasecmp(attr, line, strlen(attr))) return 0;
+	if (strncasecmp((char *)attr, line, strlen(attr))) return 0;
 
 	r += strlen(attr);
 

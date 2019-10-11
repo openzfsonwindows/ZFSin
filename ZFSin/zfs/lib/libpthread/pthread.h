@@ -57,6 +57,8 @@
 //#define ETIMEDOUT	110
 //#define ENOTSUP		134
 
+// warning C4018: '>': signed/unsigned mismatch 
+#pragma warning (disable: 4018)
 
 #define PTHREAD_CANCEL_DISABLE 0
 #define PTHREAD_CANCEL_ENABLE 0x01
@@ -75,7 +77,7 @@
 
 #define PTHREAD_DEFAULT_ATTR (PTHREAD_CANCEL_ENABLE)
 
-#define PTHREAD_CANCELED ((void *) 0xDEADBEEF)
+#define PTHREAD_CANCELED ((void *) 0xDEADBEEFULL)
 
 #define PTHREAD_ONCE_INIT 0
 #define PTHREAD_MUTEX_INITIALIZER {(void*)-1,-1,0,0,0,0}
@@ -758,7 +760,6 @@ static int pthread_setcanceltype(int type, int *oldtype)
 static int __stdcall pthread_create_wrapper(void *args)
 {
 	struct _pthread_v *tv = args;
-	int i, j;
 
 	_pthread_once_raw(&_pthread_tls_once, pthread_tls_init);
 
@@ -1066,7 +1067,7 @@ static int pthread_barrierattr_destroy(void **attr)
 
 static int pthread_barrierattr_setpshared(void **attr, int s)
 {
-	*attr = (void *) s;
+	*attr = (void *)(uintptr_t)s;
 	return 0;
 }
 

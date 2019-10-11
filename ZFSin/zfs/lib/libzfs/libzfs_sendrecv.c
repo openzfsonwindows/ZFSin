@@ -210,7 +210,7 @@ ddt_update(libzfs_handle_t *hdl, dedup_table_t *ddt, zio_cksum_t *cs,
 
 static int
 dump_record(dmu_replay_record_t *drr, void *payload, int payload_len,
-    zio_cksum_t *zc, int outfd)
+    zio_cksum_t *zc, HANDLE outfd)
 {
 	ASSERT3U(offsetof(dmu_replay_record_t, drr_u.drr_checksum.drr_checksum),
 	    ==, sizeof (dmu_replay_record_t) - sizeof (zio_cksum_t));
@@ -4659,7 +4659,7 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 		zfs_nicebytes(bytes, buf1, sizeof (buf1));
 		zfs_nicebytes(bytes/delta, buf2, sizeof (buf1));
 
-		(void) printf("received %s stream in %lu seconds (%s/sec)\n",
+		(void) printf("received %s stream in %llu seconds (%s/sec)\n",
 		    buf1, delta, buf2);
 	}
 
@@ -4877,7 +4877,7 @@ zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
 {
 	char *top_zfs = NULL;
 	int err;
-	int cleanup_fd;
+	HANDLE cleanup_fd;
 	uint64_t action_handle = 0;
 	struct _stat64 sb;
 	char *originsnap = NULL;

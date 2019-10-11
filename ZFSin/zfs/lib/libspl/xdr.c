@@ -59,7 +59,10 @@
 #include <sys/types.h>
 #include <sys/w32_types.h>
 
-#if 0
+// warning C4133 : 'function' : incompatible types - from 'XDR *' to 'XDR *'
+#pragma warning( disable: 4133 )
+
+#ifndef _WIN32
 #pragma weak xdr_int64_t = xdr_hyper
 #pragma weak xdr_uint64_t = xdr_u_hyper
 #pragma weak xdr_int32_t = xdr_int
@@ -68,13 +71,13 @@
 #pragma weak xdr_uint16_t = xdr_u_short
 #pragma weak xdr_int8_t = xdr_char
 #pragma weak xdr_uint8_t = xdr_u_char
-#endif 
 
 /*
  * The following routine was part of a workaround for an rpcgen
  * that was fixed, this routine should be removed sometime.
  */
 #pragma weak xdr_ulonglong_t = xdr_u_longlong_t
+#endif
 
 /*
  * constants specific to the xdr "protocol"
@@ -112,7 +115,7 @@ xdr_free(xdrproc_t proc, char *objp)
 bool_t
 xdr_void(void)
 {
-	return (TRUE);
+	return (B_TRUE);
 }
 
 /*
