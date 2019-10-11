@@ -137,7 +137,7 @@
     <ClCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>__x86_64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary />
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;4242</DisableSpecificWarnings>
     </ClCompile>
     <Link>
@@ -149,8 +149,7 @@
     <ClCompile>
       <PreprocessorDefinitions>__x86_64;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/zfs/lib/libspl/include;$(SolutionDir)/ZFSin/zfs/lib/libpthread;$(SolutionDir)/ZFSin/zfs/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <RuntimeLibrary>
-      </RuntimeLibrary>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <DisableSpecificWarnings>4018;4100;4152;4200;4201;4211;4204;4210;4389;4706;4146;4242</DisableSpecificWarnings>
     </ClCompile>
     <Link>
