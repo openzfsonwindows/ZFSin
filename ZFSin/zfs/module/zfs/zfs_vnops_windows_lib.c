@@ -2460,17 +2460,18 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 	standard->NumberOfLinks = 1;
 	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 		struct vnode *vp = IrpSp->FileObject->FsContext;
-		VN_HOLD(vp);
-		znode_t *zp = VTOZ(vp);
-		standard->Directory = vnode_isdir(vp) ? TRUE : FALSE;
-		//         sa_object_size(zp->z_sa_hdl, &blksize, &nblks);
-		uint64_t blk = zfs_blksz(zp);
-		standard->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size ? zp->z_size : 1, blk);  // space taken on disk, multiples of block size
-		//standard->AllocationSize.QuadPart = zp->z_size;  // space taken on disk, multiples of block size
-		standard->EndOfFile.QuadPart = vnode_isdir(vp) ? 0 : zp->z_size;       // byte size of file
-		standard->NumberOfLinks = zp->z_links;
-		standard->DeletePending = vnode_deleteonclose(vp) ? TRUE : FALSE;
-		VN_RELE(vp);
+		if (VN_HOLD(vp) == 0) {
+			znode_t *zp = VTOZ(vp);
+			standard->Directory = vnode_isdir(vp) ? TRUE : FALSE;
+			//         sa_object_size(zp->z_sa_hdl, &blksize, &nblks);
+			uint64_t blk = zfs_blksz(zp);
+			standard->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size ? zp->z_size : 1, blk);  // space taken on disk, multiples of block size
+			//standard->AllocationSize.QuadPart = zp->z_size;  // space taken on disk, multiples of block size
+			standard->EndOfFile.QuadPart = vnode_isdir(vp) ? 0 : zp->z_size;       // byte size of file
+			standard->NumberOfLinks = zp->z_links;
+			standard->DeletePending = vnode_deleteonclose(vp) ? TRUE : FALSE;
+			VN_RELE(vp);
+		}
 		dprintf("Returning size %llu and allocsize %llu\n",
 			standard->EndOfFile.QuadPart, standard->AllocationSize.QuadPart);
 		Irp->IoStatus.Information = sizeof(FILE_STANDARD_INFORMATION);
@@ -3550,6 +3551,530 @@ NTSTATUS ioctl_mountdev_query_stable_guid(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 	Irp->IoStatus.Information = sizeof(MOUNTDEV_STABLE_GUID);
 	return STATUS_SUCCESS;
 }
+
+
+/* FastIO support */
+
+
+static BOOLEAN __stdcall fastio_check_if_possible(PFILE_OBJECT FileObject, PLARGE_INTEGER FileOffset, ULONG Length, BOOLEAN Wait,
+	ULONG LockKey, BOOLEAN CheckForReadOperation, PIO_STATUS_BLOCK IoStatus,
+	PDEVICE_OBJECT DeviceObject) 
+{
+	vnode_t *vp = FileObject->FsContext;
+	LARGE_INTEGER quadlen;
+
+	quadlen.QuadPart = Length;
+
+	if (CheckForReadOperation) {
+		if (FsRtlFastCheckLockForRead(&vp->lock, FileOffset, &quadlen, LockKey, FileObject, PsGetCurrentProcess()))
+			return TRUE;
+	}
+	else {
+		if (/*!vp->Vcb->readonly && !is_subvol_readonly(vp->subvol, NULL) && */  // FIXME, readonly
+			FsRtlFastCheckLockForWrite(&vp->lock, FileOffset, &quadlen, LockKey, FileObject, PsGetCurrentProcess()))
+			return TRUE;
+	}
+
+	return FALSE;
+}
+
+static BOOLEAN __stdcall fastio_write(PFILE_OBJECT FileObject, PLARGE_INTEGER FileOffset, 
+	ULONG Length, BOOLEAN Wait, ULONG LockKey, PVOID Buffer, PIO_STATUS_BLOCK IoStatus, 
+	PDEVICE_OBJECT DeviceObject) 
+{
+	vnode_t *vp = FileObject->FsContext;
+	BOOLEAN ret;
+
+#if 0
+	if (!ExAcquireResourceSharedLite(&fcb->Vcb->tree_lock, Wait))
+		return false;
+#endif
+
+	if (!ExAcquireResourceExclusiveLite(vp->FileHeader.Resource, Wait)) {
+//		ExReleaseResourceLite(&vp->Vcb->tree_lock);
+		return FALSE;
+	}
+
+	ret = FsRtlCopyWrite(FileObject, FileOffset, Length, Wait, LockKey, Buffer, IoStatus, DeviceObject);
+
+//	if (ret)
+//		vp->inode_item.st_size = fcb->Header.FileSize.QuadPart;
+
+	ExReleaseResourceLite(vp->FileHeader.Resource);
+//	ExReleaseResourceLite(&fcb->Vcb->tree_lock);
+
+	return ret;
+}
+
+// It would perhaps be re-use the query_basic_info() call above, if some of the
+// IrpSp is moved out of it.
+static BOOLEAN __stdcall fastio_query_basic_info(PFILE_OBJECT FileObject, BOOLEAN wait, 
+	PFILE_BASIC_INFORMATION fbi, PIO_STATUS_BLOCK IoStatus, PDEVICE_OBJECT DeviceObject) 
+{
+	vnode_t *vp;
+	zfs_dirlist_t *ccb;
+
+	FsRtlEnterFileSystem();
+
+	dprintf("%s: \n", __func__);
+
+	if (!FileObject) {
+		FsRtlExitFileSystem();
+		return FALSE;
+	}
+
+	vp = FileObject->FsContext;
+
+	if (!vp) {
+		FsRtlExitFileSystem();
+		return FALSE;
+	}
+
+#if 0
+	// Only dirs have ccb for us, perhaps this is a mistake?
+	ccb = FileObject->FsContext2;
+
+	if (!ccb) {
+		FsRtlExitFileSystem();
+		return false;
+	}
+
+	if (!(ccb->access & (FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES))) {
+		FsRtlExitFileSystem();
+		return false;
+	}
+
+	// handle streams as well
+	if (vp->ads) {
+		if (!ccb->fileref || !ccb->fileref->parent || !ccb->fileref->parent->fcb) {
+			FsRtlExitFileSystem();
+			return false;
+		}
+
+		fcb = ccb->fileref->parent->fcb;
+	}
+#endif
+
+	if (!ExAcquireResourceSharedLite(vp->FileHeader.Resource, wait)) {
+		FsRtlExitFileSystem();
+		return FALSE;
+	}
+
+	if (VN_HOLD(vp) == 0) {
+		znode_t *zp = VTOZ(vp);
+		zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+		sa_bulk_attr_t bulk[3];
+		int count = 0;
+		uint64_t mtime[2];
+		uint64_t ctime[2];
+		uint64_t crtime[2];
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
+		sa_bulk_lookup(zp->z_sa_hdl, bulk, count);
+
+		TIME_UNIX_TO_WINDOWS(mtime, fbi->LastWriteTime.QuadPart);
+		TIME_UNIX_TO_WINDOWS(ctime, fbi->ChangeTime.QuadPart);
+		TIME_UNIX_TO_WINDOWS(crtime, fbi->CreationTime.QuadPart);
+		TIME_UNIX_TO_WINDOWS(zp->z_atime, fbi->LastAccessTime.QuadPart);
+
+		fbi->FileAttributes = zfs_getwinflags(zp);
+		VN_RELE(vp);
+
+		IoStatus->Status = STATUS_SUCCESS;
+		IoStatus->Information = sizeof(FILE_BASIC_INFORMATION);
+	} else {
+		IoStatus->Status = STATUS_INVALID_PARAMETER;
+		IoStatus->Information = 0;
+	}
+
+	ExReleaseResourceLite(vp->FileHeader.Resource);
+	FsRtlExitFileSystem();
+	return TRUE;
+}
+
+static BOOLEAN __stdcall fastio_query_standard_info(PFILE_OBJECT FileObject, 
+	BOOLEAN wait, PFILE_STANDARD_INFORMATION fsi, PIO_STATUS_BLOCK IoStatus, 
+	PDEVICE_OBJECT DeviceObject) 
+{
+	vnode_t *vp;
+	zfs_dirlist_t *ccb;
+	BOOLEAN ads;
+	ULONG adssize;
+
+	FsRtlEnterFileSystem();
+
+	dprintf("%s: \n", __func__);
+
+	if (!FileObject) {
+		FsRtlExitFileSystem();
+		return FALSE;
+	}
+
+	vp = FileObject->FsContext;
+	ccb = FileObject->FsContext2;
+
+	if (!vp) {
+		FsRtlExitFileSystem();
+		return FALSE;
+	}
+
+	if (!ExAcquireResourceSharedLite(vp->FileHeader.Resource, wait)) {
+		FsRtlExitFileSystem();
+		return FALSE;
+	}
+
+#if 0
+	// TODO handle streams
+	ads = fcb->ads;
+
+	if (ads) {
+		struct _fcb* fcb2;
+
+		if (!ccb || !ccb->fileref || !ccb->fileref->parent || !ccb->fileref->parent->fcb) {
+			ExReleaseResourceLite(fcb->Header.Resource);
+			FsRtlExitFileSystem();
+			return false;
+		}
+
+		adssize = fcb->adsdata.Length;
+
+		fcb2 = ccb->fileref->parent->fcb;
+
+		ExReleaseResourceLite(fcb->Header.Resource);
+
+		fcb = fcb2;
+
+		if (!ExAcquireResourceSharedLite(fcb->Header.Resource, wait)) {
+			FsRtlExitFileSystem();
+			return false;
+		}
+
+		fsi->AllocationSize.QuadPart = fsi->EndOfFile.QuadPart = adssize;
+		fsi->NumberOfLinks = fcb->inode_item.st_nlink;
+		fsi->Directory = false;
+	}
+	else {
+		fsi->AllocationSize.QuadPart = fcb_alloc_size(fcb);
+		fsi->EndOfFile.QuadPart = S_ISDIR(fcb->inode_item.st_mode) ? 0 : fcb->inode_item.st_size;
+		fsi->NumberOfLinks = fcb->inode_item.st_nlink;
+		fsi->Directory = S_ISDIR(fcb->inode_item.st_mode);
+	}
+#endif
+
+	if (VN_HOLD(vp) == 0) {
+		znode_t *zp = VTOZ(vp);
+		fsi->Directory = vnode_isdir(vp) ? TRUE : FALSE;
+		uint64_t blk = zfs_blksz(zp);
+		fsi->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size ? zp->z_size : 1, blk);  // space taken on disk, multiples of block size
+		fsi->EndOfFile.QuadPart = vnode_isdir(vp) ? 0 : zp->z_size;       // byte size of file
+		fsi->NumberOfLinks = zp->z_links;
+		fsi->DeletePending = vnode_deleteonclose(vp) ? TRUE : FALSE;
+		VN_RELE(vp);
+	}
+
+	IoStatus->Status = STATUS_SUCCESS;
+	IoStatus->Information = sizeof(FILE_STANDARD_INFORMATION);
+
+	ExReleaseResourceLite(vp->FileHeader.Resource);
+
+	FsRtlExitFileSystem();
+
+	return TRUE;
+}
+
+#define fastio_possible(vp) (!FsRtlAreThereCurrentFileLocks(&vp->lock) /*&& !fcb->Vcb->readonly */ ? FastIoIsPossible : FastIoIsQuestionable)
+
+static BOOLEAN __stdcall fastio_lock(PFILE_OBJECT FileObject, PLARGE_INTEGER FileOffset, 
+	PLARGE_INTEGER Length, PEPROCESS ProcessId,	ULONG Key, BOOLEAN FailImmediately, 
+	BOOLEAN ExclusiveLock, PIO_STATUS_BLOCK IoStatus, PDEVICE_OBJECT DeviceObject) 
+{
+	BOOLEAN ret;
+	vnode_t *vp = FileObject->FsContext;
+
+	dprintf("%s: \n", __func__);
+
+	if (!vnode_isreg(vp)) {
+		dprintf("%s: can only lock files\n", __func__);
+		IoStatus->Status = STATUS_INVALID_PARAMETER;
+		IoStatus->Information = 0;
+		return TRUE;
+	}
+
+	FsRtlEnterFileSystem();
+	ExAcquireResourceSharedLite(vp->FileHeader.Resource, TRUE);
+
+	ret = FsRtlFastLock(&vp->lock, FileObject, FileOffset, Length, ProcessId, Key, FailImmediately,
+		ExclusiveLock, IoStatus, NULL, FALSE);
+
+	if (ret)
+		vp->FileHeader.IsFastIoPossible = fastio_possible(vp);
+
+	ExReleaseResourceLite(vp->FileHeader.Resource);
+	FsRtlExitFileSystem();
+
+	return ret;
+}
+
+static BOOLEAN __stdcall fastio_unlock_single(PFILE_OBJECT FileObject, PLARGE_INTEGER FileOffset,
+	PLARGE_INTEGER Length, PEPROCESS ProcessId,	ULONG Key, PIO_STATUS_BLOCK IoStatus, PDEVICE_OBJECT DeviceObject) 
+{
+	vnode_t *vp = FileObject->FsContext;
+
+	dprintf("%s: \n", __func__);
+
+	IoStatus->Information = 0;
+
+	if (!vnode_isreg(vp)) {
+		dprintf("%s: can only lock files\n", __func__);
+		IoStatus->Status = STATUS_INVALID_PARAMETER;
+		return TRUE;
+	}
+
+	FsRtlEnterFileSystem();
+
+	IoStatus->Status = FsRtlFastUnlockSingle(&vp->lock, FileObject, FileOffset, Length, ProcessId, Key, NULL, FALSE);
+
+	vp->FileHeader.IsFastIoPossible = fastio_possible(vp);
+
+	FsRtlExitFileSystem();
+
+	return TRUE;
+}
+
+static BOOLEAN __stdcall fastio_unlock_all(PFILE_OBJECT FileObject, PEPROCESS ProcessId, 
+	PIO_STATUS_BLOCK IoStatus, PDEVICE_OBJECT DeviceObject)
+{
+	vnode_t *vp = FileObject->FsContext;
+
+	dprintf("%s: \n", __func__);
+
+	IoStatus->Information = 0;
+
+	if (!vnode_isreg(vp)) {
+		dprintf("%s: can only lock files\n", __func__);
+		IoStatus->Status = STATUS_INVALID_PARAMETER;
+		return TRUE;
+	}
+
+	FsRtlEnterFileSystem();
+
+	ExAcquireResourceSharedLite(vp->FileHeader.Resource, TRUE);
+
+	IoStatus->Status = FsRtlFastUnlockAll(&vp->lock, FileObject, ProcessId, NULL);
+
+	vp->FileHeader.IsFastIoPossible = fastio_possible(vp);
+
+	ExReleaseResourceLite(vp->FileHeader.Resource);
+
+	FsRtlExitFileSystem();
+
+	return TRUE;
+}
+
+static BOOLEAN __stdcall fastio_unlock_all_by_key(PFILE_OBJECT FileObject, PVOID ProcessId,
+	ULONG Key, PIO_STATUS_BLOCK IoStatus, PDEVICE_OBJECT DeviceObject)
+{
+	vnode_t *vp = FileObject->FsContext;
+
+	dprintf("%s: \n", __func__);
+
+	IoStatus->Information = 0;
+
+	if (!vnode_isreg(vp)) {
+		dprintf("%s: can only lock files\n", __func__);
+		IoStatus->Status = STATUS_INVALID_PARAMETER;
+		return TRUE;
+	}
+
+	FsRtlEnterFileSystem();
+
+	ExAcquireResourceSharedLite(vp->FileHeader.Resource, TRUE);
+
+	IoStatus->Status = FsRtlFastUnlockAllByKey(&vp->lock, FileObject, ProcessId, Key, NULL);
+
+	vp->FileHeader.IsFastIoPossible = fastio_possible(vp);
+
+	ExReleaseResourceLite(vp->FileHeader.Resource);
+
+	FsRtlExitFileSystem();
+
+	return TRUE;
+}
+
+static BOOLEAN __stdcall fastio_query_network_open_info(PFILE_OBJECT FileObject, 
+	BOOLEAN Wait, FILE_NETWORK_OPEN_INFORMATION *fnoi, PIO_STATUS_BLOCK IoStatus, 
+	PDEVICE_OBJECT DeviceObject) 
+{
+	vnode_t *vp;
+	zfs_dirlist_t *ccb;
+
+	FsRtlEnterFileSystem();
+
+	dprintf("%s: \n", __func__);
+
+	RtlZeroMemory(fnoi, sizeof(FILE_NETWORK_OPEN_INFORMATION));
+
+	vp = FileObject->FsContext;
+
+	if (!vp /*|| fcb == fcb->Vcb->volume_fcb*/ ) {
+		FsRtlExitFileSystem();
+		return FALSE;
+	}
+
+	ccb = FileObject->FsContext2;
+
+#if 0
+	if (!ccb) {
+		FsRtlExitFileSystem();
+		return false;
+	}
+#endif
+
+	// fileref = ccb->fileref;
+
+	// FIXME, handle streams
+#if 0
+	if (fcb->ads) {
+			if (!fileref || !fileref->parent) {
+				ERR("no fileref for stream\n");
+				FsRtlExitFileSystem();
+				return false;
+			}
+
+			ii = &fileref->parent->fcb->inode_item;
+		}
+		else
+			ii = &fcb->inode_item;
+#endif
+
+	if (VN_HOLD(vp) == 0) {
+		znode_t *zp = VTOZ(vp);
+		zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+		sa_bulk_attr_t bulk[3];
+		int count = 0;
+		uint64_t mtime[2];
+		uint64_t ctime[2];
+		uint64_t crtime[2];
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_MTIME(zfsvfs), NULL, &mtime, 16);
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CTIME(zfsvfs), NULL, &ctime, 16);
+		SA_ADD_BULK_ATTR(bulk, count, SA_ZPL_CRTIME(zfsvfs), NULL, &crtime, 16);
+		sa_bulk_lookup(zp->z_sa_hdl, bulk, count);
+
+		TIME_UNIX_TO_WINDOWS(mtime, fnoi->LastWriteTime.QuadPart);
+		TIME_UNIX_TO_WINDOWS(ctime, fnoi->ChangeTime.QuadPart);
+		TIME_UNIX_TO_WINDOWS(crtime, fnoi->CreationTime.QuadPart);
+		TIME_UNIX_TO_WINDOWS(zp->z_atime, fnoi->LastAccessTime.QuadPart);
+		fnoi->AllocationSize.QuadPart = P2ROUNDUP(zp->z_size, zfs_blksz(zp));
+		fnoi->EndOfFile.QuadPart = vnode_isdir(vp) ? 0 : zp->z_size;
+		fnoi->FileAttributes = zfs_getwinflags(zp);
+		VN_RELE(vp);
+	}
+
+	FsRtlExitFileSystem();
+
+	return TRUE;
+}
+
+static NTSTATUS __stdcall fastio_acquire_for_mod_write(PFILE_OBJECT FileObject, 
+	PLARGE_INTEGER EndingOffset, struct _ERESOURCE **ResourceToRelease, PDEVICE_OBJECT DeviceObject) 
+{
+	vnode_t *vp;
+
+	dprintf("%s: \n", __func__);
+
+	vp = FileObject->FsContext;
+
+	if (!vp)
+		return STATUS_INVALID_PARAMETER;
+
+	// Make sure we don't get interrupted by the flush thread, which can cause a deadlock
+#if 0
+	if (!ExAcquireResourceSharedLite(&vp->Vcb->tree_lock, false))
+		return STATUS_CANT_WAIT;
+#endif
+
+	if (!ExAcquireResourceExclusiveLite(vp->FileHeader.Resource, FALSE)) {
+		//ExReleaseResourceLite(&fcb->Vcb->tree_lock);
+		dprintf("%s: returning STATUS_CANT_WAIT\n", __func__);
+		return STATUS_CANT_WAIT;
+	}
+
+	// Ideally this would be PagingIoResource, but that doesn't play well with copy-on-write,
+	// as we can't guarantee that we won't need to do any reallocations.
+
+	*ResourceToRelease = vp->FileHeader.Resource;
+
+	dprintf("%s: returning STATUS_SUCCESS\n", __func__);
+
+	return STATUS_SUCCESS;
+}
+
+static NTSTATUS __stdcall fastio_release_for_mod_write(PFILE_OBJECT FileObject, 
+	struct _ERESOURCE *ResourceToRelease, PDEVICE_OBJECT DeviceObject) 
+{
+	vnode_t *vp;
+
+	dprintf("%s:\n", __func__);
+
+	vp = FileObject->FsContext;
+
+	ExReleaseResourceLite(ResourceToRelease);
+
+	//ExReleaseResourceLite(&fcb->Vcb->tree_lock);
+	return STATUS_SUCCESS;
+}
+
+static NTSTATUS __stdcall fastio_acquire_for_ccflush(PFILE_OBJECT FileObject, 
+	PDEVICE_OBJECT DeviceObject) 
+{
+
+	IoSetTopLevelIrp((PIRP)FSRTL_CACHE_TOP_LEVEL_IRP);
+
+	return STATUS_SUCCESS;
+}
+
+static NTSTATUS __stdcall fastio_release_for_ccflush(PFILE_OBJECT FileObject, 
+	PDEVICE_OBJECT DeviceObject) 
+{
+
+	if (IoGetTopLevelIrp() == (PIRP)FSRTL_CACHE_TOP_LEVEL_IRP)
+		IoSetTopLevelIrp(NULL);
+
+	return STATUS_SUCCESS;
+}
+
+static FAST_IO_DISPATCH FastIoDispatch;
+
+void fastio_init(FAST_IO_DISPATCH **fast)
+{
+	RtlZeroMemory(&FastIoDispatch, sizeof(FastIoDispatch));
+	FastIoDispatch.SizeOfFastIoDispatch = sizeof(FAST_IO_DISPATCH);
+
+	FastIoDispatch.FastIoCheckIfPossible = fastio_check_if_possible;
+	FastIoDispatch.FastIoRead = FsRtlCopyRead;
+	FastIoDispatch.FastIoWrite = fastio_write;
+	FastIoDispatch.FastIoQueryBasicInfo = fastio_query_basic_info;
+	FastIoDispatch.FastIoQueryStandardInfo = fastio_query_standard_info;
+	FastIoDispatch.FastIoLock = fastio_lock;
+	FastIoDispatch.FastIoUnlockSingle = fastio_unlock_single;
+	FastIoDispatch.FastIoUnlockAll = fastio_unlock_all;
+	FastIoDispatch.FastIoUnlockAllByKey = fastio_unlock_all_by_key;
+	FastIoDispatch.FastIoQueryNetworkOpenInfo = fastio_query_network_open_info;
+	FastIoDispatch.AcquireForModWrite = fastio_acquire_for_mod_write;
+	FastIoDispatch.MdlRead = FsRtlMdlReadDev;
+	FastIoDispatch.MdlReadComplete = FsRtlMdlReadCompleteDev;
+	FastIoDispatch.PrepareMdlWrite = FsRtlPrepareMdlWriteDev;
+	FastIoDispatch.MdlWriteComplete = FsRtlMdlWriteCompleteDev;
+	FastIoDispatch.ReleaseForModWrite = fastio_release_for_mod_write;
+	FastIoDispatch.AcquireForCcFlush = fastio_acquire_for_ccflush;
+	FastIoDispatch.ReleaseForCcFlush = fastio_release_for_ccflush;
+
+	*fast = &FastIoDispatch;
+	dprintf("Using FASTIO\n");
+}
+
+
 
 // FFFF9284A054B080: * user_fs_request: unknown class 0x903bc:  CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 238,
 

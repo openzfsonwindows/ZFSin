@@ -2849,7 +2849,7 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 	if (path[0] == '#') {
 		uint64_t offset;
 		uint64_t len;
-		char *end = NULL;
+		const char *end = NULL;
 
 		end = path;
 		while (end && *end == '#') end++;

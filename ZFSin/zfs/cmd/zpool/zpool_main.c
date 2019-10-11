@@ -4327,7 +4327,7 @@ static int
 get_columns(void)
 {
 	CONSOLE_SCREEN_BUFFER_INFO csbi;
-	int columns, rows;
+	int columns /*, rows*/;
 
 	csbi.srWindow.Right = 1;
 	csbi.srWindow.Left = 80;
