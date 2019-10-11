@@ -1,4 +1,7 @@
 
+[![Build status](https://ci.appveyor.com/api/projects/status/dcw734sl0prmolwr/branch/master?svg=true)](https://ci.appveyor.com/project/lundman/zfsin/branch/master)
+
+
 # To setup a development environment for compiling ZFS.
 
 
