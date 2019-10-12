@@ -34,9 +34,11 @@ OutputDir={#SourcePath}\..
 ChangesEnvironment=true
 WizardSmallImageFile="{#SourcePath}\Small.bmp"
 WizardImageFile="{#SourcePath}\Large.bmp"
-; Tools/Configure Sign Tools -> Add -> "signtool" = "signtool.exe $p"
-SignTool=signtool sign /sha1 ab8e4f6b94cecfa4638847122b511e507e147c50 /n $qJoergen Lundman$q /t http://timestamp.digicert.com /fd sha1 /d $qOpenZFS on Windows$q $f
-SignTool=signtool sign /sha1 ab8e4f6b94cecfa4638847122b511e507e147c50 /as /n $qJoergen Lundman$q /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d $qOpenZFS on Windows$q $f
+; Tools/Configure Sign Tools -> Add -> 
+; "signtoola" = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\signtool.exe sign /sha1 ab8e4f6b94cecfa4638847122b511e507e147c50 /n $qJoergen Lundman$q /t http://timestamp.digicert.com /fd sha1 /d $qOpenZFS on Windows$q $f"
+; "signtoolb" = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\signtool.exe sign /sha1 ab8e4f6b94cecfa4638847122b511e507e147c50 /as /n $qJoergen Lundman$q /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d $qOpenZFS on Windows$q $f"
+SignTool=signtoola
+SignTool=signtoolb
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -68,7 +70,7 @@ Source: "{#SourcePath}\..\ZFSin.cer"; DestDir: "{app}"; Flags: ignoreversion
 ;Source: "{#SourcePath}\..\ZFSin\ZFSin.inf"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\HowToDebug.txt"; DestDir: "{app}"; Flags: ignoreversion  
 Source: "{#SourcePath}\..\x64\Debug\*.pdb"; DestDir: "{app}\symbols"; Flags: ignoreversion  
-Source: "{#SourcePath}\..\vcruntime140d.dll"; DestDir: "{app}"; Flags: ignoreversion  
+;Source: "{#SourcePath}\..\vcruntime140d.dll"; DestDir: "{app}"; Flags: ignoreversion  
 
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
