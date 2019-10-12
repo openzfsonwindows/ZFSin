@@ -1093,7 +1093,7 @@ typedef struct rdsk_node {
 	char *rn_parent;
 #endif
 	int rn_num_labels;
-	HANDLE rn_dfd;
+	int rn_dfd;
 	libzfs_handle_t *rn_hdl;
 	nvlist_t *rn_config;
 	avl_tree_t *rn_avl;
@@ -1292,6 +1292,7 @@ void signal_alarm(int foo)
 }
 #endif
 
+#ifndef _WIN32
 static void
 zpool_open_func(void *arg)
 {
@@ -1452,7 +1453,9 @@ fprintf(stderr, "%s: enter\n", __func__); fflush(stderr);
 	rn->rn_config = config;
 	rn->rn_num_labels = num_labels;
 }
+#endif
 
+// Should probably rename this, and only define one.
 static void
 zpool_open_func_win(void *arg)
 {
@@ -1560,7 +1563,7 @@ zpool_open_func_win(void *arg)
 		* Try to read the disk label first so we don't have to
 		* open a bunch of minor nodes that can't have a zpool.
 		*/
-		check_slices(rn->rn_avl, fd, rn->rn_name);
+		check_slices(rn->rn_avl, HTOI(fd), rn->rn_name);
 	}
 
 	if ((zpool_read_label_win(fd, drive_len, &config, &num_labels)) != 0) {
@@ -1585,7 +1588,7 @@ zpool_open_func_win(void *arg)
  * Given a file descriptor, clear (zero) the label information.
  */
 int
-zpool_clear_label(HANDLE fd)
+zpool_clear_label(int fd)
 {
 	struct _stat64 statbuf;
 	int l;
@@ -1833,7 +1836,7 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 			slice->rn_name = zfs_strdup(hdl, name);
 			slice->rn_parent = zfs_strdup(hdl, path);
 			slice->rn_avl = &slice_cache;
-			slice->rn_dfd = dfd;
+			slice->rn_dfd = HTOI(dfd);
 			slice->rn_hdl = hdl;
 			slice->rn_nozpool = B_FALSE;
 			avl_add(&slice_cache, slice);

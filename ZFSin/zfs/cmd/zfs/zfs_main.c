@@ -2587,7 +2587,7 @@ userspace_cb(void *arg, const char *domain, uid_t rid, uint64_t space)
 	if ((cb->cb_numname && cb->cb_sid2posix) || name == NULL) {
 		if (nvlist_add_uint64(props, "name", rid) != 0)
 			nomem();
-		namelen = snprintf(NULL, 0, "%u", rid);
+		namelen = snprintf(NULL, 0, "%llu", rid);
 	} else {
 		if (nvlist_add_string(props, "name", name) != 0)
 			nomem();
@@ -4014,7 +4014,7 @@ zfs_do_send(int argc, char **argv)
 		}
 	}
 
-	if (!flags.dryrun && win_isatty(STDOUT_FILENO)) {
+	if (!flags.dryrun && isatty(STDOUT_FILENO)) {
 		(void) fprintf(stderr,
 		    gettext("Error: Stream can not be written to a terminal.\n"
 		    "You must redirect standard output.\n"));
@@ -4267,7 +4267,7 @@ zfs_do_receive(int argc, char **argv)
 	}
 
 
-	if (win_isatty(STDIN_FILENO)) {
+	if (isatty(STDIN_FILENO)) {
 		(void) fprintf(stderr,
 		    gettext("Error: Backup stream can not be read "
 		    "from a terminal.\n"
@@ -5334,7 +5334,7 @@ construct_fsacl_list(boolean_t un, struct allow_opts *opts, nvlist_t **nvlp)
 				}
 			}
 
-			(void) sprintf(id, "%u", rid);
+			(void) sprintf(id, "%llu", rid);
 			who = id;
 
 			store_allow_perm(who_type, opts->local,
@@ -7116,7 +7116,7 @@ manual_mount(int argc, char **argv)
 	/* check for legacy mountpoint and complain appropriately */
 	ret = 0;
 	if (strcmp(mountpoint, ZFS_MOUNTPOINT_LEGACY) == 0) {
-		if (zmount(dataset, path, MS_OPTIONSTR | flags, MNTTYPE_ZFS,
+		if (zmount(zhp, path, MS_OPTIONSTR | flags, MNTTYPE_ZFS,
 		    NULL, 0, mntopts, sizeof (mntopts)) != 0) {
 #ifdef __APPLE__
 			if (errno == ENOTSUP && zfs_version > ZPL_VERSION) {

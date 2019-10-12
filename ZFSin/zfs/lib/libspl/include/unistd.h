@@ -49,10 +49,7 @@ extern int	optopt;
 extern int	optreset;
 extern char	*optarg;
 
-int fdatasync(int fd);
-
 #include <stdarg.h>
-#define ftruncate _chsize_s
 #include <io.h>
 #include <direct.h>
 
@@ -64,24 +61,18 @@ size_t strlcat(register char* s, register const char* t, register size_t n);
 
 ssize_t getline(char** linep, size_t *linecapp, FILE* stream);
 
-int pread(int fd, void* buf, size_t nbyte, off_t offset);
 int pread_win(HANDLE h, void* buf, size_t nbyte, off_t offset);
-int pwrite(HANDLE h, const void* buf, size_t nbyte, off_t offset);
-int fstat_blk(int fd, struct _stat64* st);
 int pipe(int fildes[2]);
 char* realpath(const char* file_name, char* resolved_name);
-int win_isatty(uintptr_t h);
 int usleep(__int64 usec);
 int vasprintf(char** strp, const char* fmt, va_list ap);
 int asprintf(char** strp, const char* fmt, ...);
 int strncasecmp(char* s1, char* s2, size_t n);
-int socketpair(int* sv);
 int readlink(const char* path, char* buf, size_t bufsize);
 const char* getexecname(void);
 uint64_t geteuid(void);
 
 struct zfs_cmd;
-int ioctl(HANDLE hDevice, unsigned long request, struct zfs_cmd *zc);
 int mkstemp(char* tmpl);
 int64_t gethrtime(void);
 int gettimeofday(struct timeval* tp, struct timezone* tzp);

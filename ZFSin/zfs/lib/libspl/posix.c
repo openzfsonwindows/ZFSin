@@ -48,14 +48,7 @@ int posix_memalign(void **memptr, size_t alignment, size_t size)
 	return 0;
 }
 
-int fsync(int fd) {
-	HANDLE h = (HANDLE)_get_osfhandle(fd); 
-	if (!FlushFileBuffers(h)) 
-		return EIO; 
-	return 0; 
-}
-
-const char* getexecname(void)
+const char *getexecname(void)
 {
 	__declspec(thread) static char execname[32767 + 1];
 	GetModuleFileNameA(NULL, execname, sizeof(execname));
@@ -123,93 +116,6 @@ char *realpath(const char *file_name, char *resolved_name)
 		return NULL;
 
 	return resolved_name;
-}
-
-int pread(int fd, void *buf, size_t nbyte, off_t offset)
-{
-	uint64_t off;
-	int red;
-
-	off = _lseek(fd, 0, SEEK_CUR);
-	if (_lseek(fd, offset, SEEK_SET) != offset)
-		return -1;
-
-	red = read(fd, buf, nbyte);
-
-	_lseek(fd, off, SEEK_SET);
-
-	return red;
-}
-
-int pread_win(HANDLE h, void *buf, size_t nbyte, off_t offset)
-{
-	uint64_t off;
-	DWORD red;
-	LARGE_INTEGER large;
-	LARGE_INTEGER lnew;
-
-	// This code does all seeks based on "current" so we can pre-seek to offset start
-
-	// Find current position
-	large.QuadPart = 0;
-	SetFilePointerEx(h, large, &lnew, FILE_CURRENT);
-
-	// Seek to place to read
-	large.QuadPart = offset;
-	SetFilePointerEx(h, large, NULL, FILE_CURRENT);
-
-	// Read
-	if (!ReadFile(h, buf, nbyte, &red, NULL))
-		red = -GetLastError();
-
-	// Restore position
-	SetFilePointerEx(h, lnew, NULL, FILE_BEGIN);
-
-	return red;
-}
-
-int pwrite(HANDLE h, const void *buf, size_t nbyte, off_t offset)
-{
-	uint64_t off;
-	DWORD wrote;
-	LARGE_INTEGER large;
-	LARGE_INTEGER lnew;
-
-	// This code does all seeks based on "current" so we can pre-seek to offset start
-
-	// Find current position
-	large.QuadPart = 0;
-	SetFilePointerEx(h, large, &lnew, FILE_CURRENT);
-
-	// Seek to place to read
-	large.QuadPart = offset;
-	SetFilePointerEx(h, large, NULL, FILE_CURRENT);
-
-	// Read
-	if (!WriteFile(h, buf, nbyte, &wrote, NULL))
-		wrote = -GetLastError();
-
-	// Restore position
-	SetFilePointerEx(h, lnew, NULL, FILE_BEGIN);
-
-	return wrote;
-}
-
-
-int fstat_blk(int fd, struct _stat64 *st)
-{
-	DISK_GEOMETRY_EX geometry_ex;
-	HANDLE handle;
-	DWORD len;
-
-	handle = (HANDLE) _get_osfhandle(fd);
-	if (!DeviceIoControl(handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
-		&geometry_ex, sizeof(geometry_ex), &len, NULL))
-		return -1;
-
-	st->st_size = (diskaddr_t)geometry_ex.DiskSize.QuadPart;
-
-	return (0);
 }
 
 int statfs(const char *path, struct statfs *buf)
@@ -331,7 +237,6 @@ mkstemp(char *tmpl)
 	errno = EEXIST;
 	return -1;
 }
-
 
 int readlink(const char *path, char *buf, size_t bufsize)
 {
@@ -461,7 +366,8 @@ basename(char *arg)
 	return(basedir(arg, BASENAME));
 }
 
-char* getIoctlAsString(int cmdNo) {
+char* getIoctlAsString(int cmdNo) 
+{
 	switch (cmdNo) {
 		case 0x800: return "ZFS_IOC_FIRST";
 		case 0x801: return "ZFS_IOC_POOL_DESTROY";
@@ -557,66 +463,11 @@ char* getIoctlAsString(int cmdNo) {
 	}
 }
 
-int ioctl(HANDLE hDevice, unsigned long request, zfs_cmd_t *zc)
-{
-	int error;
-	//HANDLE hDevice;
-	ULONG bytesReturned;
-
-	//hDevice = _get_osfhandle(fd);
-#if 0
-	fprintf(stderr, "calling ioctl on 0x%x (raw 0x%x) struct size %d in %p:%d out %p:%d\n", 
-		(request&0x2ffc) >> 2, request,
-		sizeof(zfs_cmd_t),
-		zc->zc_nvlist_src, zc->zc_nvlist_src_size,
-		zc->zc_nvlist_dst, zc->zc_nvlist_dst_size
-		); fflush(stderr);
-	strcpy(zc->zc_name, "thisisatest");
-	zc->zc_dev = 0x12345678;
-	for (int x = 0; x < 16; x++)
-		fprintf(stderr, "%02x ", ((unsigned char *)zc)[x]);
-	fprintf(stderr, "\n");
-	fflush(stderr);
-#endif
-	error = DeviceIoControl(hDevice,
-		(DWORD)request,
-		zc,
-		(DWORD)sizeof(zfs_cmd_t),
-		zc,
-		(DWORD)sizeof(zfs_cmd_t),
-		&bytesReturned,
-		NULL
-	);
-
-	if (error == 0)
-		error = GetLastError();
-	else
-		error = zc->zc_ioc_error;
-	
-#ifdef DEBUG
-	fprintf(stderr, "    (ioctl 0x%x (%s) status %d bytes %ld)\n", (request & 0x2ffc) >> 2, getIoctlAsString((request & 0x2ffc) >> 2), error, bytesReturned); fflush(stderr);
-#endif
-#if 0
-	for (int x = 0; x < 16; x++)
-		fprintf(stderr, "%02x ", ((unsigned char *)zc)[x]);
-	fprintf(stderr, "\n");
-	fflush(stderr);
-	fprintf(stderr, "returned ioctl on 0x%x (raw 0x%x) struct size %d in %p:%d out %p:%d\n",
-		(request & 0x2ffc) >> 2, request,
-		sizeof(zfs_cmd_t),
-		zc->zc_nvlist_src, zc->zc_nvlist_src_size,
-		zc->zc_nvlist_dst, zc->zc_nvlist_dst_size
-	); fflush(stderr);
-#endif
-	errno = error;
-	return error;
-}
-
 
 int vasprintf(char **strp, const char *fmt, va_list ap)
 {
 	int r = -1, size;
-	
+
 	size = _vscprintf(fmt, ap);
 
 	if ((size >= 0) && (size < INT_MAX)) {
@@ -629,7 +480,7 @@ int vasprintf(char **strp, const char *fmt, va_list ap)
 			}
 		}
 	} else {
-		*strp = 0; 
+		*strp = 0;
 	}
 
 	return(r);
@@ -755,7 +606,7 @@ openlog(const char *ident, int logopt, int facility)
 }
 
 void
-syslog(int priority, const char *message, ... )
+syslog(int priority, const char *message, ...)
 {
 
 }
@@ -784,7 +635,470 @@ unmount(const char *dir, int flags)
 	return -1;
 }
 
-int socketpair(int *sv)
+extern size_t
+strlcpy(register char* s, register const char* t, register size_t n)
+{
+	const char*     o = t;
+
+	if (n)
+		do
+		{
+			if (!--n)
+			{
+				*s = 0;
+				break;
+			}
+		} while (*s++ = *t++);
+		if (!n)
+			while (*t++);
+		return t - o - 1;
+}
+
+extern size_t
+strlcat(register char* s, register const char* t, register size_t n)
+{
+	register size_t m;
+	const char*     o = t;
+
+	if (m = n)
+	{
+		while (n && *s)
+		{
+			n--;
+			s++;
+		}
+		m -= n;
+		if (n)
+			do
+			{
+				if (!--n)
+				{
+					*s = 0;
+					break;
+				}
+			} while (*s++ = *t++);
+		else
+			*s = 0;
+	}
+	if (!n)
+		while (*t++);
+	return (t - o) + m - 1;
+}
+
+char *strndup(char *src, size_t size)
+{
+	char *r = _strdup(src);
+	if (r) {
+		r[size] = 0;
+	}
+	return r;
+}
+
+int setrlimit(int resource, const struct rlimit *rlp)
+{
+	return 0;
+}
+
+int tcgetattr(int fildes, struct termios *termios_p)
+{
+	return 0;
+}
+
+int tcsetattr(int fildes, int optional_actions,
+	const struct termios *termios_p)
+{
+	return 0;
+}
+
+// Not really getline, just used for password input in libzfs_crypto.c
+#define MAX_GETLINE 128
+ssize_t getline(char **linep, size_t* linecapp,
+	FILE *stream)
+{
+	static char getpassbuf[MAX_GETLINE + 1];
+	size_t i = 0;
+
+	// This does not work in bash, it echos the password, find
+	// a solution for it too
+	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+	DWORD mode = 0;
+	GetConsoleMode(hStdin, &mode);
+	SetConsoleMode(hStdin, mode & (~ENABLE_ECHO_INPUT));
+
+	int c;
+	for (;;)
+	{
+		c = getc(stream);
+		if ((c == '\r') || (c == '\n'))
+		{
+			getpassbuf[i] = '\0';
+			break;
+		}
+		else if (i < MAX_GETLINE)
+		{
+			getpassbuf[i++] = c;
+		}
+		if (i >= MAX_GETLINE)
+		{
+			getpassbuf[i] = '\0';
+			break;
+		}
+	}
+
+	if (linep) *linep = strdup(getpassbuf);
+	if (linecapp) *linecapp = 1;
+
+	SetConsoleMode(hStdin, mode);
+
+	return i;
+}
+
+
+/* Windows POSIX wrappers */
+
+
+int wosix_fsync(int fd)
+{
+	if (!FlushFileBuffers(ITOH(fd)))
+		return EIO;
+	return 0;
+}
+
+int wosix_open(const char *path, int oflag, ...)
+{
+	HANDLE h;
+	DWORD mode = GENERIC_READ; // RDONLY=0, WRONLY=1, RDWR=2;
+	DWORD how = OPEN_EXISTING;
+	DWORD share = FILE_SHARE_READ;
+	// This is wrong, not all bitfields
+	if (oflag&O_WRONLY) mode = GENERIC_WRITE;
+	if (oflag&O_RDWR)   mode = GENERIC_READ | GENERIC_WRITE;
+
+	switch (oflag&(O_CREAT | O_TRUNC | O_EXCL)) {
+	case O_CREAT:
+		how = OPEN_ALWAYS;
+		break;
+	case O_TRUNC:
+		how = TRUNCATE_EXISTING;
+		break;
+	case (O_CREAT | O_EXCL):
+	case (O_CREAT | O_EXCL | O_TRUNC): // Only creating new implies starting from 0
+		how = CREATE_NEW;
+		break;
+	case (O_CREAT | O_TRUNC):
+		how = CREATE_ALWAYS;
+		break;
+	default:
+	case O_EXCL: // Invalid, ignore bit - treat as normal open
+		how = OPEN_EXISTING;
+		break;
+	}
+	if (oflag&O_APPEND) mode |= FILE_APPEND_DATA;
+
+#ifdef O_EXLOCK
+	if (!oflag&O_EXLOCK) share |= FILE_SHARE_WRITE;
+#endif
+
+	h = CreateFile(path, mode, share, NULL, how, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (h == INVALID_HANDLE_VALUE) {
+		errno = EINVAL;
+		switch (GetLastError()) {
+		case ERROR_FILE_NOT_FOUND:
+		case ERROR_PATH_NOT_FOUND:
+			errno = ENOENT;
+			break;
+		case ERROR_ACCESS_DENIED:
+			errno = EACCES;
+			break;
+		case ERROR_FILE_EXISTS:
+			errno = EEXIST;
+			break;
+		}
+		return -1;
+	}
+	return (HTOI(h));
+}
+
+int wosix_close(int fd)
+{
+	HANDLE h = ITOH(fd);
+
+	// Use CloseHandle() for everything except sockets.
+	if ((GetFileType(h) == FILE_TYPE_REMOTE) &&
+		!GetNamedPipeInfo(h, NULL, NULL, NULL, NULL))
+		return closesocket((SOCKET)h);
+
+	if (CloseHandle(h))
+		return 0;
+	return -1;
+}
+
+int wosix_ioctl(int fd, unsigned long request, zfs_cmd_t *zc)
+{
+	int error;
+	ULONG bytesReturned;
+
+	error = DeviceIoControl(ITOH(fd),
+		(DWORD)request,
+		zc,
+		(DWORD)sizeof(zfs_cmd_t),
+		zc,
+		(DWORD)sizeof(zfs_cmd_t),
+		&bytesReturned,
+		NULL
+	);
+
+	if (error == 0)
+		error = GetLastError();
+	else
+		error = zc->zc_ioc_error;
+	
+#ifdef DEBUG
+	fprintf(stderr, "    (ioctl 0x%x (%s) status %d bytes %ld)\n", (request & 0x2ffc) >> 2, getIoctlAsString((request & 0x2ffc) >> 2), error, bytesReturned); fflush(stderr);
+#endif
+#if 0
+	for (int x = 0; x < 16; x++)
+		fprintf(stderr, "%02x ", ((unsigned char *)zc)[x]);
+	fprintf(stderr, "\n");
+	fflush(stderr);
+	fprintf(stderr, "returned ioctl on 0x%x (raw 0x%x) struct size %d in %p:%d out %p:%d\n",
+		(request & 0x2ffc) >> 2, request,
+		sizeof(zfs_cmd_t),
+		zc->zc_nvlist_src, zc->zc_nvlist_src_size,
+		zc->zc_nvlist_dst, zc->zc_nvlist_dst_size
+	); fflush(stderr);
+#endif
+	errno = error;
+	return error;
+}
+
+uint64_t wosix_lseek(int fd, uint64_t offset, int seek)
+{
+	LARGE_INTEGER LOFF, LNEW;
+	int type = FILE_BEGIN;
+
+	LOFF.QuadPart = offset;
+	switch (seek) {
+	case SEEK_SET:
+		type = FILE_BEGIN;
+		break;
+	case SEEK_CUR:
+		type = FILE_CURRENT;
+		break;
+	case SEEK_END:
+		type = FILE_END;
+		break;
+	}
+	if (!SetFilePointerEx(ITOH(fd), LOFF, &LNEW, type))
+		return -1;
+	return LNEW.QuadPart;
+}
+
+int wosix_read(int fd, void *data, uint32_t len)
+{
+	DWORD red;
+
+	if (!ReadFile(ITOH(fd), data, len, &red, NULL))
+		return -1;
+
+	return red;
+}
+
+int wosix_write(int fd, const void *data, uint32_t len)
+{
+	DWORD wrote;
+
+	if (!WriteFile(ITOH(fd), data, len, &wrote, NULL))
+		return -1;
+
+	return wrote;
+}
+
+int wosix_isatty(int fd)
+{
+	DWORD mode;
+	HANDLE h = ITOH(fd);
+	int ret;
+#if 0
+	const unsigned long bufSize = sizeof(DWORD) + MAX_PATH * sizeof(WCHAR);
+	BYTE buf[sizeof(DWORD) + MAX_PATH * sizeof(WCHAR)];
+	PFILE_NAME_INFO pfni = (PFILE_NAME_INFO)buf;
+
+	if (!GetFileInformationByHandleEx(h, FileNameInfo, buf, bufSize)) {
+		return 0;
+	}
+
+	PWSTR fn = pfni->FileName;
+	fn[pfni->FileNameLength] = L'\0';
+
+	ret = ((wcsstr(fn, L"\\cygwin-") || wcsstr(fn, L"\\msys-")) &&
+		wcsstr(fn, L"-pty") && wcsstr(fn, L"-master"));
+
+	//printf("ret %d Got name as '%S'\n", ret, fn); fflush(stdout);
+	return ret;
+#else
+
+	ret = ((GetFileType(h) & ~FILE_TYPE_REMOTE) == FILE_TYPE_CHAR);
+
+#endif
+	//fprintf(stderr, "%s: return %d\r\n", __func__, ret);
+	//fflush(stderr);
+
+	// FIXME - always say it ISN'T a tty, this way zfs send will work
+	// everywhere - the only negative side-effect is garbage printed 
+	// on console if users do something dumb.
+	return 0;
+
+	return ret;
+}
+
+// A bit different, just to wrap away the second argument
+// Presumably _mkdir() sets errno, as EEXIST is tested.
+int wosix_mkdir(const char *path, mode_t mode)
+{
+	return _mkdir(path);
+}
+
+// Only fill in what we actually use in ZFS
+// Mostly used to test for existance, st_mode, st_size
+// also FIFO and BLK (fixme)
+int wosix_fstat(int fd, struct _stat64 *st)
+{
+	HANDLE h = ITOH(fd);
+	BY_HANDLE_FILE_INFORMATION info;
+
+	if (!GetFileInformationByHandle(h, &info))
+		return -1; // errno?
+
+	st->st_dev = 0;
+	st->st_ino = 0;
+	st->st_mode = (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ?
+		_S_IFDIR : _S_IFREG;
+	st->st_nlink = (info.nNumberOfLinks > SHRT_MAX ? SHRT_MAX : info.nNumberOfLinks);
+	st->st_uid = 0;
+	st->st_gid = 0;
+	st->st_rdev = 0;
+	st->st_size = ((long long)info.nFileSizeHigh << 32ULL) | (long long)info.nFileSizeLow;
+	st->st_atime = 0;
+	st->st_mtime = 0;
+	st->st_ctime = 0;
+
+	return 0;
+}
+
+int wosix_fstat_blk(int fd, struct _stat64 *st)
+{
+	DISK_GEOMETRY_EX geometry_ex;
+	HANDLE handle = ITOH(fd);
+	DWORD len;
+
+	if (!DeviceIoControl(handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
+		&geometry_ex, sizeof(geometry_ex), &len, NULL))
+		return -1;
+
+	st->st_size = (diskaddr_t)geometry_ex.DiskSize.QuadPart;
+
+	return (0);
+}
+
+// os specific files can call this directly.
+int pread_win(HANDLE h, void *buf, size_t nbyte, off_t offset)
+{
+	uint64_t off;
+	DWORD red;
+	LARGE_INTEGER large;
+	LARGE_INTEGER lnew;
+
+	// This code does all seeks based on "current" so we can pre-seek to offset start
+
+	// Find current position
+	large.QuadPart = 0;
+	SetFilePointerEx(h, large, &lnew, FILE_CURRENT);
+
+	// Seek to place to read
+	large.QuadPart = offset;
+	SetFilePointerEx(h, large, NULL, FILE_CURRENT);
+
+	// Read
+	if (!ReadFile(h, buf, nbyte, &red, NULL))
+		red = -GetLastError();
+
+	// Restore position
+	SetFilePointerEx(h, lnew, NULL, FILE_BEGIN);
+
+	return red;
+}
+
+int wosix_pread(int fd, void *buf, size_t nbyte, off_t offset)
+{
+	return pread_win(ITOH(fd), buf, nbyte, offset);
+}
+
+int wosix_pwrite(int fd, const void *buf, size_t nbyte, off_t offset)
+{
+	HANDLE h = ITOH(fd);
+	uint64_t off;
+	DWORD wrote;
+	LARGE_INTEGER large;
+	LARGE_INTEGER lnew;
+
+	// This code does all seeks based on "current" so we can pre-seek to offset start
+
+	// Find current position
+	large.QuadPart = 0;
+	SetFilePointerEx(h, large, &lnew, FILE_CURRENT);
+
+	// Seek to place to read
+	large.QuadPart = offset;
+	SetFilePointerEx(h, large, NULL, FILE_CURRENT);
+
+	// Write
+	if (!WriteFile(h, buf, nbyte, &wrote, NULL))
+		wrote = -GetLastError();
+
+	// Restore position
+	SetFilePointerEx(h, lnew, NULL, FILE_BEGIN);
+
+	return wrote;
+}
+
+int wosix_fdatasync(int fd)
+{
+	//if (fcntl(fd, F_FULLFSYNC) == -1)
+	//	return -1;
+	return 0;
+}
+
+int wosix_ftruncate(int fd, off_t length)
+{
+	HANDLE h = ITOH(fd);
+	LARGE_INTEGER lnew;
+
+	lnew.QuadPart = length;
+	if (SetFilePointerEx(h, lnew, NULL, FILE_BEGIN) &&
+		SetEndOfFile(h))
+		return 0; // Success
+	// errno?
+	return -1;
+}
+
+// This one is a little bit special, ordinarily
+// we would take the HANDLE and convert it to a
+// FILE *, using _fdopen(_open_osfhandle());
+// But, this is only used from libzfs_sendrecv.c and
+// comes from socketpair() - which uses sockets, ie
+// already HANDLEs. So they are passed into ssread()
+// which uses HANDLEs directly. close() is updated
+// to handle closing of SOCKETS.
+// Note we do not change fread()/fwrite() from FILE*
+// as they are used throughout userland. The fix
+// resides in ssread().
+FILE *wosix_fdopen(int fd, const char *mode)
+{
+	return ((FILE *)ITOH(fd));
+}
+
+int wosix_socketpair(int domain, int type, int protocol, int sv[2])
 {
 	int temp, s1, s2, result;
 	struct sockaddr_in saddr;
@@ -860,158 +1174,8 @@ int socketpair(int *sv)
 	return 0;  /* normal case */
 }
 
-extern size_t
-strlcpy(register char* s, register const char* t, register size_t n)
+int wosix_dup2(int fildes, int fildes2)
 {
-	const char*     o = t;
-
-	if (n)
-		do
-		{
-			if (!--n)
-			{
-				*s = 0;
-				break;
-			}
-		} while (*s++ = *t++);
-		if (!n)
-			while (*t++);
-		return t - o - 1;
+	return -1;
 }
 
-extern size_t
-strlcat(register char* s, register const char* t, register size_t n)
-{
-	register size_t m;
-	const char*     o = t;
-
-	if (m = n)
-	{
-		while (n && *s)
-		{
-			n--;
-			s++;
-		}
-		m -= n;
-		if (n)
-			do
-			{
-				if (!--n)
-				{
-					*s = 0;
-					break;
-				}
-			} while (*s++ = *t++);
-		else
-			*s = 0;
-	}
-	if (!n)
-		while (*t++);
-	return (t - o) + m - 1;
-}
-
-char *strndup(char *src, size_t size)
-{
-	char *r = _strdup(src);
-	if (r) {
-		r[size] = 0;
-	}
-	return r;
-}
-
-int win_isatty(uintptr_t x) 
-{ 
-	DWORD mode;
-	HANDLE h = (HANDLE)x;
-	int ret;
-#if 0
-	const unsigned long bufSize = sizeof(DWORD) + MAX_PATH * sizeof(WCHAR);
-	BYTE buf[sizeof(DWORD) + MAX_PATH * sizeof(WCHAR)];
-	PFILE_NAME_INFO pfni = (PFILE_NAME_INFO)buf;
-
-	if (!GetFileInformationByHandleEx(h, FileNameInfo, buf, bufSize)) {
-		return 0;
-	}
-
-	PWSTR fn = pfni->FileName;
-	fn[pfni->FileNameLength] = L'\0';
-
-	ret = ((wcsstr(fn, L"\\cygwin-") || wcsstr(fn, L"\\msys-")) &&
-		wcsstr(fn, L"-pty") && wcsstr(fn, L"-master"));
-
-	//printf("ret %d Got name as '%S'\n", ret, fn); fflush(stdout);
-	return ret;
-#else
-
-	ret = ((GetFileType(h) & ~FILE_TYPE_REMOTE) == FILE_TYPE_CHAR);
-
-#endif
-	//fprintf(stderr, "%s: return %d\r\n", __func__, ret);
-	//fflush(stderr);
-
-	// FIXME - always say it ISN'T a tty, this way zfs send will work
-	// everywhere - the only negative side-effect is garbage printed 
-	// on console if users do something dumb.
-	return 0;  
-
-	return ret;
-}
-
-int setrlimit(int resource, const struct rlimit *rlp)
-{
-	return 0;
-}
-
-int tcgetattr(int fildes, struct termios *termios_p)
-{
-	return 0;
-}
-
-int tcsetattr(int fildes, int optional_actions,
-	const struct termios *termios_p)
-{
-	return 0;
-}
-
-// Not really getline, just used for password input in libzfs_crypto.c
-#define MAX_GETLINE 128
-ssize_t getline(char **linep, size_t* linecapp,
-	FILE *stream)
-{
-	static char getpassbuf[MAX_GETLINE + 1];
-	size_t i = 0;
-
-	// This does not work in bash, it echos the password, find
-	// a solution for it too
-	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
-	DWORD mode = 0;
-	GetConsoleMode(hStdin, &mode);
-	SetConsoleMode(hStdin, mode & (~ENABLE_ECHO_INPUT));
-
-	int c;
-	for (;;)
-	{
-		c = getc(stream);
-		if ((c == '\r') || (c == '\n'))
-		{
-			getpassbuf[i] = '\0';
-			break;
-		}
-		else if (i < MAX_GETLINE)
-		{
-			getpassbuf[i++] = c;
-		}
-		if (i >= MAX_GETLINE)
-		{
-			getpassbuf[i] = '\0';
-			break;
-		}
-	}
-
-	if (linep) *linep = strdup(getpassbuf);
-	if (linecapp) *linecapp = 1;
-
-	SetConsoleMode(hStdin, mode);
-
-	return i;
-}

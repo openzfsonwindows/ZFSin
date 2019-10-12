@@ -137,7 +137,7 @@ ssread(void *buf, size_t len, FILE *stream)
 {
 	size_t outlen;
 #ifdef WIN32
-	/* Windows we have a SOCKET type here*/
+	/* Windows we have a SOCKET type here - can't change fread() call. */
 	DWORD rv;
 	if (!ReadFile(stream, buf, len, &rv, NULL))
 		return 0;
@@ -210,7 +210,7 @@ ddt_update(libzfs_handle_t *hdl, dedup_table_t *ddt, zio_cksum_t *cs,
 
 static int
 dump_record(dmu_replay_record_t *drr, void *payload, int payload_len,
-    zio_cksum_t *zc, HANDLE outfd)
+    zio_cksum_t *zc, int outfd)
 {
 	ASSERT3U(offsetof(dmu_replay_record_t, drr_u.drr_checksum.drr_checksum),
 	    ==, sizeof (dmu_replay_record_t) - sizeof (zio_cksum_t));
@@ -224,30 +224,16 @@ dump_record(dmu_replay_record_t *drr, void *payload, int payload_len,
 	(void) fletcher_4_incremental_native(
 	    &drr->drr_u.drr_checksum.drr_checksum, sizeof (zio_cksum_t), zc);
 
-#ifdef WIN32
-	DWORD byteswritten = 0;
-	if (!WriteFile(outfd, drr, sizeof(*drr), &byteswritten, NULL)) {
-		return (GetLastError());
-	}
-#else
 	if (write(outfd, drr, sizeof (*drr)) == -1)
 		return (errno);
-#endif
+
 	if (payload_len != 0) {
 		(void) fletcher_4_incremental_native(payload, payload_len, zc);
-#ifdef WIN32
-		byteswritten = 0;
-		if (!WriteFile(outfd, payload, payload_len, &byteswritten, NULL)) {
-			return (GetLastError());
-		}
-#else
 		if (write(outfd, payload, payload_len) == -1)
 			return (errno);
-#endif
 	}
 	return (0);
 }
-
 
 /*
  * This function is started in a separate thread when the dedup option
@@ -310,12 +296,7 @@ cksummer(void *arg)
 	ddt.ddt_full = B_FALSE;
 
 	outfd = dda->outputfd;
-#ifdef WIN32
-	// "inputfd" is from socketpair(), so SOCKET type (HANDLE) and not "fd int".
-	ofp = dda->inputfd;
-#else
 	ofp = fdopen(dda->inputfd, "r");
-#endif
 	while (ssread(drr, sizeof (*drr), ofp) != 0) {
 
 		/*
@@ -522,7 +503,11 @@ out:
 	umem_cache_destroy(ddt.ddecache);
 	free(ddt.dedup_hash_array);
 	free(buf);
-#ifndef WIN32
+#ifdef _WIN32
+	// We don't want to wrap fclose() so this is a special
+	// place we manually close the handle from socketpair().
+	CloseHandle(ofp);
+#else
 	(void) fclose(ofp);
 #endif
 
@@ -1301,7 +1286,7 @@ send_progress_thread(void *arg)
 		0, NULL, OPEN_EXISTING, 0, NULL);
 	libzfs_handle_t tmp;
 	if (h != INVALID_HANDLE_VALUE) {
-		tmp.libzfs_fd = h;
+		tmp.libzfs_fd = HTOI(h);
 		hdl = &tmp;
 	}
 #endif
@@ -2051,13 +2036,8 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 		dda.inputfd = pipefd[1];
 		dda.dedup_hdl = zhp->zfs_hdl;
 		if ((err = pthread_create(&tid, NULL, cksummer, &dda)) != 0) {
-#ifdef WIN32
-			(void) closesocket(pipefd[0]);
-			(void) closesocket(pipefd[1]);
-#else
 			(void) close(pipefd[0]);
 			(void) close(pipefd[1]);
-#endif
 			zfs_error_aux(zhp->zfs_hdl, strerror(errno));
 			return (zfs_error(zhp->zfs_hdl,
 			    EZFS_THREADCREATEFAILED, errbuf));
@@ -2136,19 +2116,11 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 			bzero(&drr, sizeof (drr));
 			drr.drr_type = DRR_END;
 			drr.drr_u.drr_end.drr_checksum = zc;
-#ifdef WIN32
-			DWORD byteswritten = 0;
-			if (!WriteFile(outfd, &drr, sizeof(drr), &byteswritten, NULL)) {
-				err = GetLastError();
-				goto stderr_out;
-			}
-#else
 			err = write(outfd, &drr, sizeof (drr));
 			if (err == -1) {
 				err = errno;
 				goto stderr_out;
 			}
-#endif
 
 			err = 0;
 		}
@@ -2197,20 +2169,11 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 		++holdseq;
 		(void) snprintf(sdd.holdtag, sizeof (sdd.holdtag),
 		    ".send-%d-%llu", getpid(), (u_longlong_t)holdseq);
-#ifdef WIN32
-		sdd.cleanup_fd = CreateFile(ZFS_DEV, GENERIC_READ | GENERIC_WRITE,
-		0, NULL, OPEN_EXISTING, 0, NULL);
-		if (sdd.cleanup_fd == INVALID_HANDLE_VALUE) {
-			err = errno;
-			goto stderr_out;
-		}
-#else
 		sdd.cleanup_fd = open(ZFS_DEV, O_RDWR);
 		if (sdd.cleanup_fd < 0) {
 			err = errno;
 			goto stderr_out;
 		}
-#endif
 		sdd.snapholds = fnvlist_alloc();
 	} else {
 		sdd.cleanup_fd = -1;
@@ -2275,20 +2238,12 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 	if (tid_set != 0) {
 		if (err != 0)
 			(void) pthread_cancel(tid);
-#ifdef WIN32
-		(void) closesocket(pipefd[0]);
-#else
 		(void) close(pipefd[0]);
-#endif
 		(void) pthread_join(tid, NULL);
 	}
 
 	if (sdd.cleanup_fd != -1) {
-#ifdef WIN32
-		VERIFY(0 != CloseHandle(sdd.cleanup_fd));
-#else
 		VERIFY(0 == close(sdd.cleanup_fd));
-#endif
 		sdd.cleanup_fd = -1;
 	}
 
@@ -2301,18 +2256,10 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 		 */
 		dmu_replay_record_t drr = { 0 };
 		drr.drr_type = DRR_END;
-#ifdef WIN32
-		DWORD byteswritten = 0;
-		if (!WriteFile(outfd, &drr, sizeof(drr), &byteswritten, NULL)) {
-			return (zfs_standard_error(zhp->zfs_hdl,
-				GetLastError(), errbuf));
-		}
-#else
 		if (write(outfd, &drr, sizeof (drr)) == -1) {
 			return (zfs_standard_error(zhp->zfs_hdl,
 			    errno, errbuf));
 		}
-#endif
 	}
 
 	return (err || sdd.err);
@@ -2324,13 +2271,9 @@ err_out:
 	nvlist_free(fss);
 	fnvlist_free(sdd.snapholds);
 
-#ifdef WIN32
-	if (sdd.cleanup_fd != INVALID_HANDLE_VALUE)
-		VERIFY(CloseHandle(sdd.cleanup_fd));
-#else
 	if (sdd.cleanup_fd != -1)
 		VERIFY(0 == close(sdd.cleanup_fd));
-#endif
+
 	if (tid_set != 0) {
 		(void) pthread_cancel(tid);
 		(void) close(pipefd[0]);
@@ -2437,11 +2380,7 @@ recv_read(libzfs_handle_t *hdl, int fd, void *buf, int ilen,
 	int len = ilen;
 
 	do {
-#ifdef WIN32
-		ReadFile(fd, cp, len, &rv, NULL);
-#else
 		rv = read(fd, cp, len);
-#endif
 		cp += rv;
 		len -= rv;
 	} while (rv > 0);
@@ -4877,7 +4816,7 @@ zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
 {
 	char *top_zfs = NULL;
 	int err;
-	HANDLE cleanup_fd;
+	int cleanup_fd;
 	uint64_t action_handle = 0;
 	struct _stat64 sb;
 	char *originsnap = NULL;
@@ -4930,16 +4869,6 @@ zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
 		if (err && err != ENOENT)
 			return (err);
 	}
-#ifdef WIN32
-	cleanup_fd = CreateFile(ZFS_DEV, GENERIC_READ | GENERIC_WRITE,
-		0, NULL, OPEN_EXISTING, 0, NULL);
-	VERIFY(cleanup_fd != INVALID_HANDLE_VALUE);
-
-	err = zfs_receive_impl(hdl, tosnap, originsnap, flags, infd, NULL, NULL,
-	    stream_avl, &top_zfs, cleanup_fd, &action_handle, NULL, props);
-
-	VERIFY(CloseHandle(cleanup_fd));
-#else
 	cleanup_fd = open(ZFS_DEV, O_RDWR);
 	VERIFY(cleanup_fd >= 0);
 
@@ -4947,7 +4876,6 @@ zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
 	    stream_avl, &top_zfs, cleanup_fd, &action_handle, NULL, props);
 
 	VERIFY(0 == close(cleanup_fd));
-#endif
 
 	if (err == 0 && !flags->nomount && top_zfs) {
 		zfs_handle_t *zhp = NULL;

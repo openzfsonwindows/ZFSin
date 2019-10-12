@@ -558,11 +558,7 @@ teardown_differ_info(differ_info_t *di)
 	free(di->tosnap);
 	free(di->tmpsnap);
 	free(di->tomnt);
-#ifdef WIN32
-	CloseHandle(di->cleanupfd);
-#else
 	(void) close(di->cleanupfd);
-#endif
 }
 
 static int
@@ -750,14 +746,8 @@ setup_differ_info(zfs_handle_t *zhp, const char *fromsnap,
 {
 	di->zhp = zhp;
 
-#ifdef WIN32
-	di->cleanupfd = CreateFile(ZFS_DEV, GENERIC_READ | GENERIC_WRITE,
-		0, NULL, OPEN_EXISTING, 0, NULL);
-	VERIFY(di->cleanupfd != INVALID_HANDLE_VALUE);
-#else
 	di->cleanupfd = open(ZFS_DEV, O_RDWR);
 	VERIFY(di->cleanupfd >= 0);
-#endif
 
 	if (get_snapshot_names(di, fromsnap, tosnap) != 0)
 		return (-1);

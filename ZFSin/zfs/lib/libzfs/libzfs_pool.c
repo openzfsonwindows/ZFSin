@@ -2840,7 +2840,7 @@ zpool_get_physpath(zpool_handle_t *zhp, char *physpath, size_t phypath_size)
  * can block ZFS from accessing the device. This function allows limited retries
  * in order to work around this behavior.
  */
-static HANDLE
+static int
 zpool_open_delay(int timeout, const char *path, int oflag)
 {
 	int i = 0;
@@ -2886,7 +2886,7 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 //		fd = open(path, oflag);
 //	}
 
-	return (fd);
+	return (HTOI(fd));
 }
 
 /*
@@ -2896,7 +2896,7 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 static int
 zpool_relabel_disk(libzfs_handle_t *hdl, const char *path, const char *msg)
 {
-	HANDLE fd;
+	int fd;
 	int error;
 
 	if ((fd = zpool_open_delay(10, path, O_RDWR|O_DIRECT|O_SHLOCK)) < 0) {
@@ -2914,11 +2914,8 @@ zpool_relabel_disk(libzfs_handle_t *hdl, const char *path, const char *msg)
 	 * The module will do it for us in vdev_disk_open().
 	 */
 	error = efi_use_whole_disk(fd);
-#ifdef _WIN32
-	CloseHandle(fd);
-#else
 	(void) close(fd);
-#endif
+
 	if (error && error != VT_ENOSPC) {
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, "cannot "
 		    "relabel '%s': unable to read disk capacity"), path);
@@ -4828,36 +4825,24 @@ zpool_label_disk_check(char *path)
 {
 	struct dk_gpt *vtoc;
 	int err;
-	HANDLE fd;
+	int fd;
 
 	if ((fd = zpool_open_delay(10, path, O_RDWR|O_DIRECT)) < 0)
 		return (errno);
 
 	if ((err = efi_alloc_and_read(fd, &vtoc)) != 0) {
-#ifdef _WIN32
-		CloseHandle(fd);
-#else
 		(void) close(fd);
-#endif
 		return (err);
 	}
 
 	if (vtoc->efi_flags & EFI_GPT_PRIMARY_CORRUPT) {
 		efi_free(vtoc);
-#ifdef _WIN32
-		CloseHandle(fd);
-#else
 		(void)close(fd);
-#endif
 		return (EIDRM);
 	}
 
 	efi_free(vtoc);
-#ifdef _WIN32
-	CloseHandle(fd);
-#else
 	(void)close(fd);
-#endif
 	return (0);
 }
 
@@ -4871,7 +4856,7 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 	char path[MAXPATHLEN];
 	struct dk_gpt *vtoc;
 	int rval;
-	HANDLE fd;
+	int fd;
 	size_t resv = EFI_MIN_RESV_SIZE;
 	uint64_t slice_size;
 	diskaddr_t start_block;
@@ -4929,11 +4914,7 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 		 */
 		if (errno == ENOMEM)
 			(void) no_memory(hdl);
-#ifdef _WIN32
-		CloseHandle(fd);
-#else
 		(void) close(fd);
-#endif
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, "cannot "
 		    "label '%s': unable to read disk capacity"), path);
 
@@ -4972,11 +4953,7 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 		 * ecting the user to manually label the disk and give
 		 * a specific slice.
 		 */
-#ifdef _WIN32
-		CloseHandle(fd);
-#else
 		(void) close(fd);
-#endif
 		efi_free(vtoc);
 
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, "try using "
@@ -4984,11 +4961,7 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 		return (zfs_error(hdl, EZFS_LABELFAILED, errbuf));
 	}
 
-#ifdef _WIN32
-	CloseHandle(fd);
-#else
 	(void)close(fd);
-#endif
 	efi_free(vtoc);
 
 	/* Wait for the first expected partition to appear. */
