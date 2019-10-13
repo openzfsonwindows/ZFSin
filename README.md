@@ -411,4 +411,4 @@ Also, there is [`kstat`](https://openzfsonosx.org/wiki/Windows_kstat) to dynamic
 There are nightly builds available at [AppVeyor](https://ci.appveyor.com/project/lundman/zfsin/branch/master/artifacts)  
 - These builds are currently not signed and therefore require test mode to be enabled.
 
-There also are some historical test builds [available here](https://openzfsonosx.org/wiki/Windows_builds).
+There also are test builds [available here](https://openzfsonosx.org/wiki/Windows_builds). These are "hotfix" builds for allowing people to test specific fixes before they are ready for a release.
