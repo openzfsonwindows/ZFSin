@@ -251,32 +251,28 @@ not set, it will mount "/pool" as "C:/pool".
 
 # Installing a binary release
 
-Latest binary files are available on GitHub:
+Latest binary files are available at [GitHub releases](https://github.com/openzfsonwindows/ZFSin/releases)
 
-https://github.com/openzfsonwindows/ZFSin/releases
 
-Download your preferred package. Either debug, or release.
+If you are running windows 10 with secure boot on and/or installing an older release you will need to enable unsigned drivers from an elevated CMD:
 
-Enable unsigned drivers:
+ 
+* `bcdedit.exe -set testsigning on `
+* Then **reboot**. After restart it should have _Test Mode_ bottom right corner of the screen.
 
-* bcdedit.exe -set testsigning on
-
-Then **reboot**. After restart it should have _Test Mode_ bottom right
-corner of the screen.
 
 After that either 
 
-* Run OpenZFSOnWindows.exe installer to install.
-* Windows should popup the "Windows can't verify the publisher of this driver software"
-* Click "Install this driver software anyway"
+* Run OpenZFSOnWindows.exe installer to install
+* *Would you like to install device software?* should pop up, click install
+  * If installing an unsigned release, click "Install anyway" in the "unknown developer" popup
 
-If you do not want to run the Installer, run this command by hand from elevated CMD:
-```
-zfsinstaller.exe install .\ZFSin.inf
-```
+Or if you do not want to run the Installer, run this command by hand from elevated CMD:
+* `zfsinstaller.exe install .\ZFSin.inf`
+* *Would you like to install device software?* should pop up, click install
+  * If installing an unsigned release, click "Install anyway" in the "unknown developer" popup
 
-* Click "Install anyway" in the "unknown developer" popup
-* Run "zpool.exe status" to confirm it can talk to the kernel
+Run `zpool.exe status` to confirm it can talk to the kernel
 
 Failure would be:
 ```
@@ -412,5 +408,7 @@ Also, there is [`kstat`](https://openzfsonosx.org/wiki/Windows_kstat) to dynamic
 
 # Nightly builds
 
-We do not have nightly builds.  
-However, from time to time, we do quick builds for people to test a fix. [Get it here](https://openzfsonosx.org/wiki/Windows_builds).
+There are nightly builds available at [AppVeyor](https://ci.appveyor.com/project/lundman/zfsin/branch/master/artifacts)  
+- These builds are currently not signed and therefore require test mode to be enabled.
+
+There also are test builds [available here](https://openzfsonosx.org/wiki/Windows_builds). These are "hotfix" builds for allowing people to test specific fixes before they are ready for a release.
