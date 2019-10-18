@@ -1,15 +1,68 @@
 version: 1.0.{build}
 image: Visual Studio 2017
 configuration: Release
+
+environment:
+  priv_key:
+    secure: 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
+  pfx_key:
+    secure: RQ3umrATql4FDeSylS6Zlg==
+  cat_location: 'C:\projects\zfsin\x64\Release\ZFSin\zfsin.cat'
+  sys_location: 'C:\projects\zfsin\x64\Release\ZFSin\zfsin.sys'
+  cross_cert: 'C:\projects\zfsin\PRIVATE-Signing\crosscert.crt'
+  signtoola: '/Ssigntoola=C:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\signtool.exe sign /a /t http://timestamp.digicert.com /fd sha1 /d $qOpenZFS on Windows$q $f'
+  signtoolb: '/Ssigntoolb=C:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\signtool.exe sign /a /as /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d $qOpenZFS on Windows$q $f'
+
 platform: x64
 skip_branch_with_pr: true
+
 install:
-- cmd: set PATH="C:\Program Files (x86)\Inno Setup 5";%PATH%
+- ps: >-
+    choco feature disable -n=showDownloadProgress
+    
+    choco install innosetup
+    
+    if (!$env:APPVEYOR_PULL_REQUEST_NUMBER) {
+    
+        $env:GIT_REDIRECT_STDERR = '2>&1'
+        
+        $fileContent = "-----BEGIN RSA PRIVATE KEY-----`n"
+        
+        $fileContent += $env:priv_key.Replace(' ', "`n")
+        
+        $fileContent += "`n-----END RSA PRIVATE KEY-----`n"
+        
+        Set-Content $env:userprofile\.ssh\id_rsa $fileContent
+        
+        git submodule update --init --recursive
+        
+    }
+    
 build:
   parallel: true
   verbosity: minimal
+
 after_build:
-- cmd: copy "C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Tools\MSVC\14.16.27023\bin\Hostx86\x64\vcruntime140.dll" "C:\projects\zfsin\"
-- cmd: iscc "C:\projects\zfsin\zfsinstaller\ZFSInstall-release.iss" "/Ssigntoola=C:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\signtool.exe sign /a /t http://timestamp.digicert.com /fd sha1 /d $qOpenZFS on Windows$q $f" "/Ssigntoolb=C:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\signtool.exe sign /a /as /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d $qOpenZFS on Windows$q $f"
+- ps: >-
+    if (!$env:APPVEYOR_PULL_REQUEST_NUMBER) {
+    
+    $env:Path += ";C:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64"
+    
+    $securePasswd = convertto-securestring $env:pfx_key -asplaintext -force
+    
+    Remove-Item Cert:\CurrentUser\my\* 
+    
+    Import-PfxCertificate -FilePath "C:\projects\zfsin\PRIVATE-Signing\ZFSin-private-cert.pfx" -Password $securePasswd -CertStoreLocation Cert:\CurrentUser\my | Out-Null
+    
+    Get-ChildItem Cert:\CurrentUser\my | Export-Certificate -FilePath "C:\projects\zfsin\x64\Release\ZFSin.cer" -Force -Type CERT
+    
+    signtool.exe sign /ac $env:cross_cert /a /t http://timestamp.digicert.com /fd sha1 /d "OpenZFS on Windows" $env:cat_location $env:sys_location
+    
+    signtool.exe sign /ac $env:cross_cert /a /as /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d "qOpenZFS on Windows" $env:cat_location $env:sys_location
+    
+    }
+    
+    iscc "C:\projects\zfsin\zfsinstaller\ZFSInstall-release.iss" $env:signtoola $env:signtoolb
+
 artifacts:
-- path: OpenZFSOnWindows-release.exe
+  - path: OpenZFSOnWindows-release.exe
