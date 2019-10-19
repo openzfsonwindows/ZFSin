@@ -10,6 +10,7 @@ environment:
   cat_location: 'C:\projects\zfsin\x64\Release\ZFSin\zfsin.cat'
   sys_location: 'C:\projects\zfsin\x64\Release\ZFSin\zfsin.sys'
   cross_cert: 'C:\projects\zfsin\PRIVATE-Signing\crosscert.crt'
+  pfx_path: 'C:\projects\zfsin\PRIVATE-Signing\ZFSin-private-cert.pfx'
   signtoola: '/Ssigntoola=C:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\signtool.exe sign /a /t http://timestamp.digicert.com /fd sha1 /d $qOpenZFS on Windows$q $f'
   signtoolb: '/Ssigntoolb=C:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\signtool.exe sign /a /as /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d $qOpenZFS on Windows$q $f'
 
@@ -52,7 +53,7 @@ after_build:
     
     Remove-Item Cert:\CurrentUser\my\* 
     
-    Import-PfxCertificate -FilePath "C:\projects\zfsin\PRIVATE-Signing\ZFSin-private-cert.pfx" -Password $securePasswd -CertStoreLocation Cert:\CurrentUser\my | Out-Null
+    Import-PfxCertificate -FilePath $env:pfx_path -Password $securePasswd -CertStoreLocation Cert:\CurrentUser\my | Out-Null
     
     Get-ChildItem Cert:\CurrentUser\my | Export-Certificate -FilePath "C:\projects\zfsin\x64\Release\ZFSin.cer" -Force -Type CERT
     
