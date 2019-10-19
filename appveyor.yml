@@ -59,7 +59,7 @@ after_build:
     
     signtool.exe sign /ac $env:cross_cert /a /t http://timestamp.digicert.com /fd sha1 /d "OpenZFS on Windows" $env:cat_location $env:sys_location
     
-    signtool.exe sign /ac $env:cross_cert /a /as /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d "qOpenZFS on Windows" $env:cat_location $env:sys_location
+    signtool.exe sign /ac $env:cross_cert /a /as /tr http://timestamp.digicert.com /td sha256 /fd sha256 /d "OpenZFS on Windows" $env:cat_location $env:sys_location
     
     }
     
