@@ -750,8 +750,8 @@ VOID InitVpb(__in PVPB Vpb, __in PDEVICE_OBJECT VolumeDevice)
 										+0xffff928400000000
 
 */
-NTSTATUS CreateReparsePoint(POBJECT_ATTRIBUTES poa, LPCWSTR SubstituteName,
-	LPCWSTR PrintName)
+NTSTATUS CreateReparsePoint(POBJECT_ATTRIBUTES poa, UNICODE_STRING SubstituteName,
+	UNICODE_STRING PrintName)
 {
 	HANDLE hFile;
 	IO_STATUS_BLOCK iosb;
@@ -766,18 +766,16 @@ NTSTATUS CreateReparsePoint(POBJECT_ATTRIBUTES poa, LPCWSTR SubstituteName,
 	if (0 > status)
 		return status;
 	dprintf("%s: create ok\n", __func__);
-	USHORT SubstituteNameLength = (USHORT)wcslen(SubstituteName) * sizeof (WCHAR);
-	USHORT PrintNameLength = (USHORT)wcslen(PrintName) * sizeof (WCHAR);
-	USHORT cb = 2 * sizeof(WCHAR) + FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer.PathBuffer) + SubstituteNameLength + PrintNameLength;
+	USHORT cb = 2 * sizeof(WCHAR) + FIELD_OFFSET(REPARSE_DATA_BUFFER, MountPointReparseBuffer.PathBuffer) + SubstituteName.Length + PrintName.Length;
 	PREPARSE_DATA_BUFFER prdb = (PREPARSE_DATA_BUFFER)alloca(cb);
 	RtlZeroMemory(prdb, cb);
 	prdb->ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
 	prdb->ReparseDataLength = cb - REPARSE_DATA_BUFFER_HEADER_SIZE;
-	prdb->MountPointReparseBuffer.SubstituteNameLength = SubstituteNameLength;
-	prdb->MountPointReparseBuffer.PrintNameLength = PrintNameLength;
-	prdb->MountPointReparseBuffer.PrintNameOffset = SubstituteNameLength + sizeof(WCHAR);
-	memcpy(prdb->MountPointReparseBuffer.PathBuffer, SubstituteName, SubstituteNameLength);
-	memcpy(RtlOffsetToPointer(prdb->MountPointReparseBuffer.PathBuffer, SubstituteNameLength + sizeof(WCHAR)), PrintName, PrintNameLength);
+	prdb->MountPointReparseBuffer.SubstituteNameLength = SubstituteName.Length;
+	prdb->MountPointReparseBuffer.PrintNameLength = PrintName.Length;
+	prdb->MountPointReparseBuffer.PrintNameOffset = SubstituteName.Length + sizeof(WCHAR);
+	memcpy(prdb->MountPointReparseBuffer.PathBuffer, SubstituteName.Buffer, SubstituteName.Length);
+	memcpy(RtlOffsetToPointer(prdb->MountPointReparseBuffer.PathBuffer, SubstituteName.Length + sizeof(WCHAR)), PrintName.Buffer, PrintName.Length);
 	status = ZwFsControlFile(hFile, 0, 0, 0, &iosb, FSCTL_SET_REPARSE_POINT, prdb, cb, 0, 0);
 	dprintf("%s: ControlFile %d / 0x%x\n", __func__, status, status);
 
@@ -1188,7 +1186,7 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		RtlUnicodeStringPrintf(&volStr, L"\\??\\Volume{%wZ}", vcb->uuid); // "\??\Volume{0b1bb601-af0b-32e8-a1d2-54c167af6277}"
 		InitializeObjectAttributes(&poa, &dcb->mountpoint, OBJ_KERNEL_HANDLE, NULL, NULL);
 		dprintf("Creating reparse mountpoint on '%wZ' for volume '%wZ'\n", &dcb->mountpoint, &volStr);
-		CreateReparsePoint(&poa, volStr.Buffer, vcb->name.Buffer);  // 3rd arg is visible in DOS box
+		CreateReparsePoint(&poa, volStr, vcb->name); // 3rd arg is visible in DOS box
 
 		// Remove drive letter?
 		// RtlUnicodeStringPrintf(&volStr, L"\\DosDevices\\E:");  // FIXME
