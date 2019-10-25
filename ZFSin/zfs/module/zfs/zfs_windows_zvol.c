@@ -650,25 +650,13 @@ wzvol_HwStartIo(
 		break;
 
 	case SRB_FUNCTION_RESET_LOGICAL_UNIT:
-		StorPortCompleteRequest(
-			pHBAExt,
-			pSrb->PathId,
-			pSrb->TargetId,
-			pSrb->Lun,
-			SRB_STATUS_BUSY
-		);
-		srbStatus = SRB_STATUS_SUCCESS;
+		bFlag = wzvol_reset_notification(pSrb);
+		srbStatus = TRUE == bFlag ? SRB_STATUS_SUCCESS : SRB_STATUS_INVALID_REQUEST;
 		break;
 
 	case SRB_FUNCTION_RESET_DEVICE:
-		StorPortCompleteRequest(
-			pHBAExt,
-			pSrb->PathId,
-			pSrb->TargetId,
-			SP_UNTAGGED,
-			SRB_STATUS_TIMEOUT
-		);
-		srbStatus = SRB_STATUS_SUCCESS;
+		bFlag = wzvol_reset_notification(pSrb);
+		srbStatus = TRUE == bFlag ? SRB_STATUS_SUCCESS : SRB_STATUS_INVALID_REQUEST;
 		break;
 
 	case SRB_FUNCTION_PNP:

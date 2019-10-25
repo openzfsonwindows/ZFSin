@@ -105,6 +105,20 @@ void wzvol_clear_targetid(uint8_t targetid)
 		zv_targets[targetid] = NULL;
 }
 
+BOOLEAN wzvol_reset_notification(__in PSCSI_REQUEST_BLOCK  pSrb)
+{
+	zvol_state_t *zv;
+
+	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
+	if (zv == NULL) {
+		return FALSE;
+	}
+
+	InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 1, 0);
+
+	return TRUE;
+}
+
 /**************************************************************************************************/     
 /*                                                                                                */     
 /**************************************************************************************************/     
@@ -757,6 +771,8 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 		lclStatus;
 	PVOID                     pX = NULL;
 	UCHAR                     status;
+	LONG                      requests_processing_count;
+	LONG                      request_cancellation;
 
 	zvol_state_t *zv;
 
@@ -792,28 +808,42 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 		goto Done;
 	}
 
-
 	if (sectorOffset >= zv->zv_volsize) {      // Starting sector beyond the bounds?
 		dprintf("%s: invalid starting sector: %d\n", __func__, startingSector);
 		status = SRB_STATUS_INVALID_REQUEST;
 		goto Done;
 	}
 
+	InterlockedIncrement((LONG volatile *)&zv->zv_requests_processing_count);
 	/* Call ZFS to read/write data */
-	if (ActionRead == pWkRtnParms->Action) {           
+	if (ActionRead == pWkRtnParms->Action) {
 		status = zvol_read_win(zv, sectorOffset, pSrb->DataTransferLength, pX);
-	} else {                                           
+	} else {
 		status = zvol_write_win(zv, sectorOffset, pSrb->DataTransferLength, pX);
 	}
 
-	if (status == 0)
-		status = SRB_STATUS_SUCCESS;
+	if (status == 0) {
+		/* Both function return status = 0, when we have request cancellation */
+		request_cancellation = InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 0, 0);
+		status = (request_cancellation != 0) ? SRB_STATUS_BUSY : SRB_STATUS_SUCCESS;
+	}
 
+	requests_processing_count = InterlockedDecrement((LONG volatile *)&zv->zv_requests_processing_count);
+	request_cancellation = InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 0, 0);
+
+	if (request_cancellation != 0 && requests_processing_count == 0) {
+		InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 0, 1);
+	}
 Done:
+	// Note: The status was returned by zvol_write_win and zvol_read_win functions can be as well ENXIO or EIO.
+	//		 The values of these two variables are: ENXIO = 6 and  EIO = 5. 
+	//		 But we do reinterpretation of the errors to SRB status. In result we will return follow relevant values:
+	//		 SRB_STATUS_BUSY             = 0x05
+	//		 SRB_STATUS_INVALID_REQUEST  = 0x06
+	//		 That can leaded to wrong processing by StorPort.
 	pSrb->SrbStatus = status;
 
 	// Tell StorPort this action has been completed.
-
 	StorPortNotification(RequestComplete, pHBAExt, pSrb);
 
 	ExFreePoolWithTag(pWkParms, MP_TAG_GENERAL);      // Free parm list.

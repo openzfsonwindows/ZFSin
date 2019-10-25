@@ -278,6 +278,11 @@ wzvol_HwAdapterControl(
 	__in PVOID Parameters
 );
 
+BOOLEAN
+wzvol_reset_notification(
+	__in PSCSI_REQUEST_BLOCK  pSrb
+);
+
 UCHAR
 ScsiExecuteMain(
 	__in pHW_HBA_EXT DevExt,

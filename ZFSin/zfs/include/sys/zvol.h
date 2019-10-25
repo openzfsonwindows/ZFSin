@@ -76,6 +76,9 @@ typedef struct zvol_state {
 	/* 'rdiskX' name, use [1] for diskX */
 	uint8_t zv_target_id;
 	uint8_t zv_lun_id;
+	/* Variables involved to LUN reset mechanism. */
+	uint32_t zv_requests_processing_count; /* How meny SRBs are processing*/
+	uint32_t zv_request_cancellation;      /* Used to notify the outstanding SRBs to be canceled. */
 } zvol_state_t;
 
 enum zfs_soft_state_type {

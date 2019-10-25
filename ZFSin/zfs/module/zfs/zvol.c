@@ -2453,6 +2453,7 @@ zvol_read_win(zvol_state_t *zv, uint64_t position,
 {
 	uint64_t volsize;
 	locked_range_t *lr;
+	uint32_t request_cancellation;
 	int error = 0;
 	uint64_t offset = 0;
 
@@ -2474,7 +2475,8 @@ zvol_read_win(zvol_state_t *zv, uint64_t position,
 
 	lr = rangelock_enter(&zv->zv_rangelock, position, count,
 	    RL_READER);
-	while (count > 0 && (position+offset) < volsize) {
+	request_cancellation = InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 0, 0);
+	while (count > 0 && (position+offset) < volsize && request_cancellation == 0) {
 		uint64_t bytes = MIN(count, DMU_MAX_ACCESS >> 1);
 
 		/* don't read past the end */
@@ -2495,6 +2497,8 @@ zvol_read_win(zvol_state_t *zv, uint64_t position,
 			break;
 		}
 		count -= MIN(count, DMU_MAX_ACCESS >> 1) - bytes;
+
+		request_cancellation = InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 0, 0);
 	}
 	rangelock_exit(lr);
 
@@ -2518,6 +2522,7 @@ zvol_write_win(zvol_state_t *zv, uint64_t position,
 	uint64_t offset = 0;
 	uint64_t bytes;
 	uint64_t off;
+	uint32_t request_cancellation;
 
 	if (zv == NULL)
 		return (ENXIO);
@@ -2545,7 +2550,8 @@ zvol_write_win(zvol_state_t *zv, uint64_t position,
 	lr = rangelock_enter(&zv->zv_rangelock, position, count,
 	    RL_WRITER);
 	/* Iterate over (DMU_MAX_ACCESS/2) segments */
-	while (count > 0 && (position + offset) < volsize) {
+	request_cancellation = InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 0, 0);
+	while (count > 0 && (position + offset) < volsize && request_cancellation == 0) {
 		/* bytes for this segment */
 		bytes = MIN(count, DMU_MAX_ACCESS >> 1);
 		off = offset;
@@ -2574,6 +2580,8 @@ zvol_write_win(zvol_state_t *zv, uint64_t position,
 
 		if (error)
 			break;
+
+		request_cancellation = InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 0, 0);
 	}
 	rangelock_exit(lr);
 
