@@ -99,7 +99,7 @@ void spl_create_hostid(HANDLE h, PUNICODE_STRING pRegistryPath)
 	Length = sizeof(KEY_VALUE_FULL_INFORMATION) + AttachKey.Length * sizeof(WCHAR) + sizeof(unsigned long);
 
 	PKEY_VALUE_FULL_INFORMATION   keyValue;
-	keyValue = ExAllocatePoolWithTag(NonPagedPool,
+	keyValue = ExAllocatePoolWithTag(NonPagedPoolNx,
 		Length,
 		'geRa');
 
@@ -223,7 +223,7 @@ int spl_kstat_registry(PUNICODE_STRING pRegistryPath, kstat_t *ksp)
 			break; // Something is wrong - or we finished
 
 		// Allocate space to hold
-		regBuffer = (PKEY_VALUE_FULL_INFORMATION)ExAllocatePoolWithTag(NonPagedPool, length, 'zfsr');
+		regBuffer = (PKEY_VALUE_FULL_INFORMATION)ExAllocatePoolWithTag(NonPagedPoolNx, length, 'zfsr');
 
 		if (regBuffer == NULL)
 			continue;
