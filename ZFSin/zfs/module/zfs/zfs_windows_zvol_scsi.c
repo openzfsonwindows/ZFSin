@@ -250,7 +250,7 @@ ScsiGetMPIOExt(
     }
 
     if (pNextEntry==&pHBAExt->pwzvolDrvObj->ListMPIOExt) { // No match? That is, is this to be a new MPIO LUN extension?
-        pLUMPIOExt = ExAllocatePoolWithTag(NonPagedPool, sizeof(HW_LU_EXTENSION_MPIO), MP_TAG_GENERAL);
+        pLUMPIOExt = ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(HW_LU_EXTENSION_MPIO), MP_TAG_GENERAL);
 
         if (!pLUMPIOExt) {
 			dprintf("Failed to allocate HW_LU_EXTENSION_MPIO\n");
@@ -636,7 +636,7 @@ ScsiReadWriteSetup(
 	*pResult = ResultDone;                            // Assume no queuing.
 
 	pWkRtnParms =                                     // Allocate parm area for work routine.
-		(pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPool, sizeof(MP_WorkRtnParms), MP_TAG_GENERAL);
+		(pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(MP_WorkRtnParms), MP_TAG_GENERAL);
 
 	if (NULL == pWkRtnParms) {
 		dprintf("ScsiReadWriteSetup Failed to allocate work parm structure\n");

@@ -4592,7 +4592,6 @@ fsDispatcher(
 		break;
 	}
 
-
 	/* Re-check (since MJ_CREATE/vnop_lookup might have set it) vp here, to see if
 	 * we should call setsize 
 	 */
@@ -4645,8 +4644,9 @@ dispatcher(
 )
 {
 	BOOLEAN TopLevel = FALSE;
+	BOOLEAN AtIrqlPassiveLevel;
 	PIO_STACK_LOCATION IrpSp;
-	NTSTATUS Status;
+	NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
 	uint64_t validity_check;
 
 	// Storport can call itself (and hence, ourselves) so this isn't always true.
@@ -4666,75 +4666,81 @@ dispatcher(
 	}
 #endif
 	validity_check = *((uint64_t *)Irp);
+	IrpSp = IoGetCurrentIrpStackLocation(Irp);
 
-	FsRtlEnterFileSystem();
+	dprintf("%s: enter: major %d: minor %d: %s: type 0x%x\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
+		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction), Irp->Type);
 
+	AtIrqlPassiveLevel = (KeGetCurrentIrql() == PASSIVE_LEVEL);
+	if (AtIrqlPassiveLevel) {
+		FsRtlEnterFileSystem();
+	}
 	if (IoGetTopLevelIrp() == NULL) {
 		IoSetTopLevelIrp(Irp);
 		TopLevel = TRUE;
 	}
 
-	IrpSp = IoGetCurrentIrpStackLocation(Irp);
-
-
-	dprintf("%s: enter: major %d: minor %d: %s: type 0x%x\n", __func__, IrpSp->MajorFunction, IrpSp->MinorFunction,
-		major2str(IrpSp->MajorFunction, IrpSp->MinorFunction), Irp->Type);
-
-	Status = STATUS_NOT_IMPLEMENTED;
-
 	if (DeviceObject == ioctlDeviceObject)
 		Status = ioctlDispatcher(DeviceObject, Irp, IrpSp);
 	else {
-		mount_t *zmo = DeviceObject->DeviceExtension;
+		mount_t * zmo = DeviceObject->DeviceExtension;
 		if (zmo && zmo->type == MOUNT_TYPE_DCB)
 			Status = diskDispatcher(DeviceObject, Irp, IrpSp);
 		else if (zmo && zmo->type == MOUNT_TYPE_VCB)
 			Status = fsDispatcher(DeviceObject, Irp, IrpSp);
 		else {
-
-			extern PDRIVER_UNLOAD STOR_DriverUnload;
 			extern PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 			if (STOR_MajorFunction[IrpSp->MajorFunction] != NULL) {
-				if (TopLevel) { IoSetTopLevelIrp(NULL); }
-				FsRtlExitFileSystem();
+				if (TopLevel) {
+					IoSetTopLevelIrp(NULL);
+				}
+				if (AtIrqlPassiveLevel) {
+					FsRtlExitFileSystem();
+				}
 				//dprintf("Relaying IRP to STORport\n");
 				return STOR_MajorFunction[IrpSp->MajorFunction](DeviceObject, Irp);
 			}
+
 			// Got a request we don't care about?
 			Status = STATUS_INVALID_DEVICE_REQUEST;
 			Irp->IoStatus.Information = 0;
 		}
 	}
 
-
-	ASSERT(validity_check == *((uint64_t *)Irp));
-
-	// IOCTL_STORAGE_GET_HOTPLUG_INFO
-	// IOCTL_DISK_CHECK_VERIFY
-	//IOCTL_STORAGE_QUERY_PROPERTY
-	Irp->IoStatus.Status = Status;
-
-	if (TopLevel) { IoSetTopLevelIrp(NULL); }
-	FsRtlExitFileSystem();
+	if (AtIrqlPassiveLevel) {
+		FsRtlExitFileSystem();
+	}
+	if (TopLevel) {
+		IoSetTopLevelIrp(NULL);
+	}
 
 	switch (Status) {
 	case STATUS_SUCCESS:
 	case STATUS_BUFFER_OVERFLOW:
+	case STATUS_PENDING:
 		break;
 	default:
+		ASSERT(validity_check == *((uint64_t *)Irp));
 		dprintf("%s: exit: 0x%x %s Information 0x%x : %s\n", __func__, Status,
 			common_status_str(Status),
 			Irp->IoStatus.Information, major2str(IrpSp->MajorFunction, IrpSp->MinorFunction));
 	}
 
 	// Complete the request if it isn't pending (ie, we called zfsdev_async())
-	ASSERT(validity_check == *((uint64_t *)Irp));
-
 	if (Status != STATUS_PENDING)
-		IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+	{
+		if (validity_check == *((uint64_t *)Irp)) {
+			// IOCTL_STORAGE_GET_HOTPLUG_INFO
+			// IOCTL_DISK_CHECK_VERIFY
+			// IOCTL_STORAGE_QUERY_PROPERTY
+			Irp->IoStatus.Status = Status;
+			IoCompleteRequest(Irp, Status == STATUS_SUCCESS ? IO_DISK_INCREMENT : IO_NO_INCREMENT);
+		}
+		else
+			KeBugCheckEx(INCONSISTENT_IRP, (ULONG_PTR)Irp, 0, 0, 0);
+	}
 	return Status;
 }
-
 
 NTSTATUS ZFSCallbackAcquireForCreateSection(
 	IN PFS_FILTER_CALLBACK_DATA CallbackData,
