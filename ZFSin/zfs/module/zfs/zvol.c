@@ -2475,7 +2475,7 @@ zvol_read_win(zvol_state_t *zv, uint64_t position,
 
 	lr = rangelock_enter(&zv->zv_rangelock, position, count,
 	    RL_READER);
-	request_cancellation = InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 0, 0);
+	request_cancellation = atomic_cas_32((uint32_t volatile *)&zv->zv_request_cancellation, 0, 0);
 	while (count > 0 && (position+offset) < volsize && request_cancellation == 0) {
 		uint64_t bytes = MIN(count, DMU_MAX_ACCESS >> 1);
 
@@ -2498,7 +2498,7 @@ zvol_read_win(zvol_state_t *zv, uint64_t position,
 		}
 		count -= MIN(count, DMU_MAX_ACCESS >> 1) - bytes;
 
-		request_cancellation = InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 0, 0);
+		request_cancellation = atomic_cas_32((uint32_t volatile *)&zv->zv_request_cancellation, 0, 0);
 	}
 	rangelock_exit(lr);
 
@@ -2550,7 +2550,7 @@ zvol_write_win(zvol_state_t *zv, uint64_t position,
 	lr = rangelock_enter(&zv->zv_rangelock, position, count,
 	    RL_WRITER);
 	/* Iterate over (DMU_MAX_ACCESS/2) segments */
-	request_cancellation = InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 0, 0);
+	request_cancellation = atomic_cas_32((uint32_t volatile *)&zv->zv_request_cancellation, 0, 0);
 	while (count > 0 && (position + offset) < volsize && request_cancellation == 0) {
 		/* bytes for this segment */
 		bytes = MIN(count, DMU_MAX_ACCESS >> 1);
@@ -2581,7 +2581,7 @@ zvol_write_win(zvol_state_t *zv, uint64_t position,
 		if (error)
 			break;
 
-		request_cancellation = InterlockedCompareExchange((LONG volatile *)&zv->zv_request_cancellation, 0, 0);
+		request_cancellation = atomic_cas_32((uint32_t volatile *)&zv->zv_request_cancellation, 0, 0);
 	}
 	rangelock_exit(lr);
 
