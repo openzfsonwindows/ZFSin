@@ -2752,17 +2752,22 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 
 	if (zp->z_id == zfsvfs->z_root) {
 		strlcpy(strname, "\\", MAXPATHLEN);
-	}
-	else {
+	} else {
 
 		if (zp->z_name_cache != NULL) {
-			// Apparently we always reply with fullname. 
-			// Normalize seems to mean; do-not-use-short-8x3-names
 			strlcpy(strname, zp->z_name_cache,
 				MAXPATHLEN);
-		}
-		else {
-			// Should never be used, in theory
+
+			// If it is a DIR, make sure it ends with "\", except for
+			// root, that is just "\"
+			if (S_ISDIR(zp->z_mode))
+				strlcat(strname, "\\",
+					MAXPATHLEN);
+
+		} else {
+			// Should never be used, in theory - as it is wrong.
+			// should then call build_path().
+			DbgBreakPoint();
 			VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zfsvfs),
 				&parent, sizeof(parent)) == 0);
 
