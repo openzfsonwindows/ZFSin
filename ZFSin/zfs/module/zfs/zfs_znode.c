@@ -2284,7 +2284,11 @@ zfs_create_fs(objset_t *os, cred_t *cr, nvlist_t *zplprops, dmu_tx_t *tx)
 	VATTR_NULL(&vattr);
 	vattr.va_mask = AT_MODE|AT_UID|AT_GID|AT_TYPE;
 	vattr.va_type = VDIR;
+#ifdef _WIN32
+	vattr.va_mode = S_IFDIR|0777;
+#else
 	vattr.va_mode = S_IFDIR|0755;
+#endif
 	vattr.va_uid = crgetuid(cr);
 	vattr.va_gid = crgetgid(cr);
 

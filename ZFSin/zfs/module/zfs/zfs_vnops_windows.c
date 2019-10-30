@@ -883,7 +883,7 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 
 		vap.va_mask = AT_MODE | AT_TYPE ;
 		vap.va_type = VDIR;
-		vap.va_mode = 0755;
+		vap.va_mode = 0777;
 		//VATTR_SET(&vap, va_mode, 0755);
 		ASSERT(strchr(finalname, '\\') == NULL);
 		error = zfs_mkdir(dvp, finalname, &vap, &vp, NULL,
@@ -1247,7 +1247,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// Allocate space to hold name, must be freed from here on
 	filename = kmem_alloc(PATH_MAX, KM_SLEEP);
 
-#ifdef QUERY_ON_CREATE_ECP_CONTEXT 
+#if defined (NTDDI_WIN10_RS5) && (NTDDI_VERSION >= NTDDI_WIN10_RS5)
 	/* Check for ExtraCreateParameters */
 	PECP_LIST ecp = NULL;
 	PQUERY_ON_CREATE_ECP_CONTEXT qocContext = NULL;
@@ -1277,7 +1277,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	status = zfs_vnop_lookup_impl(Irp, IrpSp, zmo, filename);
 
-#ifdef QUERY_ON_CREATE_ECP_CONTEXT 
+#if defined (NTDDI_WIN10_RS5) && (NTDDI_VERSION >= NTDDI_WIN10_RS5)
 	// Did ECP ask for getattr to be returned? None, one or both can be set.
 	// This requires vnode_couplefileobject() was called
 	if (NT_SUCCESS(status) && qocContext && IrpSp->FileObject->FsContext) {
@@ -1543,7 +1543,9 @@ NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 			break;
 		}
 
-#define ZFS_FS_ATTRIBUTE_POSIX
+/* Do not enable until we have implemented FileRenameInformationEx method. */
+//#define ZFS_FS_ATTRIBUTE_POSIX
+
 #define ZFS_FS_ATTRIBUTE_CLEANUP_INFO
 
 		FILE_FS_ATTRIBUTE_INFORMATION *ffai = Irp->AssociatedIrp.SystemBuffer;
@@ -2861,6 +2863,8 @@ NTSTATUS set_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 	case FileDispositionInformationEx:
 		Status = file_disposition_information_ex(DeviceObject, Irp, IrpSp);
 		break;
+	//case FileRenameInformationEx:
+	//	break;
 	default:
 		dprintf("* %s: unknown type NOTIMPLEMENTED\n", __func__);
 		break;

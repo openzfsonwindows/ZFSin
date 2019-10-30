@@ -2669,10 +2669,33 @@ NTSTATUS file_stat_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		fsi->FileAttributes = zfs_getwinflags(zp);
 		fsi->ReparseTag = 0;
 		fsi->NumberOfLinks = zp->z_links;
-		fsi->EffectiveAccess = 0;
+		fsi->EffectiveAccess = GENERIC_ALL;
 	}
 
 	return STATUS_SUCCESS;
+}
+
+// Convert ZFS (Unix) mode to Windows mode.
+ULONG ZMODE2WMODE(mode_t z)
+{
+	ULONG w = 0;
+
+	if (S_ISDIR(z)) w |= 0x4000; // _S_IFDIR
+	if (S_ISREG(z)) w |= 0x8000; // _S_IFREG
+	if (S_ISCHR(z)) w |= 0x2000; // _S_IFCHR
+	if (S_ISFIFO(z)) w |= 0x1000; // _S_IFIFO
+	if ((z&S_IRUSR) == S_IRUSR) w |= 0x0100; // _S_IREAD
+	if ((z&S_IWUSR) == S_IWUSR) w |= 0x0080; // _S_IWRITE
+	if ((z&S_IXUSR) == S_IXUSR) w |= 0x0040; // _S_IEXEC
+	// Couldn't find documentation for the following, but
+	// tested in lx/ubuntu to be correct.
+	if ((z&S_IRGRP) == S_IRGRP) w |= 0x0020; //
+	if ((z&S_IWGRP) == S_IWGRP) w |= 0x0010; //
+	if ((z&S_IXGRP) == S_IXGRP) w |= 0x0008; //
+	if ((z&S_IROTH) == S_IROTH) w |= 0x0004; //
+	if ((z&S_IWOTH) == S_IWOTH) w |= 0x0002; //
+	if ((z&S_IXOTH) == S_IXOTH) w |= 0x0001; //
+	return w;
 }
 
 NTSTATUS file_stat_lx_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp, FILE_STAT_LX_INFORMATION *fsli)
@@ -2708,12 +2731,12 @@ NTSTATUS file_stat_lx_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		fsli->FileAttributes = zfs_getwinflags(zp);
 		fsli->ReparseTag = 0;
 		fsli->NumberOfLinks = zp->z_links;
-		fsli->EffectiveAccess = 0;
+		fsli->EffectiveAccess = GENERIC_ALL;
 		fsli->LxFlags = LX_FILE_METADATA_HAS_UID | LX_FILE_METADATA_HAS_GID | LX_FILE_METADATA_HAS_MODE;
 		if (zfsvfs->z_case == ZFS_CASE_SENSITIVE) fsli->LxFlags |= LX_FILE_CASE_SENSITIVE_DIR;
 		fsli->LxUid = zp->z_uid;
 		fsli->LxGid = zp->z_gid;
-		fsli->LxMode = zp->z_mode;
+		fsli->LxMode = ZMODE2WMODE(zp->z_mode);
 		fsli->LxDeviceIdMajor = 0;
 		fsli->LxDeviceIdMinor = 0;
 	}
