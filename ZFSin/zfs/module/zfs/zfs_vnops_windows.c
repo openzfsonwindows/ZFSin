@@ -1092,7 +1092,7 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 
 		vap.va_mask = AT_MODE | AT_TYPE;
 		vap.va_type = VREG;
-		vap.va_mode = 0644;
+		vap.va_mode = 0777;
 
 		// If O_TRUNC:
 		switch (CreateDisposition) {
@@ -1240,9 +1240,21 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	int status;
 	char *filename = NULL;
 
+	// Check the EA buffer is good, if supplied.
+	if (Irp->AssociatedIrp.SystemBuffer != NULL &&
+		IrpSp->Parameters.Create.EaLength > 0) {
+		ULONG offset;
+		status = IoCheckEaBufferValidity(Irp->AssociatedIrp.SystemBuffer, IrpSp->Parameters.Create.EaLength, &offset);
+		if (!NT_SUCCESS(status)) {
+			dprintf("IoCheckEaBufferValidity returned %08x (error at offset %u)\n", status, offset);
+			return status;
+		}
+	}
+
 	// Allocate space to hold name, must be freed from here on
 	filename = kmem_alloc(PATH_MAX, KM_SLEEP);
 
+	// Deal with ExtraCreateParameters
 #if defined (NTDDI_WIN10_RS5) && (NTDDI_VERSION >= NTDDI_WIN10_RS5)
 	/* Check for ExtraCreateParameters */
 	PECP_LIST ecp = NULL;
@@ -1259,7 +1271,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				// More code to come here:
 			} else if (IsEqualGUID(&ecpType, &GUID_ECP_QUERY_ON_CREATE)) {
 				dprintf("GUID_ECP_QUERY_ON_CREATE\n");
-				// It wants a getattr call on success
+				// It wants a getattr call on success, before we finish up
 				qocContext = (PQUERY_ON_CREATE_ECP_CONTEXT)ecpContext;
 			} else if (IsEqualGUID(&ecpType, &GUID_ECP_CREATE_REDIRECTION)) {
 				dprintf("GUID_ECP_CREATE_REDIRECTION\n");
@@ -1271,7 +1283,29 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	} // if ecp
 #endif
 
+	// The associated buffer on a CreateFile is an EA buffer.
+	// Already Verified above - do a quickscan of any EAs we
+	// handle in a special way.
+	if (Irp->AssociatedIrp.SystemBuffer != NULL &&
+		IrpSp->Parameters.Create.EaLength > 0) {
+
+		for (PFILE_FULL_EA_INFORMATION ea = (PFILE_FULL_EA_INFORMATION)Irp->AssociatedIrp.SystemBuffer; ; ea = (PFILE_FULL_EA_INFORMATION)((uint8_t*)ea + ea->NextEntryOffset)) {
+			// only parse $LX attrs right now -- things we can store before the file
+			// gets created.
+//			if (vattr_apply_single_ea(&vap, ea)) {
+			dprintf("  encountered special attrs EA '%.*s'\n", ea->EaNameLength, ea->EaName);
+			//			}
+			if (ea->NextEntryOffset == 0)
+				break;
+		}
+	}
+
+
+
+	// Call ZFS
 	status = zfs_vnop_lookup_impl(Irp, IrpSp, zmo, filename);
+
+
 
 #if defined (NTDDI_WIN10_RS5) && (NTDDI_VERSION >= NTDDI_WIN10_RS5)
 	// Did ECP ask for getattr to be returned? None, one or both can be set.
