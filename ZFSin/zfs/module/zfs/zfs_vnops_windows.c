@@ -1115,8 +1115,6 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 
 			if (Status == STATUS_SUCCESS) {
 
-				FileObject->SectionObjectPointer = vnode_sectionpointer(vp);
-
 				Irp->IoStatus.Information = replacing ? CreateDisposition == FILE_SUPERSEDE ?
 					FILE_SUPERSEDED : FILE_OVERWRITTEN : FILE_CREATED;
 
@@ -1194,8 +1192,6 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 			Status = zfs_setunlink(vp, dvp);
 
 		if(Status == STATUS_SUCCESS) {
-
-			FileObject->SectionObjectPointer = vnode_sectionpointer(vp);
 
 			Irp->IoStatus.Information = FILE_OPENED;
 			// Did they set the open flags (clearing archive?)

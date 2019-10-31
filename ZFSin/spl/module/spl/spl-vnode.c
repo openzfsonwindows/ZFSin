@@ -1473,11 +1473,18 @@ void *vnode_security(vnode_t *vp)
 	return vp->security_descriptor;
 }
 
+extern CACHE_MANAGER_CALLBACKS CacheManagerCallbacks;
 
 void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) 
 {
-	if (fileobject)
+	if (fileobject) {
 		fileobject->FsContext = vp;
+		fileobject->SectionObjectPointer = vnode_sectionpointer(vp);
+		CcInitializeCacheMap(fileobject,
+			(PCC_FILE_SIZES)&vp->FileHeader.AllocationSize,
+			FALSE,
+			&CacheManagerCallbacks, vp);
+	}
 }
 
 void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) 
