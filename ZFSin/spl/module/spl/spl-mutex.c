@@ -132,7 +132,7 @@ again:
 void spl_mutex_exit(kmutex_t *mp)
 {
 	if (mp->m_owner != current_thread())
-		panic("%s: releasing not held/not our lock?", __func__);
+		panic("%s: releasing not held/not our lock?\n", __func__);
 
 	mp->m_owner = NULL;
 

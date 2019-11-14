@@ -1960,7 +1960,9 @@ out:
 	}
 
 	if (CacheMapInitialized) {
+		dprintf("other uninit\n");
 		CcUninitializeCacheMap(FileObject, NULL, NULL);
+		dprintf("done uninit\n");
 	}
 
 	// We handled setsize in here.
@@ -2731,7 +2733,7 @@ NTSTATUS file_stat_lx_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STA
 		fsli->FileAttributes = zfs_getwinflags(zp);
 		fsli->ReparseTag = 0;
 		fsli->NumberOfLinks = zp->z_links;
-		fsli->EffectiveAccess = GENERIC_ALL;
+		fsli->EffectiveAccess = SPECIFIC_RIGHTS_ALL | ACCESS_SYSTEM_SECURITY;
 		fsli->LxFlags = LX_FILE_METADATA_HAS_UID | LX_FILE_METADATA_HAS_GID | LX_FILE_METADATA_HAS_MODE;
 		if (zfsvfs->z_case == ZFS_CASE_SENSITIVE) fsli->LxFlags |= LX_FILE_CASE_SENSITIVE_DIR;
 		fsli->LxUid = zp->z_uid;

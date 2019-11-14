@@ -108,7 +108,6 @@ struct mount
 	// NotifySync is used by notify directory change
 	PNOTIFY_SYNC NotifySync;
 	LIST_ENTRY DirNotifyList;
-
 };
 typedef struct mount mount_t;
 #define LK_NOWAIT 1

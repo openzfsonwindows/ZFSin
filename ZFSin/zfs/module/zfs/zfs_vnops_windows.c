@@ -593,7 +593,7 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 		dvp = ZTOV(zp);
 		vnode_ref(dvp); // Hold open reference, until CLOSE
 
-		vnode_couplefileobject(dvp, FileObject);
+		vnode_couplefileobject(dvp, FileObject, 0ULL);
 		IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 		VN_RELE(dvp);
 
@@ -634,7 +634,7 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 
 				if (error == 0) {
 					vp = ZTOV(zp);
-					vnode_couplefileobject(vp, FileObject);
+					vnode_couplefileobject(vp, FileObject, zp->z_size);
 					vnode_ref(vp); // Hold open reference, until CLOSE
 					VN_RELE(vp);
 
@@ -672,7 +672,7 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 			// Grab vnode to ref
 			if (VN_HOLD(dvp) == 0) {
 				vnode_ref(dvp); // Hold open reference, until CLOSE
-				vnode_couplefileobject(dvp, FileObject);
+				vnode_couplefileobject(dvp, FileObject, 0ULL);
 				if (vnode_isdir(dvp))
 					FileObject->FsContext2 = zfs_dirlist_alloc();
 				VN_RELE(dvp);
@@ -833,7 +833,7 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 
 			dprintf("%s: opening PARENT directory\n", __func__);
 			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
-			vnode_couplefileobject(dvp, FileObject);
+			vnode_couplefileobject(dvp, FileObject, 0ULL);
 			vnode_ref(dvp); // Hold open reference, until CLOSE
 			if (DeleteOnClose) 
 				Status = zfs_setunlink(vp, dvp);
@@ -892,7 +892,7 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 
 			// TODO: move creating zccb to own function
 			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
-			vnode_couplefileobject(vp, FileObject);
+			vnode_couplefileobject(vp, FileObject, 0ULL);
 			vnode_ref(vp); // Hold open reference, until CLOSE
 			if (DeleteOnClose)
 				Status = zfs_setunlink(vp, dvp);
@@ -1107,7 +1107,10 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 		// O_EXCL only if FILE_CREATE
 		error = zfs_create(dvp, finalname, &vap, CreateDisposition == FILE_CREATE, vap.va_mode, &vp, NULL);
 		if (error == 0) {
-			vnode_couplefileobject(vp, FileObject);
+
+			zp = VTOZ(vp);
+
+			vnode_couplefileobject(vp, FileObject, zp?zp->z_size:0ULL);
 			vnode_ref(vp); // Hold open reference, until CLOSE
 
 			if (DeleteOnClose) 
@@ -1117,8 +1120,6 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 
 				Irp->IoStatus.Information = replacing ? CreateDisposition == FILE_SUPERSEDE ?
 					FILE_SUPERSEDED : FILE_OVERWRITTEN : FILE_CREATED;
-
-				zp = VTOZ(vp);
 
 				// Update pflags, if needed
 				zfs_setwinflags(zp, IrpSp->Parameters.Create.FileAttributes | FILE_ATTRIBUTE_ARCHIVE);
@@ -1166,7 +1167,7 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 	ASSERT(IrpSp->FileObject->FsContext == NULL);
 	if (vp == NULL) {
 		IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
-		vnode_couplefileobject(dvp, FileObject);
+		vnode_couplefileobject(dvp, FileObject, 0ULL);
 		vnode_ref(dvp); // Hold open reference, until CLOSE
 		if (DeleteOnClose) 
 			Status = zfs_setunlink(vp, dvp);
@@ -1186,7 +1187,7 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 		VN_RELE(dvp);
 	} else {
 		// Technically, this should call zfs_open() - but it is mostly empty
-		vnode_couplefileobject(vp, FileObject);
+		vnode_couplefileobject(vp, FileObject, zp->z_size);
 		vnode_ref(vp); // Hold open reference, until CLOSE
 		if (DeleteOnClose)
 			Status = zfs_setunlink(vp, dvp);
@@ -2989,16 +2990,13 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		releaselock = 1;
 	} 
 
-	if (fileObject->SectionObjectPointer == NULL)
-		fileObject->SectionObjectPointer = vnode_sectionpointer(vp);
-
-
 	void *SystemBuffer = MapUserBuffer(Irp);
 
 	if (nocache) {
 
 	} else {
 		// Cached
+#if 1
 		if (fileObject->PrivateCacheMap == NULL) {
 			CC_FILE_SIZES ccfs;
 			vp->FileHeader.FileSize.QuadPart = zp->z_size;
@@ -3011,6 +3009,7 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 			CcSetAdditionalCacheAttributes(fileObject, TRUE, TRUE); // FIXME: for now
 			dprintf("%s: CcInitializeCacheMap\n", __func__);
 		}
+#endif
 
 		// DO A NORMAL CACHED READ, if the MDL bit is not set,
 		if (!FlagOn(IrpSp->MinorFunction, IRP_MN_MDL)) {
@@ -3164,17 +3163,12 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 		//ASSERT(fileObject->PrivateCacheMap != NULL);
 	}
-
-	if (fileObject->SectionObjectPointer == NULL)
-		fileObject->SectionObjectPointer = vnode_sectionpointer(vp);
-
-
+	
 	if (!nocache && !CcCanIWrite(fileObject, bufferLength, TRUE, FALSE)) {
 		Status = STATUS_PENDING;
 		DbgBreakPoint();
 		goto out;
 	}
-
 
 	if (nocache && !pagingio && fileObject->SectionObjectPointer &&
 		fileObject->SectionObjectPointer->DataSectionObject) {
@@ -3199,20 +3193,15 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 	if (!nocache) {
 
 		if (fileObject->PrivateCacheMap == NULL) {
-
 			vnode_pager_setsize(vp, zp->z_size);
 			vnode_setsizechange(vp, 0);
-			CcInitializeCacheMap(fileObject, 
+			CcInitializeCacheMap(fileObject,
 				(PCC_FILE_SIZES)&vp->FileHeader.AllocationSize, FALSE,
 				&CacheManagerCallbacks, vp);
-
 			CcSetAdditionalCacheAttributes(fileObject, TRUE, TRUE); // FIXME: for now
-
 			dprintf("%s: CcInitializeCacheMap\n", __func__);
-
 			//CcSetReadAheadGranularity(fileObject, READ_AHEAD_GRANULARITY);
 		}
-		
 
 		// If beyond valid data, zero between to expand (this is cachedfile, not paging io, extend ok)
 		if (byteOffset.QuadPart + bufferLength > zp->z_size) {
@@ -3760,55 +3749,12 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			 * First encourage Windows to release the FileObject, CcMgr etc, flush everything.
 			 */
 
-			if (!vnode_isinuse(vp, 0)) {
+			// FileObject should/could no longer point to vp.
+			vnode_decouplefileobject(vp, IrpSp->FileObject);
+			vnode_fileobject_remove(vp, IrpSp->FileObject);
 
-				SECTION_OBJECT_POINTERS *section;
-				section = vnode_sectionpointer(vp);
-
-				if (IrpSp->FileObject->SectionObjectPointer)
-					ASSERT(IrpSp->FileObject->SectionObjectPointer == section);
-
-				// ImageSection has to be first
-				if (section->ImageSectionObject) {
-					(VOID)MmFlushImageSection(section, MmFlushForWrite);
-				}
-
-				// DataSection next
-				if (FlagOn(IrpSp->FileObject->Flags, FO_CACHE_SUPPORTED) &&
-					section && section->DataSectionObject) {
-					IO_STATUS_BLOCK iosb;
-					CcFlushCache(section, NULL, 0, &iosb);
-
-					CcPurgeCacheSection(section, NULL, 0, FALSE);
-				}
-
-				// Finally force out CCMap
-				if (IrpSp->FileObject->SectionObjectPointer) {
-					LARGE_INTEGER Zero = { 0,0 };
-					CACHE_UNINITIALIZE_EVENT UninitializeCompleteEvent;
-					NTSTATUS WaitStatus;
-					KeInitializeEvent(&UninitializeCompleteEvent.Event,
-						SynchronizationEvent,
-						FALSE);
-					// Because CcUninitializeCacheMap() can call MJ_CLOSE immediately, and we
-					// don't want to free anything in *that* call, take a usecount++ here.
-					vnode_ref(vp);
-					CcUninitializeCacheMap(IrpSp->FileObject, vnode_deleted(vp) ? &Zero : NULL, &UninitializeCompleteEvent);
-					WaitStatus = KeWaitForSingleObject(&UninitializeCompleteEvent.Event,
-						Executive,
-						KernelMode,
-						FALSE,
-						NULL);
-					vnode_rele(vp);
-					ASSERT(WaitStatus == STATUS_SUCCESS);
-				}
-			}
-
-
-			// Remove this FO from vp. If we are empty, we can remove memory
-			vnode_fileobject_remove(IrpSp->FileObject->FsContext, IrpSp->FileObject);
-
-			/* If we can release now, do so.
+			/* 
+			 * If we can release now, do so.
 			 * If the reference count for the per-file context structure reaches zero
 			 * and both the ImageSectionObject and DataSectionObject of the SectionObjectPointers
 			 * field from the FILE_OBJECT is zero, the filter driver may then delete the per-file context data.
@@ -3848,13 +3794,13 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 
 					Status = STATUS_SUCCESS;
 				}
+
 				vp = NULL; // Paranoia, signal it is gone.
 
 			} else { /* if vp is not idle */
 				dprintf("IRP_CLOSE but can't close yet. is_empty %d\n", vnode_fileobject_empty(vp, 1));
 				Status = STATUS_SUCCESS;
 			}
-			IrpSp->FileObject->FsContext = NULL;
 		}
 	}
 
@@ -4476,17 +4422,6 @@ fsDispatcher(
 			zmo) {
 
 			Status = zfs_vnop_lookup(Irp, IrpSp, zmo);
-
-			// If we claimed to have opened a file, vp should be set
-			if (Status == 0) {
-
-				ASSERT(IrpSp->FileObject != NULL);
-
-				// Record all FO used with vp, starting with this one
-				if (IrpSp->FileObject && IrpSp->FileObject->FsContext)
-					vnode_fileobject_add(IrpSp->FileObject->FsContext, IrpSp->FileObject);
-
-			}
 
 			if (Status == EROFS)
 				Status = STATUS_MEDIA_WRITE_PROTECTED;

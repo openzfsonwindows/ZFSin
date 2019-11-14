@@ -46,7 +46,7 @@
 
 
 /* Counter for unique vnode ID */
-static uint64_t vnode_vid_counter = 0;
+static uint64_t vnode_vid_counter = 6; /* ZFSCTL_INO_SHARES + 1; */
 
 /* Total number of active vnodes */
 static uint64_t vnode_active = 0;
@@ -1103,6 +1103,16 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		mutex_enter(&vp->v_mutex);
 	}
 
+	// Doublecheck CcMgr is gone (should be if avl is empty)
+	// If it hasn't quite let go yet, let the node linger on deadlist.
+	if (vp->SectionObjectPointers.DataSectionObject != NULL ||
+		vp->SectionObjectPointers.ImageSectionObject != NULL ||
+		vp->SectionObjectPointers.SharedCacheMap != NULL) {
+		dprintf("%s: %p still has CcMgr, lingering on dead list.\n", __func__, vp);
+		mutex_exit(&vp->v_mutex);
+		return -1;
+	}
+
 	// We will only reclaim idle nodes, and not mountpoints(ROOT)
 	if ((flags & FORCECLOSE) ||
 
@@ -1111,6 +1121,10 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 			avl_is_empty(&vp->v_fileobjects) &&
 			((vp->v_flags&VNODE_MARKROOT) == 0))) {
 
+		ASSERT3P(vp->SectionObjectPointers.DataSectionObject, == , NULL);
+		ASSERT3P(vp->SectionObjectPointers.ImageSectionObject, == , NULL);
+		ASSERT3P(vp->SectionObjectPointers.SharedCacheMap, == , NULL);
+
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
 		vp->v_iocount = 0;
 
@@ -1118,6 +1132,7 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 
 		FsRtlTeardownPerStreamContexts(&vp->FileHeader);
 		FsRtlUninitializeFileLock(&vp->lock);
+
 		// Call sync? If vnode_write
 		//zfs_fsync(vp, 0, NULL, NULL);
 
@@ -1132,8 +1147,6 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		if (zfs_vnop_reclaim(vp))
 			panic("vnode_recycle: cannot reclaim\n"); // My fav panic from OSX
 
-
-		vp->v_mount = NULL;
 		KIRQL OldIrql;
 		mutex_enter(&vp->v_mutex);
 		ASSERT(avl_is_empty(&vp->v_fileobjects));
@@ -1164,6 +1177,8 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 
 int vnode_recycle(vnode_t *vp)
 {
+	if (vp->v_flags & VNODE_FLUSHING)
+		return -1;
 	return vnode_recycle_int(vp, 0);
 }
 
@@ -1191,11 +1206,10 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	if (flags & VNODE_MARKROOT)
 		vp->v_flags |= VNODE_MARKROOT;
 
-	mutex_enter(&vnode_all_list_lock);
-	list_insert_tail(&vnode_all_list, vp);
-	mutex_exit(&vnode_all_list_lock);
 
 	// Initialise the Windows specific data.
+	memset(&vp->SectionObjectPointers, 0, sizeof(vp->SectionObjectPointers));
+
 	ExInitializeFastMutex(&vp->AdvancedFcbHeaderMutex);
 	FsRtlSetupAdvancedHeader(&vp->FileHeader, &vp->AdvancedFcbHeaderMutex);
 
@@ -1206,6 +1220,11 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	ExInitializeResourceLite(vp->FileHeader.PagingIoResource);
 	ASSERT0(((uint64_t)vp->FileHeader.Resource) & 7);
 
+
+	// Add only to list once we have finished initialising.
+	mutex_enter(&vnode_all_list_lock);
+	list_insert_tail(&vnode_all_list, vp);
+	mutex_exit(&vnode_all_list_lock);
 }
 
 int     vnode_isvroot(vnode_t *vp)
@@ -1394,6 +1413,7 @@ int vnode_drain_delayclose(int force)
 		if (candidate) ret++;
 	}
 	mutex_exit(&vnode_all_list_lock);
+
 	return ret;
 }
 
@@ -1406,13 +1426,14 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 	// FORCECLOSE : release everything, force unmount
 
 	// if mp is NULL, we are reclaiming nodes, until threshold
-
 	int isbusy = 0;
 	int reclaims = 0;
 	vnode_fileobjects_t *node;
-	void *cookie = NULL;
-
 	struct vnode *rvp;
+
+	dprintf("vflush start\n");
+
+repeat:
 	mutex_enter(&vnode_all_list_lock);
 	while (1) {
 		for (rvp = list_head(&vnode_all_list);
@@ -1429,34 +1450,108 @@ int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 				if ((flags & SKIPROOT))
 					if (rvp->v_flags & VNODE_MARKROOT)
 						continue;
+			
 			// We are to remove this node, even if ROOT - unmark it.
 			mutex_exit(&vnode_all_list_lock);
 
 			// Release the AVL tree
 			KIRQL OldIrql;
-			mutex_enter(&rvp->v_mutex);
-			while ((node = avl_destroy_nodes(&rvp->v_fileobjects, &cookie))	!= NULL) {
-				kmem_free(node, sizeof(*node));
-			}
 
-			// Keep lock on vp for recycle, recycle will release.
-			isbusy = vnode_recycle_int(rvp, (flags & FORCECLOSE) | VNODELOCKED);
+			// Attempt to flush out any caches; 
+			mutex_enter(&rvp->v_mutex);
+			// Make sure we don't call vnode_cacheflush() again
+			// from IRP_MJ_CLOSE.
+			rvp->v_flags |= VNODE_FLUSHING;
+
+			while ((node = avl_first(&rvp->v_fileobjects)) != NULL) {
+				FILE_OBJECT *fileobject = node->fileobject;
+
+				avl_remove(&rvp->v_fileobjects, node);
+
+				// Because the CC* calls can re-enter ZFS, we need to
+				// release the lock, and because we release the lock the
+				// while has to start from the top each time. We release
+				// the node at end of this while.
+				mutex_exit(&rvp->v_mutex);
+
+				// Try to lock fileobject before we use it.
+				if (NT_SUCCESS(ObReferenceObjectByPointer(
+					fileobject,  // fixme, keep this in dvd
+					0,
+					*IoFileObjectType,
+					KernelMode))) {
+
+					vnode_flushcache(rvp, fileobject, TRUE);
+
+					ObDereferenceObject(fileobject);
+				} // if ObReferenceObjectByPointer
+
+
+				// Grab mutex for the while() above.
+				kmem_free(node, sizeof(*node));
+				mutex_enter(&rvp->v_mutex);
+
+			} // while
+
+			// vnode_recycle_int() will call mutex_exit(&rvp->v_mutex);
+			// re-check flags, due to releasing locks
+			isbusy = 1;
+			if (!(rvp->v_flags & VNODE_DEAD))
+				isbusy = vnode_recycle_int(rvp, (flags & FORCECLOSE) | VNODELOCKED);
+			else
+				mutex_exit(&rvp->v_mutex);
+
 			mutex_enter(&vnode_all_list_lock);
+
 			if (!isbusy) {
 				reclaims++;
 				break; // must restart loop if unlinked node
 			}
 		}
+
 		// If the end of the list was reached, stop entirely
 		if (!rvp) break;
-
 	}
+
+	mutex_exit(&vnode_all_list_lock);
 
 	if (mp == NULL && reclaims > 0) {
 		dprintf("%s: %llu reclaims processed.\n", __func__, reclaims);
 	}
 
-	mutex_exit(&vnode_all_list_lock);
+
+	kpreempt(KPREEMPT_SYNC);
+
+	// Check if all nodes have gone, or we are waiting for CcMgr
+	// not counting the MARKROOT vnode for the mount. So if empty list,
+	// or it is exactly one node with MARKROOT, then we are done.
+	// Unless FORCECLOSE, then root as well shall be gone.
+
+	if ((flags & FORCECLOSE) &&
+		!list_is_empty(&vnode_all_list)) {
+		dprintf("%s: waiting for vnode flush1.\n", __func__);
+		// Is there a better wakeup we can do here?
+		delay(hz >> 1);
+#if 0
+		mutex_enter(&vnode_all_list_lock);
+		for (rvp = list_head(&vnode_all_list);
+			rvp;
+			rvp = list_next(&vnode_all_list, rvp)) {
+			if (rvp->SectionObjectPointers.DataSectionObject) {
+				IO_STATUS_BLOCK iosb;
+				CcFlushCache(&rvp->SectionObjectPointers, NULL, 0, &iosb);
+				ExAcquireResourceExclusiveLite(rvp->FileHeader.PagingIoResource, TRUE);
+				ExReleaseResourceLite(rvp->FileHeader.PagingIoResource);
+			}
+			CcPurgeCacheSection(&rvp->SectionObjectPointers, NULL, 0, FALSE);  
+		}
+		mutex_exit(&vnode_all_list_lock);
+#endif
+		vnode_drain_delayclose(1);
+		goto repeat;
+	}
+
+	dprintf("vflush end\n");
 
 	return 0;
 }
@@ -1475,22 +1570,116 @@ void *vnode_security(vnode_t *vp)
 
 extern CACHE_MANAGER_CALLBACKS CacheManagerCallbacks;
 
-void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) 
+void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject, uint64_t size) 
 {
 	if (fileobject) {
 		fileobject->FsContext = vp;
-		fileobject->SectionObjectPointer = vnode_sectionpointer(vp);
+
+		// Make sure it is pointing to the right vp.
+		if (fileobject->SectionObjectPointer != vnode_sectionpointer(vp)) {
+			fileobject->SectionObjectPointer = vnode_sectionpointer(vp);
+		}
+
+		// If this fo's CcMgr hasn't been initialised, do so now
+		// this ties each fileobject to CcMgr, it is not about
+		// the vp itself. CcInit will be called many times on a vp,
+		// once for each fileobject.
+		dprintf("%s: vp %p fo %p\n", __func__, vp, fileobject);
+
+		// Add this fileobject to the list of known ones.
+		vnode_fileobject_add(vp, fileobject);
+
+		if (vnode_isvroot(vp)) return;
+
+		vnode_pager_setsize(vp, size);
+		vnode_setsizechange(vp, 0); // We are updating now, clear sizechange
+
 		CcInitializeCacheMap(fileobject,
 			(PCC_FILE_SIZES)&vp->FileHeader.AllocationSize,
 			FALSE,
 			&CacheManagerCallbacks, vp);
+		dprintf("return init\n");
 	}
 }
 
+// Attempt to boot CcMgr out of the fileobject, return
+// true if we could
+int vnode_flushcache(vnode_t *vp, FILE_OBJECT *fileobject, boolean_t hard)
+{
+	CACHE_UNINITIALIZE_EVENT UninitializeCompleteEvent;
+	NTSTATUS WaitStatus;
+	LARGE_INTEGER Zero = { 0,0 };
+	int ret = 0;
+
+	if (vp == NULL)
+		return 1;
+
+	if (fileobject == NULL)
+		return 1;
+
+	// Have CcMgr already released it? 
+	if (fileobject->SectionObjectPointer == NULL)
+		return 1;
+
+	// Because CcUninitializeCacheMap() can call MJ_CLOSE immediately, and we
+	// don't want to free anything in *that* call, take a usecount++ here, that
+	// way we skip the vnode_isinuse() test 
+	atomic_inc_32(&vp->v_usecount);
+
+	if (fileobject->SectionObjectPointer->ImageSectionObject) {
+		if (hard)
+			(VOID)MmForceSectionClosed(fileobject->SectionObjectPointer, TRUE);
+		else
+			(VOID)MmFlushImageSection(fileobject->SectionObjectPointer, MmFlushForWrite);
+	}
+
+	// DataSection next
+	if (fileobject->SectionObjectPointer->DataSectionObject) {
+		IO_STATUS_BLOCK iosb;
+		CcFlushCache(fileobject->SectionObjectPointer, NULL, 0, &iosb);
+		ExAcquireResourceExclusiveLite(vp->FileHeader.PagingIoResource, TRUE);
+		ExReleaseResourceLite(vp->FileHeader.PagingIoResource);
+	}
+
+	CcPurgeCacheSection(fileobject->SectionObjectPointer, NULL, 0, FALSE /*hard*/);
+
+	KeInitializeEvent(&UninitializeCompleteEvent.Event,
+		SynchronizationEvent,
+		FALSE);
+
+	// Try to release cache
+	dprintf("calling CcUninit: fo %p\n", fileobject);
+	CcUninitializeCacheMap(fileobject,
+		vnode_deleted(vp) || hard ? &Zero : NULL,
+		NULL);
+	dprintf("complete CcUninit\n");
+
+	// Remove usecount lock held above.
+	atomic_dec_32(&vp->v_usecount);
+
+	// Unable to fully release CcMgr
+	dprintf("%s: ret %d : vp %p fo %p\n", __func__, ret,
+		vp, fileobject);
+
+	return ret;
+}
+
+
 void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) 
 {
-	if (fileobject)
-		fileobject->FsContext = NULL;
+	if (vp == NULL) {
+		dprintf("vp NULL\n");
+		DbgBreakPoint();
+	}
+	if (fileobject && fileobject->FsContext) {
+		dprintf("%s: fo %p -X-> %p\n", __func__, fileobject, vp);
+
+		// If we are flushing, we do nothing here.
+		if (vp->v_flags & VNODE_FLUSHING) return;
+
+		if (vnode_flushcache(vp, fileobject, FALSE))
+			fileobject->FsContext = NULL;
+	}
 }
 
 void vnode_setsizechange(vnode_t *vp, int set)

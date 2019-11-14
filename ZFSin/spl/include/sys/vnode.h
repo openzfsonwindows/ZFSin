@@ -58,7 +58,8 @@
 #define VNODE_MARKROOT		8
 #define VNODE_SIZECHANGE    16
 #define VNODE_EASIZE	    32
-#define VNODE_VALIDBITS		63
+#define VNODE_FLUSHING		64
+#define VNODE_VALIDBITS		127
 
 /* v_unlink flags */
 #define UNLINK_DELETE_ON_CLOSE	(1 << 0) // 1
@@ -546,7 +547,7 @@ void vnode_rele(vnode_t *vp);
 void *vnode_sectionpointer(vnode_t *vp);
 void *vnode_security(vnode_t *vp);
 void vnode_setsecurity(vnode_t *vp, void *sd);
-void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject);
+void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject, uint64_t size);
 void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject);
 void vnode_setsizechange(vnode_t *vp, int set);
 int vnode_sizechange(vnode_t *vp);
@@ -573,6 +574,7 @@ int vnode_drain_delayclose(int);
 int vnode_easize(struct vnode *vp, uint64_t *size);
 void vnode_set_easize(struct vnode *vp, uint64_t size);
 void vnode_clear_easize(struct vnode *vp);
+int vnode_flushcache(vnode_t *vp, FILE_OBJECT *fileobject, boolean_t );
 
 int kernel_ioctl(PDEVICE_OBJECT DeviceObject, long cmd, void *inbuf, uint32_t inlen,
 	void *outbuf, uint32_t outlen);
