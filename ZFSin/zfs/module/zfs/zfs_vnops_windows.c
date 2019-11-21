@@ -468,7 +468,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
  * and will assign FileObject->FsContext as appropriate, with usecount set
  * when required, but it will not hold iocount.
  */
-int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char *filename)
+int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char *filename, vattr_t *vap)
 {
 	int error;
 	cred_t *cr = NULL;
@@ -869,7 +869,6 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 	}
 
 	if (CreateDirectory && finalname) {
-		vattr_t vap = { 0 };
 
 		if (TemporaryFile) 
 			return STATUS_INVALID_PARAMETER;
@@ -881,12 +880,14 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 			return STATUS_MEDIA_WRITE_PROTECTED;
 		}
 
-		vap.va_mask = AT_MODE | AT_TYPE ;
-		vap.va_type = VDIR;
-		vap.va_mode = 0777;
-		//VATTR_SET(&vap, va_mode, 0755);
+		vap->va_type = VDIR;
+		// Set default 777 if something else wasn't passed in
+		if (!(vap->va_mask & AT_MODE))
+			vap->va_mode = 0777;
+		vap->va_mask |= (AT_MODE | AT_TYPE);
+
 		ASSERT(strchr(finalname, '\\') == NULL);
-		error = zfs_mkdir(dvp, finalname, &vap, &vp, NULL,
+		error = zfs_mkdir(dvp, finalname, vap, &vp, NULL,
 			NULL, 0, NULL);
 		if (error == 0) {
 
@@ -1071,7 +1072,6 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 	}
 
 	if (CreateFile && finalname) {
-		vattr_t vap = { 0 };
 		int replacing = 0;
 
 		if (zfsvfs->z_rdonly || vfs_isrdonly(zfsvfs->z_vfs) ||
@@ -1090,22 +1090,23 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 			replacing = 1;
 		}
 
-		vap.va_mask = AT_MODE | AT_TYPE;
-		vap.va_type = VREG;
-		vap.va_mode = 0777;
+		vap->va_type = VREG;
+		if (!(vap->va_mask & AT_MODE))
+			vap->va_mode = 0777;
+		vap->va_mask = (AT_MODE | AT_TYPE);
 
 		// If O_TRUNC:
 		switch (CreateDisposition) {
 		case FILE_SUPERSEDE:
 		case FILE_OVERWRITE_IF:
 		case FILE_OVERWRITE:
-			vap.va_mask |= AT_SIZE;
-			vap.va_size = 0;
+			vap->va_mask |= AT_SIZE;
+			vap->va_size = 0;
 			break;
 		}
 
 		// O_EXCL only if FILE_CREATE
-		error = zfs_create(dvp, finalname, &vap, CreateDisposition == FILE_CREATE, vap.va_mode, &vp, NULL);
+		error = zfs_create(dvp, finalname, vap, CreateDisposition == FILE_CREATE, vap->va_mode, &vp, NULL);
 		if (error == 0) {
 
 			zp = VTOZ(vp);
@@ -1240,6 +1241,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 {
 	int status;
 	char *filename = NULL;
+	vattr_t vap = { 0 };
 
 	// Check the EA buffer is good, if supplied.
 	if (Irp->AssociatedIrp.SystemBuffer != NULL &&
@@ -1286,16 +1288,19 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 	// The associated buffer on a CreateFile is an EA buffer.
 	// Already Verified above - do a quickscan of any EAs we
-	// handle in a special way.
+	// handle in a special way, before we call zfs_vnop_lookup_impl().
+	// We handle the regular EAs afterward.
 	if (Irp->AssociatedIrp.SystemBuffer != NULL &&
 		IrpSp->Parameters.Create.EaLength > 0) {
 
-		for (PFILE_FULL_EA_INFORMATION ea = (PFILE_FULL_EA_INFORMATION)Irp->AssociatedIrp.SystemBuffer; ; ea = (PFILE_FULL_EA_INFORMATION)((uint8_t*)ea + ea->NextEntryOffset)) {
+		for (PFILE_FULL_EA_INFORMATION ea = (PFILE_FULL_EA_INFORMATION)Irp->AssociatedIrp.SystemBuffer; 
+			; 
+			ea = (PFILE_FULL_EA_INFORMATION)((uint8_t*)ea + ea->NextEntryOffset)) {
 			// only parse $LX attrs right now -- things we can store before the file
 			// gets created.
-//			if (vattr_apply_single_ea(&vap, ea)) {
-			dprintf("  encountered special attrs EA '%.*s'\n", ea->EaNameLength, ea->EaName);
-			//			}
+			if (vattr_apply_lx_ea(&vap, ea)) {
+				dprintf("  encountered special attrs EA '%.*s'\n", ea->EaNameLength, ea->EaName);
+			}
 			if (ea->NextEntryOffset == 0)
 				break;
 		}
@@ -1304,7 +1309,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 
 
 	// Call ZFS
-	status = zfs_vnop_lookup_impl(Irp, IrpSp, zmo, filename);
+	status = zfs_vnop_lookup_impl(Irp, IrpSp, zmo, filename, &vap);
 
 
 
@@ -1323,6 +1328,16 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 		FsRtlAcknowledgeEcp(qocContext);
 	}
 #endif
+
+	// Now handle proper EAs properly
+	if (NT_SUCCESS(status) && 
+		Irp->AssociatedIrp.SystemBuffer &&
+		IrpSp->FileObject->FsContext) {
+		// Second pass: this will apply all EAs that are not only LX EAs
+		vnode_apply_eas(IrpSp->FileObject->FsContext, 
+			(PFILE_FULL_EA_INFORMATION)Irp->AssociatedIrp.SystemBuffer, 
+			IrpSp->Parameters.Create.EaLength, NULL);
+	}
 
 	// Free filename
 	kmem_free(filename, PATH_MAX);
@@ -2211,46 +2226,6 @@ out:
 	return Status;
 }
 
-int xattr_process(struct vnode *vp, struct vnode *xdvp, FILE_FULL_EA_INFORMATION *ea)
-{
-	int error;
-	struct vnode *xvp = NULL;
-
-	dprintf("%s: xattr '%.*s' valuelen %u\n", __func__,
-		ea->EaNameLength, ea->EaName, ea->EaValueLength);
-
-	if (ea->EaValueLength == 0) {
-
-		// Remove EA
-		error = zfs_remove(xdvp, ea->EaName, NULL, NULL, /* flags */0);
-
-	} else {
-		// Add replace EA
-
-		error = zfs_obtain_xattr(VTOZ(xdvp), ea->EaName, VTOZ(vp)->z_mode, NULL,
-			&xvp, 0);
-		if (error)
-			goto out;
-
-		/* Truncate, if it was existing */
-		error = zfs_freesp(VTOZ(xvp), 0, 0, VTOZ(vp)->z_mode, TRUE);
-
-		/* Write data */
-		uio_t *uio;
-		uio = uio_create(1, 0, UIO_SYSSPACE, UIO_WRITE);
-		uio_addiov(uio, (user_addr_t)ea->EaName + ea->EaNameLength + 1, 
-			ea->EaValueLength);
-		error = zfs_write(xvp, uio, 0, NULL, NULL);
-		uio_free(uio);
-	}
-
-out:
-	if (xvp != NULL)
-		VN_RELE(xvp);
-
-	return error;
-}
-
 /*
  * Receive an array of structs to set EAs, iterate until Next is null.
  */
@@ -2260,6 +2235,7 @@ NTSTATUS set_ea(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 	uint8_t *buffer = NULL, *UserBuffer = NULL;
 	NTSTATUS Status = STATUS_SUCCESS;
 	struct vnode *vp = NULL, *xdvp = NULL;
+	vattr_t vap = { 0 };
 
 	if (IrpSp->FileObject == NULL) return STATUS_INVALID_PARAMETER;
 
@@ -2275,44 +2251,13 @@ NTSTATUS set_ea(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 	// This magic is straight out of fastfat
 	buffer = BufferUserBuffer(Irp, input_len);
 
-	Status = IoCheckEaBufferValidity((PFILE_FULL_EA_INFORMATION)buffer,
-		input_len,
-		(PULONG)&Irp->IoStatus.Information);
-
+	ULONG eaErrorOffset = 0;
+	Status = vnode_apply_eas(vp, (PFILE_FULL_EA_INFORMATION)buffer, input_len, &eaErrorOffset);
+	// (Information is ULONG_PTR; as win64 is a LLP64 platform, ULONG isn't the right length.)
+	Irp->IoStatus.Information = eaErrorOffset;
 	if (!NT_SUCCESS(Status)) {
-		dprintf("%s: failed Validity: 0x%x\n", __func__, Status);
+		dprintf("%s: failed vnode_apply_eas: 0x%x\n", __func__, Status);
 		return Status;
-	}
-
-	// Iterate "buffer", to get xattr name, and value.
-	FILE_FULL_EA_INFORMATION *FullEa;
-	
-	// Open (or Create) the xattr directory
-	if (zfs_get_xattrdir(VTOZ(vp), &xdvp, NULL, CREATE_XATTR_DIR) != 0) {
-		Status = STATUS_EA_CORRUPT_ERROR;
-		goto out;
-	}
-
-	uint64_t offset = 0;
-	int error;
-	do {
-		FullEa = (FILE_FULL_EA_INFORMATION *)&buffer[offset];
-
-		error = xattr_process(vp, xdvp, FullEa);
-		if (error != 0) dprintf("  failed to process xattr: %d\n", error);
-
-		offset = FullEa->NextEntryOffset;
-	} while (offset != 0);
-
-out:
-	if (NT_SUCCESS(Status)) {
-		zfs_send_notify(zp->z_zfsvfs, zp->z_name_cache, zp->z_name_offset,
-			FILE_NOTIFY_CHANGE_EA,
-			FILE_ACTION_MODIFIED);
-	}
-
-	if (xdvp != NULL) {
-		VN_RELE(xdvp);
 	}
 
 	return Status;

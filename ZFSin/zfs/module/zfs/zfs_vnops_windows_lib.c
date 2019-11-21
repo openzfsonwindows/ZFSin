@@ -534,6 +534,134 @@ zfs_setwinflags(znode_t *zp, uint32_t winflags)
 	return 0;
 }
 
+// WSL uses special EAs to interact with uid/gid/mode/device major/minor
+// Returns: TRUE if the EA was stored in the vattr.
+BOOLEAN vattr_apply_lx_ea(vattr_t *vap, PFILE_FULL_EA_INFORMATION ea)
+{
+	BOOLEAN setVap = FALSE;
+
+	if (ea->EaNameLength != 6 || strncmp(ea->EaName, "$LX", 3) != 0)
+		return FALSE;
+
+	void *eaValue = &ea->EaName[0] + ea->EaNameLength + 1;
+	if (strncmp(ea->EaName, LX_FILE_METADATA_UID_EA_NAME, ea->EaNameLength) == 0) {
+		vap->va_uid = *(PUINT32)eaValue;
+		vap->va_active |= AT_UID;
+		setVap = TRUE;
+	} else if (strncmp(ea->EaName, LX_FILE_METADATA_GID_EA_NAME, ea->EaNameLength) == 0) {
+		vap->va_gid = *(PUINT32)eaValue;
+		vap->va_active |= AT_GID;
+		setVap = TRUE;
+	} else if (strncmp(ea->EaName, LX_FILE_METADATA_MODE_EA_NAME, ea->EaNameLength) == 0) {
+		vap->va_mode = *(PUINT32)eaValue;
+		vap->va_active |= AT_MODE;
+		setVap = TRUE;
+	} else if (strncmp(ea->EaName, LX_FILE_METADATA_DEVICE_ID_EA_NAME, ea->EaNameLength) == 0) {
+		UINT32 *vu32 = (UINT32*)eaValue;
+		vap->va_rdev = makedev(vu32[0], vu32[1]);
+		vap->va_active |= VNODE_ATTR_va_rdev;
+		setVap = TRUE;
+	}
+	return setVap;
+}
+
+static int vnode_apply_single_ea(struct vnode *vp, struct vnode *xdvp, FILE_FULL_EA_INFORMATION *ea)
+{
+	int error;
+	struct vnode *xvp = NULL;
+
+	dprintf("%s: xattr '%.*s' valuelen %u\n", __func__,
+		ea->EaNameLength, ea->EaName, ea->EaValueLength);
+
+	if (ea->EaValueLength == 0) {
+
+		// Remove EA
+		error = zfs_remove(xdvp, ea->EaName, NULL, NULL, /* flags */0);
+
+	} else {
+		// Add replace EA
+
+		error = zfs_obtain_xattr(VTOZ(xdvp), ea->EaName, VTOZ(vp)->z_mode, NULL,
+			&xvp, 0);
+		if (error)
+			goto out;
+
+		/* Truncate, if it was existing */
+		error = zfs_freesp(VTOZ(xvp), 0, 0, VTOZ(vp)->z_mode, TRUE);
+
+		/* Write data */
+		uio_t *uio;
+		uio = uio_create(1, 0, UIO_SYSSPACE, UIO_WRITE);
+		uio_addiov(uio, ea->EaName + ea->EaNameLength + 1, ea->EaValueLength);
+		error = zfs_write(xvp, uio, 0, NULL, NULL);
+		uio_free(uio);
+	}
+
+out:
+	if (xvp != NULL)
+		VN_RELE(xvp);
+
+	return error;
+}
+
+
+/*
+ * Apply a set of EAs to a vnode, while handling special Windows EAs that set UID/GID/Mode/rdev.
+ */
+NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION eas, ULONG eaLength, PULONG pEaErrorOffset)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+
+	if (vp == NULL || eas == NULL) return STATUS_INVALID_PARAMETER;
+
+	// Optional: Check for validity if the caller wants it.
+	if (pEaErrorOffset != NULL) {
+		Status = IoCheckEaBufferValidity(eas, eaLength, pEaErrorOffset);
+		if (!NT_SUCCESS(Status)) {
+			dprintf("%s: failed validity: 0x%x\n", __func__, Status);
+			return Status;
+		}
+	}
+
+	struct vnode *xdvp = NULL;
+	vattr_t vap = { 0 };
+	int error;
+	for (PFILE_FULL_EA_INFORMATION ea = eas; ; ea = (PFILE_FULL_EA_INFORMATION)((uint8_t*)ea + ea->NextEntryOffset)) {
+		if (vattr_apply_lx_ea(&vap, ea)) {
+			dprintf("  encountered special attrs EA '%.*s'\n", ea->EaNameLength, ea->EaName);
+		} else {
+			// optimization: defer creating an xattr dir until the first standard EA
+			if (xdvp == NULL) {
+				// Open (or Create) the xattr directory
+				if (zfs_get_xattrdir(VTOZ(vp), &xdvp, NULL, CREATE_XATTR_DIR) != 0) {
+					Status = STATUS_EA_CORRUPT_ERROR;
+					goto out;
+				}
+			}
+			error = vnode_apply_single_ea(vp, xdvp, ea);
+			if (error != 0) dprintf("  failed to process xattr: %d\n", error);
+		}
+
+		if (ea->NextEntryOffset == 0)
+			break;
+	}
+
+	// We should perhaps translate some of the "error" codes we can
+	// get here, into Status return values. Currently, all errors are
+	// masked, and we always return OK.
+
+	// Update zp based on LX eas.
+	if (vap.va_active != 0)
+		zfs_setattr(vp, &vap, 0, NULL, NULL);
+
+out:
+	if (xdvp != NULL) {
+		VN_RELE(xdvp);
+	}
+
+	return Status;
+}
+
 /*
  * Lookup/Create an extended attribute entry.
  *
