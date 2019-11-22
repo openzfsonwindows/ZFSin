@@ -326,84 +326,14 @@ vdev_file_close(vdev_t *vd)
 }
 
 #ifdef _KERNEL
-struct vdev_file_callback_struct {
-	KEVENT Event;
-	zio_t *zio;
-	PIRP irp;
-	void *b_data;
-};
-typedef struct vdev_file_callback_struct vf_callback_t;
-
-
 static NTSTATUS
 vdev_file_io_intrxxx(PDEVICE_OBJECT DeviceObject, PIRP irp, PVOID Context)
 {
 	KEVENT *kevent = Context;
 
-//	dprintf("%s: event\n", __func__);
 	KeSetEvent(kevent, 0, FALSE);
+	IoFreeIrp(irp);
 	return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-
-static void
-vdev_file_io_intr(void *Context)
-{
-	vf_callback_t *vb = (vf_callback_t *)Context;
-	zio_t *zio = vb->zio;
-	PIRP irp = vb->irp;
-
-	// Wait for IoCompletionRoutine to have been called.
-	KeWaitForSingleObject(&vb->Event, Executive, KernelMode, FALSE, NULL); // SYNC
-
-//	dprintf("%s: done\n", __func__);
-
-	/*
-	* The rest of the zio stack only deals with EIO, ECKSUM, and ENXIO.
-	* Rather than teach the rest of the stack about other error
-	* possibilities (EFAULT, etc), we normalize the error value here.
-	*/
-	//	zio->io_error = (geterror(bp) != 0 ? EIO : 0);
-
-	//	if (zio->io_error == 0 && bp->b_resid != 0)
-	//		zio->io_error = SET_ERROR(EIO);
-	zio->io_error = (irp->IoStatus.Status != 0 ? EIO : 0);
-	if (zio->io_type == ZIO_TYPE_READ) {
-		if (zio->io_abd->abd_size == zio->io_size) {
-			abd_return_buf_copy(zio->io_abd, vb->b_data, zio->io_size);
-		} else {
-			VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
-			abd_return_buf_copy_off(zio->io_abd, vb->b_data,
-				0, zio->io_size, zio->io_abd->abd_size);
-		}
-	} else {
-		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
-		abd_return_buf_off(zio->io_abd, vb->b_data, 0, zio->io_size, zio->io_abd->abd_size);
-	}
-
-	if (irp->IoStatus.Information != zio->io_size)
-		dprintf("%s: size mismatch 0x%llx != 0x%llx\n",
-			irp->IoStatus.Information, zio->io_size);
-
-	// Release irp
-	if (irp) {
-		while (irp->MdlAddress != NULL) {
-			PMDL NextMdl;
-			NextMdl = irp->MdlAddress->Next;
-			MmUnlockPages(irp->MdlAddress);
-			IoFreeMdl(irp->MdlAddress);
-			irp->MdlAddress = NextMdl;
-		}
-		IoFreeIrp(irp);
-	}
-	irp = NULL;
-
-	kmem_free(vb, sizeof(vf_callback_t));
-	vb = NULL;
-
-	zio_delay_interrupt(zio);
-
-	thread_exit();
 }
 #endif
 
@@ -476,16 +406,14 @@ vdev_file_io_start(zio_t *zio)
 	NTSTATUS status;
 	PIRP irp = NULL;
 	PIO_STACK_LOCATION irpStack = NULL;
-	//KEVENT completionEvent;
-
+	KEVENT Event;
 	IO_STATUS_BLOCK IoStatusBlock;
 	LARGE_INTEGER offset;
+	void *b_data = NULL;
 
 	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
 
-	vf_callback_t *vb = (vf_callback_t *)kmem_alloc(sizeof(vf_callback_t), KM_SLEEP);
-	vb->zio = zio;
-	KeInitializeEvent(&vb->Event, NotificationEvent, FALSE);
+	KeInitializeEvent(&Event, NotificationEvent, FALSE);
 
 #ifdef DEBUG
 	if (zio->io_abd->abd_size != zio->io_size) {
@@ -498,38 +426,35 @@ vdev_file_io_start(zio_t *zio)
 
 	if (zio->io_type == ZIO_TYPE_READ) {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
-		vb->b_data =
+		b_data =
 			abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
 	} else {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
-		vb->b_data =
+		b_data =
 			abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
 	}
 
 	if (zio->io_type == ZIO_TYPE_READ) {
 		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ,
 			vf->vf_DeviceObject,
-			vb->b_data,
+			b_data,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	} else {
 		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_WRITE,
 			vf->vf_DeviceObject,
-			vb->b_data,
+			b_data,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	}
 
 	if (!irp) {
-		kmem_free(vb, sizeof(vf_callback_t));
 		zio->io_error = EIO;
 		zio_interrupt(zio);
 		return;
 	}
-
-	vb->irp = irp;
 
 	irpStack = IoGetNextIrpStackLocation(irp);
 
@@ -539,18 +464,33 @@ vdev_file_io_start(zio_t *zio)
 
 	IoSetCompletionRoutine(irp,
 		vdev_file_io_intrxxx,
-		&vb->Event, // "Context" in vdev_disk_io_intr()
+		&Event, // "Context" in vdev_disk_io_intr()
 		TRUE, // On Success
 		TRUE, // On Error
 		TRUE);// On Cancel
 
-			  // Start a thread to wait for IO completion, which is signalled
-			  // by CompletionRouting setting event.
-	(void)thread_create(NULL, 0, vdev_file_io_intr, vb, 0, &p0,
-		TS_RUN, minclsyspri);
-
 	status = IoCallDriver(vf->vf_DeviceObject, irp);
 
+	if (status == STATUS_PENDING) {
+		// Wait for IoCompletionRoutine to have been called.
+		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+	}
+
+	status = irp->IoStatus.Status;
+	zio->io_error = (irp->IoStatus.Status != 0 ? EIO : 0);
+
+	// Return abd buf
+	if (zio->io_type == ZIO_TYPE_READ) {
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_copy_off(zio->io_abd, b_data,
+			0, zio->io_size, zio->io_abd->abd_size);
+	} else {
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_off(zio->io_abd, b_data,
+			0, zio->io_size, zio->io_abd->abd_size);
+	}
+
+	zio_delay_interrupt(zio);
 #endif
 
     return;
