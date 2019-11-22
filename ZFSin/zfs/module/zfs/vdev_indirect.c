@@ -1629,11 +1629,11 @@ vdev_indirect_io_done(zio_t *zio)
 }
 
 vdev_ops_t vdev_indirect_ops = {
-	NULL,//vdev_indirect_open,
-	NULL,//vdev_indirect_close,
-	NULL,//vdev_default_asize,
-	NULL,//vdev_indirect_io_start,
-	NULL,//vdev_indirect_io_done,
+	vdev_indirect_open,
+	vdev_indirect_close,
+	vdev_default_asize,
+	vdev_indirect_io_start,
+	vdev_indirect_io_done,
 	NULL,
 	NULL,
 	NULL,
