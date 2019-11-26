@@ -60,6 +60,7 @@ typedef struct metaslab_alloc_trace {
  * error conditions. These errors are stored to the offset member
  * of the metaslab_alloc_trace_t record and displayed by mdb.
  */
+#pragma warning (disable: 4146)
 typedef enum trace_alloc_type {
 	TRACE_ALLOC_FAILURE	= -1ULL,
 	TRACE_TOO_SMALL		= -2ULL,

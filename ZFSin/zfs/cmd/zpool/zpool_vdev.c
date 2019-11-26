@@ -606,7 +606,7 @@ is_whole_disk(const char *path)
 	h = CreateFile(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 	if ((h == INVALID_HANDLE_VALUE))
 		return (B_FALSE);
-	if (efi_alloc_and_init(h, EFI_NUMPAR, &label) != 0) {
+	if (efi_alloc_and_init(HTOI(h), EFI_NUMPAR, &label) != 0) {
 		(void) CloseHandle(h);
 		return (B_FALSE);
 	}
@@ -815,7 +815,7 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 		(LPOVERLAPPED)NULL);
 	if (err) isdisk++;
 	fprintf(stderr, "DeviceName said %s with '%s'\n", err ? "OK" : "NG", buf);
-	DISK_GEOMETRY_EX *p = buf;
+	DISK_GEOMETRY_EX *p = (DISK_GEOMETRY_EX *)buf;
 	err = DeviceIoControl(h,
 		IOCTL_DISK_GET_DRIVE_GEOMETRY_EX,
 		(LPVOID)NULL,
@@ -826,7 +826,7 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 		(LPOVERLAPPED)NULL);
 	if (err) isdisk++;
 	fprintf(stderr, "DriveGeometry said %s\n", err ? "OK" : "NG");
-	DRIVE_LAYOUT_INFORMATION_EX *x = buf;
+	DRIVE_LAYOUT_INFORMATION_EX *x = (DRIVE_LAYOUT_INFORMATION_EX *)buf;
 	err = DeviceIoControl(h,
 		IOCTL_DISK_GET_DRIVE_LAYOUT_EX,
 		(LPVOID)NULL,
@@ -837,7 +837,7 @@ make_leaf_vdev(nvlist_t *props, const char *arg, uint64_t is_log)
 		(LPOVERLAPPED)NULL);
 	if (err) isdisk++;
 	fprintf(stderr, "LayoutInfo said %s\n", err ? "OK" : "NG");
-	VOLUME_DISK_EXTENTS  *e = buf;
+	VOLUME_DISK_EXTENTS  *e = (VOLUME_DISK_EXTENTS *)buf;
 	err = DeviceIoControl(h,
 		IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS,
 		(LPVOID)NULL,
@@ -1445,7 +1445,7 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 			h = CreateFile(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 			if (h != INVALID_HANDLE_VALUE) {
 				struct dk_gpt *vtoc;
-				if ((efi_alloc_and_read(h, &vtoc)) == 0) {
+				if ((efi_alloc_and_read(HTOI(h), &vtoc)) == 0) {
 					// Slice 1 should be ZFS
 					snprintf(udevpath, MAXPATHLEN, "#%llu#%llu#%s",
 						vtoc->efi_parts[0].p_start * (uint64_t)vtoc->efi_lbasize,

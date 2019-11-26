@@ -2166,7 +2166,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 				fprintf(stderr, "asking libefi to read label\n"); fflush(stderr);
 				int error;
 				struct dk_gpt *vtoc;
-				error = efi_alloc_and_read(disk, &vtoc);
+				error = efi_alloc_and_read(HTOI(disk), &vtoc);
 				if (error >= 0) {
 					fprintf(stderr, "EFI read OK, max partitions %d\n", vtoc->efi_nparts); fflush(stderr);
 					for (int i = 0; i < vtoc->efi_nparts; i++) {

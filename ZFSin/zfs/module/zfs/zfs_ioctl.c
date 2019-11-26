@@ -7964,6 +7964,7 @@ zfs_attach(void)
 	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY] = (PDRIVER_DISPATCH)dispatcher;
 	WIN_DriverObject->MajorFunction[IRP_MJ_SET_SECURITY] = (PDRIVER_DISPATCH)dispatcher;
 
+	fastio_init(&WIN_DriverObject->FastIoDispatch);
 
 	// Register some locking callback thingy
 	extern NTSTATUS ZFSCallbackAcquireForCreateSection(
@@ -7981,7 +7982,6 @@ zfs_attach(void)
 	FilterCallbacks.SizeOfFsFilterCallbacks = sizeof(FS_FILTER_CALLBACKS);
 	FilterCallbacks.PreAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
 	FilterCallbacks.PreReleaseForSectionSynchronization = ZFSCallbackReleaseForCreateSection;
-
 	FilterCallbacks.PreAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
 	FilterCallbacks.PostAcquireForSectionSynchronization = ZFSCallbackAcquireForCreateSection;
 	FilterCallbacks.PreReleaseForSectionSynchronization = ZFSCallbackReleaseForCreateSection;
@@ -7994,7 +7994,6 @@ zfs_attach(void)
 	FilterCallbacks.PostAcquireForModifiedPageWriter = ZFSCallbackAcquireForCreateSection;
 	FilterCallbacks.PreReleaseForModifiedPageWriter = ZFSCallbackReleaseForCreateSection;
 	FilterCallbacks.PostReleaseForModifiedPageWriter = ZFSCallbackReleaseForCreateSection;
-
 
 	NTSTATUS Status;
 

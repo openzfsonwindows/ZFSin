@@ -223,7 +223,7 @@ extern void zk_thread_join(pthread_t tid);
  */
 #define	MTX_MAGIC	0x9522f51362a6e326ull
 #define	MTX_INIT	((void *)NULL)
-#define	MTX_DEST	((void *)-1UL)
+#define	MTX_DEST	((void *)-1ULL)
 
 typedef struct kmutex {
 	void		*m_owner;
