@@ -1390,7 +1390,10 @@ int zfs_build_path(znode_t *start_zp, znode_t *start_parent, char **fullpath, ui
 			VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zfsvfs),
 				&parent, sizeof(parent)) == 0);
 			error = zfs_zget(zfsvfs, parent, &dzp);
-			if (error) goto failed;
+			if (error) {
+				dprintf("%s: zget failed %d\n", __func__, error);
+				goto failed;
+			}
 		}
 		// dzp held from here.
 
@@ -1398,13 +1401,18 @@ int zfs_build_path(znode_t *start_zp, znode_t *start_parent, char **fullpath, ui
 		if (zp->z_id == zfsvfs->z_root)
 			strlcpy(name, "", MAXPATHLEN);  // Empty string, as we add "\\" below
 		else
-			if (zap_value_search(zfsvfs->z_os, parent, zp->z_id,
-				ZFS_DIRENT_OBJ(-1ULL), name) != 0) goto failed;
-
+			if ((error = zap_value_search(zfsvfs->z_os, parent, zp->z_id,
+				ZFS_DIRENT_OBJ(-1ULL), name)) != 0) {
+				dprintf("%s: zap_value_search failed %d\n", __func__, error);
+				goto failed;
+			}
 		// Copy in name.
 		part = strlen(name);
 		// Check there is room
-		if (part + 1 > index) goto failed;
+		if (part + 1 > index) {
+			dprintf("%s: out of space\n", __func__);
+			goto failed;
+		}
 
 		index -= part;
 		memcpy(&work[index], name, part);
@@ -1445,7 +1453,6 @@ int zfs_build_path(znode_t *start_zp, znode_t *start_parent, char **fullpath, ui
 failed:
 	if (zp) VN_RELE(ZTOV(zp));
 	if (dzp) VN_RELE(ZTOV(dzp));
-
 	kmem_free(work, MAXPATHLEN * 2);
 	return -1;
 }
@@ -1501,7 +1508,8 @@ void zfs_uid2sid(uint64_t uid, SID **sid)
 	// Root?
 	num = (uid == 0) ? 1 : 2;
 
-	tmp = kmem_zalloc(offsetof(SID, SubAuthority) + (num * sizeof(ULONG)), KM_SLEEP);
+	tmp = ExAllocatePoolWithTag(PagedPool,
+		offsetof(SID, SubAuthority) + (num * sizeof(ULONG)), 'zsid');
 
 	tmp->Revision = 1;
 	tmp->SubAuthorityCount = num;
@@ -1549,7 +1557,8 @@ void zfs_gid2sid(uint64_t gid, SID **sid)
 
 	ASSERT(sid != NULL);
 
-	tmp = kmem_zalloc(offsetof(SID, SubAuthority) + (num * sizeof(ULONG)), KM_SLEEP);
+	tmp = ExAllocatePoolWithTag(PagedPool,
+		offsetof(SID, SubAuthority) + (num * sizeof(ULONG)), 'zsid');
 
 	tmp->Revision = 1;
 	tmp->SubAuthorityCount = num;
@@ -1569,7 +1578,7 @@ void zfs_gid2sid(uint64_t gid, SID **sid)
 void zfs_freesid(SID *sid)
 {
 	ASSERT(sid != NULL);
-	kmem_free(sid, offsetof(SID, SubAuthority) + (sid->SubAuthorityCount * sizeof(ULONG)));
+	ExFreePool(sid);
 }
 
 
@@ -1668,6 +1677,7 @@ void zfs_set_security(struct vnode *vp, struct vnode *dvp)
 {
 	SECURITY_SUBJECT_CONTEXT subjcont;
 	NTSTATUS Status;
+	SID *usersid = NULL, *groupsid = NULL;
 
 	if (vp == NULL) return;
 
@@ -1720,8 +1730,6 @@ void zfs_set_security(struct vnode *vp, struct vnode *dvp)
 	if (Status != STATUS_SUCCESS) goto err;
 
 	vnode_setsecurity(vp, sd);
-
-	SID *usersid = NULL, *groupsid = NULL;
 
 	zfs_uid2sid(zp->z_uid, &usersid);
 	RtlSetOwnerSecurityDescriptor(&sd, usersid, FALSE);
