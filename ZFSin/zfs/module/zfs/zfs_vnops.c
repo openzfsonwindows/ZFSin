@@ -2851,32 +2851,11 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					ZGET_FLAG_WITHOUT_VNODE );
 #endif
 
-			if (get_zp == 99) {
-				// We got zp, but did not grab iocount
-			}
 			// If we failed to get the node (someone else might have deleted it), but we
 			// need to return the name still, so it can be removed.
 			if (get_zp != 0 && tzp == NULL)
 				tzp = zp;
 
-			// If marked deleted, skip over node.
-			if ((get_zp == 0) && ZTOV(tzp) && vnode_deleted(ZTOV(tzp))) {
-				skip_this_entry = 1; 
-				/* We should not show entries that are tagged deleted, which typically
-				 * happens for deleted .exe files (as CCmgr hold on to it).
-				 * Insert code here after finding a clean way to handle it:)
-				 */
-				VN_RELE(ZTOV(tzp));
-			}
-#if 0
-			// If HIDDEN, we should skip/notshow
-			// Not true, kernel always shows entries, HIDDEN is filtered
-			// above us. No special treatment required by us.
-			if ((get_zp == 0) && ZTOV(tzp) && (tzp->z_pflags & (ZFS_HIDDEN|ZFS_SYSTEM))) {
-				skip_this_entry = 1;
-				VN_RELE(ZTOV(tzp));
-			}
-#endif
 			// Is it worth warning about failing stat here?
 			if (!skip_this_entry) {
 

@@ -326,6 +326,8 @@ char *common_status_str(NTSTATUS Status)
 		return "STATUS_NOT_FOUND";
 	case STATUS_NO_MORE_EAS:
 		return "STATUS_NO_MORE_EAS";
+	case STATUS_NO_EAS_ON_FILE:
+		return "STATUS_NO_EAS_ON_FILE";
 	default:
 		return "<*****>";
 	}
@@ -1834,9 +1836,17 @@ out:
  * Call vnode_setunlink if zfs_zaccess_delete() allows it
  * TODO: provide credentials
  */
-NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
-
+NTSTATUS zfs_setunlink(FILE_OBJECT *fo, vnode_t *dvp) 
+{
+	vnode_t *vp;
 	NTSTATUS Status = STATUS_UNSUCCESSFUL;
+
+	if (fo == NULL) {
+		Status = STATUS_INVALID_PARAMETER;
+		goto err;
+	}
+
+	vp = fo->FsContext;
 
 	if (vp == NULL) {
 		Status = STATUS_INVALID_PARAMETER;
@@ -1845,6 +1855,8 @@ NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 
 	znode_t *zp = NULL;
 	znode_t *dzp = NULL;
+	zfs_dirlist_t *zccb = fo->FsContext2;
+
 	zfsvfs_t *zfsvfs;
 	VN_HOLD(vp);
 	zp = VTOZ(vp);
@@ -1889,18 +1901,6 @@ NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 	if (S_ISDIR(zp->z_mode)) {
 
 		int nodeadlock = 0;
-		// We might have some files being removed awaiting reclaim
-		// delayclose() will return 1 as long as there exists vnodes with
-		// unlinked set but not yet reclaimed.
-		// We could optionally drop our iocount here, and try to take it again
-		// handling the case where it may have been deleted after drain.
-		while (zp->z_size == 3 &&
-			vnode_drain_delayclose(1) >= 1) {
-			dprintf("%s: delete_pending waiting\n", __func__);
-			delay(1);
-			// This crutch should not be needed, in theory
-			if (nodeadlock++ > 10) break;
-		}
 
 		if (zp->z_size > 2) {
 			Status = STATUS_DIRECTORY_NOT_EMPTY;
@@ -1911,7 +1911,8 @@ NTSTATUS zfs_setunlink(vnode_t *vp, vnode_t *dvp) {
 	int error = zfs_zaccess_delete(dzp, zp, 0);
 
 	if (error == 0) {
-		vnode_setdeleteonclose(vp);
+		ASSERT3P(zccb, != , NULL);
+		zccb->deleteonclose = 1;
 		Status = STATUS_SUCCESS;
 	}
 	else {
@@ -1945,6 +1946,7 @@ NTSTATUS file_disposition_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO
 
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
 	struct vnode *vp = FileObject->FsContext;
+	zfs_dirlist_t *zccb = FileObject->FsContext2;
 	znode_t *zp = VTOZ(vp);
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 	FILE_DISPOSITION_INFORMATION *fdi = Irp->AssociatedIrp.SystemBuffer;
@@ -1956,9 +1958,9 @@ NTSTATUS file_disposition_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO
 			IrpSp->FileObject->FileName);
 		Status = STATUS_SUCCESS;
 		if (fdi->DeleteFile)
-			Status = zfs_setunlink(vp, NULL);
+			Status = zfs_setunlink(IrpSp->FileObject, NULL);
 		else
-			vnode_cleardeleteonclose(vp);
+			if (zccb) zccb->deleteonclose = 0;
 
 		// Dirs marked for Deletion should release all pending Notify events
 		if (Status == STATUS_SUCCESS && fdi->DeleteFile) {
@@ -1977,6 +1979,7 @@ NTSTATUS file_disposition_information_ex(PDEVICE_OBJECT DeviceObject, PIRP Irp, 
 
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
 	struct vnode *vp = FileObject->FsContext;
+	zfs_dirlist_t *zccb = FileObject->FsContext2;
 	znode_t *zp = VTOZ(vp);
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 	FILE_DISPOSITION_INFORMATION_EX *fdie = Irp->AssociatedIrp.SystemBuffer;
@@ -1990,10 +1993,10 @@ NTSTATUS file_disposition_information_ex(PDEVICE_OBJECT DeviceObject, PIRP Irp, 
 
 		if (fdie->Flags | FILE_DISPOSITION_ON_CLOSE)
 			if (fdie->Flags | FILE_DISPOSITION_DELETE)
-				Status = zfs_setunlink(vp, NULL);
+				Status = zfs_setunlink(FileObject, NULL);
 			else
-				vnode_cleardeleteonclose(vp);
-
+				if (zccb) zccb->deleteonclose = 0;
+		
 		// Do we care about FILE_DISPOSITION_POSIX_SEMANTICS ?
 
 		// Dirs marked for Deletion should release all pending Notify events
@@ -2013,6 +2016,7 @@ NTSTATUS file_endoffile_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_S
 
 	PFILE_OBJECT FileObject = IrpSp->FileObject;
 	struct vnode *vp = FileObject->FsContext;
+	zfs_dirlist_t *zccb = FileObject->FsContext2;
 	znode_t *zp = VTOZ(vp);
 	zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 	FILE_END_OF_FILE_INFORMATION *feofi = Irp->AssociatedIrp.SystemBuffer;
@@ -2046,7 +2050,7 @@ NTSTATUS file_endoffile_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_S
 	if (!zfsvfs->z_unmounted) {
 
 		// Can't be done on DeleteOnClose
-		if (vnode_deleteonclose(vp))
+		if (zccb && zccb->deleteonclose)
 			goto out;
 
 		// Advance only?
@@ -2598,6 +2602,7 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 	standard->NumberOfLinks = 1;
 	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 		struct vnode *vp = IrpSp->FileObject->FsContext;
+		zfs_dirlist_t *zccb = IrpSp->FileObject->FsContext2;
 		VN_HOLD(vp);
 		znode_t *zp = VTOZ(vp);
 		standard->Directory = vnode_isdir(vp) ? TRUE : FALSE;
@@ -2607,7 +2612,7 @@ NTSTATUS file_standard_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_ST
 		//standard->AllocationSize.QuadPart = zp->z_size;  // space taken on disk, multiples of block size
 		standard->EndOfFile.QuadPart = vnode_isdir(vp) ? 0 : zp->z_size;       // byte size of file
 		standard->NumberOfLinks = zp->z_links;
-		standard->DeletePending = vnode_deleteonclose(vp) ? TRUE : FALSE;
+		standard->DeletePending = zccb && zccb->deleteonclose ? TRUE : FALSE;
 		VN_RELE(vp);
 		dprintf("Returning size %llu and allocsize %llu\n",
 			standard->EndOfFile.QuadPart, standard->AllocationSize.QuadPart);
@@ -2710,12 +2715,13 @@ NTSTATUS file_standard_link_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, P
 
 	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 		struct vnode *vp = IrpSp->FileObject->FsContext;
+		zfs_dirlist_t *zccb = IrpSp->FileObject->FsContext2;
 
 		znode_t *zp = VTOZ(vp);
 
 		fsli->NumberOfAccessibleLinks = zp->z_links;
 		fsli->TotalNumberOfLinks = zp->z_links;
-		fsli->DeletePending = vnode_deleteonclose(vp);
+		fsli->DeletePending = zccb && zccb->deleteonclose ? TRUE : FALSE;
 		fsli->Directory = S_ISDIR(zp->z_mode);
 	}
 

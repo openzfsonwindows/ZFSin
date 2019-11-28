@@ -1242,34 +1242,6 @@ void    vnode_clearfsnode(vnode_t *vp)
 	vp->v_data = NULL;
 }
 
-int   vnode_deleteonclose(vnode_t *vp)
-{
-	return (vp->v_unlink & UNLINK_DELETE_ON_CLOSE);
-}
-
-void   vnode_setdeleteonclose(vnode_t *vp)
-{
-	dprintf("%s: \n", __func__);
-	vp->v_unlink |= UNLINK_DELETE_ON_CLOSE;
-}
-
-void   vnode_cleardeleteonclose(vnode_t *vp)
-{
-	dprintf("%s: \n", __func__);
-	vp->v_unlink &= ~UNLINK_DELETE_ON_CLOSE;
-}
-
-int   vnode_deleted(vnode_t *vp)
-{
-	return (vp->v_unlink & UNLINK_DELETED);
-}
-
-void   vnode_setdeleted(vnode_t *vp)
-{
-	dprintf("%s: \n", __func__);
-	vp->v_unlink |= UNLINK_DELETED;
-}
-
 void *vnode_sectionpointer(vnode_t *vp)
 {
 	return &vp->SectionObjectPointers;
@@ -1364,8 +1336,7 @@ int vnode_drain_delayclose(int force)
 		vnode_lock(vp);
 
 		// If we see a deleted node awaiting recycle, signal return code
-		if ((vp->v_flags & VNODE_MARKTERM) &&
-			vnode_deleted(vp))
+		if ((vp->v_flags & VNODE_MARKTERM))
 			candidate = 1;
 		else
 			candidate = 0;
@@ -1573,6 +1544,7 @@ extern CACHE_MANAGER_CALLBACKS CacheManagerCallbacks;
 void vnode_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject, uint64_t size) 
 {
 	if (fileobject) {
+
 		fileobject->FsContext = vp;
 
 		// Make sure it is pointing to the right vp.
@@ -1650,7 +1622,7 @@ int vnode_flushcache(vnode_t *vp, FILE_OBJECT *fileobject, boolean_t hard)
 	// Try to release cache
 	dprintf("calling CcUninit: fo %p\n", fileobject);
 	CcUninitializeCacheMap(fileobject,
-		vnode_deleted(vp) || hard ? &Zero : NULL,
+		hard ? &Zero : NULL,
 		NULL);
 	dprintf("complete CcUninit\n");
 
@@ -1667,10 +1639,6 @@ int vnode_flushcache(vnode_t *vp, FILE_OBJECT *fileobject, boolean_t hard)
 
 void vnode_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject) 
 {
-	if (vp == NULL) {
-		dprintf("vp NULL\n");
-		DbgBreakPoint();
-	}
 	if (fileobject && fileobject->FsContext) {
 		dprintf("%s: fo %p -X-> %p\n", __func__, fileobject, vp);
 

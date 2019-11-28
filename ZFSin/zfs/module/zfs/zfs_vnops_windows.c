@@ -95,8 +95,6 @@ unsigned int zfs_vnop_ignore_negatives = 0;
 unsigned int zfs_vnop_ignore_positives = 0;
 unsigned int zfs_vnop_create_negatives = 1;
 
-static uint64_t delete_pending = 0;
-
 #endif
 
 #ifdef ALLOC_PRAGMA
@@ -198,25 +196,34 @@ CACHE_MANAGER_CALLBACKS CacheManagerCallbacks =
 };
 
 
-
 /*
  * zfs vfs operations.
  */
-zfs_dirlist_t *zfs_dirlist_alloc(void)
+
+/*
+ * FileObject->FsContext will point to vnode, many FileObjects can point to same vnode.
+ * FileObject->FsContext2 will point to own "zfs_dirlist_t" and be unique to each FileObject.
+ * - which could also be done with TSD data, but this appears to be the Windows norm.
+ */
+void zfs_couplefileobject(vnode_t *vp, FILE_OBJECT *fileobject, uint64_t size)
 {
+	ASSERT3P(fileobject->FsContext2, == , NULL);
 	zfs_dirlist_t *zccb = kmem_zalloc(sizeof(zfs_dirlist_t), KM_SLEEP);
 	zccb->magic = ZFS_DIRLIST_MAGIC;
-	return zccb;
+	fileobject->FsContext2 = zccb;
+
+	vnode_couplefileobject(vp, fileobject, size);
 }
 
-void zfs_dirlist_free(zfs_dirlist_t *zccb)
+void zfs_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject)
 {
-	if (zccb->magic == ZFS_DIRLIST_MAGIC) {
-		zccb->magic = 0;
-		if (zccb->searchname.Buffer && zccb->searchname.Length)
-			kmem_free(zccb->searchname.Buffer, zccb->searchname.MaximumLength);
-		kmem_free(zccb, sizeof(zfs_dirlist_t));
-	}
+	// We release FsContext2 at CLEANUP, but fastfat releases it in
+	// CLOSE. Does this matter?
+	ASSERT3P(fileobject->FsContext2, != , NULL);
+	kmem_free(fileobject->FsContext2, sizeof(zfs_dirlist_t));
+	fileobject->FsContext2 = NULL;
+
+	vnode_decouplefileobject(vp, fileobject);
 }
 
 /*
@@ -335,13 +342,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		error = zfs_lookup(dvp, word,
 			&vp, &cn, cn.cn_nameiop, NULL, flags);
 
-		if (error != 0 || vnode_deleted(vp)) {
-			if (vp && vnode_deleted(vp)) {
-				dprintf("deleted, simulating ENOENT\n");
-				error = (vnode_isdir(vp) ? ESRCH : ENOENT);
-				VN_RELE(vp);
-				vp = NULL;
-			}
+		if (error != 0) {
 			// If we are creating a file, or looking up parent,
 			// allow it not to exist
 			if (finalpartmaynotexist) break;
@@ -421,16 +422,6 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 		VN_RELE(dvp);
 		return EEXIST;
 	}
-
-#if 0
-	/* Test for deleted status */
-	if (vp != NULL && vnode_deleted(vp)) {
-		dprintf("%s: detected isdeleted, returning ENOENT\n", __func__);
-		VN_RELE(vp);
-		VN_RELE(dvp);
-		return ENOENT;
-	}
-#endif
 
 	// If finalpartmaynotexist is TRUE, make sure we are looking at
 	// the finalpart, and not in the middle of descending
@@ -593,8 +584,7 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 		dvp = ZTOV(zp);
 		vnode_ref(dvp); // Hold open reference, until CLOSE
 
-		vnode_couplefileobject(dvp, FileObject, 0ULL);
-		IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
+		zfs_couplefileobject(dvp, FileObject, 0ULL);
 		VN_RELE(dvp);
 
 		Irp->IoStatus.Information = FILE_OPENED;
@@ -634,12 +624,9 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 
 				if (error == 0) {
 					vp = ZTOV(zp);
-					vnode_couplefileobject(vp, FileObject, zp->z_size);
+					zfs_couplefileobject(vp, FileObject, zp->z_size);
 					vnode_ref(vp); // Hold open reference, until CLOSE
 					VN_RELE(vp);
-
-					// A valid lookup gets a ccb attached
-					IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 
 					Irp->IoStatus.Information = FILE_OPENED;
 					return STATUS_SUCCESS;
@@ -672,9 +659,7 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 			// Grab vnode to ref
 			if (VN_HOLD(dvp) == 0) {
 				vnode_ref(dvp); // Hold open reference, until CLOSE
-				vnode_couplefileobject(dvp, FileObject, 0ULL);
-				if (vnode_isdir(dvp))
-					FileObject->FsContext2 = zfs_dirlist_alloc();
+				zfs_couplefileobject(dvp, FileObject, 0ULL);
 				VN_RELE(dvp);
 			} else {
 				Irp->IoStatus.Information = 0;
@@ -832,11 +817,10 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 #endif
 
 			dprintf("%s: opening PARENT directory\n", __func__);
-			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
-			vnode_couplefileobject(dvp, FileObject, 0ULL);
+			zfs_couplefileobject(dvp, FileObject, 0ULL);
 			vnode_ref(dvp); // Hold open reference, until CLOSE
 			if (DeleteOnClose) 
-				Status = zfs_setunlink(vp, dvp);
+				Status = zfs_setunlink(FileObject, dvp);
 
 			if (Status == STATUS_SUCCESS)
 				Irp->IoStatus.Information = FILE_OPENED;
@@ -891,12 +875,10 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 			NULL, 0, NULL);
 		if (error == 0) {
 
-			// TODO: move creating zccb to own function
-			IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
-			vnode_couplefileobject(vp, FileObject, 0ULL);
+			zfs_couplefileobject(vp, FileObject, 0ULL);
 			vnode_ref(vp); // Hold open reference, until CLOSE
 			if (DeleteOnClose)
-				Status = zfs_setunlink(vp, dvp);
+				Status = zfs_setunlink(FileObject, dvp);
 
 			if (Status == STATUS_SUCCESS) {
 				Irp->IoStatus.Information = FILE_CREATED;
@@ -1111,11 +1093,11 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 
 			zp = VTOZ(vp);
 
-			vnode_couplefileobject(vp, FileObject, zp?zp->z_size:0ULL);
+			zfs_couplefileobject(vp, FileObject, zp?zp->z_size:0ULL);
 			vnode_ref(vp); // Hold open reference, until CLOSE
 
 			if (DeleteOnClose) 
-				Status = zfs_setunlink(vp, dvp);
+				Status = zfs_setunlink(FileObject, dvp);
 
 			if (Status == STATUS_SUCCESS) {
 
@@ -1167,11 +1149,10 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 	// Just open it, if the open was to a directory, add ccb
 	ASSERT(IrpSp->FileObject->FsContext == NULL);
 	if (vp == NULL) {
-		IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
-		vnode_couplefileobject(dvp, FileObject, 0ULL);
+		zfs_couplefileobject(dvp, FileObject, 0ULL);
 		vnode_ref(dvp); // Hold open reference, until CLOSE
 		if (DeleteOnClose) 
-			Status = zfs_setunlink(vp, dvp);
+			Status = zfs_setunlink(FileObject, dvp);
 
 		if(Status == STATUS_SUCCESS) {
 			if (UndoShareAccess == FALSE) {
@@ -1188,10 +1169,10 @@ int zfs_vnop_lookup_impl(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo, char 
 		VN_RELE(dvp);
 	} else {
 		// Technically, this should call zfs_open() - but it is mostly empty
-		vnode_couplefileobject(vp, FileObject, zp->z_size);
+		zfs_couplefileobject(vp, FileObject, zp->z_size);
 		vnode_ref(vp); // Hold open reference, until CLOSE
 		if (DeleteOnClose)
-			Status = zfs_setunlink(vp, dvp);
+			Status = zfs_setunlink(FileObject, dvp);
 
 		if(Status == STATUS_SUCCESS) {
 
@@ -2144,8 +2125,6 @@ NTSTATUS query_ea(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 	uint64_t start_index = 0;
 
-	// Attach a directory zccb to the file we are to EA list
-	if (IrpSp->FileObject->FsContext2 == NULL) IrpSp->FileObject->FsContext2 = zfs_dirlist_alloc();
 	zfs_dirlist_t *zccb = IrpSp->FileObject->FsContext2;
 
 	if (RestartScan)
@@ -2726,6 +2705,7 @@ NTSTATUS notify_change_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	}
 
 	struct vnode *vp = fileObject->FsContext;
+	zfs_dirlist_t *zccb = fileObject->FsContext2;
 	ASSERT(vp != NULL);
 
 	VN_HOLD(vp);
@@ -2736,7 +2716,7 @@ NTSTATUS notify_change_directory(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		return STATUS_INVALID_PARAMETER;
 	}
 
-	if (vnode_deleteonclose(vp)) {
+	if (zccb && zccb->deleteonclose) {
 		VN_RELE(vp);
 		return STATUS_DELETE_PENDING;
 	}
@@ -3348,14 +3328,14 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 		
 		error = zfs_rmdir(dvp, finalname, NULL, NULL, NULL, 0);
 
-		if (error == ENOTEMPTY)
-			error = STATUS_DIRECTORY_NOT_EMPTY;
-
 	} else {
 
 		error = zfs_remove(dvp, finalname, NULL, NULL, 0);
 
 	}
+
+	if (error == ENOTEMPTY)
+		error = STATUS_DIRECTORY_NOT_EMPTY;
 
 	// Release parent.
 	VN_RELE(dvp);
@@ -3583,15 +3563,16 @@ NTSTATUS volume_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
  * IRP_MJ_CLEANUP - sent when Windows is done with FileObject HANDLE (one of many)
  *     the vp is not released here, just decrease a count of vp.
  */
-int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp,
+	vnode_t **hold_vp)
 {
 	int Status = STATUS_SUCCESS;
 	mount_t *zmo = NULL;
 
 	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
 		struct vnode *vp = IrpSp->FileObject->FsContext;
+		zfs_dirlist_t *zccb = IrpSp->FileObject->FsContext2;
 
-		VN_HOLD(vp);
 		znode_t *zp = VTOZ(vp); // zp for notify removal
 		zfsvfs_t *zfsvfs = zp->z_zfsvfs;
 
@@ -3616,10 +3597,18 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		 * in the ccb (context) set in FsContext2, which holds data for each
 		 * FileObject context. Possibly, we should as well. (We do for dirs)
 		 */
-		if (vnode_deleteonclose(vp)) {
+		if (zccb && zccb->deleteonclose) {
 
-			// Mark it as deleted, zfs_vnop_lookup() will return error now.
-			vnode_setdeleted(vp);
+			// Windows needs us to unlink it now, since CLOSE can be delayed
+			// and parent deletions might fail (ENOTEMPTY).
+			Status = delete_entry(DeviceObject, Irp, IrpSp);
+			if (Status != 0)
+				dprintf("Deletion failed: %d\n", Status);
+
+			// delete_entry will always consume an IOCOUNT.
+			*hold_vp = NULL;
+
+			Status = STATUS_SUCCESS;
 
 			// FILE_CLEANUP_UNKNOWN FILE_CLEANUP_WRONG_DEVICE FILE_CLEANUP_FILE_REMAINS
 			// FILE_CLEANUP_FILE_DELETED FILE_CLEANUP_LINK_DELETED FILE_CLEANUP_STREAM_DELETED
@@ -3657,7 +3646,6 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 		SetFlag(IrpSp->FileObject->Flags, FO_CLEANUP_COMPLETE);
 
-		VN_RELE(vp);
 		Status = STATUS_SUCCESS;
 	}
 
@@ -3678,11 +3666,6 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 
 		dprintf("IRP_MJ_CLOSE: '%wZ' \n", &IrpSp->FileObject->FileName);
 
-		if (IrpSp->FileObject->FsContext2) {
-			zfs_dirlist_free((zfs_dirlist_t *)IrpSp->FileObject->FsContext2);
-			IrpSp->FileObject->FsContext2 = NULL;
-		}
-
 		if (IrpSp->FileObject->FsContext) {
 			dprintf("CLOSE clearing FsContext of FO 0x%llx\n", IrpSp->FileObject);
 			// Mark vnode for cleanup, we grab a HOLD to make sure it isn't
@@ -3695,7 +3678,7 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 			 */
 
 			// FileObject should/could no longer point to vp.
-			vnode_decouplefileobject(vp, IrpSp->FileObject);
+			zfs_decouplefileobject(vp, IrpSp->FileObject);
 			vnode_fileobject_remove(vp, IrpSp->FileObject);
 
 			/* 
@@ -3708,42 +3691,22 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 
 			if (!vnode_isvroot(vp)) {
 
-				/* Take hold from above, we will release in recycle */
+				/* Take hold from dispatcher, we will try to release in recycle */
 				*hold_vp = NULL;
 
-				/* We can free memory, check if we also should delete file */
-				if (vnode_deleted(vp)) {
-
-					atomic_inc_64(&delete_pending);
-
-					/*
-					 * This call to delete_entry may release the vp/zp in one case
-					 * So care needs to be taken. Most branches the vp/zp lives with
-					 * zero iocount, ready to be reused.
-					 * delete_entry() requires iocount to be held.
-					 * Access to "vp" may be invalid after this call, so it should be
-					 * last.
-					 */
-					dprintf("delete vnode %p\n", vp);
-					Status = delete_entry(DeviceObject, Irp, IrpSp);
-
-					atomic_dec_64(&delete_pending);
-
-				} else { /* If vp is not deleted */
-
-					// Release vp - vnode_recycle expects iocount==1
-					// we don't recycle root (unmount does) or RELE on recycle error
-					if (vnode_isvroot(vp) || (vnode_recycle(vp) != 0)) {
-						VN_RELE(vp);
-					}
-
-					Status = STATUS_SUCCESS;
+				// Release vp - vnode_recycle expects iocount==1
+				// we don't recycle root (unmount does) or RELE on recycle error
+				if (vnode_isvroot(vp) || (vnode_recycle(vp) != 0)) {
+					// If recycle failed, manually release dispatcher's HOLD
+					dprintf("IRP_CLOSE failed to recycle. is_empty %d\n", vnode_fileobject_empty(vp, 1));
+					VN_RELE(vp);
 				}
+
+				Status = STATUS_SUCCESS;
 
 				vp = NULL; // Paranoia, signal it is gone.
 
-			} else { /* if vp is not idle */
-				dprintf("IRP_CLOSE but can't close yet. is_empty %d\n", vnode_fileobject_empty(vp, 1));
+			} else { /* root node */
 				Status = STATUS_SUCCESS;
 			}
 		}
@@ -4388,7 +4351,7 @@ fsDispatcher(
 		 * CLOSE.
 		 */
 	case IRP_MJ_CLEANUP: 
-		Status = zfs_fileobject_cleanup(DeviceObject, Irp, IrpSp);
+		Status = zfs_fileobject_cleanup(DeviceObject, Irp, IrpSp, &hold_vp);
 		break;
 
 	case IRP_MJ_CLOSE:
@@ -4482,6 +4445,10 @@ fsDispatcher(
 		case IOCTL_STORAGE_GET_DEVICE_NUMBER:
 			dprintf("IOCTL_STORAGE_GET_DEVICE_NUMBER\n");
 			Status = ioctl_storage_get_device_number(DeviceObject, Irp, IrpSp);
+			break;
+		case IOCTL_STORAGE_QUERY_PROPERTY:
+			dprintf("IOCTL_STORAGE_QUERY_PROPERTY\n");
+			Status = ioctl_storage_query_property(DeviceObject, Irp, IrpSp);
 			break;
 		default:
 			dprintf("**** unknown fsWindows IOCTL: 0x%lx\n", cmd);
