@@ -2456,7 +2456,7 @@ zvol_read_win(zvol_state_t *zv, uint64_t position,
 	int error = 0;
 	uint64_t offset = 0;
 
-	if (zv == NULL)
+	if (zv == NULL || zv->zv_dbuf == NULL)
 		return (ENXIO);
 
 	volsize = zv->zv_volsize;
