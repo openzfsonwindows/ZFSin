@@ -382,6 +382,7 @@ int zfs_find_dvp_vp(zfsvfs_t *zfsvfs, char *filename, int finalpartmaynotexist, 
 				// We overload the lastname thing a bit, to return the reparsebuffer
 				if (lastname) *lastname = (char *)rpb;
 				dprintf("%s: returning REPARSE\n", __func__);
+				VN_RELE(dvp);
 				return STATUS_REPARSE;
 			}
 
