@@ -507,6 +507,7 @@ extern uint64_t zfs_threads;
 
 int spl_stop (void)
 {
+	DbgBreakPoint();
 	spl_kmem_thread_fini();
     spl_vnode_fini();
     spl_taskq_fini();

@@ -30,8 +30,10 @@ void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
 {
 	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "ZFSin_Fini\n"));
 	zfs_stop();
-	if (STOR_DriverUnload != NULL)
+	if (STOR_DriverUnload != NULL) {
 		STOR_DriverUnload(DriverObject);
+		STOR_DriverUnload = NULL;
+	}
 
 	kstat_osx_fini();
 	spl_stop();

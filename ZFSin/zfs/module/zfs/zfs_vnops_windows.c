@@ -1312,13 +1312,18 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 #endif
 
 	// Now handle proper EAs properly
-	if (NT_SUCCESS(status) && 
-		Irp->AssociatedIrp.SystemBuffer &&
-		IrpSp->FileObject->FsContext) {
-		// Second pass: this will apply all EAs that are not only LX EAs
-		vnode_apply_eas(IrpSp->FileObject->FsContext, 
-			(PFILE_FULL_EA_INFORMATION)Irp->AssociatedIrp.SystemBuffer, 
-			IrpSp->Parameters.Create.EaLength, NULL);
+	if (NT_SUCCESS(status)) {
+		if (Irp->AssociatedIrp.SystemBuffer &&
+			IrpSp->FileObject->FsContext) {
+			// Second pass: this will apply all EAs that are not only LX EAs
+			vnode_apply_eas(IrpSp->FileObject->FsContext,
+				(PFILE_FULL_EA_INFORMATION)Irp->AssociatedIrp.SystemBuffer,
+				IrpSp->Parameters.Create.EaLength, NULL);
+		}
+
+		if (!BooleanFlagOn(IrpSp->Parameters.Create.Options, FILE_NO_INTERMEDIATE_BUFFERING)) {
+			IrpSp->FileObject->Flags |= FO_CACHE_SUPPORTED;
+		}
 	}
 
 	// Free filename
@@ -4467,8 +4472,13 @@ fsDispatcher(
 		case IRP_MN_USER_FS_REQUEST:
 			Status = user_fs_request(DeviceObject, Irp, IrpSp);
 			break;
+		case IRP_MN_KERNEL_CALL: // FSCTL_QUERY_VOLUME_CONTAINER_STATE 0x90930
+			dprintf("IRP_MN_KERNEL_CALL: unknown 0x%x\n", IrpSp->Parameters.FileSystemControl.FsControlCode);
+			Status = STATUS_INVALID_DEVICE_REQUEST;
+			break;
 		default:
 			dprintf("IRP_MJ_FILE_SYSTEM_CONTROL: unknown 0x%x\n", IrpSp->MinorFunction);
+			Status = STATUS_INVALID_DEVICE_REQUEST;
 		}
 		break;
 

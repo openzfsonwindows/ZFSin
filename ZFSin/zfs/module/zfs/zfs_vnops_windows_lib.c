@@ -1863,8 +1863,7 @@ NTSTATUS zfs_setunlink(FILE_OBJECT *fo, vnode_t *dvp)
 
 	if (vp && zp) {
 		zfsvfs = zp->z_zfsvfs;
-	}
-	else {
+	} else {
 		Status = STATUS_INVALID_PARAMETER;
 		goto err;
 	}
@@ -1872,6 +1871,13 @@ NTSTATUS zfs_setunlink(FILE_OBJECT *fo, vnode_t *dvp)
 	if (zfsvfs->z_rdonly || vfs_isrdonly(zfsvfs->z_vfs) ||
 		!spa_writeable(dmu_objset_spa(zfsvfs->z_os))) {
 		Status = STATUS_MEDIA_WRITE_PROTECTED;
+		goto err;
+	}
+
+	// Cannot delete a user mapped image.
+	if (!MmFlushImageSection(&vp->SectionObjectPointers,
+		MmFlushForDelete)) {
+		Status = STATUS_CANNOT_DELETE;
 		goto err;
 	}
 
@@ -1895,6 +1901,11 @@ NTSTATUS zfs_setunlink(FILE_OBJECT *fo, vnode_t *dvp)
 		VN_HOLD(dvp);
 	}
 
+	// If we are root
+	if (zp->z_id == zfsvfs->z_root) {
+		Status = STATUS_CANNOT_DELETE;
+		goto err;
+	}
 
 	// If we are a dir, and have more than "." and "..", we
 	// are not empty.
@@ -1913,6 +1924,7 @@ NTSTATUS zfs_setunlink(FILE_OBJECT *fo, vnode_t *dvp)
 	if (error == 0) {
 		ASSERT3P(zccb, != , NULL);
 		zccb->deleteonclose = 1;
+		fo->DeletePending = TRUE;
 		Status = STATUS_SUCCESS;
 	}
 	else {
@@ -1957,11 +1969,12 @@ NTSTATUS file_disposition_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO
 			fdi->DeleteFile ? "set" : "unset",
 			IrpSp->FileObject->FileName);
 		Status = STATUS_SUCCESS;
-		if (fdi->DeleteFile)
+		if (fdi->DeleteFile) {
 			Status = zfs_setunlink(IrpSp->FileObject, NULL);
-		else
+		} else {
 			if (zccb) zccb->deleteonclose = 0;
-
+			FileObject->DeletePending = FALSE;
+		}
 		// Dirs marked for Deletion should release all pending Notify events
 		if (Status == STATUS_SUCCESS && fdi->DeleteFile) {
 			FsRtlNotifyCleanup(zmo->NotifySync, &zmo->DirNotifyList, VTOZ(vp));
