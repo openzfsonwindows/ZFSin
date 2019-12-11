@@ -1388,6 +1388,25 @@ int vnode_drain_delayclose(int force)
 	return ret;
 }
 
+int mount_count_nodes(struct mount *mp, int flags)
+{
+	int count = 0;
+	struct vnode *rvp;
+
+	mutex_enter(&vnode_all_list_lock);
+	for (rvp = list_head(&vnode_all_list);
+		rvp;
+		rvp = list_next(&vnode_all_list, rvp)) {
+		if (rvp->v_mount != mp) 
+			continue;
+		if ((flags&SKIPROOT) && vnode_isvroot(rvp))
+			continue;
+		count++;
+	}
+	mutex_exit(&vnode_all_list_lock);
+	return count;
+}
+
 int vflush(struct mount *mp, struct vnode *skipvp, int flags)
 {
 	// Iterate the vnode list and call reclaim
@@ -1498,26 +1517,13 @@ repeat:
 	// or it is exactly one node with MARKROOT, then we are done.
 	// Unless FORCECLOSE, then root as well shall be gone.
 
-	if ((flags & FORCECLOSE) &&
-		!list_is_empty(&vnode_all_list)) {
+	// Ok, we need to count nodes that match this mount, not "all"
+	// nodes, possibly belonging to other mounts.
+
+	if (mount_count_nodes(mp, (flags & FORCECLOSE) ? 0 : SKIPROOT) > 0) {
 		dprintf("%s: waiting for vnode flush1.\n", __func__);
 		// Is there a better wakeup we can do here?
 		delay(hz >> 1);
-#if 0
-		mutex_enter(&vnode_all_list_lock);
-		for (rvp = list_head(&vnode_all_list);
-			rvp;
-			rvp = list_next(&vnode_all_list, rvp)) {
-			if (rvp->SectionObjectPointers.DataSectionObject) {
-				IO_STATUS_BLOCK iosb;
-				CcFlushCache(&rvp->SectionObjectPointers, NULL, 0, &iosb);
-				ExAcquireResourceExclusiveLite(rvp->FileHeader.PagingIoResource, TRUE);
-				ExReleaseResourceLite(rvp->FileHeader.PagingIoResource);
-			}
-			CcPurgeCacheSection(&rvp->SectionObjectPointers, NULL, 0, FALSE);  
-		}
-		mutex_exit(&vnode_all_list_lock);
-#endif
 		vnode_drain_delayclose(1);
 		goto repeat;
 	}
