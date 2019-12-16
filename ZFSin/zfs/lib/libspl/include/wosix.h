@@ -56,6 +56,7 @@ extern int wosix_fdatasync(int fd);
 extern int wosix_ftruncate(int fd, off_t length);
 extern int wosix_socketpair(int domain, int type, int protocol, int socket_vector[2]);
 extern int wosix_dup2(int fildes, int fildes2);
+extern int wosix_pipe(int fildes[2]);
 
 #define wosix_fileno(X) (_get_osfhandle(_fileno((X))))
 
@@ -105,7 +106,7 @@ extern FILE *wosix_fdopen(int fildes, const char *mode);
 #define socketpair	wosix_socketpair
 #undef  fdopen
 #define fdopen	wosix_fdopen
-#undef  dup2
-#define dup2	wosix_dup2
+#undef  pipe
+#define pipe	wosix_pipe
 
 #endif /* WOSIX_HEADER */

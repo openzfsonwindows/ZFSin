@@ -38,6 +38,8 @@
 #include <pthread.h>
 #include <Windows.h>
 
+#pragma comment(lib, "ws2_32.lib")
+
 int posix_memalign(void **memptr, size_t alignment, size_t size)
 {
 	void *ptr;
@@ -620,7 +622,7 @@ closelog(void)
 int
 pipe(int fildes[2])
 {
-	return -1;
+	return wosix_socketpair(AF_UNIX, SOCK_STREAM, 0, fildes);
 }
 
 struct group *
@@ -819,14 +821,20 @@ int wosix_open(const char *path, int oflag, ...)
 	return (HTOI(h));
 }
 
+// Figure out when to call WSAStartup();
+static int posix_init_winsock = 0;
+
 int wosix_close(int fd)
 {
 	HANDLE h = ITOH(fd);
 
 	// Use CloseHandle() for everything except sockets.
 	if ((GetFileType(h) == FILE_TYPE_REMOTE) &&
-		!GetNamedPipeInfo(h, NULL, NULL, NULL, NULL))
-		return closesocket((SOCKET)h);
+		!GetNamedPipeInfo(h, NULL, NULL, NULL, NULL)) {
+		int err;
+		err = closesocket((SOCKET)h);
+		return err;
+	}
 
 	if (CloseHandle(h))
 		return 0;
@@ -897,8 +905,9 @@ uint64_t wosix_lseek(int fd, uint64_t offset, int seek)
 int wosix_read(int fd, void *data, uint32_t len)
 {
 	DWORD red;
+	OVERLAPPED ow = {0};
 
-	if (!ReadFile(ITOH(fd), data, len, &red, NULL))
+	if (!ReadFile(ITOH(fd), data, len, &red, &ow))
 		return -1;
 
 	return red;
@@ -907,8 +916,9 @@ int wosix_read(int fd, void *data, uint32_t len)
 int wosix_write(int fd, const void *data, uint32_t len)
 {
 	DWORD wrote;
+	OVERLAPPED ow = { 0 };
 
-	if (!WriteFile(ITOH(fd), data, len, &wrote, NULL))
+	if (!WriteFile(ITOH(fd), data, len, &wrote, &ow))
 		return -1;
 
 	return wrote;
@@ -1082,20 +1092,28 @@ int wosix_ftruncate(int fd, off_t length)
 	return -1;
 }
 
-// This one is a little bit special, ordinarily
-// we would take the HANDLE and convert it to a
-// FILE *, using _fdopen(_open_osfhandle());
-// But, this is only used from libzfs_sendrecv.c and
-// comes from socketpair() - which uses sockets, ie
-// already HANDLEs. So they are passed into ssread()
-// which uses HANDLEs directly. close() is updated
-// to handle closing of SOCKETS.
-// Note we do not change fread()/fwrite() from FILE*
-// as they are used throughout userland. The fix
-// resides in ssread().
 FILE *wosix_fdopen(int fd, const char *mode)
 {
-	return ((FILE *)ITOH(fd));
+	// Convert HANDLE to int
+	int temp = _open_osfhandle((intptr_t)ITOH(fd), _O_APPEND | _O_RDONLY);
+
+	if (temp == -1) {
+		return NULL;
+	}
+
+	// Convert int to FILE*
+	FILE *f = _fdopen(temp, mode);
+
+	if (f == NULL) {
+		_close(temp);
+		return NULL;
+	}
+
+	// Why is this print required?
+	fprintf(stderr, "\r\n");
+
+	// fclose(f) will also call _close() on temp.
+	return (f);
 }
 
 int wosix_socketpair(int domain, int type, int protocol, int sv[2])
@@ -1104,12 +1122,30 @@ int wosix_socketpair(int domain, int type, int protocol, int sv[2])
 	struct sockaddr_in saddr;
 	int nameLen;
 	unsigned long option_arg = 1;
+	int err = 0;
+	WSADATA wsaData;
+
+	// Do we need to init winsock? Is this the right way, should we
+	// add _init/_exit calls? If socketpair is the only winsock call
+	// we have, this might be ok.
+	if (posix_init_winsock == 0) {
+		posix_init_winsock = 1;
+		err = WSAStartup(MAKEWORD(2, 2), &wsaData);
+		if (err != 0) {
+			errno = err;
+			return -1;
+		}
+	}
 
 	nameLen = sizeof(saddr);
 
 	/* ignore address family for now; just stay with AF_INET */
 	temp = socket(AF_INET, SOCK_STREAM, 0);
-	if (temp == INVALID_SOCKET) return -1;
+	if (temp == INVALID_SOCKET) {
+		int err = WSAGetLastError();
+		errno = err;
+		return -1;
+	}
 
 	setsockopt(temp, SOL_SOCKET, SO_REUSEADDR, (void *)&option_arg,
 		sizeof(option_arg));

@@ -754,13 +754,16 @@ int spl_vn_rdwr(enum uio_rw rw,
 	//LARGE_INTEGER Offset;
 	//Offset.QuadPart = offset;
 	IO_STATUS_BLOCK iob;
+	LARGE_INTEGER off;
+
+	off.QuadPart = offset;
 
 	if (rw == UIO_READ) {
-		error = ZwReadFile((HANDLE)sfp->f_fd, NULL, NULL, NULL, &iob, base, (ULONG)len, NULL, NULL);
+		error = ZwReadFile((HANDLE)sfp->f_fd, NULL, NULL, NULL, &iob, base, (ULONG)len, &off, NULL);
 		//   error = fo_read(sfp->f_fp, auio, ioflag, vctx);
     } else {
        // error = fo_write(sfp->f_fp, auio, ioflag, vctx);
-		error = ZwWriteFile((HANDLE)sfp->f_fd, NULL, NULL, NULL, &iob, base, (ULONG)len, NULL, NULL);
+		error = ZwWriteFile((HANDLE)sfp->f_fd, NULL, NULL, NULL, &iob, base, (ULONG)len, &off, NULL);
 		sfp->f_writes = 1;
     }
 

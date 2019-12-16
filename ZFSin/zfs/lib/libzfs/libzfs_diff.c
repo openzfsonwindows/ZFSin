@@ -503,7 +503,7 @@ find_shares_object(differ_info_t *di)
 	if (stat(fullpath, &sb) != 0) {
 		(void) snprintf(di->errbuf, sizeof (di->errbuf),
 		    dgettext(TEXT_DOMAIN, "Cannot stat %s"), fullpath);
-#ifndef __APPLE__
+#if !defined (__APPLE__) && !defined(_WIN32)
 		/*
 		 * Unsure why zfs diff cares about the shares directory, but we
 		 * do not have this just yet under OSX.

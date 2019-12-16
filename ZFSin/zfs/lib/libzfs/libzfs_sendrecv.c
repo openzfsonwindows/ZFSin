@@ -296,7 +296,19 @@ cksummer(void *arg)
 	ddt.ddt_full = B_FALSE;
 
 	outfd = dda->outputfd;
+#ifdef _WIN32
+	// This fd is used from libzfs_sendrecv.c and
+	// comes from socketpair() - which uses sockets, ie
+	// already HANDLEs. So they are passed into ssread()
+	// which uses HANDLEs directly. close() is updated
+	// to handle closing of SOCKETS.
+	// Note we do not change fread()/fwrite() from FILE*
+	// as they are used throughout userland. The fix
+	// resides in ssread(). Should we change the type?
+	ofp = (FILE*)ITOH(dda->inputfd);
+#else
 	ofp = fdopen(dda->inputfd, "r");
+#endif
 	while (ssread(drr, sizeof (*drr), ofp) != 0) {
 
 		/*
