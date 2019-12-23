@@ -270,7 +270,7 @@ void
 		WnodeSizeInstanceName +
 		WnodeSizeDataBlock;
 
-	pWnode = ExAllocatePoolWithTag(NonPagedPool, size, MP_TAG_GENERAL);
+	pWnode = ExAllocatePoolWithTag(NonPagedPoolNx, size, MP_TAG_GENERAL);
 
 	if (NULL != pWnode) {                               // Good?
 		RtlZeroMemory(pWnode, size);
@@ -366,7 +366,7 @@ wzvol_HwReportLink(__in pHW_HBA_EXT pHBAExt)
 		WnodeSizeInstanceName +
 		WnodeSizeDataBlock;
 
-	pWnode = ExAllocatePoolWithTag(NonPagedPool, size, MP_TAG_GENERAL);
+	pWnode = ExAllocatePoolWithTag(NonPagedPoolNx, size, MP_TAG_GENERAL);
 
 	if (NULL != pWnode) {                               // Good?
 		RtlZeroMemory(pWnode, size);
@@ -456,7 +456,7 @@ wzvol_HwReportLog(__in pHW_HBA_EXT pHBAExt)
 		WnodeSizeInstanceName +
 		WnodeSizeDataBlock;
 
-	pWnode = ExAllocatePoolWithTag(NonPagedPool, size, MP_TAG_GENERAL);
+	pWnode = ExAllocatePoolWithTag(NonPagedPoolNx, size, MP_TAG_GENERAL);
 
 	if (NULL != pWnode) {                               // Good?
 		RtlZeroMemory(pWnode, size);
