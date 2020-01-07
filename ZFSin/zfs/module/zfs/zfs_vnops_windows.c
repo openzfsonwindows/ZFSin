@@ -1299,14 +1299,34 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 	// Did ECP ask for getattr to be returned? None, one or both can be set.
 	// This requires vnode_couplefileobject() was called
 	if (NT_SUCCESS(status) && qocContext && IrpSp->FileObject->FsContext) {
-		if (BooleanFlagOn(qocContext->Flags, QoCFileStatInformation)) {
+
+		ULONG classes = 0;
+
+		// Handle RS5 >= version < 19H1 when the struct had "Flags".
+#if defined (NTDDI_WIN10_19H1) && (NTDDI_VERSION >= NTDDI_WIN10_19H1)
+		classes = qocContext->RequestedClasses;
+#else
+		classes = qocContext->Flags;
+#endif
+
+		if (BooleanFlagOn(classes, QoCFileStatInformation)) {
 			file_stat_information(IrpSp->DeviceObject, Irp, IrpSp,
 				&qocContext->StatInformation);
 		}
-		if (BooleanFlagOn(qocContext->Flags, QoCFileLxInformation)) {
+		if (BooleanFlagOn(classes, QoCFileLxInformation)) {
 			file_stat_lx_information(IrpSp->DeviceObject, Irp, IrpSp,
 				&qocContext->LxInformation);
 		}
+		if (BooleanFlagOn(classes, QoCFileEaInformation)) {
+			dprintf("%s: unsupported QoC: QoCFileEaInformation\n");
+		}
+#if defined (NTDDI_WIN10_19H1) && (NTDDI_VERSION >= NTDDI_WIN10_19H1)
+		// We should fill this in, right? Only set those we understand.
+		qocContext->ClassesProcessed = classes & (QoCFileStatInformation|QoCFileLxInformation);
+		qocContext->ClassesWithErrors = 0;
+		qocContext->ClassesWithNoData = 0;
+#endif
+
 		FsRtlAcknowledgeEcp(qocContext);
 	}
 #endif
