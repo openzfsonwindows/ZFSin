@@ -2965,6 +2965,14 @@ NTSTATUS fs_read(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		// DO A NORMAL CACHED READ, if the MDL bit is not set,
 		if (!FlagOn(IrpSp->MinorFunction, IRP_MN_MDL)) {
 
+			// Sometimes, the CcMgr has not been set up?
+			if (zp->z_size != vp->FileHeader.FileSize.QuadPart) {
+				vnode_pager_setsize(vp, zp->z_size);
+				CcSetFileSizes(IrpSp->FileObject, (PCC_FILE_SIZES)&vp->FileHeader.AllocationSize);
+				dprintf("read: size not set, now %llx\n", vp->FileHeader.FileSize);
+				vnode_setsizechange(vp, 0);
+			}
+
 #if (NTDDI_VERSION >= NTDDI_WIN8)
 			if (!CcCopyReadEx(fileObject,
 				&byteOffset,
