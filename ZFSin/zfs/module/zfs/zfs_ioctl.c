@@ -7968,7 +7968,7 @@ zfs_attach(void)
 	WIN_DriverObject->MajorFunction[IRP_MJ_QUERY_SECURITY] = (PDRIVER_DISPATCH)dispatcher;
 	WIN_DriverObject->MajorFunction[IRP_MJ_SET_SECURITY] = (PDRIVER_DISPATCH)dispatcher;
 
-
+#if 0
 	// Register some locking callback thingy
 	extern NTSTATUS ZFSCallbackAcquireForCreateSection(
 		IN PFS_FILTER_CALLBACK_DATA CallbackData,
@@ -8006,6 +8006,7 @@ zfs_attach(void)
 		&FilterCallbacks);
 	if (Status != STATUS_SUCCESS)
 		dprintf("%s: FsRtlRegisterFileSystemFilterCallbacks failed - no mmap for you\n", __func__);
+#endif
 
 	// Dump all registered filesystems
 	ntStatus = IoRegisterFsRegistrationChange(WIN_DriverObject, DriverNotificationRoutine);

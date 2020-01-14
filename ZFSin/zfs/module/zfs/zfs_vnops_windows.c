@@ -4802,31 +4802,29 @@ are any writers to this file.  Note that main is acquired, so new handles cannot
 	ASSERT(vp != NULL);
 	if (vp == NULL) return STATUS_INVALID_PARAMETER;
 
-	if (vp->FileHeader.Resource) {
 #ifdef DEBUG_IOCOUNT
-		int nolock = 0;
-		if (mutex_owned(&GIANT_SERIAL_LOCK))
-			nolock = 1;
-		else
-			mutex_enter(&GIANT_SERIAL_LOCK);
+	int nolock = 0;
+	if (mutex_owned(&GIANT_SERIAL_LOCK))
+		nolock = 1;
+	else
+		mutex_enter(&GIANT_SERIAL_LOCK);
 #endif
-		if (VN_HOLD(vp) == 0) {
-			dprintf("%s: locked\n", __func__);
-			ExAcquireResourceExclusiveLite(vp->FileHeader.Resource, TRUE);
-			vnode_ref(vp);
-			VN_RELE(vp);
-		} else {
-#ifdef DEBUG_IOCOUNT
-			if (!nolock)
-				mutex_exit(&GIANT_SERIAL_LOCK);
-#endif
-			return STATUS_INVALID_PARAMETER;
-		}
+	if (VN_HOLD(vp) == 0) {
+		dprintf("%s: locked: %p\n", __func__, vp->FileHeader.Resource);
+		ExAcquireResourceExclusiveLite(vp->FileHeader.Resource, TRUE);
+		vnode_ref(vp);
+		VN_RELE(vp);
+	} else {
 #ifdef DEBUG_IOCOUNT
 		if (!nolock)
 			mutex_exit(&GIANT_SERIAL_LOCK);
 #endif
+		return STATUS_INVALID_PARAMETER;
 	}
+#ifdef DEBUG_IOCOUNT
+	if (!nolock)
+		mutex_exit(&GIANT_SERIAL_LOCK);
+#endif
 
 	if (CallbackData->Parameters.AcquireForSectionSynchronization.SyncType != SyncTypeCreateSection) {
 
@@ -4851,11 +4849,13 @@ NTSTATUS ZFSCallbackReleaseForCreateSection(
 	struct vnode *vp;
 	vp = CallbackData->FileObject->FsContext;
 
+	dprintf("%s: vp %p\n", __func__, vp);
+
 	ASSERT(vp != NULL);
 	if (vp == NULL) return STATUS_INVALID_PARAMETER;
 
 	if (vp->FileHeader.Resource) {
-		dprintf("%s: unlocked\n", __func__);
+		dprintf("%s: unlocked: %p\n", __func__, vp->FileHeader.Resource);
 		ExReleaseResourceLite(vp->FileHeader.Resource);
 #ifdef DEBUG_IOCOUNT
 		int nolock = 0;
