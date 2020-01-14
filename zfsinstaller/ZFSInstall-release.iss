@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "OpenZFS On Windows"
-#define MyAppVersion "0.19"
+#define MyAppVersion "0.21"
 #define MyAppPublisher "OpenZFS"
 #define MyAppURL "http://www.openzfsonwindows.org/"
 
