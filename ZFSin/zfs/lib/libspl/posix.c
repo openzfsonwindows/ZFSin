@@ -907,8 +907,13 @@ int wosix_read(int fd, void *data, uint32_t len)
 	DWORD red;
 	OVERLAPPED ow = {0};
 
-	if (!ReadFile(ITOH(fd), data, len, &red, &ow))
-		return -1;
+	if (GetFileType(ITOH(fd)) == FILE_TYPE_PIPE) {
+		if (!ReadFile(ITOH(fd), data, len, &red, &ow))
+			return -1;
+	} else {
+		if (!ReadFile(ITOH(fd), data, len, &red, NULL))
+			return -1;
+	}
 
 	return red;
 }
@@ -918,9 +923,13 @@ int wosix_write(int fd, const void *data, uint32_t len)
 	DWORD wrote;
 	OVERLAPPED ow = { 0 };
 
-	if (!WriteFile(ITOH(fd), data, len, &wrote, &ow))
-		return -1;
-
+	if (GetFileType(ITOH(fd)) == FILE_TYPE_PIPE) {
+		if (!WriteFile(ITOH(fd), data, len, &wrote, &ow))
+			return -1;
+	} else {
+		if (!WriteFile(ITOH(fd), data, len, &wrote, NULL))
+			return -1;
+	}
 	return wrote;
 }
 
