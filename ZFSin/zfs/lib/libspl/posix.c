@@ -712,6 +712,32 @@ int tcsetattr(int fildes, int optional_actions,
 	return 0;
 }
 
+
+void console_echo(boolean_t willecho)
+{
+	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+	int constype = isatty(hStdin);
+	switch (constype) {
+	case 0:
+	default:
+		return;
+	case 1: // dosbox
+		if (willecho) {
+			DWORD mode = 0;
+			GetConsoleMode(hStdin, &mode);
+			SetConsoleMode(hStdin, mode | (ENABLE_ECHO_INPUT));
+		} else {
+			DWORD mode = 0;
+			GetConsoleMode(hStdin, &mode);
+			SetConsoleMode(hStdin, mode & (~ENABLE_ECHO_INPUT));
+		}
+		return;
+	case 2: // mingw/cygwin
+		// Insert magic here
+		return;
+	}
+}
+
 // Not really getline, just used for password input in libzfs_crypto.c
 #define MAX_GETLINE 128
 ssize_t getline(char **linep, size_t* linecapp,
@@ -720,12 +746,7 @@ ssize_t getline(char **linep, size_t* linecapp,
 	static char getpassbuf[MAX_GETLINE + 1];
 	size_t i = 0;
 
-	// This does not work in bash, it echos the password, find
-	// a solution for it too
-	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
-	DWORD mode = 0;
-	GetConsoleMode(hStdin, &mode);
-	SetConsoleMode(hStdin, mode & (~ENABLE_ECHO_INPUT));
+	console_echo(FALSE);
 
 	int c;
 	for (;;)
@@ -750,7 +771,7 @@ ssize_t getline(char **linep, size_t* linecapp,
 	if (linep) *linep = strdup(getpassbuf);
 	if (linecapp) *linecapp = 1;
 
-	SetConsoleMode(hStdin, mode);
+	console_echo(TRUE);
 
 	return i;
 }
@@ -933,42 +954,77 @@ int wosix_write(int fd, const void *data, uint32_t len)
 	return wrote;
 }
 
+#define is_wprefix(s, prefix) \
+	(wcsncmp((s), (prefix), sizeof(prefix) / sizeof(WCHAR) - 1) == 0)
+
+// Parts by:
+// * Copyright(c) 2015 - 2017 K.Takata
+// * You can redistribute it and /or modify it under the terms of either
+// * the MIT license(as described below) or the Vim license.
+//
+// Extend isatty() slightly to return 1 for DOS Console, or
+// 2 for cygwin/mingw - as we will have to do different things
+// for NOECHO etc.
 int wosix_isatty(int fd)
 {
 	DWORD mode;
 	HANDLE h = ITOH(fd);
 	int ret;
-#if 0
-	const unsigned long bufSize = sizeof(DWORD) + MAX_PATH * sizeof(WCHAR);
-	BYTE buf[sizeof(DWORD) + MAX_PATH * sizeof(WCHAR)];
-	PFILE_NAME_INFO pfni = (PFILE_NAME_INFO)buf;
 
-	if (!GetFileInformationByHandleEx(h, FileNameInfo, buf, bufSize)) {
-		return 0;
+	// First, check if we are in a regular dos box, if yes, return.
+	// If not, check for cygwin ...
+	// check for mingw ...
+	// check for powershell ...
+	if (GetConsoleMode(h, &mode)) return 1;
+
+	// Not CMDbox, check mingw
+	if (GetFileType(h) == FILE_TYPE_PIPE) {
+
+		int size = sizeof(FILE_NAME_INFO) + sizeof(WCHAR) * (MAX_PATH - 1);
+		FILE_NAME_INFO* nameinfo;
+		WCHAR* p = NULL;
+
+		nameinfo = malloc(size + sizeof(WCHAR));
+		if (nameinfo != NULL) {
+			if (GetFileInformationByHandleEx(h, FileNameInfo, nameinfo, size)) {
+				nameinfo->FileName[nameinfo->FileNameLength / sizeof(WCHAR)] = L'\0';
+				p = nameinfo->FileName;
+				if (is_wprefix(p, L"\\cygwin-")) {      /* Cygwin */
+					p += 8;
+				} else if (is_wprefix(p, L"\\msys-")) { /* MSYS and MSYS2 */
+					p += 6;
+				} else {
+					p = NULL;
+				}
+				if (p != NULL) {
+					while (*p && isxdigit(*p))  /* Skip 16-digit hexadecimal. */
+						++p;
+					if (is_wprefix(p, L"-pty")) {
+						p += 4;
+					} else {
+						p = NULL;
+					}
+				}
+				if (p != NULL) {
+					while (*p && isdigit(*p))   /* Skip pty number. */
+						++p;
+					if (is_wprefix(p, L"-from-master")) {
+						//p += 12;
+					} else if (is_wprefix(p, L"-to-master")) {
+						//p += 10;
+					} else {
+						p = NULL;
+					}
+				}
+			}
+			free(nameinfo);
+			if (p != NULL)
+				return 2;
+		}
 	}
 
-	PWSTR fn = pfni->FileName;
-	fn[pfni->FileNameLength] = L'\0';
-
-	ret = ((wcsstr(fn, L"\\cygwin-") || wcsstr(fn, L"\\msys-")) &&
-		wcsstr(fn, L"-pty") && wcsstr(fn, L"-master"));
-
-	//printf("ret %d Got name as '%S'\n", ret, fn); fflush(stdout);
-	return ret;
-#else
-
-	ret = ((GetFileType(h) & ~FILE_TYPE_REMOTE) == FILE_TYPE_CHAR);
-
-#endif
-	//fprintf(stderr, "%s: return %d\r\n", __func__, ret);
-	//fflush(stderr);
-
-	// FIXME - always say it ISN'T a tty, this way zfs send will work
-	// everywhere - the only negative side-effect is garbage printed 
-	// on console if users do something dumb.
+	// Give up, it's not a TTY
 	return 0;
-
-	return ret;
 }
 
 // A bit different, just to wrap away the second argument
@@ -987,7 +1043,7 @@ int wosix_fstat(int fd, struct _stat64 *st)
 	BY_HANDLE_FILE_INFORMATION info;
 
 	if (!GetFileInformationByHandle(h, &info))
-		return -1; // errno?
+		return wosix_fstat_blk(fd, st); 
 
 	st->st_dev = 0;
 	st->st_ino = 0;
@@ -1013,9 +1069,13 @@ int wosix_fstat_blk(int fd, struct _stat64 *st)
 
 	if (!DeviceIoControl(handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
 		&geometry_ex, sizeof(geometry_ex), &len, NULL))
-		return -1;
+		return -1; // errno?
 
 	st->st_size = (diskaddr_t)geometry_ex.DiskSize.QuadPart;
+#ifndef _S_IFBLK
+#define	_S_IFBLK	0x3000
+#endif
+	st->st_mode = _S_IFBLK;
 
 	return (0);
 }
