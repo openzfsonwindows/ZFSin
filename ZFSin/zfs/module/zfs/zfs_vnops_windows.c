@@ -34,7 +34,7 @@
 #include <mountmgr.h>
 #include <Mountdev.h>
 #include <ntddvol.h>
- // I have no idea what black magic is needed to get ntifs.h to define these
+// I have no idea what black magic is needed to get ntifs.h to define these
 
 
 #ifndef FsRtlEnterFileSystem
@@ -1566,6 +1566,7 @@ NTSTATUS pnp_device_state(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCAT
 
 	return STATUS_SUCCESS;
 }
+
 
 NTSTATUS query_volume_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
@@ -3853,6 +3854,7 @@ out:
  * all the internal ZFS ioctls, like ZFS_IOC_SEND etc. But, we will also get
  * general Windows ioctls, not specific to volumes, or filesystems.
  */
+extern NTSTATUS pnp_query_di(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp);
 _Function_class_(DRIVER_DISPATCH)
 static NTSTATUS
 ioctlDispatcher(
@@ -4024,6 +4026,9 @@ ioctlDispatcher(
 		case IRP_MN_CANCEL_REMOVE_DEVICE:
 			dprintf("IRP_MN_CANCEL_REMOVE_DEVICE\n");
 			Status = STATUS_SUCCESS;
+			break;
+		case IRP_MN_QUERY_INTERFACE:
+			Status = pnp_query_di(DeviceObject, Irp, IrpSp);
 			break;
 		}
 		break;
@@ -4910,4 +4915,48 @@ zfs_vfsops_fini(void)
 	mutex_destroy(&GIANT_SERIAL_LOCK);
 #endif
 	return 0;
+}
+
+
+NTSTATUS pnp_query_di(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	NTSTATUS status;
+	if (IsEqualGUID(IrpSp->Parameters.QueryInterface.InterfaceType, &ZFSZVOLDI_GUID)) {
+		if (IrpSp->Parameters.QueryInterface.Version < 1)
+			status = STATUS_NOT_SUPPORTED;
+		else if (IrpSp->Parameters.QueryInterface.Size < sizeof(zfsdizvol_t))
+			status = STATUS_BUFFER_TOO_SMALL;
+		else if ((IrpSp->Parameters.QueryInterface.InterfaceSpecificData == NULL) || strlen(IrpSp->Parameters.QueryInterface.InterfaceSpecificData) <= 8)
+			status = STATUS_INVALID_PARAMETER;
+		else {
+			PVOID zv; //zvol_state_t*, opaque here
+			minor_t minorNum;
+			extern PVOID zvol_name2minor(const char* name, minor_t * minor);
+			PCHAR vendorUniqueId = (PCHAR)IrpSp->Parameters.QueryInterface.InterfaceSpecificData;
+			zv = zvol_name2minor(&vendorUniqueId[8], &minorNum);
+			// check that the minor number is non-zero: that signifies the zvol has fully completed its bringup phase.
+			if (zv && minorNum) {
+				extern void IncZvolRef(PVOID Context);
+				extern void DecZvolRef(PVOID Context);
+				extern NTSTATUS ZvolDiRead(PVOID Context, zfsiodesc_t * pIo);
+				extern NTSTATUS ZvolDiWrite(PVOID Context, zfsiodesc_t * pIo);
+				IncZvolRef(zv); // lock in an extra reference on the zvol
+				zfsdizvol_t* pDI = (zfsdizvol_t*)IrpSp->Parameters.QueryInterface.Interface;
+				pDI->header.Size = sizeof(zfsdizvol_t);
+				pDI->header.Version = ZFSZVOLDI_VERSION;
+				pDI->header.Context = zv;
+				pDI->header.InterfaceReference = IncZvolRef;
+				pDI->header.InterfaceDereference = DecZvolRef;
+				pDI->Read = ZvolDiRead;
+				pDI->Write = ZvolDiWrite;
+				Irp->IoStatus.Information = 0;
+				status = STATUS_SUCCESS;
+			}
+			else
+				status = STATUS_NOT_FOUND;
+		}
+	}
+	else
+		status = STATUS_NOT_IMPLEMENTED;
+	return (status);
 }

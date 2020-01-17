@@ -899,3 +899,109 @@ wzvol_GeneralWkRtn(
 	wzvol_WkRtn(pWkParms);                                // Do the actual work.
 }                                                     // End MpGeneralWkRtn().
 
+/*
+** ZFS ZVOLDI 
+** ZVOL Direct Interface
+*/
+
+VOID
+bzvol_ReadWriteWkRtn(
+	__in PVOID           pDummy,           // Not used.
+	__in PVOID           pWkParms          // Parm list pointer.
+)
+{
+	NTSTATUS Status;
+	pMP_WorkRtnParms pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
+	zfsiodesc_t* pIo = &pWkRtnParms->ioDesc;
+	uio_t* uio = pWkRtnParms->pUio;
+	int iores;
+
+	UNREFERENCED_PARAMETER(pDummy);
+	IoUninitializeWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
+
+	/* Call ZFS to read/write data */
+	if (ActionRead == pWkRtnParms->Action) {
+		iores = zvol_read(pWkRtnParms->zv, uio);
+	}
+	else {
+		iores = zvol_write(pWkRtnParms->zv, uio);
+	}
+
+	if (pIo->Cb) {
+		pIo->Cb(pIo, iores == 0 ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL, TRUE);
+	}
+	uio_free(uio);
+	ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
+}
+
+NTSTATUS
+DiReadWriteSetup(
+	zvol_state_t* zv,
+	MpWkRtnAction action,
+	zfsiodesc_t* pIo)
+{
+	// Create an uio for the IO. If we can possibly embed
+	// the uio in some Extension to this IO, we could
+	// save the allocation here.
+	uio_t* uio = uio_create(1, 0, UIO_SYSSPACE,
+		ActionRead == action ? UIO_READ : UIO_WRITE);
+	if (uio == NULL) {
+		dprintf("%s: out of memory.\n", __func__);
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	VERIFY0(uio_addiov(uio, (user_addr_t)pIo->Buffer,
+		pIo->Length));
+	uio_setoffset(uio, pIo->ByteOffset);
+
+	if (pIo->Flags & ZFSZVOLFG_AlwaysPend) {
+		pMP_WorkRtnParms pWkRtnParms = NULL;
+		pWkRtnParms = (pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPool, sizeof(MP_WorkRtnParms)+IoSizeofWorkItem(), MP_TAG_GENERAL);
+		if (NULL == pWkRtnParms) {
+			uio_free(uio);
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+
+		RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
+		pWkRtnParms->ioDesc = *pIo;
+		pWkRtnParms->pUio = uio;
+		pWkRtnParms->zv = zv;
+		pWkRtnParms->Action = action;
+		extern PDEVICE_OBJECT ioctlDeviceObject;
+		IoInitializeWorkItem(ioctlDeviceObject, (PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
+
+		IoQueueWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem, bzvol_ReadWriteWkRtn, DelayedWorkQueue, pWkRtnParms);
+		return STATUS_PENDING; // queued up.
+	}
+	else {
+		int iores;
+
+		/* Call ZFS to read/write data */
+		if (ActionRead == action) {
+			iores = zvol_read(zv, uio);
+		}
+		else {
+			iores = zvol_write(zv, uio);
+		}
+
+		if (pIo->Cb) {
+			pIo->Cb(pIo, (iores == 0 ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL), FALSE);
+		}
+		uio_free(uio);
+		return(iores == 0 ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL);
+	}
+}
+
+
+NTSTATUS ZvolDiRead(
+	PVOID Context,
+	zfsiodesc_t* pIo)
+{
+	return (DiReadWriteSetup((zvol_state_t*)Context, ActionRead, pIo));
+}
+
+NTSTATUS ZvolDiWrite(
+	PVOID Context,
+	zfsiodesc_t* pIo)
+{
+	return (DiReadWriteSetup((zvol_state_t*)Context, ActionWrite, pIo));
+}

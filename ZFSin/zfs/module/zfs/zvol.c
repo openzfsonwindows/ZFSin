@@ -634,7 +634,8 @@ zvol_create_minor_impl(const char *name)
 #endif
 	(void) strlcpy(zv->zv_name, name, MAXPATHLEN);
 	zv->zv_min_bs = DEV_BSHIFT;
-	zv->zv_minor = minor;
+	// zv->zv_minor = minor; minor init moved at the end of the routine. this way it signifies to zv context search routines 
+	// that the zvol is completely opened and ready.
 	zv->zv_objset = os;
 	if (dmu_objset_is_snapshot(os) || !spa_writeable(dmu_objset_spa(os)))
 		zv->zv_flags |= ZVOL_RDONLY;
@@ -697,7 +698,9 @@ zvol_create_minor_impl(const char *name)
 
 	// Announcing new DISK - we hold the zvol open the entire time storport has it.
 	error = zvol_open_impl(zv, FWRITE, 0, NULL);
-	
+	if (error == 0)
+		zv->zv_minor = minor; // zvol good to go and fully opened.
+
 	return (0);
 }
 
@@ -2874,4 +2877,22 @@ zvol_fini(void)
 	mutex_destroy(&zfsdev_state_lock);
 #endif
 	ddi_soft_state_fini(&zfsdev_state);
+}
+
+
+/* ZFS ZVOLDI */
+_Function_class_(PINTERFACE_REFERENCE)
+void IncZvolRef(PVOID Context) {
+	zvol_state_t* zv = (zvol_state_t*)Context;
+	mutex_enter(&zfsdev_state_lock);
+	atomic_inc_32(&zv->zv_total_opens);
+	mutex_exit(&zfsdev_state_lock);
+}
+
+_Function_class_(PINTERFACE_REFERENCE)
+void DecZvolRef(PVOID Context) {
+	zvol_state_t* zv = (zvol_state_t*)Context;
+	mutex_enter(&zfsdev_state_lock);
+	atomic_dec_32(&zv->zv_total_opens);
+	mutex_exit(&zfsdev_state_lock);
 }

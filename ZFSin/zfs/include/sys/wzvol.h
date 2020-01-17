@@ -31,6 +31,7 @@
 #include <devioctl.h>
 #include <ntddscsi.h>
 #include <scsiwmi.h>
+#include <sys/fs/zfsdi.h>
 
 
 
@@ -216,6 +217,10 @@ typedef struct _MP_WorkRtnParms {
 	PEPROCESS            pReqProcess;
 	MpWkRtnAction        Action;
 	ULONG                SecondsToDelay;
+	PVOID				 pUio;
+	/* ZFS ZVOLDI */
+	void* zv;
+	zfsiodesc_t ioDesc;
 	CHAR				 pQueueWorkItem[1]; // IO_WORKITEM structure: keep at the end of this block (dynamically allocated).
 } MP_WorkRtnParms, *pMP_WorkRtnParms;
 
