@@ -114,6 +114,9 @@ void addbuffer(char* buf)
 
 void printBuffer(const char *fmt, ...)
 {
+	// DPCs can't block (mutex) - replace this code with spinlocks
+	if (KeGetCurrentIrql() >= DISPATCH_LEVEL) return;
+
 	mutex_enter(&cbuf_mutex);
 	va_list args;
 	va_start(args, fmt);
