@@ -407,7 +407,7 @@ vdev_file_io_start(zio_t *zio)
 	PIRP irp = NULL;
 	PIO_STACK_LOCATION irpStack = NULL;
 	KEVENT Event;
-	IO_STATUS_BLOCK IoStatusBlock;
+	IO_STATUS_BLOCK IoStatusBlock = { 0 };
 	LARGE_INTEGER offset;
 	void *b_data = NULL;
 
@@ -474,10 +474,10 @@ vdev_file_io_start(zio_t *zio)
 	if (status == STATUS_PENDING) {
 		// Wait for IoCompletionRoutine to have been called.
 		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+		status = IoStatusBlock.Status;
 	}
 
-	status = irp->IoStatus.Status;
-	zio->io_error = (irp->IoStatus.Status != 0 ? EIO : 0);
+	zio->io_error = (!NT_SUCCESS(status) ? EIO : 0);
 
 	// Return abd buf
 	if (zio->io_type == ZIO_TYPE_READ) {
