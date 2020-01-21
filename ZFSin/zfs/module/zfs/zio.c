@@ -2859,7 +2859,7 @@ zio_ddt_collision(zio_t *zio, ddt_t *ddt, ddt_entry_t *dde)
 {
 	spa_t *spa = zio->io_spa;
 	int p;
-	boolean_t do_raw = !!(zio->io_flags & ZIO_FLAG_RAW);
+	boolean_t do_raw = (zio->io_flags & ZIO_FLAG_RAW);
 
 	/* We should never get a raw, override zio */
 	ASSERT(!(zio->io_bp_override && do_raw));
@@ -2869,79 +2869,57 @@ zio_ddt_collision(zio_t *zio, ddt_t *ddt, ddt_entry_t *dde)
 	 * because when zio->io_bp is an override bp, we will not have
 	 * pushed the I/O transforms.  That's an important optimization
 	 * because otherwise we'd compress/encrypt all dmu_sync() data twice.
-	 * However, we should never get a raw, override zio so in these
-	 * cases we can compare the io_abd directly. This is useful because
-	 * it allows us to do dedup verification even if we don't have access
-	 * to the original data (for instance, if the encryption keys aren't
-	 * loaded).
 	 */
 	for (p = DDT_PHYS_SINGLE; p <= DDT_PHYS_TRIPLE; p++) {
 		zio_t *lio = dde->dde_lead_zio[p];
 
-		if (lio != NULL && do_raw) {
-			return (lio->io_size != zio->io_size ||
-				abd_cmp(zio->io_abd, lio->io_abd, zio->io_orig_size) != 0);
-		} else if (lio != NULL) {
+		if (lio != NULL) {
 			return (lio->io_orig_size != zio->io_orig_size ||
-				abd_cmp(zio->io_orig_abd, lio->io_orig_abd, zio->io_orig_size) != 0);
+			    abd_cmp(zio->io_orig_abd, lio->io_orig_abd,
+			    zio->io_orig_size) != 0);
 		}
-
 	}
 
 	for (p = DDT_PHYS_SINGLE; p <= DDT_PHYS_TRIPLE; p++) {
 		ddt_phys_t *ddp = &dde->dde_phys[p];
 
-		if (ddp->ddp_phys_birth != 0 && do_raw) {
+		if (ddp->ddp_phys_birth != 0) {
+			arc_buf_t *abuf = NULL;
+			arc_flags_t aflags = ARC_FLAG_WAIT;
+			int zio_flags = ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE;
 			blkptr_t blk = *zio->io_bp;
-			uint64_t psize;
-			abd_t* tmpabd;
 			int error;
 
 			ddt_bp_fill(ddp, &blk, ddp->ddp_phys_birth);
-			psize = BP_GET_PSIZE(&blk);
-
-			if (psize != zio->io_size)
-				return (B_TRUE);
 
 			ddt_exit(ddt);
 
-			tmpabd = abd_alloc_for_io(psize, B_TRUE);
-
-			error = zio_wait(zio_read(NULL, spa, &blk, tmpabd,
-				psize, NULL, NULL, ZIO_PRIORITY_SYNC_READ,
-				ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE |
-				ZIO_FLAG_RAW, &zio->io_bookmark));
-
-			if (error == 0) {
-				if (abd_cmp(tmpabd, zio->io_abd, zio->io_orig_size) != 0)
-					error = SET_ERROR(ENOENT);
+			/*
+			 * Intuitively, it would make more sense to compare
+			 * io_abd than io_orig_abd in the raw case since you
+			 * don't want to look at any transformations that have
+			 * happened to the data. However, for raw I/Os the
+			 * data will actually be the same in io_abd and
+			 * io_orig_abd, so all we have to do is issue this as
+			 * a raw ARC read.
+			 */
+			if (do_raw) {
+				zio_flags |= ZIO_FLAG_RAW;
+				ASSERT3U(zio->io_size, ==, zio->io_orig_size);
+				ASSERT0(abd_cmp(zio->io_abd, zio->io_orig_abd,
+				    zio->io_size));
+				ASSERT3P(zio->io_transform_stack, ==, NULL);
 			}
 
-			abd_free(tmpabd);
-			ddt_enter(ddt);
-			return (error != 0);
-		} else if (ddp->ddp_phys_birth != 0) {
-			arc_buf_t* abuf = NULL;
-			arc_flags_t aflags = ARC_FLAG_WAIT;
-			blkptr_t blk = *zio->io_bp;
-			int error;
-
-			ddt_bp_fill(ddp, &blk, ddp->ddp_phys_birth);
-
-			if (BP_GET_LSIZE(&blk) != zio->io_orig_size)
-				return (B_TRUE);
-
-			ddt_exit(ddt);
-
 			error = arc_read(NULL, spa, &blk,
-				arc_getbuf_func, &abuf, ZIO_PRIORITY_SYNC_READ,
-				ZIO_FLAG_CANFAIL | ZIO_FLAG_SPECULATIVE,
-				&aflags, &zio->io_bookmark);
+			    arc_getbuf_func, &abuf, ZIO_PRIORITY_SYNC_READ,
+			    zio_flags, &aflags, &zio->io_bookmark);
 
 			if (error == 0) {
-				if (abd_cmp_buf(zio->io_orig_abd, abuf->b_data,
-					zio->io_orig_size) != 0)
-					error = SET_ERROR(ENOENT);
+				if (arc_buf_size(abuf) != zio->io_orig_size ||
+				    abd_cmp_buf(zio->io_orig_abd, abuf->b_data,
+				    zio->io_orig_size) != 0)
+					error = SET_ERROR(EEXIST);
 				arc_buf_destroy(abuf, &abuf);
 			}
 
@@ -3003,6 +2981,35 @@ zio_ddt_child_write_done(zio_t *zio)
 	ddt_exit(ddt);
 }
 
+static void
+zio_ddt_ditto_write_done(zio_t *zio)
+{
+	int p = DDT_PHYS_DITTO;
+	blkptr_t *bp = zio->io_bp;
+	ddt_t *ddt = ddt_select(zio->io_spa, bp);
+	ddt_entry_t *dde = zio->io_private;
+	ddt_phys_t *ddp = &dde->dde_phys[p];
+	ddt_key_t *ddk = &dde->dde_key;
+	ASSERTV(zio_prop_t *zp = &zio->io_prop);
+
+	ddt_enter(ddt);
+
+	ASSERT(ddp->ddp_refcnt == 0);
+	ASSERT(dde->dde_lead_zio[p] == zio);
+	dde->dde_lead_zio[p] = NULL;
+
+	if (zio->io_error == 0) {
+		ASSERT(ZIO_CHECKSUM_EQUAL(bp->blk_cksum, ddk->ddk_cksum));
+		ASSERT(zp->zp_copies < SPA_DVAS_PER_BP);
+		ASSERT(zp->zp_copies == BP_GET_NDVAS(bp) - BP_IS_GANG(bp));
+		if (ddp->ddp_phys_birth != 0)
+			ddt_phys_free(ddt, ddk, ddp, zio->io_txg);
+		ddt_phys_fill(ddp, bp);
+	}
+
+	ddt_exit(ddt);
+}
+
 static int
 zio_ddt_write(zio_t *zio)
 {
@@ -3013,6 +3020,7 @@ zio_ddt_write(zio_t *zio)
 	int p = zp->zp_copies;
 	int ditto_copies;
 	zio_t *cio = NULL;
+	zio_t *dio = NULL;
 	ddt_t *ddt = ddt_select(spa, bp);
 	ddt_entry_t *dde;
 	ddt_phys_t *ddp;
@@ -3049,6 +3057,41 @@ zio_ddt_write(zio_t *zio)
 		return (ZIO_PIPELINE_CONTINUE);
 	}
 
+	ditto_copies = ddt_ditto_copies_needed(ddt, dde, ddp);
+	ASSERT(ditto_copies < SPA_DVAS_PER_BP);
+
+	if (ditto_copies > ddt_ditto_copies_present(dde) &&
+	    dde->dde_lead_zio[DDT_PHYS_DITTO] == NULL) {
+		zio_prop_t czp = *zp;
+
+		czp.zp_copies = ditto_copies;
+
+		/*
+		 * If we arrived here with an override bp, we won't have run
+		 * the transform stack, so we won't have the data we need to
+		 * generate a child i/o.  So, toss the override bp and restart.
+		 * This is safe, because using the override bp is just an
+		 * optimization; and it's rare, so the cost doesn't matter.
+		 */
+		if (zio->io_bp_override) {
+			zio_pop_transforms(zio);
+			zio->io_stage = ZIO_STAGE_OPEN;
+			zio->io_pipeline = ZIO_WRITE_PIPELINE;
+			zio->io_bp_override = NULL;
+			BP_ZERO(bp);
+			ddt_exit(ddt);
+			return (ZIO_PIPELINE_CONTINUE);
+		}
+
+		dio = zio_write(zio, spa, txg, bp, zio->io_orig_abd,
+		    zio->io_orig_size, zio->io_orig_size, &czp, NULL, NULL,
+		    NULL, zio_ddt_ditto_write_done, dde, zio->io_priority,
+		    ZIO_DDT_CHILD_FLAGS(zio), &zio->io_bookmark);
+
+		zio_push_transform(dio, zio->io_abd, zio->io_size, 0, NULL);
+		dde->dde_lead_zio[DDT_PHYS_DITTO] = dio;
+	}
+
 	if (ddp->ddp_phys_birth != 0 || dde->dde_lead_zio[p] != NULL) {
 		if (ddp->ddp_phys_birth != 0)
 			ddt_bp_fill(ddp, bp, txg);
@@ -3076,6 +3119,8 @@ zio_ddt_write(zio_t *zio)
 
 	if (cio)
 		zio_nowait(cio);
+	if (dio)
+		zio_nowait(dio);
 
 	return (ZIO_PIPELINE_CONTINUE);
 }
@@ -4028,7 +4073,7 @@ zio_checksum_verified(zio_t *zio)
  * ==========================================================================
  * Error rank.  Error are ranked in the order 0, ENXIO, ECKSUM, EIO, other.
  * An error of 0 indicates success.  ENXIO indicates whole-device failure,
- * which may be transient (e.g. unplugged) or permanent.  ECKSUM and EIO
+ * which may be transient (e.g. unplugged) or permament.  ECKSUM and EIO
  * indicate errors that are specific to one I/O, and most likely permanent.
  * Any other error is presumed to be worse because we weren't expecting it.
  * ==========================================================================
