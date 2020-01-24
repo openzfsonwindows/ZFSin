@@ -53,10 +53,10 @@ unsigned int max_ncpus = 0;
 uint64_t  total_memory = 0;
 uint64_t  real_total_memory = 0;
 
-uint64_t vm_page_free_wanted = 0;
-uint64_t vm_page_free_min = 512;
-uint64_t vm_page_free_count = 5000;
-uint64_t vm_page_speculative_count = 5500;
+volatile unsigned int vm_page_free_wanted = 0;
+volatile unsigned int vm_page_free_min = 512;
+volatile unsigned int vm_page_free_count = 5000;
+volatile unsigned int vm_page_speculative_count = 5500;
 
 uint64_t spl_GetPhysMem(void);
 

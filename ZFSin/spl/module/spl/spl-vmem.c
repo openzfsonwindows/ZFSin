@@ -2512,7 +2512,7 @@ xnu_alloc_throttled(vmem_t *bvmp, uint32_t size, int vmflag)
 
 	static volatile _Atomic uint32_t waiters = 0;
 
-	waiters++;
+	atomic_inc_32(&waiters);
 
 	if (waiters == 1UL)
 		atomic_inc_64(&spl_xat_no_waiters);
@@ -2551,6 +2551,7 @@ xnu_alloc_throttled(vmem_t *bvmp, uint32_t size, int vmflag)
 				atomic_inc_64(&spl_xat_late_success);
 				spl_xat_lastalloc = gethrtime();
 				waiters--;
+				atomic_dec_32(&waiters);
 				// Wake up all waiters on the bucket arena locks,
 				// since the system apparently has memory again.
 				vmem_bucket_wake_all_waiters();
@@ -2574,20 +2575,20 @@ xnu_alloc_throttled(vmem_t *bvmp, uint32_t size, int vmflag)
 				atomic_inc_64(&spl_xat_bailed_contended);
 			atomic_inc_64(&spl_xat_bailed);
 			static _Atomic uint32_t bailing_threads = 0,  max_bailers_seen = 0;
-			bailing_threads++;
+			atomic_inc_32(&bailing_threads);
 			if (bailing_threads > max_bailers_seen) {
 				max_bailers_seen = bailing_threads;
 				xprintf("SPL: %s: max_bailers_seen increased to %u\n",
 				    __func__, max_bailers_seen);
 			}
 			void *b = xnu_alloc_throttled_bail(now, bvmp, size, vmflag);
-			bailing_threads--;
+			atomic_dec_32(&bailing_threads);
 			spl_xat_lastalloc = gethrtime();
 			// wake up waiters on the arena lock,
 			// since they now have memory they can use.
 			cv_broadcast(&bvmp->vm_cv);
 			// open turnstile after having bailed, rather than before
-			waiters--;
+			atomic_dec_32(&waiters);
 			return (b);
 	        } else if (now - entry_now > 0 && ((now - entry_now) % (hz/10))) {
 			spl_free_set_emergency_pressure(MAX(size,16LL*1024LL*1024LL));
@@ -2626,7 +2627,7 @@ xnu_free_throttled(vmem_t *vmp, void *vaddr, uint32_t size)
 	// is_freeing protects the osif_free() call; see comment below
 	static volatile _Atomic uint64_t is_freeing = FALSE;
 
-	a_waiters++; // generates "lock incl ..."
+	atomic_inc_32(&a_waiters); // generates "lock incl ..."
 
 	static _Atomic uint32_t max_waiters_seen = 0;
 
@@ -2659,7 +2660,7 @@ xnu_free_throttled(vmem_t *vmp, void *vaddr, uint32_t size)
 	osif_free(vaddr, size);
 	spl_xat_lastfree = gethrtime();
 	is_freeing = B_FALSE;
-	a_waiters--;
+	atomic_dec_32(&a_waiters);
 	kpreempt(KPREEMPT_SYNC);
 	// since we just gave back xnu enough to satisfy an allocation
 	// in at least the smaller buckets, let's wake up anyone in
@@ -2700,12 +2701,13 @@ vmem_bucket_alloc(vmem_t *null_vmp, uint32_t size, const int vmflags)
 
 	vmem_t *calling_arena = spl_heap_arena;
 
-	static volatile _Atomic uint32_t hipriority_allocators = 0;
+	static volatile _Atomic uint32_t hipriority_allocators = 0;  // Windosed
 	boolean_t local_hipriority_allocator = FALSE;
 
 	if (0 != (vmflags & (VM_PUSHPAGE | VM_NOSLEEP | VM_PANIC | VM_ABORT))) {
 		local_hipriority_allocator = TRUE;
-		hipriority_allocators++;
+		//hipriority_allocators++;
+		atomic_inc_32(&hipriority_allocators);
 	}
 
 	if (!ISP2(size))
@@ -2721,7 +2723,8 @@ vmem_bucket_alloc(vmem_t *null_vmp, uint32_t size, const int vmflags)
 	const uint16_t bucket_number = vmem_bucket_number(size);
 	const uint16_t bucket_bit = (uint16_t)1 << bucket_number;
 
-	spl_vba_threads[bucket_number]++;
+	//spl_vba_threads[bucket_number]++;
+	atomic_inc_32(&spl_vba_threads[bucket_number]);
 
 	static volatile _Atomic uint32_t waiters = 0;
 
@@ -2761,8 +2764,9 @@ vmem_bucket_alloc(vmem_t *null_vmp, uint32_t size, const int vmflags)
 	// allocating in the bucket, or [4]if this thread has (rare condition) spent
 	// a quarter of a second in the loop.
 
-	if (waiters++ > 1 || loop_once) {
-		atomic_inc_64(&spl_vba_loop_entries);
+	//if (waiters++ > 1 || loop_once) {
+	if (atomic_inc_32_nv(&waiters) > 1 || loop_once) {
+			atomic_inc_64(&spl_vba_loop_entries);
 	}
 
 	static _Atomic uint32_t max_waiters_seen = 0;
@@ -2945,8 +2949,8 @@ vmem_bucket_alloc(vmem_t *null_vmp, uint32_t size, const int vmflags)
 	// next thread arriving from leaving the for loop because
 	// vmem_canalloc(bvmp, that_thread's_size) is TRUE.
 
-	buckets_busy_allocating |= bucket_bit;
-
+	//buckets_busy_allocating |= bucket_bit;
+	InterlockedOr16(&buckets_busy_allocating, bucket_bit);
 	// update counters
 	if (local_sleep > 0)
 		atomic_add_64(&spl_vba_sleep, local_sleep);
@@ -2991,10 +2995,11 @@ vmem_bucket_alloc(vmem_t *null_vmp, uint32_t size, const int vmflags)
 	 * but on the other hand it may be hard to do better than clang+llvm.
 	 */
 
-	buckets_busy_allocating &= ~bucket_bit;
+	//buckets_busy_allocating &= ~bucket_bit;
+	InterlockedAnd16(&buckets_busy_allocating, ~bucket_bit);
 
 	if (local_hipriority_allocator)
-		hipriority_allocators--;
+		atomic_dec_32(&hipriority_allocators);
 
 	// if we got an allocation, wake up the arena cv waiters
 	// to let them try to exit the for(;;) loop above and
@@ -3004,8 +3009,9 @@ vmem_bucket_alloc(vmem_t *null_vmp, uint32_t size, const int vmflags)
 		cv_broadcast(&calling_arena->vm_cv);
 	}
 
-	waiters--;
-	spl_vba_threads[bucket_number]--;
+	atomic_dec_32(&waiters);
+	//spl_vba_threads[bucket_number]--;
+	atomic_dec_32(&spl_vba_threads[bucket_number]);
 	return (m);
 }
 
@@ -3712,7 +3718,9 @@ spl_arc_no_grow_impl(const uint16_t b, const uint32_t size, const boolean_t buf_
 			return (FALSE);
 		}
 		const uint32_t b_bit = (uint32_t)1 << (uint32_t)b;
-		spl_arc_no_grow_bits |= b_bit;
+		//spl_arc_no_grow_bits |= b_bit;
+		InterlockedOr64(&spl_arc_no_grow_bits, b_bit);
+
 		const uint32_t sup_at_least_every = MIN(b_bit, 255);
 		const uint32_t sup_at_most_every = MAX(b_bit, 16);
 		const uint32_t sup_every = MIN(sup_at_least_every,sup_at_most_every);
@@ -3725,7 +3733,8 @@ spl_arc_no_grow_impl(const uint16_t b, const uint32_t size, const boolean_t buf_
 		}
 	} else {
 		const uint32_t b_bit = (uint32_t)1 << (uint32_t)b;
-		spl_arc_no_grow_bits &= ~b_bit;
+		//spl_arc_no_grow_bits &= ~b_bit;
+		InterlockedAnd64(&spl_arc_no_grow_bits, ~b_bit);
 	}
 
 	extern boolean_t spl_zio_is_suppressed(const uint32_t, const uint64_t, const boolean_t,

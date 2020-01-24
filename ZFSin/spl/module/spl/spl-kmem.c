@@ -2865,7 +2865,7 @@ kmem_reap_done(void *flag)
 
 	// Windows have no way for these values to return to zero.
 	// Let them decay toward zero, set by memory low events
-	vm_page_free_wanted >>= 1;
+	vm_page_free_wanted = 0;
 }
 
 static void
