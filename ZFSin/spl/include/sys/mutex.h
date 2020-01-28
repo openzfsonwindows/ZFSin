@@ -66,6 +66,7 @@ typedef struct kmutex {
 	mutex_t m_lock;
 	void           *m_owner;
 	unsigned int initialised;
+    unsigned int set_event_guard;
 } kmutex_t;
 
 

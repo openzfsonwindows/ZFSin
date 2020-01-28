@@ -99,8 +99,11 @@ extern void windows_delay(int);
 #define KPREEMPT_SYNC 0
 static inline void kpreempt(int flags)
 {
-	(void)flags;
-	 //(void)thread_block(THREAD_CONTINUE_NULL);
+    (void)flags;
+    //ZwYieldExecution();
+    LARGE_INTEGER interval;
+    interval.QuadPart = 0;
+    KeDelayExecutionThread(KernelMode, FALSE, &interval);
 }
 
 #endif  /* _SPL_THREAD_H */

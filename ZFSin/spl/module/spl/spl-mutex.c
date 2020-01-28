@@ -68,6 +68,7 @@ void spl_mutex_init(kmutex_t *mp, char *name, kmutex_type_t type, void *ibc)
 	if (mp->initialised == MUTEX_INITIALISED)
 		panic("%s: mutex already initialised\n", __func__);
 	mp->initialised = MUTEX_INITIALISED;
+	mp->set_event_guard = 0;
 
 	mp->m_owner = NULL;
 
@@ -82,6 +83,11 @@ void spl_mutex_destroy(kmutex_t *mp)
 
 	if (mp->initialised != MUTEX_INITIALISED) 
 		panic("%s: mutex not initialised\n", __func__);
+
+	// Make sure any call to KeSetEvent() has completed.
+	while (mp->set_event_guard != 0) {
+		kpreempt(KPREEMPT_SYNC);
+	}
 
 	mp->initialised = MUTEX_DESTROYED;
 
@@ -104,6 +110,8 @@ void spl_mutex_enter(kmutex_t *mp)
 	
 	if (mp->m_owner == thisthread)
 		panic("mutex_enter: locking against myself!");
+
+	VERIFY3P(mp->m_owner, != , 0xdeadbeefdeadbeef);
 
 	// Test if "m_owner" is NULL, if so, set it to "thisthread".
 	// Returns original value, so if NULL, it succeeded.
@@ -134,10 +142,16 @@ void spl_mutex_exit(kmutex_t *mp)
 	if (mp->m_owner != current_thread())
 		panic("%s: releasing not held/not our lock?\n", __func__);
 
+	VERIFY3P(mp->m_owner, != , 0xdeadbeefdeadbeef);
+
 	mp->m_owner = NULL;
 
+	VERIFY3U(KeGetCurrentIrql(), <= , DISPATCH_LEVEL);
+
 	// Wake up one waiter now that it is available.
-	KeSetEvent((PRKEVENT)&mp->m_lock, 0, FALSE);
+	atomic_inc_32(&mp->set_event_guard);
+	KeSetEvent((PRKEVENT)&mp->m_lock, SEMAPHORE_INCREMENT, FALSE);
+	atomic_dec_32(&mp->set_event_guard);
 }
 
 int spl_mutex_tryenter(kmutex_t *mp)
