@@ -2330,10 +2330,14 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		OBJECT_ATTRIBUTES oa;
 		IO_STATUS_BLOCK ioStatus;
 		UNICODE_STRING uFileName;
-		RtlInitUnicodeString(&uFileName, ren->FileName);
+		//RtlInitEmptyUnicodeString(&uFileName, ren->FileName, ren->FileNameLength);  // doesn't set length
+		// Is there really no offical wrapper to do this?
+		uFileName.Length = uFileName.MaximumLength = ren->FileNameLength;
+		uFileName.Buffer = ren->FileName;
+
 		InitializeObjectAttributes(&oa, &uFileName, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
 			NULL, NULL);
-
+		
 		Status = IoCreateFile(
 			&destParentHandle,
 			FILE_READ_DATA,
