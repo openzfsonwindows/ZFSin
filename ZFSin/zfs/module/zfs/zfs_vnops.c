@@ -2127,6 +2127,7 @@ top:
 #endif
 		mutex_exit(&zp->z_lock);
 		vnode_pager_setsize(vp, 0);
+
 		/*
 		 * Call recycle which will call vnop_reclaim directly if it can
 		 * so tell reclaim to not do anything with this node, so we can
@@ -2135,17 +2136,9 @@ top:
 		 */
 
 		zp->z_fastpath = B_TRUE;
-		if (vnode_recycle(vp) == 0) {
 
-			/* recycle/reclaim is done, so we can just release now */
-			zfs_znode_delete(zp, tx);
-		} else {
-			/* failed to recycle, so just place it on the unlinked list */
-			zp->z_fastpath = B_FALSE;
-			zfs_unlinked_add(zp, tx);
+		zfs_znode_delete(zp, tx);
 
-			VN_RELE(vp);
-		}
 		vp = NULL;
 		zp = NULL;
 

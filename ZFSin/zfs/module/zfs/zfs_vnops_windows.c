@@ -3637,11 +3637,29 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 		 */
 		if (zccb && zccb->deleteonclose) {
 
+			if (zp->z_name_cache != NULL) {
+				if (isdir) {
+					dprintf("sending DIR notify: FileDeleted '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
+					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+						FILE_NOTIFY_CHANGE_DIR_NAME,
+						FILE_ACTION_REMOVED);
+				} else {
+					dprintf("sending FILE notify: FileDeleted '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
+					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+						FILE_NOTIFY_CHANGE_FILE_NAME,
+						FILE_ACTION_REMOVED);
+				}
+			}
+
 			// Windows needs us to unlink it now, since CLOSE can be delayed
 			// and parent deletions might fail (ENOTEMPTY).
+
+			// This releases zp!
 			Status = delete_entry(DeviceObject, Irp, IrpSp);
 			if (Status != 0)
 				dprintf("Deletion failed: %d\n", Status);
+
+			zp = NULL;
 
 			// delete_entry will always consume an IOCOUNT.
 			*hold_vp = NULL;
@@ -3656,20 +3674,6 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 #elif defined (ZFS_FS_ATTRIBUTE_CLEANUP_INFO)
 			Irp->IoStatus.Information = FILE_CLEANUP_FILE_DELETED;
 #endif
-
-			if (zp->z_name_cache != NULL) {
-				if (isdir) {
-					dprintf("sending DIR notify: FileDeleted '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
-					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
-						FILE_NOTIFY_CHANGE_DIR_NAME,
-						FILE_ACTION_REMOVED);
-				} else {
-					dprintf("sending FILE notify: FileDeleted '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
-					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
-						FILE_NOTIFY_CHANGE_FILE_NAME,
-						FILE_ACTION_REMOVED);
-				}
-			}
 		}
 
 		/* The use of "zp" is only used as identity, not referenced. */
