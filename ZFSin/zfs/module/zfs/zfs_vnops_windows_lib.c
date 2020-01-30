@@ -1470,8 +1470,6 @@ void zfs_send_notify_stream(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG 
 	UNICODE_STRING ustr;
 	UNICODE_STRING ustream;
 
-	ASSERT(nameoffset <= strlen(name));
-
 	AsciiStringToUnicodeString(name, &ustr);
 
 	dprintf("%s: '%wZ' part '%S' %u %u\n", __func__, &ustr, 
