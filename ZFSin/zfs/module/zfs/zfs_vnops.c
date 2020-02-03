@@ -2138,7 +2138,7 @@ top:
 		zp->z_fastpath = B_TRUE;
 
 		zfs_znode_delete(zp, tx);
-
+		vp->v_data = NULL;
 		vp = NULL;
 		zp = NULL;
 

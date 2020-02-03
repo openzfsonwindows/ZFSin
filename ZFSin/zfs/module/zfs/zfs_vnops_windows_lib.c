@@ -2938,6 +2938,16 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		strlcpy(strname, "\\", MAXPATHLEN);
 	} else {
 
+		// Should never be unset!
+		if (zp->z_name_cache == NULL) {
+			dprintf("%s: name not set path taken\n", __func__);
+			if (zfs_build_path(zp, NULL, &zp->z_name_cache, &zp->z_name_len, &zp->z_name_offset) == -1) {
+				dprintf("%s: failed to build fullpath\n", __func__);
+				return STATUS_OBJECT_PATH_NOT_FOUND;
+			}
+		}
+
+		// Safety
 		if (zp->z_name_cache != NULL) {
 			strlcpy(strname, zp->z_name_cache,
 				MAXPATHLEN);
@@ -2947,21 +2957,9 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 			if (S_ISDIR(zp->z_mode))
 				strlcat(strname, "\\",
 					MAXPATHLEN);
-
-		} else {
-
-			dprintf("%s: name not set path taken\n", __func__);
-			if (zfs_build_path(zp, NULL, &zp->z_name_cache, &zp->z_name_len, &zp->z_name_offset) == -1)
-				dprintf("%s: failed to build fullpath\n", __func__);
-
 		}
 	}
 	VN_RELE(vp);
-
-	if (error) {
-		dprintf("%s: invalid filename\n", __func__);
-		return STATUS_OBJECT_PATH_NOT_FOUND;
-	}
 
 	// Convert name, setting FileNameLength to how much we need
 	error = RtlUTF8ToUnicodeN(NULL, 0, &name->FileNameLength, strname, strlen(strname));
