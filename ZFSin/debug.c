@@ -37,7 +37,7 @@
 
 char* endBuf = "-EB-";
 
-kmutex_t cbuf_mutex;
+KSPIN_LOCK cbuf_spin;
 char *cbuf = NULL;
 
 static unsigned long long cbuf_size = 0x100000; //1MB 
@@ -48,13 +48,12 @@ int initDbgCircularBuffer(void)
 {
 	cbuf = ExAllocatePoolWithTag(NonPagedPoolNx, cbuf_size, '!GBD');
 	ASSERT(cbuf);
-	mutex_init(&cbuf_mutex, NULL, MUTEX_DEFAULT, NULL);
+	KeInitializeSpinLock(&cbuf_spin);
 	return 0;
 }
 
 int finiDbgCircularBuffer(void)
 {
-	mutex_destroy(&cbuf_mutex);
 	ExFreePoolWithTag(cbuf, '!GBD');
 	return 0;
 }
@@ -115,22 +114,27 @@ void addbuffer(char* buf)
 void printBuffer(const char *fmt, ...)
 {
 	// DPCs can't block (mutex) - replace this code with spinlocks
-	if (KeGetCurrentIrql() >= DISPATCH_LEVEL) return;
-
-	mutex_enter(&cbuf_mutex);
+	KIRQL level;
 	va_list args;
 	va_start(args, fmt);
 	char buf[max_line_length];
 	char threadPtr[20];
 	_snprintf(threadPtr, 19, "%p: ", PsGetCurrentThread());
+
+	level = KeAcquireSpinLockForDpc(&cbuf_spin);
 	addbuffer(threadPtr);
+	KeReleaseSpinLockForDpc(&cbuf_spin, level);
+
 	int tmp = _vsnprintf_s(buf, sizeof(buf), max_line_length, fmt, args);
 	if (tmp >= max_line_length) {
 		_snprintf(buf, 17, "buffer too small");
 	}
+
+	level = KeAcquireSpinLockForDpc(&cbuf_spin);
 	addbuffer(buf);
+	KeReleaseSpinLockForDpc(&cbuf_spin, level);
+
 	va_end(args);
-	mutex_exit(&cbuf_mutex);
 }
 
 // Signalled by userland to write out the kernel buffer.
