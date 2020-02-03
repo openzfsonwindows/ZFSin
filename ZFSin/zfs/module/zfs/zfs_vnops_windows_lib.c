@@ -1470,6 +1470,8 @@ void zfs_send_notify_stream(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG 
 	UNICODE_STRING ustr;
 	UNICODE_STRING ustream;
 
+	if (name == NULL) return;
+
 	AsciiStringToUnicodeString(name, &ustr);
 
 	dprintf("%s: '%wZ' part '%S' %u %u\n", __func__, &ustr, 
@@ -2947,14 +2949,11 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 					MAXPATHLEN);
 
 		} else {
-			// Should never be used, in theory - as it is wrong.
-			// should then call build_path().
-			DbgBreakPoint();
-			VERIFY(sa_lookup(zp->z_sa_hdl, SA_ZPL_PARENT(zfsvfs),
-				&parent, sizeof(parent)) == 0);
 
-			error = zap_value_search(zfsvfs->z_os, parent, zp->z_id,
-				ZFS_DIRENT_OBJ(-1ULL), strname);
+			dprintf("%s: name not set path taken\n", __func__);
+			if (zfs_build_path(zp, NULL, &zp->z_name_cache, &zp->z_name_len, &zp->z_name_offset) == -1)
+				dprintf("%s: failed to build fullpath\n", __func__);
+
 		}
 	}
 	VN_RELE(vp);
