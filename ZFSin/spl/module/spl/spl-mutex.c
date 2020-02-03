@@ -144,12 +144,13 @@ void spl_mutex_exit(kmutex_t *mp)
 
 	VERIFY3P(mp->m_owner, != , 0xdeadbeefdeadbeef);
 
+	atomic_inc_32(&mp->set_event_guard);
+
 	mp->m_owner = NULL;
 
 	VERIFY3U(KeGetCurrentIrql(), <= , DISPATCH_LEVEL);
 
 	// Wake up one waiter now that it is available.
-	atomic_inc_32(&mp->set_event_guard);
 	KeSetEvent((PRKEVENT)&mp->m_lock, SEMAPHORE_INCREMENT, FALSE);
 	atomic_dec_32(&mp->set_event_guard);
 }
