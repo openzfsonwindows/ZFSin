@@ -128,7 +128,7 @@ typedef struct kstat {
 	uchar_t         ks_flags;       /* kstat flags */
 	void            *ks_data;       /* kstat type-specific data */
 	uint_t          ks_ndata;       /* # of type-specific data records */
-	uint32_t        ks_data_size;   /* total size of kstat data section */
+	size_t        ks_data_size;   /* total size of kstat data section */
 	hrtime_t        ks_snaptime;    /* time of last data shapshot */
 									/*
 									* Fields relevant to kernel only
