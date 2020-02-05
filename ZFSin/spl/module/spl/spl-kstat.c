@@ -1258,7 +1258,7 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	kstat32_t user_kstat32;
 #endif
 	void *kbuf = NULL;
-	size_t kbufsize, ubufsize, copysize, firstkbufsize;
+	size_t kbufsize, ubufsize, copysize, allocsize;
 	int error = 0;
 	uint_t model;
 
@@ -1310,8 +1310,8 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	*/
 	if (!(ksp->ks_flags & (KSTAT_FLAG_VAR_SIZE | KSTAT_FLAG_LONGSTRINGS))) {
 		kbufsize = ksp->ks_data_size;
-		firstkbufsize = kbufsize;
-		kbuf = kmem_zalloc(kbufsize + 1, KM_NOSLEEP);
+		allocsize = kbufsize + 1;
+		kbuf = kmem_zalloc(allocsize, KM_NOSLEEP);
 		if (kbuf == NULL) {
 			kstat_rele(ksp);
 			return (EAGAIN);
@@ -1322,7 +1322,7 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 		KSTAT_EXIT(ksp);
 		kstat_rele(ksp);
 		if (kbuf != NULL)
-			kmem_free(kbuf, kbufsize + 1);
+			kmem_free(kbuf, allocsize);
 		return (error);
 	}
 
@@ -1332,8 +1332,10 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	if (ubufsize < kbufsize) {
 		error = ENOMEM;
 	} else {
-		if (kbuf == NULL)
-			kbuf = kmem_zalloc(kbufsize + 1, KM_NOSLEEP);
+		if (kbuf == NULL) {
+			allocsize = kbufsize + 1;
+			kbuf = kmem_zalloc(allocsize, KM_NOSLEEP);
+		}
 		if (kbuf == NULL) {
 			error = EAGAIN;
 		} else {
@@ -1565,7 +1567,7 @@ read_kstat_data(int *rvalp, void *user_ksp, int flag)
 	if (error == 0 &&
 		ddi_copyout(kbuf, user_kstat.ks_data, copysize, 0))
 		error = EFAULT;
-	kmem_free(kbuf, (kbufsize?kbufsize:firstkbufsize) + 1);
+	kmem_free(kbuf, allocsize);
 
 out:
 	/*
