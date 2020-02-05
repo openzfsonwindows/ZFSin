@@ -551,6 +551,10 @@ zfs_vnode_cache_constructor(void *buf, void *arg, int kmflags)
 	avl_create(&vp->v_fileobjects, vnode_fileobject_compare,
 		sizeof(vnode_fileobjects_t), offsetof(vnode_fileobjects_t, avlnode));
 
+	ExInitializeResourceLite(&vp->resource);
+	ExInitializeResourceLite(&vp->pageio_resource);
+	ExInitializeFastMutex(&vp->AdvancedFcbHeaderMutex);
+
 	return 0;
 }
 
@@ -558,6 +562,10 @@ static void
 zfs_vnode_cache_destructor(void *buf, void *arg)
 {
 	vnode_t *vp = buf;
+
+	//ExDeleteFastMutex(&vp->AdvancedFcbHeaderMutex);
+	ExDeleteResourceLite(&vp->pageio_resource);
+	ExDeleteResourceLite(&vp->resource);
 
 	avl_destroy(&vp->v_fileobjects);
 	mutex_destroy(&vp->v_mutex);
@@ -1213,16 +1221,11 @@ void vnode_create(mount_t *mp, void *v_data, int type, int flags, struct vnode *
 	// Initialise the Windows specific data.
 	memset(&vp->SectionObjectPointers, 0, sizeof(vp->SectionObjectPointers));
 
-	ExInitializeFastMutex(&vp->AdvancedFcbHeaderMutex);
 	FsRtlSetupAdvancedHeader(&vp->FileHeader, &vp->AdvancedFcbHeaderMutex);
 
 	FsRtlInitializeFileLock(&vp->lock, NULL, NULL);
 	vp->FileHeader.Resource = &vp->resource;
 	vp->FileHeader.PagingIoResource = &vp->pageio_resource;
-	ExInitializeResourceLite(vp->FileHeader.Resource);
-	ExInitializeResourceLite(vp->FileHeader.PagingIoResource);
-	ASSERT0(((uint64_t)vp->FileHeader.Resource) & 7);
-
 
 	// Add only to list once we have finished initialising.
 	mutex_enter(&vnode_all_list_lock);
@@ -1377,6 +1380,7 @@ int vnode_drain_delayclose(int force)
 			list_remove(&vnode_all_list, vp);
 			vnode_unlock(vp);
 			dprintf("%s: freeing DEAD vp %p\n", __func__, vp);
+
 			kmem_cache_free(vnode_cache, vp); // Holding all_list_lock, that OK?
 			atomic_dec_64(&vnode_active);
 
@@ -1630,7 +1634,7 @@ int vnode_flushcache(vnode_t *vp, FILE_OBJECT *fileobject, boolean_t hard)
 
 	// Try to release cache
 	dprintf("calling CcUninit: fo %p\n", fileobject);
-	CcUninitializeCacheMap(fileobject,
+	int temp = CcUninitializeCacheMap(fileobject,
 		hard ? &Zero : NULL,
 		NULL);
 	dprintf("complete CcUninit\n");

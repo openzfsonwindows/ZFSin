@@ -1389,12 +1389,6 @@ int zfs_vnop_reclaim(struct vnode *vp)
 	mutex_exit(&zp->z_lock);
 	//vnode_removefsref(vp); /* ADDREF from vnode_create */
 
-	if (&vp->resource)
-		ExDeleteResourceLite(&vp->resource);
-
-	if (&vp->pageio_resource)
-		ExDeleteResourceLite(&vp->pageio_resource);
-
 	vp = NULL;
 
 	if (zp->z_name_cache != NULL)
