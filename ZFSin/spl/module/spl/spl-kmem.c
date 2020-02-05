@@ -105,7 +105,7 @@ extern void Debugger(const char *message);
 // the kmem module is preparing to unload.
 static int			shutting_down = 0;
 
-// Amount of RAM in machine
+// Amount of RAM in pages, in machine that ZFS can use
 uint64_t			physmem = 0;
 
 // Size in bytes of the memory allocated in seg_kmem
@@ -116,7 +116,10 @@ extern uint64_t		zfs_threads;
 extern uint64_t		zfs_active_mutex;
 extern uint64_t		zfs_active_rwlock;
 
+// Amount of RAM in bytes, in machine that ZFS can use
 extern uint64_t		total_memory;
+
+// Amount of RAM in bytes, in host machine (Windows)
 extern uint64_t		real_total_memory;
 
 #define MULT 1
@@ -2862,10 +2865,6 @@ static void
 kmem_reap_done(void *flag)
 {
 	(void) bsd_timeout(kmem_reap_timeout, flag, &kmem_reap_interval);
-
-	// Windows have no way for these values to return to zero.
-	// Let them decay toward zero, set by memory low events
-	vm_page_free_wanted = 0;
 }
 
 static void
@@ -3360,8 +3359,14 @@ kmem_cache_stat(kmem_cache_t *cp, char *name)
 static inline boolean_t
 spl_minimal_physmem_p_logic()
 {
-
-
+	// Are we using more than ZFS has?
+	if (segkmem_total_mem_allocated > total_memory) {
+		vm_page_free_wanted = (segkmem_total_mem_allocated - total_memory) / PAGE_SIZE;
+		vm_page_free_count = 0;
+	} else {
+		vm_page_free_wanted = 0;
+		vm_page_free_count = (total_memory - segkmem_total_mem_allocated) / PAGE_SIZE;
+	}
 
 	// do we have enough memory to avoid throttling?
 	if (vm_page_free_wanted > 0)
