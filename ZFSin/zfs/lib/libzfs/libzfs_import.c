@@ -261,8 +261,8 @@ fix_paths(nvlist_t *nv, name_entry_t *names)
 		char vdev_path[MAX_PATH];
 		sprintf(vdev_path, "/dev/physicaldrive%lu", deviceNumber.DeviceNumber);
 
-		fprintf(stderr, "setting path here '%s'\r\n", vdev_path); fflush(stderr);
-		fprintf(stderr, "setting physpath here '%s'\r\n", best->ne_name); fflush(stderr);
+		//fprintf(stderr, "setting path here '%s'\r\n", vdev_path); fflush(stderr);
+		//fprintf(stderr, "setting physpath here '%s'\r\n", best->ne_name); fflush(stderr);
 		if (nvlist_add_string(nv, ZPOOL_CONFIG_PATH, vdev_path) != 0)
 			return (-1);
 		if (nvlist_add_string(nv, ZPOOL_CONFIG_PHYS_PATH, best->ne_name) != 0)
@@ -1533,10 +1533,10 @@ zpool_open_func_win(void *arg)
 	}
 
 	DWORD type = GetFileType(fd);
-	fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type, type);
+	//fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type, type);
 	
 	type = GetDriveType(rn->rn_name);
-	fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type, type);
+	//fprintf(stderr, "device '%s' filetype %d 0x%x\n", rn->rn_name, type, type);
 	//if ((fd = openat64(rn->rn_dfd, rn->rn_name, O_RDONLY)) < 0) {
 	//	/* symlink to a device that's no longer there */
 	//	if (errno == ENOENT)
