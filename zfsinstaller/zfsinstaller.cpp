@@ -91,6 +91,8 @@ DWORD zfs_uninstall(char *inf_path)
 
 	ret = send_zfs_ioc_unregister_fs();
 
+	Sleep(2000);
+
 	// 128+2	Always ask the users if they want to reboot.
 	if (ret == 0)
 		ret = executeInfSection("DefaultUninstall 128 ", inf_path);
@@ -220,6 +222,11 @@ DWORD send_zfs_ioc_unregister_fs(void)
 		0, NULL, OPEN_EXISTING, 0, NULL);
 
 	DWORD bytesReturned;
+
+	if (g_fd == INVALID_HANDLE_VALUE) {
+		printf("Unable to open ZFS devnode, already uninstalled?\n");
+		return 0;
+	}
 
 	// We use bytesReturned to hold "zfs_module_busy".
 	BOOL ret = DeviceIoControl(
