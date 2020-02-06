@@ -256,7 +256,7 @@ DWORD send_zfs_ioc_unregister_fs(void)
 #include <cfgmgr32.h>
 #include <newdev.h>
 
-#define ZFS_ROOTDEV "ROOT\\ZFSin"
+#define ZFS_ROOTDEV "Root\\ZFSin"
 // DevCon uses LoadLib() - but lets just static link
 #pragma comment(lib, "Newdev.lib")
 
@@ -372,7 +372,7 @@ DWORD uninstallRootDevice(char *inf)
 	if (DeviceInfoSet == INVALID_HANDLE_VALUE)
 		goto final;
 
-	printf("%s: open\n", __func__);
+	printf("%s: looking for device rootnode to remove...\n", __func__);
 
 	DeviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
 	for (int i = 0; SetupDiEnumDeviceInfo(DeviceInfoSet, i, &DeviceInfoData); i++)
@@ -408,7 +408,7 @@ DWORD uninstallRootDevice(char *inf)
 		// Compare each entry in the buffer multi-sz list with our HardwareID.
 		for (p = buffer; *p && (p < &buffer[buffersize]); p += strlen(p) + sizeof(char)) {
 			//printf("%s: comparing '%s' with '%s'\n", __func__, "ROOT\\ZFSin", p);
-			if (!strcmp(ZFS_ROOTDEV, p)) {
+			if (!_stricmp(ZFS_ROOTDEV, p)) {
 
 				printf("%s: device found, removing ... \n", __func__);
 

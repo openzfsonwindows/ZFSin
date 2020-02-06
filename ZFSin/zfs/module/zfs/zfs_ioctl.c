@@ -6781,14 +6781,22 @@ zfs_ioc_unregister_fs(void)
 		dprintf("%s: datasets still busy: %llu pool(s)\n", __func__, zfs_module_busy);
 		return zfs_module_busy;
 	}
-	IoUnregisterFsRegistrationChange(WIN_DriverObject, DriverNotificationRoutine);
-	IoUnregisterFileSystem(fsDiskDeviceObject);
-	IoDeleteDevice(fsDiskDeviceObject);
-	IoDeleteDevice(ioctlDeviceObject);
+	if (fsDiskDeviceObject != NULL) {
+		IoUnregisterFsRegistrationChange(WIN_DriverObject, DriverNotificationRoutine);
+		IoUnregisterFileSystem(fsDiskDeviceObject);
+		IoDeleteDevice(fsDiskDeviceObject);
+		fsDiskDeviceObject = NULL;
+		IoDeleteDevice(ioctlDeviceObject);
+		ioctlDeviceObject = NULL;
+	}
+#if 0
+	// Do not unload these, so that the zfsinstaller uninstall can
+	// find the devnode to trigger uninstall.
 	if (STOR_DriverUnload != NULL) {
 		STOR_DriverUnload(WIN_DriverObject);
 		STOR_DriverUnload = NULL;
 	}
+#endif
 	return 0;
 }
 
