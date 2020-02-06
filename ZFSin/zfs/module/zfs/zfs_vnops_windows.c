@@ -3176,17 +3176,13 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 			// the actual writes will come later (from CcMgr).
 			dprintf("%s: growing file\n", __func__);
 
-			// Don't call zfs_freesp() here, to extend the file, as the file (and size) is
-			// synced to disk, so if we crash, the file has lots of zeros at the end.
-			// We only tell CcMgr it is larger, and let ZFS file grow with (future) writes.
-			vnode_pager_setsize(vp, byteOffset.QuadPart + bufferLength);
 			// zfs_freesp() calls vnode_pager_setsize();
-			//Status = zfs_freesp(zp,
-			//	byteOffset.QuadPart,  bufferLength,
-			//	FWRITE, B_TRUE);
-			//ASSERT0(Status);
+			Status = zfs_freesp(zp,
+				byteOffset.QuadPart,  bufferLength,
+				FWRITE, B_TRUE);
+			ASSERT0(Status);
 			// Confirm size grown
-//			ASSERT(byteOffset.QuadPart + bufferLength == zp->z_size);
+			ASSERT(byteOffset.QuadPart + bufferLength == zp->z_size);
 		} else {
 			//vnode_pager_setsize(vp, zp->z_size);
 		}
