@@ -230,9 +230,11 @@ ddi_copyin(const void *from, void *to, size_t len, int flags)
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
 		error = GetExceptionCode();
-		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
 	}
-	if (error) goto end;
+	if (error) {
+		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
+		goto end;
+	}
 
 	mdl = IoAllocateMdl((void *)from, len, FALSE, TRUE, NULL);
 	if (!mdl) {
@@ -246,10 +248,13 @@ ddi_copyin(const void *from, void *to, size_t len, int flags)
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
 		error = GetExceptionCode();
+	}
+	if (error) {
 		dprintf("SPL: Exception while locking inBuf 0X%08X\n", error);
 		IoFreeMdl(mdl);
+		mdl = NULL;
+		goto out;
 	}
-	if (error) goto out;
 
 	buffer = MmGetSystemAddressForMdlSafe(mdl, NormalPagePriority | MdlMappingNoExecute);
 
@@ -310,10 +315,12 @@ ddi_copyout(const void *from, void *to, size_t len, int flags)
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
 		error = GetExceptionCode();
-		dprintf("SPL: Exception while locking outBuf 0X%08X\n",
-			error);
 	}
 	if (error != 0) {
+		dprintf("SPL: Exception while locking outBuf 0X%08X\n",
+			error);
+		IoFreeMdl(mdl);
+		mdl = NULL;
 		goto out;
 	}
 
@@ -359,9 +366,11 @@ ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl)
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
 		error = GetExceptionCode();
-		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
 	}
-	if (error) goto out;
+	if (error) {
+		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
+		goto out;
+	}
 
 	try {
 		ProbeForWrite(to, len, sizeof(UCHAR));
@@ -369,9 +378,11 @@ ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl)
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
 		error = GetExceptionCode();
-		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
 	}
-	if (error) goto out;
+	if (error) {
+		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
+		goto out;
+	}
 
 	mdl = IoAllocateMdl(to, len, FALSE, TRUE, NULL);
 	if (!mdl) {
@@ -386,10 +397,12 @@ ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl)
 	except(EXCEPTION_EXECUTE_HANDLER)
 	{
 		error = GetExceptionCode();
-		dprintf("SPL: Exception while locking outBuf 0X%08X\n",
-			error);
 	}
 	if (error != 0) {
+		dprintf("SPL: Exception while locking outBuf 0X%08X\n",
+			error);
+		IoFreeMdl(mdl);
+		mdl = NULL;
 		goto out;
 	}
 
@@ -465,8 +478,8 @@ int spl_start (void)
 	// We need to set these to some non-zero values
 	// so we don't think there is permanent memory
 	// pressure.
-	vm_page_free_count = physmem/2;
-	vm_page_speculative_count = physmem/2;
+	vm_page_free_count = (unsigned int)(physmem/2ULL);
+	vm_page_speculative_count = vm_page_free_count;
 
     /*
      * For some reason, (CTLFLAG_KERN is not set) looking up hostname
