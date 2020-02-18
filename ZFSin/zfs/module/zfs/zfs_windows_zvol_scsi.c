@@ -661,6 +661,10 @@ ScsiReadWriteSetup(
 		return SRB_STATUS_ERROR;
 	}
 
+	// Save the SRB in a list allowing cancellation via SRB_FUNCTION_RESET_xxx
+	((PHW_SRB_EXTENSION)pSrb->SrbExtension)->pSrbBackPtr = pSrb;
+	ExInterlockedInsertTailList(&pHBAExt->pwzvolDrvObj->ListSrbExt, &((PHW_SRB_EXTENSION)pSrb->SrbExtension)->QueuedForProcessing, &pHBAExt->pwzvolDrvObj->SrbExtLock);
+
 	// Queue work item, which will run in the System process.
 
 	IoQueueWorkItem(pWkRtnParms->pQueueWorkItem, wzvol_GeneralWkRtn, DelayedWorkQueue, pWkRtnParms);
@@ -752,6 +756,7 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	pHW_LU_EXTENSION          pLUExt = pWkRtnParms->pLUExt;
 	PSCSI_REQUEST_BLOCK       pSrb = pWkRtnParms->pSrb;
 	PCDB                      pCdb = (PCDB)pSrb->Cdb;
+	PHW_SRB_EXTENSION         pSrbExt = (PHW_SRB_EXTENSION)pSrb->SrbExtension;
 	ULONG                     startingSector,
 		sectorOffset,
 		lclStatus;
@@ -759,6 +764,16 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	UCHAR                     status;
 
 	zvol_state_t *zv;
+
+	// Find out if that SRB has been cancelled and busy it back if it was.
+	KIRQL oldIrql;
+	KeAcquireSpinLock(&pHBAExt->pwzvolDrvObj->SrbExtLock, &oldIrql);
+	RemoveEntryList(&pSrbExt->QueuedForProcessing);
+	KeReleaseSpinLock(&pHBAExt->pwzvolDrvObj->SrbExtLock, oldIrql);
+	if (pSrbExt->Cancelled) {
+		status = SRB_STATUS_BUSY;
+		goto Done;
+	}
 
 	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
 

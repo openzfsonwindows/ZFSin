@@ -53,9 +53,11 @@ int zvol_start(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING pRegistryPath)
 
 	KeInitializeSpinLock(&pwzvolDrvInfo->DrvInfoLock);   // Initialize spin lock.
 	KeInitializeSpinLock(&pwzvolDrvInfo->MPIOExtLock);   //   "
+	KeInitializeSpinLock(&pwzvolDrvInfo->SrbExtLock);   //   "
 
 	InitializeListHead(&pwzvolDrvInfo->ListMPHBAObj);    // Initialize list head.
 	InitializeListHead(&pwzvolDrvInfo->ListMPIOExt);
+	InitializeListHead(&pwzvolDrvInfo->ListSrbExt);
 
 	pwzvolDrvInfo->wzvolRegInfo.BreakOnEntry = DEFAULT_BREAK_ON_ENTRY;
 	pwzvolDrvInfo->wzvolRegInfo.DebugLevel = DEFAULT_DEBUG_LEVEL;
@@ -649,28 +651,27 @@ wzvol_HwStartIo(
 		srbStatus = TRUE == bFlag ? SRB_STATUS_SUCCESS : SRB_STATUS_INVALID_REQUEST;
 		break;
 
-	case SRB_FUNCTION_RESET_LOGICAL_UNIT:
-		StorPortCompleteRequest(
-			pHBAExt,
-			pSrb->PathId,
-			pSrb->TargetId,
-			pSrb->Lun,
-			SRB_STATUS_BUSY
-		);
-		srbStatus = SRB_STATUS_SUCCESS;
-		break;
-
+	case SRB_FUNCTION_RESET_BUS:
 	case SRB_FUNCTION_RESET_DEVICE:
-		StorPortCompleteRequest(
-			pHBAExt,
-			pSrb->PathId,
-			pSrb->TargetId,
-			SP_UNTAGGED,
-			SRB_STATUS_TIMEOUT
-		);
+	case SRB_FUNCTION_RESET_LOGICAL_UNIT:
+	{
+		// Set as cancelled all queued SRBs that match the criteria.
+		KIRQL oldIrql;
+		PLIST_ENTRY pNextEntry;
+		PHW_SRB_EXTENSION pSrbExt;
+		KeAcquireSpinLock(&pHBAExt->pwzvolDrvObj->SrbExtLock, &oldIrql);
+		for (pNextEntry = pHBAExt->pwzvolDrvObj->ListSrbExt.Flink;pNextEntry != &pHBAExt->pwzvolDrvObj->ListSrbExt; pNextEntry = pNextEntry->Flink) 
+		{
+			pSrbExt = CONTAINING_RECORD(pNextEntry, HW_SRB_EXTENSION, QueuedForProcessing);
+			if ((pSrbExt->pSrbBackPtr->PathId == pSrb->PathId) &&
+				(pSrb->Function == SRB_FUNCTION_RESET_BUS ? TRUE : pSrbExt->pSrbBackPtr->TargetId == pSrb->TargetId) &&
+				(pSrb->Function == SRB_FUNCTION_RESET_BUS || pSrb->Function == SRB_FUNCTION_RESET_DEVICE ? TRUE : pSrbExt->pSrbBackPtr->Lun == pSrb->Lun))
+				pSrbExt->Cancelled = 1;	
+		}
+		KeReleaseSpinLock(&pHBAExt->pwzvolDrvObj->SrbExtLock, oldIrql);
 		srbStatus = SRB_STATUS_SUCCESS;
+	}
 		break;
-
 	case SRB_FUNCTION_PNP:
 		status = wzvol_HwHandlePnP(pHBAExt, (PSCSI_PNP_REQUEST_BLOCK)pSrb);
 		srbStatus = pSrb->SrbStatus;
@@ -994,43 +995,29 @@ wzvol_CompleteIrp(
 		__in PIRP          pIrp
 	)
 {
-
-#define            minLen 16
-#if 1
 	dprintf("MpCompleteIrp entered\n");
 
 	if (NULL != pIrp) {
-		NTSTATUS           Status = STATUS_SUCCESS;
+		NTSTATUS Status;
 		PIO_STACK_LOCATION pIrpStack = IoGetCurrentIrpStackLocation(pIrp);
-		ULONG              inputBufferLength;
-
-		inputBufferLength =
-			pIrpStack->Parameters.DeviceIoControl.InputBufferLength;
 
 		switch (pIrpStack->Parameters.DeviceIoControl.IoControlCode) {
 		case IOCTL_MINIPORT_PROCESS_SERVICE_IRP:
-
-			if (inputBufferLength < minLen) {
-
-				Status = STATUS_BUFFER_TOO_SMALL;
-			}
-
+			Status = STATUS_SUCCESS;
 			break;
-
 		default:
 			Status = STATUS_INVALID_DEVICE_REQUEST;
-
 			break;
 		}
 
-		RtlMoveMemory(pIrp->AssociatedIrp.SystemBuffer, "123412341234123", minLen);
-
 		pIrp->IoStatus.Status = Status;
-		pIrp->IoStatus.Information = 16;
+		if (NT_SUCCESS(Status))
+			pIrp->IoStatus.Information = pIrpStack->Parameters.DeviceIoControl.OutputBufferLength;		
+		else
+			pIrp->IoStatus.Information = 0;
 
 		StorPortCompleteServiceIrp(pHBAExt, pIrp);
 	}
-#endif
 }     
 
 /**************************************************************************************************/
@@ -1054,10 +1041,9 @@ wzvol_QueueServiceIrp(
 	dprintf("MpQueueServiceIrp entered\n");
 
 	pOldIrp = InterlockedExchangePointer(&pHBAExt->pReverseCallIrp, pIrp);
-
 	if (NULL != pOldIrp) {                              // Found an IRP already queued?
-		wzvol_CompleteIrp(pHBAExt, pIrp);                   // Complete it.
-	}
+		wzvol_CompleteIrp(pHBAExt, pOldIrp);            // Complete it.	
+}
 #endif
 }                                                     // End MpQueueServiceIrp().
 
