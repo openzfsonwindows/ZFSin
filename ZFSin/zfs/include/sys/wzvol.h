@@ -34,12 +34,12 @@
 
 
 
-#define VENDOR_ID                   L"ZVOL    "
-#define VENDOR_ID_ascii             "ZVOL    "
-#define PRODUCT_ID                  L"ZVOLNAME        "
-#define PRODUCT_ID_ascii            "ZVOLNAME        "
-#define PRODUCT_REV                 L"1234"
-#define PRODUCT_REV_ascii           "1234"
+#define VENDOR_ID                   L"OpenZFS "
+#define VENDOR_ID_ascii             "OpenZFS "
+#define PRODUCT_ID                  L"WinZVOL         "
+#define PRODUCT_ID_ascii            "WinZVOL         "
+#define PRODUCT_REV                 L"1.00"
+#define PRODUCT_REV_ascii           "1.00"
 #define MP_TAG_GENERAL              'LOVZ'
 
 //#define WZOL_MAX_TARGETS            SCSI_MAXIMUM_TARGETS  // 8! A bit low
