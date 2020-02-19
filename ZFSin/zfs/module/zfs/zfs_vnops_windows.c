@@ -3598,11 +3598,10 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 	mount_t *zmo = NULL;
 
 	if (IrpSp->FileObject && IrpSp->FileObject->FsContext) {
-		struct vnode *vp = IrpSp->FileObject->FsContext;
-		zfs_dirlist_t *zccb = IrpSp->FileObject->FsContext2;
+		struct vnode* vp = IrpSp->FileObject->FsContext;
+		zfs_dirlist_t* zccb = IrpSp->FileObject->FsContext2;
 
-		znode_t *zp = VTOZ(vp); // zp for notify removal
-		zfsvfs_t *zfsvfs = zp->z_zfsvfs;
+		znode_t* zp = VTOZ(vp); // zp for notify removal
 
 		vnode_rele(vp); // Release longterm hold finally.
 
@@ -3615,55 +3614,60 @@ int zfs_fileobject_cleanup(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCA
 
 		int isdir = vnode_isdir(vp);
 
-		// If we are cleanup up a dir, we need to complete all the SendNotify
-		// we have attached. 
 		zmo = DeviceObject->DeviceExtension;
 		VERIFY(zmo->type == MOUNT_TYPE_VCB);
 
-		/* Technically, this should only be called on the FileObject which
-		 * opened the file with DELETE_ON_CLOSE - in fastfat, that is stored
-		 * in the ccb (context) set in FsContext2, which holds data for each
-		 * FileObject context. Possibly, we should as well. (We do for dirs)
-		 */
-		if (zccb && zccb->deleteonclose) {
+		if (zp != NULL) {
 
-			if (zp->z_name_cache != NULL) {
-				if (isdir) {
-					dprintf("sending DIR notify: FileDeleted '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
-					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
-						FILE_NOTIFY_CHANGE_DIR_NAME,
-						FILE_ACTION_REMOVED);
-				} else {
-					dprintf("sending FILE notify: FileDeleted '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
-					zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
-						FILE_NOTIFY_CHANGE_FILE_NAME,
-						FILE_ACTION_REMOVED);
+			/* Technically, this should only be called on the FileObject which
+			 * opened the file with DELETE_ON_CLOSE - in fastfat, that is stored
+			 * in the ccb (context) set in FsContext2, which holds data for each
+			 * FileObject context. Possibly, we should as well. (We do for dirs)
+			 */
+			if (zccb && zccb->deleteonclose) {
+				zfsvfs_t* zfsvfs = vfs_fsprivate(zmo);
+
+				zccb->deleteonclose = 0;
+
+				if (zp->z_name_cache != NULL) {
+					if (isdir) {
+						dprintf("sending DIR notify: FileDeleted '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
+						zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+							FILE_NOTIFY_CHANGE_DIR_NAME,
+							FILE_ACTION_REMOVED);
+					} else {
+						dprintf("sending FILE notify: FileDeleted '%s' name '%s'\n", zp->z_name_cache, &zp->z_name_cache[zp->z_name_offset]);
+						zfs_send_notify(zfsvfs, zp->z_name_cache, zp->z_name_offset,
+							FILE_NOTIFY_CHANGE_FILE_NAME,
+							FILE_ACTION_REMOVED);
+					}
 				}
+
+				// Windows needs us to unlink it now, since CLOSE can be delayed
+				// and parent deletions might fail (ENOTEMPTY).
+
+				// This releases zp!
+				Status = delete_entry(DeviceObject, Irp, IrpSp);
+				if (Status != 0)
+					dprintf("Deletion failed: %d\n", Status);
+
+				zp = NULL;
+
+				// delete_entry will always consume an IOCOUNT.
+				*hold_vp = NULL;
+
+				Status = STATUS_SUCCESS;
+
+				// FILE_CLEANUP_UNKNOWN FILE_CLEANUP_WRONG_DEVICE FILE_CLEANUP_FILE_REMAINS
+				// FILE_CLEANUP_FILE_DELETED FILE_CLEANUP_LINK_DELETED FILE_CLEANUP_STREAM_DELETED
+				// FILE_CLEANUP_POSIX_STYLE_DELETE
+#if defined (ZFS_FS_ATTRIBUTE_CLEANUP_INFO) && defined(ZFS_FS_ATTRIBUTE_POSIX)
+				Irp->IoStatus.Information = FILE_CLEANUP_FILE_DELETED | FILE_CLEANUP_POSIX_STYLE_DELETE;
+#elif defined (ZFS_FS_ATTRIBUTE_CLEANUP_INFO)
+				Irp->IoStatus.Information = FILE_CLEANUP_FILE_DELETED;
+#endif
 			}
 
-			// Windows needs us to unlink it now, since CLOSE can be delayed
-			// and parent deletions might fail (ENOTEMPTY).
-
-			// This releases zp!
-			Status = delete_entry(DeviceObject, Irp, IrpSp);
-			if (Status != 0)
-				dprintf("Deletion failed: %d\n", Status);
-
-			zp = NULL;
-
-			// delete_entry will always consume an IOCOUNT.
-			*hold_vp = NULL;
-
-			Status = STATUS_SUCCESS;
-
-			// FILE_CLEANUP_UNKNOWN FILE_CLEANUP_WRONG_DEVICE FILE_CLEANUP_FILE_REMAINS
-			// FILE_CLEANUP_FILE_DELETED FILE_CLEANUP_LINK_DELETED FILE_CLEANUP_STREAM_DELETED
-			// FILE_CLEANUP_POSIX_STYLE_DELETE
-#if defined (ZFS_FS_ATTRIBUTE_CLEANUP_INFO) && defined(ZFS_FS_ATTRIBUTE_POSIX)
-			Irp->IoStatus.Information = FILE_CLEANUP_FILE_DELETED | FILE_CLEANUP_POSIX_STYLE_DELETE;
-#elif defined (ZFS_FS_ATTRIBUTE_CLEANUP_INFO)
-			Irp->IoStatus.Information = FILE_CLEANUP_FILE_DELETED;
-#endif
 		}
 
 		/* The use of "zp" is only used as identity, not referenced. */
