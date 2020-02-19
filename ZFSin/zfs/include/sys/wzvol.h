@@ -103,8 +103,10 @@ typedef struct _wzvolDriverInfo {                        // The master miniport 
 	WZVOL_REG_INFO                    wzvolRegInfo;
 	KSPIN_LOCK                     DrvInfoLock;
 	KSPIN_LOCK                     MPIOExtLock;       // Lock for ListMPIOExt, header of list of HW_LU_EXTENSION_MPIO objects, 
+	KSPIN_LOCK                     SrbExtLock;        // Lock for ListSrbExt
 	LIST_ENTRY                     ListMPHBAObj;      // Header of list of HW_HBA_EXT objects.
 	LIST_ENTRY                     ListMPIOExt;       // Header of list of HW_LU_EXTENSION_MPIO objects.
+	LIST_ENTRY					   ListSrbExt;		  // Heade rof List of HW_SRB_EXTENSION
 	PDRIVER_OBJECT                 pDriverObj;
 	ULONG                          DrvInfoNbrMPHBAObj;// Count of items in ListMPHBAObj.
 	ULONG                          DrvInfoNbrMPIOExtObj; // Count of items in ListMPIOExt.
@@ -190,6 +192,9 @@ typedef struct _HW_LU_EXTENSION {                     // LUN extension allocated
 
 typedef struct _HW_SRB_EXTENSION {
 	SCSIWMI_REQUEST_CONTEXT WmiRequestContext;
+	LIST_ENTRY  QueuedForProcessing;
+	volatile ULONG Cancelled;
+	PSCSI_REQUEST_BLOCK pSrbBackPtr;
 } HW_SRB_EXTENSION, *PHW_SRB_EXTENSION;
 
 typedef enum {
