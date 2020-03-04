@@ -82,11 +82,27 @@ If your version of .NET newer, just move along.
 
 The Target VM should reboot, and login as "WDKRemoteUser".
 
-
 It is recommended you get GIT bash for Windows and install:
 
 https://git-scm.com/downloads
 
+---
+
+Handling configuration errors with Visual Studio 2019 & WDK 10:
+
+There are some issues with Visual Studio 2019 which can cause the following problem in setting up kernel debugging. 
+ERROR: Task “Configuring kernel debugger settings (possible reboot)” failed to complete successfully. Look at the logs in the driver test group explorer for more details on the failure.
+
+This problem is related to MSVC debug tool location mismatch, and as a workaround use the following steps to mitigate this problem:
+
+As Administrator, run Developer Command Prompt for VS 2019 in your Host VM
+Run the following commands in the VS Developer Command Prompt:
+
+cd /d %VCToolsRedistDir%\debug_nonredist
+MKLINK /J x86\Microsoft.VC141.DebugCRT x86\Microsoft.VC142.DebugCRT
+MKLINK /J x64\Microsoft.VC141.DebugCRT x64\Microsoft.VC142.DebugCRT
+
+Retry configuration by following guide to configure Visual Studio 2017 mentioned above.
 
 ---
 
