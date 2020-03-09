@@ -118,22 +118,17 @@ void printBuffer(const char *fmt, ...)
 	va_list args;
 	va_start(args, fmt);
 	char buf[max_line_length];
-	char threadPtr[20];
-	_snprintf(threadPtr, 19, "%p: ", PsGetCurrentThread());
+	_snprintf(buf, 18, "%p: ", PsGetCurrentThread());
 
-	level = KeAcquireSpinLockForDpc(&cbuf_spin);
-	addbuffer(threadPtr);
-	KeReleaseSpinLockForDpc(&cbuf_spin, level);
-
-	int tmp = _vsnprintf_s(buf, sizeof(buf), max_line_length, fmt, args);
+	int tmp = _vsnprintf_s(&buf[17], sizeof(buf), max_line_length, fmt, args);
 	if (tmp >= max_line_length) {
-		_snprintf(buf, 17, "buffer too small");
+		_snprintf(&buf[17], 17, "buffer too small");
 	}
 
-	level = KeAcquireSpinLockForDpc(&cbuf_spin);
+	KeAcquireSpinLock(&cbuf_spin,&level);
 	addbuffer(buf);
-	KeReleaseSpinLockForDpc(&cbuf_spin, level);
-
+	KeReleaseSpinLock(&cbuf_spin, level);
+	
 	va_end(args);
 }
 
