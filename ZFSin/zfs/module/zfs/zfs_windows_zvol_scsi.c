@@ -606,6 +606,7 @@ ScsiReadWriteSetup(
 
 	// Save the SRB in a list allowing cancellation via SRB_FUNCTION_RESET_xxx
 	((PHW_SRB_EXTENSION)pSrb->SrbExtension)->pSrbBackPtr = pSrb;
+	((PHW_SRB_EXTENSION)pSrb->SrbExtension)->Cancelled = 0;
 	ExInterlockedInsertTailList(&pHBAExt->pwzvolDrvObj->ListSrbExt, &((PHW_SRB_EXTENSION)pSrb->SrbExtension)->QueuedForProcessing, &pHBAExt->pwzvolDrvObj->SrbExtLock);
 
 	// Queue work item, which will run in the System process.
