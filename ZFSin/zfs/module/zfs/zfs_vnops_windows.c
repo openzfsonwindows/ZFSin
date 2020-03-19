@@ -119,6 +119,8 @@ uint64_t vnop_num_vnodes = 0;
 uint64_t zfs_disable_wincache = 0;
 #endif
 
+extern void UnlockAndFreeMDL(PMDL );
+
 BOOLEAN zfs_AcquireForLazyWrite(void *Context, BOOLEAN Wait)
 {
 	struct vnode *vp = Context;
@@ -3769,8 +3771,8 @@ void zfsdev_async_thread(void *arg)
 
 	PMDL mdl = Irp->Tail.Overlay.DriverContext[0];
 	if (mdl) {
-		MmUnlockPages(mdl);
-		IoFreeMdl(mdl);
+		UnlockAndFreeMDL(mdl);
+		mdl = NULL;
 		Irp->Tail.Overlay.DriverContext[0] = NULL;
 	}
 	void *fp = Irp->Tail.Overlay.DriverContext[1];
