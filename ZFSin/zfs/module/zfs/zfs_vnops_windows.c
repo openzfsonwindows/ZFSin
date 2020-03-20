@@ -219,8 +219,17 @@ void zfs_decouplefileobject(vnode_t *vp, FILE_OBJECT *fileobject)
 {
 	// We release FsContext2 at CLEANUP, but fastfat releases it in
 	// CLOSE. Does this matter?
-	ASSERT3P(fileobject->FsContext2, != , NULL);
-	kmem_free(fileobject->FsContext2, sizeof(zfs_dirlist_t));
+	zfs_dirlist_t* zccb = fileobject->FsContext2;
+
+	ASSERT3P(zccb, != , NULL);
+
+	if (zccb->searchname.Buffer != NULL) {
+		kmem_free(zccb->searchname.Buffer, zccb->searchname.MaximumLength);
+		zccb->searchname.Buffer = NULL;
+		zccb->searchname.MaximumLength = 0;
+	}
+
+	kmem_free(zccb, sizeof(zfs_dirlist_t));
 	fileobject->FsContext2 = NULL;
 
 	vnode_decouplefileobject(vp, fileobject);
@@ -3178,7 +3187,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 				FWRITE, B_TRUE);
 			ASSERT0(Status);
 			// Confirm size grown
-			ASSERT(byteOffset.QuadPart + bufferLength == zp->z_size);
+			//ASSERT(byteOffset.QuadPart + bufferLength == zp->z_size);
 		} else {
 			//vnode_pager_setsize(vp, zp->z_size);
 		}
@@ -3696,10 +3705,12 @@ int zfs_fileobject_close(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATI
 
 	if (IrpSp->FileObject) {
 
-		dprintf("IRP_MJ_CLOSE: '%wZ' \n", &IrpSp->FileObject->FileName);
+		// Careful not to print something before vnode_fileobject_remove -
+		// if print is swapped out, we think fileobject is still valid.
+		//dprintf("IRP_MJ_CLOSE: '%wZ' \n", &IrpSp->FileObject->FileName);
 
 		if (IrpSp->FileObject->FsContext) {
-			dprintf("CLOSE clearing FsContext of FO 0x%llx\n", IrpSp->FileObject);
+			//dprintf("CLOSE clearing FsContext of FO 0x%llx\n", IrpSp->FileObject);
 			// Mark vnode for cleanup, we grab a HOLD to make sure it isn't
 			// released right here, but marked to be released upon reaching 0 count
 			vnode_t *vp = IrpSp->FileObject->FsContext;
