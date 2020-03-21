@@ -1008,7 +1008,7 @@ taskq_ent_free(taskq_t *tq, taskq_ent_t *tqe)
 	} else {
 		tq->tq_nalloc--;
 		mutex_exit(&tq->tq_lock);
-//		kmem_cache_free(taskq_ent_cache, tqe);  // This goes BOOM
+		kmem_cache_free(taskq_ent_cache, tqe); 
 		mutex_enter(&tq->tq_lock);
 	}
 
