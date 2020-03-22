@@ -40,6 +40,8 @@
 
 static taskq_t *vdev_file_taskq;
 
+extern void UnlockAndFreeMDL(PMDL);
+
 static void
 vdev_file_hold(vdev_t *vd)
 {
@@ -331,16 +333,7 @@ vdev_file_io_intrxxx(PDEVICE_OBJECT DeviceObject, PIRP irp, PVOID Context)
 {
 	KeSetEvent((KEVENT*)Context, NT_SUCCESS(irp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT, FALSE);
 	// zfs/zfs-15
-	PMDL currentMdl, nextMdl;
-	for (currentMdl = irp->MdlAddress; currentMdl != NULL; currentMdl = nextMdl)
-	{
-		nextMdl = currentMdl->Next;
-		if (currentMdl->MdlFlags & MDL_PAGES_LOCKED)
-		{
-			MmUnlockPages(currentMdl);
-		}
-		IoFreeMdl(currentMdl);
-	}
+	UnlockAndFreeMDL(irp->MdlAddress);
 	IoFreeIrp(irp);
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
