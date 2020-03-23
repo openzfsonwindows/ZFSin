@@ -119,7 +119,7 @@ uint64_t vnop_num_vnodes = 0;
 uint64_t zfs_disable_wincache = 0;
 #endif
 
-extern void UnlockAndFreeMDL(PMDL );
+extern void UnlockAndFreeMdl(PMDL );
 
 BOOLEAN zfs_AcquireForLazyWrite(void *Context, BOOLEAN Wait)
 {
@@ -3771,8 +3771,7 @@ void zfsdev_async_thread(void *arg)
 
 	PMDL mdl = Irp->Tail.Overlay.DriverContext[0];
 	if (mdl) {
-		UnlockAndFreeMDL(mdl);
-		mdl = NULL;
+		UnlockAndFreeMdl(mdl);
 		Irp->Tail.Overlay.DriverContext[0] = NULL;
 	}
 	void *fp = Irp->Tail.Overlay.DriverContext[1];
@@ -3832,8 +3831,7 @@ NTSTATUS zfsdev_async(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	return STATUS_PENDING;
 out:	
 	if (mdl) {
-		MmUnlockPages(mdl);
-		IoFreeMdl(mdl);
+		UnlockAndFreeMdl(mdl);
 	}
 	if (fp) {
 		ObDereferenceObject(fp);

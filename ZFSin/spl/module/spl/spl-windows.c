@@ -202,7 +202,7 @@ fnv_32a_buf(void *buf, size_t len, uint32_t hval)
 /*
  * Function to free a MDL chain
  */
-void UnlockAndFreeMDL(PMDL Mdl)
+void UnlockAndFreeMdl(PMDL Mdl)
 {
 	PMDL currentMdl, nextMdl;
 
@@ -251,13 +251,13 @@ ddi_copyin(const void *from, void *to, size_t len, int flags)
 	}
 	if (error) {
 		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
-		goto end;
+		goto out;
 	}
 
 	mdl = IoAllocateMdl((void *)from, len, FALSE, FALSE, NULL);
 	if (!mdl) {
 		error = STATUS_INSUFFICIENT_RESOURCES;
-		goto end;
+		goto out;
 	}
 
 	try {
@@ -269,8 +269,6 @@ ddi_copyin(const void *from, void *to, size_t len, int flags)
 	}
 	if (error) {
 		dprintf("SPL: Exception while locking inBuf 0X%08X\n", error);
-		IoFreeMdl(mdl);
-		mdl = NULL;
 		goto out;
 	}
 
@@ -290,11 +288,9 @@ ddi_copyin(const void *from, void *to, size_t len, int flags)
 
 out:
 	if (mdl) {
-		UnlockAndFreeMDL(mdl);
-		mdl = NULL;
+		UnlockAndFreeMdl(mdl);
 	}
 
-end:
 	return error;
 }
 
@@ -351,8 +347,7 @@ ddi_copyout(const void *from, void *to, size_t len, int flags)
 	//dprintf("SPL: copyout return %d (%d bytes)\n", error, len);
 out:
 	if (mdl) {
-		UnlockAndFreeMDL(mdl);
-		mdl = NULL;
+		UnlockAndFreeMdl(mdl);
 	}
 
 	return error;
@@ -431,8 +426,7 @@ ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl)
 
 out:
 	if (mdl) {
-		UnlockAndFreeMDL(mdl);
-		mdl = NULL;
+		UnlockAndFreeMdl(mdl);
 	}
 
 	return error;
