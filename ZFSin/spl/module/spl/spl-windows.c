@@ -199,6 +199,24 @@ fnv_32a_buf(void *buf, size_t len, uint32_t hval)
 	return hval;
 }
 
+/*
+ * Function to free a MDL chain
+ */
+void UnlockAndFreeMdl(PMDL Mdl)
+{
+	PMDL currentMdl, nextMdl;
+
+	for (currentMdl = Mdl; currentMdl != NULL; currentMdl = nextMdl)
+	{
+		nextMdl = currentMdl->Next;
+		if (currentMdl->MdlFlags & MDL_PAGES_LOCKED)
+		{
+			MmUnlockPages(currentMdl);
+		}
+		IoFreeMdl(currentMdl);
+	}
+}
+
 int
 ddi_copyin(const void *from, void *to, size_t len, int flags)
 {
@@ -233,13 +251,13 @@ ddi_copyin(const void *from, void *to, size_t len, int flags)
 	}
 	if (error) {
 		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
-		goto end;
+		goto out;
 	}
 
-	mdl = IoAllocateMdl((void *)from, len, FALSE, TRUE, NULL);
+	mdl = IoAllocateMdl((void *)from, len, FALSE, FALSE, NULL);
 	if (!mdl) {
 		error = STATUS_INSUFFICIENT_RESOURCES;
-		goto end;
+		goto out;
 	}
 
 	try {
@@ -251,8 +269,6 @@ ddi_copyin(const void *from, void *to, size_t len, int flags)
 	}
 	if (error) {
 		dprintf("SPL: Exception while locking inBuf 0X%08X\n", error);
-		IoFreeMdl(mdl);
-		mdl = NULL;
 		goto out;
 	}
 
@@ -272,12 +288,9 @@ ddi_copyin(const void *from, void *to, size_t len, int flags)
 
 out:
 	if (mdl) {
-		MmUnlockPages(mdl);
-		IoFreeMdl(mdl);
-		mdl = NULL;
+		UnlockAndFreeMdl(mdl);
 	}
 
-end:
 	return error;
 }
 
@@ -302,7 +315,7 @@ ddi_copyout(const void *from, void *to, size_t len, int flags)
 
 	//dprintf("SPL: trying windows copyout: %p:%d\n", to, len);
 
-	mdl = IoAllocateMdl(to, len, FALSE, TRUE, NULL);
+	mdl = IoAllocateMdl(to, len, FALSE, FALSE, NULL);
 	if (!mdl) {
 		error = STATUS_INSUFFICIENT_RESOURCES;
 		dprintf("SPL: copyout failed to allocate mdl\n");
@@ -319,8 +332,6 @@ ddi_copyout(const void *from, void *to, size_t len, int flags)
 	if (error != 0) {
 		dprintf("SPL: Exception while locking outBuf 0X%08X\n",
 			error);
-		IoFreeMdl(mdl);
-		mdl = NULL;
 		goto out;
 	}
 
@@ -336,9 +347,7 @@ ddi_copyout(const void *from, void *to, size_t len, int flags)
 	//dprintf("SPL: copyout return %d (%d bytes)\n", error, len);
 out:
 	if (mdl) {
-		MmUnlockPages(mdl);
-		IoFreeMdl(mdl);
-		mdl = NULL;
+		UnlockAndFreeMdl(mdl);
 	}
 
 	return error;
@@ -384,7 +393,7 @@ ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl)
 		goto out;
 	}
 
-	mdl = IoAllocateMdl(to, len, FALSE, TRUE, NULL);
+	mdl = IoAllocateMdl(to, len, FALSE, FALSE, NULL);
 	if (!mdl) {
 		error = STATUS_INSUFFICIENT_RESOURCES;
 		dprintf("SPL: copyout failed to allocate mdl\n");
@@ -401,8 +410,6 @@ ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl)
 	if (error != 0) {
 		dprintf("SPL: Exception while locking outBuf 0X%08X\n",
 			error);
-		IoFreeMdl(mdl);
-		mdl = NULL;
 		goto out;
 	}
 
@@ -419,9 +426,7 @@ ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl)
 
 out:
 	if (mdl) {
-		MmUnlockPages(mdl);
-		IoFreeMdl(mdl);
-		mdl = NULL;
+		UnlockAndFreeMdl(mdl);
 	}
 
 	return error;
