@@ -1137,7 +1137,9 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		ASSERT3P(vp->SectionObjectPointers.SharedCacheMap, == , NULL);
 
 		vp->v_flags |= VNODE_DEAD; // Mark it dead
-		vp->v_iocount = 0;
+		// Since we might get swapped out (noticably FsRtlTeardownPerStreamContexts)
+		// we hold a look until the very end.
+		vp->v_iocount = 1;
 
 		mutex_exit(&vp->v_mutex);
 
@@ -1161,6 +1163,8 @@ int vnode_recycle_int(vnode_t *vp, int flags)
 		KIRQL OldIrql;
 		mutex_enter(&vp->v_mutex);
 		ASSERT(avl_is_empty(&vp->v_fileobjects));
+		// We are all done with it.
+		vp->v_iocount = 0;
 		mutex_exit(&vp->v_mutex);
 
 #ifdef FIND_MAF
@@ -1469,7 +1473,6 @@ repeat:
 				// release the lock, and because we release the lock the
 				// while has to start from the top each time. We release
 				// the node at end of this while.
-				mutex_exit(&rvp->v_mutex);
 
 				// Try to lock fileobject before we use it.
 				if (NT_SUCCESS(ObReferenceObjectByPointer(
@@ -1478,15 +1481,17 @@ repeat:
 					*IoFileObjectType,
 					KernelMode))) {
 
+					mutex_exit(&rvp->v_mutex);
 					vnode_flushcache(rvp, fileobject, TRUE);
 
 					ObDereferenceObject(fileobject);
+
+					mutex_enter(&rvp->v_mutex);
 				} // if ObReferenceObjectByPointer
 
 
 				// Grab mutex for the while() above.
 				kmem_free(node, sizeof(*node));
-				mutex_enter(&rvp->v_mutex);
 
 			} // while
 
