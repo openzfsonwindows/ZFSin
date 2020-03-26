@@ -45,10 +45,10 @@ int zvol_start(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING pRegistryPath)
 	NTSTATUS status;
 	VIRTUAL_HW_INITIALIZATION_DATA hwInitData;
 
+	RtlZeroMemory(&STOR_wzvolDriverInfo, sizeof(STOR_wzvolDriverInfo));
 	pwzvolDrvInfo = &STOR_wzvolDriverInfo;
 
 	RtlZeroMemory(pwzvolDrvInfo, sizeof(wzvolDriverInfo));  // Set pwzvolDrvInfo's storage to a known state.
-
 	pwzvolDrvInfo->pDriverObj = DriverObject;               // Save pointer to driver object.
 
 	KeInitializeSpinLock(&pwzvolDrvInfo->DrvInfoLock);   // Initialize spin lock.
@@ -59,18 +59,37 @@ int zvol_start(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING pRegistryPath)
 	InitializeListHead(&pwzvolDrvInfo->ListMPIOExt);
 	InitializeListHead(&pwzvolDrvInfo->ListSrbExt);
 
-	pwzvolDrvInfo->wzvolRegInfo.BreakOnEntry = DEFAULT_BREAK_ON_ENTRY;
-	pwzvolDrvInfo->wzvolRegInfo.DebugLevel = DEFAULT_DEBUG_LEVEL;
-	pwzvolDrvInfo->wzvolRegInfo.InitiatorID = DEFAULT_INITIATOR_ID;
-	pwzvolDrvInfo->wzvolRegInfo.PhysicalDiskSize = DEFAULT_PHYSICAL_DISK_SIZE;
-	pwzvolDrvInfo->wzvolRegInfo.VirtualDiskSize = DEFAULT_VIRTUAL_DISK_SIZE;
-	pwzvolDrvInfo->wzvolRegInfo.NbrVirtDisks = DEFAULT_NbrVirtDisks;
-	pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA = DEFAULT_NbrLUNsperHBA;
-	pwzvolDrvInfo->wzvolRegInfo.bCombineVirtDisks = DEFAULT_bCombineVirtDisks;
+	pwzvolDrvInfo->wzvolRegInfo.BreakOnEntry = DEFAULT_BREAK_ON_ENTRY; // not used.
+	pwzvolDrvInfo->wzvolRegInfo.DebugLevel = DEFAULT_DEBUG_LEVEL; // not used.
+	pwzvolDrvInfo->wzvolRegInfo.InitiatorID = DEFAULT_INITIATOR_ID; // not used.
+	pwzvolDrvInfo->wzvolRegInfo.PhysicalDiskSize = DEFAULT_PHYSICAL_DISK_SIZE; // used.
+	pwzvolDrvInfo->wzvolRegInfo.VirtualDiskSize = DEFAULT_VIRTUAL_DISK_SIZE; // not used.
+	pwzvolDrvInfo->wzvolRegInfo.NbrVirtDisks = DEFAULT_NbrVirtDisks; // not used.
+
+	pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA = DEFAULT_NbrLUNsperHBA; // used.
+	pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperTarget = DEFAULT_NbrLUNsperTarget; // used.
+	pwzvolDrvInfo->wzvolRegInfo.bCombineVirtDisks = DEFAULT_bCombineVirtDisks; // used. If TRUE, MPIO must be installed on the server.
 
 	RtlInitUnicodeString(&pwzvolDrvInfo->wzvolRegInfo.VendorId, VENDOR_ID);
 	RtlInitUnicodeString(&pwzvolDrvInfo->wzvolRegInfo.ProductId, PRODUCT_ID);
 	RtlInitUnicodeString(&pwzvolDrvInfo->wzvolRegInfo.ProductRevision, PRODUCT_REV);
+
+	// Calculate the combination of busses, targets and Luns to fit the NbrLUNsperHBA requirement
+	// We privilege the maximum amount of targets vs. luns so TARGET RESETs don't affect a bunch of LUNs
+	//
+	if ((pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA / pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperTarget) > SCSI_MAXIMUM_TARGETS_PER_BUS)
+		pwzvolDrvInfo->MaximumNumberOfTargets = SCSI_MAXIMUM_TARGETS_PER_BUS;
+	else
+		pwzvolDrvInfo->MaximumNumberOfTargets = (pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA / pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperTarget) + 
+												(pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA % pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperTarget ? 1 : 0);
+
+	//pwzvolDrvInfo->MaximumNumberOfTargets = (pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA <= SCSI_MAXIMUM_TARGETS_PER_BUS ? pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA : SCSI_MAXIMUM_TARGETS_PER_BUS);
+	pwzvolDrvInfo->MaximumNumberOfLogicalUnits = (pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA / pwzvolDrvInfo->MaximumNumberOfTargets) + 1;
+	pwzvolDrvInfo->NumberOfBuses = 1; // supporting more would mean bigger changes in the zv_targets array. now we can go up to 32,640 zvols.
+	pwzvolDrvInfo->zvContextArray = (PVOID*)ExAllocatePoolWithTag(NonPagedPoolNx, ((SIZE_T)pwzvolDrvInfo->MaximumNumberOfTargets * pwzvolDrvInfo->MaximumNumberOfLogicalUnits * sizeof(PVOID)), MP_TAG_GENERAL);
+	if (pwzvolDrvInfo->zvContextArray == NULL)
+		return (STATUS_NO_MEMORY);
+	RtlZeroMemory(pwzvolDrvInfo->zvContextArray, ((SIZE_T)pwzvolDrvInfo->MaximumNumberOfTargets * pwzvolDrvInfo->MaximumNumberOfLogicalUnits * sizeof(PVOID)));
 
 	RtlZeroMemory(&hwInitData, sizeof(VIRTUAL_HW_INITIALIZATION_DATA));
 
@@ -152,8 +171,17 @@ wzvol_HwFindAdapter(
 		pHBAExt, pConfigInfo);
 
 	pHBAExt->pwzvolDrvObj = &STOR_wzvolDriverInfo;            // Copy master object from static variable.
-	STOR_HBAExt = pHBAExt; // So we can announce
 
+	if (STOR_HBAExt == NULL) {
+		// We save the first adapter only to announce.
+		STOR_HBAExt = pHBAExt; // So we can announce
+		pHBAExt->bDontReport = FALSE;
+	}
+	else {
+		// If MPIO support is not requested we won;t present the LUNs through other found adapters.
+		pHBAExt->bDontReport = !STOR_wzvolDriverInfo.wzvolRegInfo.bCombineVirtDisks;
+	}
+	
 	InitializeListHead(&pHBAExt->MPIOLunList);        // Initialize list head.
 	InitializeListHead(&pHBAExt->LUList);
 
@@ -166,15 +194,22 @@ wzvol_HwFindAdapter(
 
 	pHBAExt->pDrvObj = pHBAExt->pwzvolDrvObj->pDriverObj;
 
+	pHBAExt->NbrLUNsperHBA = pHBAExt->pwzvolDrvObj->wzvolRegInfo.NbrLUNsperHBA;
+
 	pConfigInfo->VirtualDevice = TRUE;                        // Inidicate no real hardware.
 	pConfigInfo->WmiDataProvider = TRUE;                        // Indicate WMI provider.
 	pConfigInfo->MaximumTransferLength = SP_UNINITIALIZED_VALUE;      // Indicate unlimited.
 	pConfigInfo->AlignmentMask = 0x3;                         // Indicate DWORD alignment.
 	pConfigInfo->CachesData = FALSE;                       // Indicate miniport wants flush and shutdown notification.
-	pConfigInfo->MaximumNumberOfTargets = WZOL_MAX_TARGETS;        // Indicate maximum targets.
-	pConfigInfo->NumberOfBuses = 1;                           // Indicate number of busses.
-	pConfigInfo->SynchronizationModel = StorSynchronizeFullDuplex;   // Indicate full-duplex.
 	pConfigInfo->ScatterGather = TRUE;                        // Indicate scatter-gather (explicit setting needed for Win2003 at least).
+	pConfigInfo->MapBuffers = STOR_MAP_ALL_BUFFERS_INCLUDING_READ_WRITE; // we have no DMA operation to justify not letting StorPort map for us.
+	pConfigInfo->SynchronizationModel = StorSynchronizeFullDuplex;   // Indicate full-duplex.
+	pConfigInfo->MaximumNumberOfLogicalUnits = pHBAExt->pwzvolDrvObj->MaximumNumberOfLogicalUnits;
+	pConfigInfo->MaximumNumberOfTargets = pHBAExt->pwzvolDrvObj->MaximumNumberOfTargets;
+	pConfigInfo->NumberOfBuses = pHBAExt->pwzvolDrvObj->NumberOfBuses;
+
+	dprintf("%s: pHBAExt = 0x%p, NbBuses/MaxTargets/MaxLuns=%d/%d/%d.\n", __func__,
+		pHBAExt, pConfigInfo->NumberOfBuses, pConfigInfo->MaximumNumberOfTargets, pConfigInfo->MaximumNumberOfLogicalUnits);
 
 	// Save Vendor Id, Product Id, Revision in device extension.
 
@@ -193,8 +228,6 @@ wzvol_HwFindAdapter(
 	for (i = 0; i < len; i++, pChar += 2)
 		pHBAExt->ProductRevision[i] = *pChar;
 
-	pHBAExt->NbrLUNsperHBA = pHBAExt->pwzvolDrvObj->wzvolRegInfo.NbrLUNsperHBA;
-
 	// Add HBA extension to master driver object's linked list.
 
 #if defined(_AMD64_)
@@ -202,11 +235,8 @@ wzvol_HwFindAdapter(
 #else
 	KeAcquireSpinLock(&pHBAExt->pwzvolDrvObj->DrvInfoLock, &SaveIrql);
 #endif
-
 	InsertTailList(&pHBAExt->pwzvolDrvObj->ListMPHBAObj, &pHBAExt->List);
-
 	pHBAExt->pwzvolDrvObj->DrvInfoNbrMPHBAObj++;
-
 #if defined(_AMD64_)
 	KeReleaseInStackQueuedSpinLock(&LockHandle);
 #else
@@ -215,7 +245,7 @@ wzvol_HwFindAdapter(
 
 	InitializeWmiContext(pHBAExt);
 
-	*pBAgain = FALSE;
+	//*pBAgain = FALSE;  // should not touch this.
 
 	return status;
 }
@@ -634,10 +664,6 @@ wzvol_HwStartIo(
 
 	// Next, if true, will cause StorPort to remove the associated LUNs if, for example, devmgmt.msc is asked "scan for hardware changes."
 
-	if (pHBAExt->bDontReport) {                       // Act as though the HBA/path is gone?
-		srbStatus = SRB_STATUS_INVALID_LUN;
-		goto done;
-	}
 
 	switch (pSrb->Function) {
 
@@ -697,7 +723,6 @@ wzvol_HwStartIo(
 
 	} // switch (pSrb->Function)
 
-done:
 	if (ResultDone == Result) {                         // Complete now?
 		pSrb->SrbStatus = srbStatus;
 
@@ -897,6 +922,7 @@ wzvol_StopAdapter(__in pHW_HBA_EXT pHBAExt)               // Adapter device-obje
 #endif
 	}
 
+
 	//done:
 	return;
 }
@@ -980,8 +1006,8 @@ wzvol_HwFreeAdapterResources(__in pHW_HBA_EXT pHBAExt)
 
 #endif
 
-
-	STOR_HBAExt = NULL;
+	if (STOR_HBAExt == pHBAExt)
+		STOR_HBAExt = NULL;
 }
 
 /**************************************************************************************************/

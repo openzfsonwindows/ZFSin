@@ -64,45 +64,46 @@
 
 /*
  * We have a list of ZVOLs, and we receive incoming (Target, Lun) requests that needs to be mapped
- * to the correct "zv" ptr. As there appears to be a upper limit on the number of Targets we can
- * have, we use a static index list of zv ptrs. We might need to enhance this one day if people
- * create more ZVOLs than Storports max targets.
- *
- * We currently only use LUN==0. In future we could look at changing this.
+ * to the correct "zv" ptr.
  */
 
-static zvol_state_t *zv_targets[WZOL_MAX_TARGETS] = { NULL };
 
+inline int resolveArrayIndex(int t, int l, int nbL) { return (t * nbL) + l; }
+extern wzvolDriverInfo STOR_wzvolDriverInfo;
 int wzvol_assign_targetid(zvol_state_t *zv)
 {
-	void *empty = NULL;
-
-	for (int i = 0; i < WZOL_MAX_TARGETS; i++) {
-		if (atomic_cas_ptr(&zv_targets[i], NULL, zv) == NULL) {
-			zv->zv_target_id = i;
-			zv->zv_lun_id = 0;
-			return 1;
+	zvol_state_t** zv_targets = (zvol_state_t **)STOR_wzvolDriverInfo.zvContextArray;
+	for (uint8_t l = 0; l < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits; l++) {
+		for (uint8_t t = 0; t < STOR_wzvolDriverInfo.MaximumNumberOfTargets; t++) {
+			if ((zv_targets[resolveArrayIndex(t,l, STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)] == NULL) &&
+				(atomic_cas_ptr(&zv_targets[resolveArrayIndex(t, l, STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)], NULL, zv) == NULL)) {
+				zv->zv_target_id = t;
+				zv->zv_lun_id = l;
+				return 1;
+			}
 		}
 	}
-
-	dprintf("ZFS: Unable to assign targetid - out of room, increase WZOL_MAX_TARGETS\n");
-	ASSERT("Unable to assign targetid - out of room, increase WZOL_MAX_TARGETS");
+	dprintf("ZFS: Unable to assign targetid - out of room.\n");
+	ASSERT("Unable to assign targetid - out of room.");
 	return 0;
 }
 
 static inline zvol_state_t *wzvol_find_target(uint8_t targetid, uint8_t lun)
 {
-	ASSERT(targetid < WZOL_MAX_TARGETS);
-	if (targetid >= WZOL_MAX_TARGETS) return NULL;
-	if (lun != 0) return NULL;
-	return zv_targets[targetid];
+	ASSERT(targetid < STOR_wzvolDriverInfo.MaximumNumberOfTargets);
+	ASSERT(lun < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits);
+	if (targetid < STOR_wzvolDriverInfo.MaximumNumberOfTargets && lun < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)
+		return (zvol_state_t *)STOR_wzvolDriverInfo.zvContextArray[resolveArrayIndex(targetid, lun, STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)];
+	else
+		return NULL;
 }
 
-void wzvol_clear_targetid(uint8_t targetid)
+void wzvol_clear_targetid(uint8_t targetid, uint8_t lun)
 {
-	ASSERT(targetid < WZOL_MAX_TARGETS);
-	if (targetid < WZOL_MAX_TARGETS)
-		zv_targets[targetid] = NULL;
+	ASSERT(targetid < STOR_wzvolDriverInfo.MaximumNumberOfTargets);
+	ASSERT(lun < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits);
+	if (targetid < STOR_wzvolDriverInfo.MaximumNumberOfTargets && lun < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)
+		STOR_wzvolDriverInfo.zvContextArray[resolveArrayIndex(targetid, lun, STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)] = NULL;
 }
 
 /**************************************************************************************************/     
@@ -115,7 +116,6 @@ ScsiExecuteMain(
                 __in PUCHAR               pResult
                )
 {
-    pHW_LU_EXTENSION pLUExt;
     UCHAR            status = SRB_STATUS_INVALID_REQUEST;
 
    dprintf("ScsiExecute: pSrb = 0x%p, CDB = 0x%x Path: %x TID: %x Lun: %x\n",
@@ -123,44 +123,19 @@ ScsiExecuteMain(
 
     *pResult = ResultDone;
 
-    // For testing, return an error when the kernel debugger has set a flag.
-
-    if (
-        pHBAExt->LUNInfoArray[pSrb->Lun].bIODontUse   // No SCSI I/O to this LUN?
-          &&
-        SCSIOP_REPORT_LUNS!=pSrb->Cdb[0]              //   and not Report LUNs (which will be allowed)?
-       ) {
-        goto Done;
-    }
-
-    pLUExt = StorPortGetLogicalUnit(pHBAExt,          // Get the LU extension from StorPort.
-                                    pSrb->PathId,
-                                    pSrb->TargetId,
-                                    pSrb->Lun 
-                                   );
-
-    if (!pLUExt) {
-        dprintf( "Unable to get LUN extension for device %d:%d:%d\n",
-                   pSrb->PathId, pSrb->TargetId, pSrb->Lun);
-
-        status = SRB_STATUS_NO_DEVICE;
-        goto Done;
-    }
-
-    // Test to get failure of I/O to this LUN on this path or on any path, except for Report LUNs.
-    // Flag(s) to be set by kernel debugger. 
-
-    if (
-        (pLUExt->bIsMissing || (pLUExt->pLUMPIOExt && pLUExt->pLUMPIOExt->bIsMissingOnAnyPath)) 
-          && 
-        SCSIOP_REPORT_LUNS!=pSrb->Cdb[0]
-       ) {
-        status = SRB_STATUS_NO_DEVICE;
-        goto Done;
-    }
+	// Verify that the B/T/L is not out of bound.
+	if (pSrb->PathId > 0) {
+		status = SRB_STATUS_INVALID_PATH_ID;
+		goto Done;
+	} else if (pSrb->TargetId >= STOR_wzvolDriverInfo.MaximumNumberOfTargets) {
+		status = SRB_STATUS_INVALID_TARGET_ID;
+		goto Done;
+	} else if (pSrb->Lun >= STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits) {
+		status = SRB_STATUS_INVALID_LUN;
+		goto Done;
+	}
 
     // Handle sufficient opcodes to support a LUN suitable for a file system. Other opcodes are failed.
-
     switch (pSrb->Cdb[0]) {
 
         case SCSIOP_TEST_UNIT_READY:
@@ -171,27 +146,27 @@ ScsiExecuteMain(
             break;
 
         case SCSIOP_INQUIRY:
-            status = ScsiOpInquiry(pHBAExt, pLUExt, pSrb);
+            status = ScsiOpInquiry(pHBAExt, pSrb);
             break;
 
         case SCSIOP_READ_CAPACITY:
-            status = ScsiOpReadCapacity(pHBAExt, pLUExt, pSrb);
+            status = ScsiOpReadCapacity(pHBAExt, pSrb);
             break;
 
         case SCSIOP_READ:
-            status = ScsiOpRead(pHBAExt, pLUExt, pSrb, pResult);
+            status = ScsiOpRead(pHBAExt, pSrb, pResult);
             break;
 
         case SCSIOP_WRITE:
-            status = ScsiOpWrite(pHBAExt, pLUExt, pSrb, pResult);
+            status = ScsiOpWrite(pHBAExt, pSrb, pResult);
             break;
 
         case SCSIOP_MODE_SENSE:
-            status = ScsiOpModeSense(pHBAExt, pLUExt, pSrb);
+            status = ScsiOpModeSense(pHBAExt, pSrb);
             break;
 
         case SCSIOP_REPORT_LUNS:                      
-            status = ScsiOpReportLuns(pHBAExt, pLUExt, pSrb);
+            status = ScsiOpReportLuns(pHBAExt, pSrb);
             break;
 
         default:
@@ -321,19 +296,32 @@ Done:
 UCHAR
 ScsiOpInquiry(
 	__in pHW_HBA_EXT          pHBAExt,      // Adapter device-object extension from StorPort.
-	__in pHW_LU_EXTENSION     pLUExt,       // LUN device-object extension from StorPort.
-	__in PSCSI_REQUEST_BLOCK  pSrb
-)
+	__in PSCSI_REQUEST_BLOCK  pSrb)
 {
 	UCHAR status = SRB_STATUS_SUCCESS;
 
-	dprintf("%s: Path: %d TID: %d Lun: %d\n", __func__,
-		pSrb->PathId, pSrb->TargetId, pSrb->Lun);
+	if (pHBAExt->bDontReport) {
+		status = SRB_STATUS_NO_DEVICE;
+		goto out;
+	}
 
+	zvol_state_t* zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
+	if (NULL == zv) {
+		dprintf("Unable to get zv context for device %d:%d:%d\n",
+			pSrb->PathId, pSrb->TargetId, pSrb->Lun);
+		status = SRB_STATUS_NO_DEVICE;
+		goto out;
+	}
+
+	ASSERT(pSrb->DataTransferLength > 0);
+	if (0 == pSrb->DataTransferLength) {
+		status = SRB_STATUS_DATA_OVERRUN;
+		goto out;
+	}
 	RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength);
 
 	if (1 == ((PCDB)pSrb->Cdb)->CDB6INQUIRY3.EnableVitalProductData) {
-		status = ScsiOpVPD(pHBAExt, pLUExt, pSrb);
+		status = ScsiOpVPD(pHBAExt, pSrb, zv);
 	}
 	else {
 		PINQUIRYDATA pInqData = pSrb->DataBuffer;
@@ -349,20 +337,13 @@ ScsiOpInquiry(
 		RtlMoveMemory(pInqData->ProductId, pHBAExt->ProductId, 16);
 		RtlMoveMemory(pInqData->ProductRevisionLevel, pHBAExt->ProductRevision, 4);
 		memset((PCHAR)pInqData->VendorSpecific, ' ', sizeof(pInqData->VendorSpecific));
+		sprintf(pInqData->VendorSpecific, "%.04d-%.04d-%.04d", pSrb->PathId, pSrb->TargetId, pSrb->Lun);
+		pInqData->VendorSpecific[strlen(pInqData->VendorSpecific)] = ' ';
 
 		pInqData->AdditionalLength = sizeof(*pInqData) - 4;
-
-		//
-		// Reply as valid LUN
-		//
-		if (!GET_FLAG(pLUExt->LUFlags, LU_DEVICE_INITIALIZED)) {
-			pLUExt->DeviceType = DISK_DEVICE;
-			pLUExt->TargetId = pSrb->TargetId;
-			pLUExt->Lun = pSrb->Lun;
-
-			SET_FLAG(pLUExt->LUFlags, LU_DEVICE_INITIALIZED);
-		}
 	}
+
+out:
 	return status;
 }                                                     // End ScsiOpInquiry.
 
@@ -373,27 +354,12 @@ ScsiOpInquiry(
 UCHAR
 ScsiOpVPD(
 	__in pHW_HBA_EXT          pHBAExt,          // Adapter device-object extension from StorPort.
-	__in pHW_LU_EXTENSION     pLUExt,           // LUN device-object extension from StorPort.
-	__in PSCSI_REQUEST_BLOCK  pSrb
-)
+	__in PSCSI_REQUEST_BLOCK  pSrb,
+	__in PVOID				  zvContext)
 {
 	UCHAR                  status = SRB_STATUS_SUCCESS;
 	ULONG                  len = 0;
-	zvol_state_t* zv;
-
-	ASSERT(pLUExt != NULL);
-	ASSERT(pSrb->DataTransferLength > 0);
-
-	if (0 == pSrb->DataTransferLength) {
-		status = SRB_STATUS_DATA_OVERRUN;
-		goto ScsiOpVPD_done;
-	}
-
-	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
-	if (zv == NULL) {
-		status = SRB_STATUS_INVALID_LUN;
-		goto ScsiOpVPD_done;
-	}
+	zvol_state_t* zv = (zvol_state_t*)zvContext;
 
 	switch (((struct _CDB6INQUIRY3*)&pSrb->Cdb)->PageCode) {
 	case VPD_SUPPORTED_PAGES:
@@ -472,32 +438,26 @@ ScsiOpVPD_done:
 UCHAR
 ScsiOpReadCapacity(
                    __in pHW_HBA_EXT          pHBAExt, // Adapter device-object extension from StorPort.
-                   __in pHW_LU_EXTENSION     pLUExt,  // LUN device-object extension from StorPort.
                    __in PSCSI_REQUEST_BLOCK  pSrb
                   )
 {
+    UNREFERENCED_PARAMETER(pHBAExt);
     PREAD_CAPACITY_DATA  readCapacity = pSrb->DataBuffer;
     ULONG                maxBlocks,
                          blockSize;
-
-    UNREFERENCED_PARAMETER(pHBAExt);
-    UNREFERENCED_PARAMETER(pLUExt);
-
-    ASSERT(pLUExt != NULL);
+	zvol_state_t* zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
+	if (NULL == zv) {
+		dprintf("Unable to get zv context for device %d:%d:%d\n",
+			pSrb->PathId, pSrb->TargetId, pSrb->Lun);
+		pSrb->DataTransferLength = 0;
+		return SRB_STATUS_NO_DEVICE;
+	}
 
     RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength );
 
     // Claim 512-byte blocks (big-endian).
 	// Ask ZVOL about block size
     //blockSize = MP_BLOCK_SIZE;
-	zvol_state_t *zv;
-	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
-
-	if (zv == NULL) {
-		pSrb->DataTransferLength = 0;
-		return SRB_STATUS_INVALID_REQUEST;
-	}
-
 	blockSize = zv->zv_volblocksize;
 
     readCapacity->BytesPerBlock =
@@ -521,14 +481,13 @@ ScsiOpReadCapacity(
 UCHAR
 ScsiOpRead(
            __in pHW_HBA_EXT          pHBAExt,         // Adapter device-object extension from StorPort.
-           __in pHW_LU_EXTENSION     pLUExt,          // LUN device-object extension from StorPort.
            __in PSCSI_REQUEST_BLOCK  pSrb,
            __in PUCHAR               pResult
           )
 {
     UCHAR                        status;
 
-    status = ScsiReadWriteSetup(pHBAExt, pLUExt, pSrb, ActionRead, pResult);
+    status = ScsiReadWriteSetup(pHBAExt, pSrb, ActionRead, pResult);
 
     return status;
 }                                                     // End ScsiOpRead.
@@ -539,14 +498,13 @@ ScsiOpRead(
 UCHAR
 ScsiOpWrite(
             __in pHW_HBA_EXT          pHBAExt,        // Adapter device-object extension from StorPort.
-            __in pHW_LU_EXTENSION     pLUExt,         // LUN device-object extension from StorPort.
             __in PSCSI_REQUEST_BLOCK  pSrb,
             __in PUCHAR               pResult
            )
 {
     UCHAR                        status;
 
-    status = ScsiReadWriteSetup(pHBAExt, pLUExt, pSrb, ActionWrite, pResult);
+    status = ScsiReadWriteSetup(pHBAExt, pSrb, ActionWrite, pResult);
 
     return status;
 }                                                     // End ScsiOpWrite.
@@ -562,7 +520,6 @@ ScsiOpWrite(
 UCHAR
 ScsiReadWriteSetup(
 	__in pHW_HBA_EXT          pHBAExt, // Adapter device-object extension from StorPort.
-	__in pHW_LU_EXTENSION     pLUExt,  // LUN device-object extension from StorPort.        
 	__in PSCSI_REQUEST_BLOCK  pSrb,
 	__in MpWkRtnAction        WkRtnAction,
 	__in PUCHAR               pResult
@@ -574,7 +531,7 @@ ScsiReadWriteSetup(
 	USHORT                       numBlocks;
 	pMP_WorkRtnParms             pWkRtnParms;
 
-	ASSERT(pLUExt != NULL);
+	ASSERT(pSrb->DataBuffer != NULL);
 
 	*pResult = ResultDone;                            // Assume no queuing.
 
@@ -590,7 +547,6 @@ ScsiReadWriteSetup(
 	RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
 
 	pWkRtnParms->pHBAExt = pHBAExt;
-	pWkRtnParms->pLUExt = pLUExt;
 	pWkRtnParms->pSrb = pSrb;
 	pWkRtnParms->Action = ActionRead == WkRtnAction ? ActionRead : ActionWrite;
 
@@ -605,9 +561,13 @@ ScsiReadWriteSetup(
 	}
 
 	// Save the SRB in a list allowing cancellation via SRB_FUNCTION_RESET_xxx
-	((PHW_SRB_EXTENSION)pSrb->SrbExtension)->pSrbBackPtr = pSrb;
-	((PHW_SRB_EXTENSION)pSrb->SrbExtension)->Cancelled = 0;
-	ExInterlockedInsertTailList(&pHBAExt->pwzvolDrvObj->ListSrbExt, &((PHW_SRB_EXTENSION)pSrb->SrbExtension)->QueuedForProcessing, &pHBAExt->pwzvolDrvObj->SrbExtLock);
+	PHW_SRB_EXTENSION pSrbExt = pSrb->SrbExtension;
+	pSrbExt->pSrbBackPtr = pSrb;
+	pSrbExt->Cancelled = 0;
+	KIRQL oldIrql;
+	KeAcquireSpinLock(&pHBAExt->pwzvolDrvObj->SrbExtLock, &oldIrql);
+	InsertTailList(&pHBAExt->pwzvolDrvObj->ListSrbExt,&pSrbExt->QueuedForProcessing);
+	KeReleaseSpinLock(&pHBAExt->pwzvolDrvObj->SrbExtLock, oldIrql);
 
 	// Queue work item, which will run in the System process.
 
@@ -624,12 +584,10 @@ ScsiReadWriteSetup(
 UCHAR
 ScsiOpModeSense(
                 __in pHW_HBA_EXT          pHBAExt,    // Adapter device-object extension from StorPort.
-                __in pHW_LU_EXTENSION     pLUExt,     // LUN device-object extension from StorPort.
                 __in PSCSI_REQUEST_BLOCK  pSrb
                )
 {
     UNREFERENCED_PARAMETER(pHBAExt);
-    UNREFERENCED_PARAMETER(pLUExt);
 
     RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength);
 
@@ -639,55 +597,49 @@ ScsiOpModeSense(
 /**************************************************************************************************/     
 /*                                                                                                */     
 /**************************************************************************************************/     
+VOID ReverseIndian(UCHAR *x)
+{
+	UCHAR t;
+	UCHAR* d = (UCHAR*)x;
+	t = d[0]; d[0] = d[3]; d[3] = t; t = d[1]; d[1] = d[2]; d[2] = t;
+}
+
 UCHAR
 ScsiOpReportLuns(                                     
                  __in __out pHW_HBA_EXT         pHBAExt,   // Adapter device-object extension from StorPort.
-                 __in       pHW_LU_EXTENSION    pLUExt,    // LUN device-object extension from StorPort.
                  __in       PSCSI_REQUEST_BLOCK pSrb
                 )
 {
     UCHAR     status = SRB_STATUS_SUCCESS;
     PLUN_LIST pLunList = (PLUN_LIST)pSrb->DataBuffer; // Point to LUN list.
-    ULONG     i, 
-              GoodLunIdx;
-
-    UNREFERENCED_PARAMETER(pLUExt);
+    uint8_t   GoodLunIdx = 0;
+	uint8_t   totalLun = 0;
 
     if (FALSE==pHBAExt->bReportAdapterDone) {         // This opcode will be one of the earliest I/O requests for a new HBA (and may be received later, too).
         wzvol_HwReportAdapter(pHBAExt);                   // WMIEvent test.
-
         wzvol_HwReportLink(pHBAExt);                      // WMIEvent test.
-
         wzvol_HwReportLog(pHBAExt);                       // WMIEvent test.
-
         pHBAExt->bReportAdapterDone = TRUE;
     }
 	
-	zvol_state_t *zv;
-
-	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
-
-	if (zv != NULL &&
-		pSrb->PathId == 0 &&
-		!pHBAExt->bDontReport) {
-
-		RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength);
-
-        pLunList->LunListLength[3] =                  // Set length needed for LUNs.
-            (UCHAR)(8*pHBAExt->NbrLUNsperHBA);
-
-        // Set the LUN numbers if there is enough room, and set only those LUNs to be reported.
-
-        if (pSrb->DataTransferLength>=FIELD_OFFSET(LUN_LIST, Lun) + (sizeof(pLunList->Lun[0])*pHBAExt->NbrLUNsperHBA)) {
-            for (i = 0, GoodLunIdx = 0; i < pHBAExt->NbrLUNsperHBA; i ++) {
-                // LUN to be reported?
-                if (FALSE==pHBAExt->LUNInfoArray[i].bReportLUNsDontUse) {
-                    pLunList->Lun[GoodLunIdx][1] = (UCHAR)i;
-                    GoodLunIdx++;
-                }
-            }
+	RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength);
+	if (!pHBAExt->bDontReport) {
+        // Set the LUN numbers if there is enough room, and set only those LUNs to be reported.       
+        for (uint8_t i = 0; i < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits; i ++) {
+			// make sure we have the space for 1 more LUN each time.
+			if (wzvol_find_target(pSrb->TargetId, i)) {
+				totalLun++;
+				if (pSrb->DataTransferLength >= FIELD_OFFSET(LUN_LIST, Lun) + (GoodLunIdx * sizeof(pLunList->Lun[0])) + sizeof(pLunList->Lun[0])) {
+					pLunList->Lun[GoodLunIdx][1] = (UCHAR)i;
+					GoodLunIdx++;
+				}
+			}
         }
-    }
+    } // else: we chose to not report any LUN through that HBA (see FindAdapter routine).
+
+	*((ULONG*)&pLunList->LunListLength) = totalLun * sizeof(pLunList->Lun[0]);
+	ReverseIndian(pLunList->LunListLength);
+	pSrb->DataTransferLength = FIELD_OFFSET(LUN_LIST, Lun) + (GoodLunIdx * sizeof(pLunList->Lun[0]));
 
     return status;
 }                                                     // End ScsiOpReportLuns.
@@ -697,7 +649,6 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 {
 	pMP_WorkRtnParms          pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
 	pHW_HBA_EXT               pHBAExt = pWkRtnParms->pHBAExt;
-	pHW_LU_EXTENSION          pLUExt = pWkRtnParms->pLUExt;
 	PSCSI_REQUEST_BLOCK       pSrb = pWkRtnParms->pSrb;
 	PCDB                      pCdb = (PCDB)pSrb->Cdb;
 	PHW_SRB_EXTENSION         pSrbExt = (PHW_SRB_EXTENSION)pSrb->SrbExtension;
@@ -718,11 +669,12 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 		status = SRB_STATUS_BUSY;
 		goto Done;
 	}
+	ASSERT(pSrb->DataBuffer != NULL);
 
 	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
 
 	if (zv == NULL) {
-		status = SRB_STATUS_ERROR;
+		status = SRB_STATUS_NO_DEVICE;
 		goto Done;
 	}
 
@@ -741,7 +693,7 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	//        proved not valid; that is, not merely not backed by real storage but actually not valid.  The reason for this behavior is
 	//        still under investigation.  For now, in all cases observed, it has been found sufficient to get a new kernel-space address 
 	//        to use.
-
+	/*
 	lclStatus = StorPortGetSystemAddress(pHBAExt, pSrb, &pX);
 
 	if (STOR_STATUS_SUCCESS != lclStatus || !pX) {
@@ -750,7 +702,8 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 		status = SRB_STATUS_ERROR;
 		goto Done;
 	}
-
+	*/
+	pX = pSrb->DataBuffer;
 
 	if (sectorOffset >= zv->zv_volsize) {      // Starting sector beyond the bounds?
 		dprintf("%s: invalid starting sector: %d\n", __func__, startingSector);

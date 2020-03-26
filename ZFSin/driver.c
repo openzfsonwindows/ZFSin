@@ -38,6 +38,11 @@ void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
 	kstat_osx_fini();
 	spl_stop();
 	finiDbgCircularBuffer();
+
+	if (STOR_wzvolDriverInfo.zvContextArray) {
+		ExFreePoolWithTag(STOR_wzvolDriverInfo.zvContextArray, MP_TAG_GENERAL);
+		STOR_wzvolDriverInfo.zvContextArray = NULL;
+	}
 }
 
 /*
@@ -76,7 +81,6 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRe
 		memcpy(STOR_MajorFunction, WIN_DriverObject->MajorFunction, sizeof(STOR_MajorFunction));
 		STOR_DriverUnload = WIN_DriverObject->DriverUnload;
 	}
-	WIN_DriverObject->DriverUnload = ZFSin_Fini;
 
 	/* Now set the Driver Callbacks to dispatcher and start ZFS */
 	WIN_DriverObject->DriverUnload = ZFSin_Fini;

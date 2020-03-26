@@ -68,7 +68,8 @@
 #define DEFAULT_USE_LBA_LIST        0
 #define DEFAULT_NUMBER_OF_BUSES     1
 #define DEFAULT_NbrVirtDisks        1
-#define DEFAULT_NbrLUNsperHBA       1
+#define DEFAULT_NbrLUNsperHBA       400
+#define DEFAULT_NbrLUNsperTarget    32
 #define DEFAULT_bCombineVirtDisks   FALSE
 
 #define GET_FLAG(Flags, Bit)        ((Flags) & (Bit))
@@ -95,7 +96,8 @@ typedef struct _MP_REG_INFO {
 	ULONG            VirtualDiskSize;    // Disk size to be reported
 	ULONG            PhysicalDiskSize;   // Disk size to be allocated
 	ULONG            NbrVirtDisks;       // Number of virtual disks.
-	ULONG            NbrLUNsperHBA;      // Number of LUNs per HBA.
+	ULONG            NbrLUNsperHBA;      // Number of LUNs per HBA : really is the amount of zvols we can present throiugh StorPort
+	ULONG            NbrLUNsperTarget;   // Number of LUNs per Target.
 	ULONG            bCombineVirtDisks;  // 0 => do not combine virtual disks a la MPIO.
 } WZVOL_REG_INFO, *pWZVOL_REG_INFO;
 
@@ -108,8 +110,12 @@ typedef struct _wzvolDriverInfo {                        // The master miniport 
 	LIST_ENTRY                     ListMPIOExt;       // Header of list of HW_LU_EXTENSION_MPIO objects.
 	LIST_ENTRY					   ListSrbExt;		  // Heade rof List of HW_SRB_EXTENSION
 	PDRIVER_OBJECT                 pDriverObj;
+	PVOID						*zvContextArray;
 	ULONG                          DrvInfoNbrMPHBAObj;// Count of items in ListMPHBAObj.
 	ULONG                          DrvInfoNbrMPIOExtObj; // Count of items in ListMPIOExt.
+	UCHAR						MaximumNumberOfLogicalUnits;
+	UCHAR						MaximumNumberOfTargets;
+	UCHAR						NumberOfBuses;
 } wzvolDriverInfo, *pwzvolDriverInfo;
 
 typedef struct _LUNInfo {
@@ -155,7 +161,9 @@ typedef struct _HW_HBA_EXT {                          // Adapter device-object e
 	UCHAR                          VendorId[9];
 	UCHAR                          ProductId[17];
 	UCHAR                          ProductRevision[5];
-	BOOLEAN                        bDontReport;       // TRUE => no Report LUNs. This is to be set/unset only by a kernel debugger.
+
+
+	BOOLEAN                        bDontReport;       // TRUE => no Report LUNs.
 	BOOLEAN                        bReportAdapterDone;
 	LUNInfo                        LUNInfoArray[LUNInfoMax]; // To be set only by a kernel debugger.
 } HW_HBA_EXT, *pHW_HBA_EXT;
@@ -204,7 +212,6 @@ typedef enum {
 
 typedef struct _MP_WorkRtnParms {
 	pHW_HBA_EXT          pHBAExt;
-	pHW_LU_EXTENSION     pLUExt;
 	PSCSI_REQUEST_BLOCK  pSrb;
 	PIO_WORKITEM         pQueueWorkItem;
 	PEPROCESS            pReqProcess;
@@ -299,21 +306,18 @@ ScsiExecute(
 UCHAR
 ScsiOpInquiry(
 	__in pHW_HBA_EXT DevExt,
-	__in pHW_LU_EXTENSION LuExt,
 	__in PSCSI_REQUEST_BLOCK Srb
 );
 
 UCHAR
 ScsiOpReadCapacity(
 	IN pHW_HBA_EXT DevExt,
-	IN pHW_LU_EXTENSION LuExt,
 	IN PSCSI_REQUEST_BLOCK Srb
 );
 
 UCHAR
 ScsiOpRead(
 	IN pHW_HBA_EXT          DevExt,
-	IN pHW_LU_EXTENSION     LuExt,
 	IN PSCSI_REQUEST_BLOCK  Srb,
 	IN PUCHAR               Action
 );
@@ -321,7 +325,6 @@ ScsiOpRead(
 UCHAR
 ScsiOpWrite(
 	IN pHW_HBA_EXT          DevExt,
-	IN pHW_LU_EXTENSION     LuExt,
 	IN PSCSI_REQUEST_BLOCK  Srb,
 	IN PUCHAR               Action
 );
@@ -329,14 +332,12 @@ ScsiOpWrite(
 UCHAR
 ScsiOpModeSense(
 	IN pHW_HBA_EXT         DevExt,
-	IN pHW_LU_EXTENSION    LuExt,
 	IN PSCSI_REQUEST_BLOCK pSrb
 );
 
 UCHAR
 ScsiOpReportLuns(
 	IN pHW_HBA_EXT          DevExt,
-	IN pHW_LU_EXTENSION     LuExt,
 	IN PSCSI_REQUEST_BLOCK  Srb
 );
 
@@ -392,8 +393,8 @@ wzvol_CompServReq(
 UCHAR
 ScsiOpVPD(
 	__in pHW_HBA_EXT,
-	__in pHW_LU_EXTENSION,
-	__in PSCSI_REQUEST_BLOCK
+	__in PSCSI_REQUEST_BLOCK,
+	__in PVOID
 );
 
 void
@@ -408,7 +409,6 @@ HandleWmiSrb(
 UCHAR
 ScsiReadWriteSetup(
 	__in pHW_HBA_EXT          pDevExt,
-	__in pHW_LU_EXTENSION     pLUExt,
 	__in PSCSI_REQUEST_BLOCK  pSrb,
 	__in MpWkRtnAction        WkRtnAction,
 	__in PUCHAR               pResult

@@ -98,7 +98,7 @@ extern int zfs_bmajor;
 
 void wzvol_announce_buschange(void);
 int wzvol_assign_targetid(zvol_state_t *zv);
-void wzvol_clear_targetid(uint8_t targetid);
+void wzvol_clear_targetid(uint8_t targetid, uint8_t lun);
 
 /*
  * ZFS minor numbers can refer to either a control device instance or
@@ -1192,7 +1192,7 @@ zvol_remove_minors_impl(const char *name)
 				mutex_exit(&zfsdev_state_lock);
 				zvol_close_impl(zv, FWRITE, 0, NULL);
 				mutex_enter(&zfsdev_state_lock);
-				wzvol_clear_targetid(zv->zv_target_id);
+				wzvol_clear_targetid(zv->zv_target_id, zv->zv_lun_id);
 			}
 
 			(void) zvol_remove_zv(zv);
