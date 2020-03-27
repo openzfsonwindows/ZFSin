@@ -655,7 +655,6 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	ULONG                     startingSector,
 		sectorOffset,
 		lclStatus;
-	PVOID                     pX = NULL;
 	UCHAR                     status;
 
 	zvol_state_t *zv;
@@ -672,7 +671,6 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	ASSERT(pSrb->DataBuffer != NULL);
 
 	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
-
 	if (zv == NULL) {
 		status = SRB_STATUS_NO_DEVICE;
 		goto Done;
@@ -688,23 +686,6 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	dprintf("MpWkRtn Action: %X, starting sector: 0x%X, sector offset: 0x%X\n", pWkRtnParms->Action, startingSector, sectorOffset);
 	dprintf("MpWkRtn pSrb: 0x%p, pSrb->DataBuffer: 0x%p\n", pSrb, pSrb->DataBuffer);
 
-	// Note:  Obviously there's going to be a problem if pSrb->DataBuffer points to something in user space, since the correct user space
-	//        is probably not that of the System process.  Less obviously, in the paging path at least, even an address in kernel space 
-	//        proved not valid; that is, not merely not backed by real storage but actually not valid.  The reason for this behavior is
-	//        still under investigation.  For now, in all cases observed, it has been found sufficient to get a new kernel-space address 
-	//        to use.
-	/*
-	lclStatus = StorPortGetSystemAddress(pHBAExt, pSrb, &pX);
-
-	if (STOR_STATUS_SUCCESS != lclStatus || !pX) {
-		dprintf("MpWkRtn Failed to get system address for pSrb = 0x%p, pSrb->DataBuffer=0x%p, status = 0x%08x, pX = 0x%p\n",
-			pSrb, pSrb->DataBuffer, lclStatus, pX);
-		status = SRB_STATUS_ERROR;
-		goto Done;
-	}
-	*/
-	pX = pSrb->DataBuffer;
-
 	if (sectorOffset >= zv->zv_volsize) {      // Starting sector beyond the bounds?
 		dprintf("%s: invalid starting sector: %d\n", __func__, startingSector);
 		status = SRB_STATUS_INVALID_REQUEST;
@@ -713,9 +694,9 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 
 	/* Call ZFS to read/write data */
 	if (ActionRead == pWkRtnParms->Action) {           
-		status = zvol_read_win(zv, sectorOffset, pSrb->DataTransferLength, pX);
+		status = zvol_read_win(zv, sectorOffset, pSrb->DataTransferLength, pSrb->DataBuffer);
 	} else {                                           
-		status = zvol_write_win(zv, sectorOffset, pSrb->DataTransferLength, pX);
+		status = zvol_write_win(zv, sectorOffset, pSrb->DataTransferLength, pSrb->DataBuffer);
 	}
 
 	if (status == 0)
