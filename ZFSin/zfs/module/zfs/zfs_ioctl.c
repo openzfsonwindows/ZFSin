@@ -7372,7 +7372,7 @@ zfsdev_open(dev_t dev, int flags, int devtype, struct proc *p)
 #ifdef _WIN32
 	int flags = 0;
 	int devtype = 0;
-	struct proc *p = current_proc();
+	PEPROCESS p = current_proc();
 	PAGED_CODE();
 
 #endif
@@ -7405,12 +7405,12 @@ zfsdev_release(dev_t dev, int flags, int devtype, struct proc *p)
 #ifdef _WIN32
 	int flags = 0;
 	int devtype = 0;
-	struct proc *p = current_proc();
+	PEPROCESS p = current_proc();
 	PAGED_CODE();
 
 #endif
 
-	dprintf("zfsdev_release, dev 0x%x flag %02X devtype %d, dev is %p, thread %p\n",
+	dprintf("zfsdev_release, dev 0x%x flag %02X devtype %d, proc is %p, thread %p\n",
 		   minor(dev), flags, devtype, p, current_thread());
 	mutex_enter(&zfsdev_state_lock);
 	error = zfsdev_state_destroy(dev);
@@ -7671,6 +7671,11 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg, int xflag, struct proc *p)
 	nvlist_free(innvl);
 
 	//arg = Irp->UserBuffer;
+	// Assuming METHOD_NEITHER is used for Control Codes used in DeviceIoControl,
+	// the output buffer is stored in Irp->UserBuffer.
+	// In using irpSp->Parameters.DeviceIoControl.Type3InputBuffer for output buffer,
+	// we are assuming the same input buffer is used for output as well.
+	ASSERT(Irp->UserBuffer == irpSp->Parameters.DeviceIoControl.Type3InputBuffer);
 	arg = irpSp->Parameters.DeviceIoControl.Type3InputBuffer;
 	rc = ddi_copyout(zc, (void *)arg, sizeof (zfs_cmd_t), flag);
 	if (error == 0 && rc != 0) {
@@ -7864,7 +7869,7 @@ zfs_attach(void)
 		&ioctlDeviceObject);                // Returned ptr to Device Object
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf(("ZFS: Couldn't create the device object /dev/zfs (%wZ)\n", ZFS_DEV_KERNEL));
+		dprintf("ZFS: Couldn't create the device object /dev/zfs (%wZ)\n", ZFS_DEV_KERNEL);
 		return ntStatus;
 	}
 	dprintf("ZFS: created kernel device node: %p: name %wZ\n", ioctlDeviceObject, ZFS_DEV_KERNEL);

@@ -817,7 +817,7 @@ i_get_value_size(data_type_t type, const void *data, uint_t nelem)
 		value_sz = (uint64_t)nelem * sizeof (uint64_t);
 
 		if (data != NULL) {
-			char *const *strs = data;
+			char **strs = (char**)data;
 			uint_t i;
 
 			/* no alignment requirement for strings */
@@ -937,7 +937,7 @@ nvlist_add_common(nvlist_t *nvl, const char *name,
 	case DATA_TYPE_BOOLEAN:
 		break;
 	case DATA_TYPE_STRING_ARRAY: {
-		char *const *strs = data;
+		char **strs = (char**) data;
 		char *buf = NVP_VALUE(nvp);
 		char **cstrs = (void *)buf;
 

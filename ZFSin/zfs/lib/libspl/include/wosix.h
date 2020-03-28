@@ -45,7 +45,7 @@ extern int wosix_close(int fd);
 extern int wosix_ioctl(int fd, unsigned long request, void *zc);
 extern int wosix_read(int fd, void *data, uint32_t len);
 extern int wosix_write(int fd, const void *data, uint32_t len);
-extern int wosix_isatty(int fd);
+extern int wosix_isatty(intptr_t fd);
 extern int wosix_mkdir(const char *path, mode_t mode);
 extern int wosix_pwrite(int fd, const void *buf, size_t nbyte, off_t offset);
 extern int wosix_pread(int fd, void *buf, size_t nbyte, off_t offset);

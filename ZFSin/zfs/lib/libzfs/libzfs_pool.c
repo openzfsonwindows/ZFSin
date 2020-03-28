@@ -676,7 +676,7 @@ zpool_valid_proplist(libzfs_handle_t *hdl, const char *poolname,
 			*slash = '\0';
 
 			if (strval[0] != '\0' &&
-			    (stat(strval, &statbuf) != 0 ||
+			    (stat(strval, (struct stat*) &statbuf) != 0 ||
 			    !S_ISDIR(statbuf.st_mode))) {
 				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
 				    "'%s' is not a valid directory"),
@@ -2856,9 +2856,8 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 	if (path[0] == '#') {
 		uint64_t offset;
 		uint64_t len;
-		char *end = NULL;
+		char *end = (char*) path;
 
-		end = path;
 		while (end && *end == '#') end++;
 		offset = strtoull(end, &end, 10);
 		while (end && *end == '#') end++;

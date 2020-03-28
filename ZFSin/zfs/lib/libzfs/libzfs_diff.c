@@ -500,7 +500,7 @@ find_shares_object(differ_info_t *di)
 	(void) strlcpy(fullpath, di->dsmnt, MAXPATHLEN);
 	(void) strlcat(fullpath, ZDIFF_SHARESDIR, MAXPATHLEN);
 
-	if (stat(fullpath, &sb) != 0) {
+	if (stat(fullpath, (struct stat*)&sb) != 0) {
 		(void) snprintf(di->errbuf, sizeof (di->errbuf),
 		    dgettext(TEXT_DOMAIN, "Cannot stat %s"), fullpath);
 #if !defined (__APPLE__) && !defined(_WIN32)

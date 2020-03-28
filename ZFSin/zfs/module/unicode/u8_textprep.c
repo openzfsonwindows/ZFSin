@@ -1499,7 +1499,7 @@ collect_a_seq(size_t uv, uchar_t *u8s, uchar_t **source, uchar_t *slast,
 				comb_class[last] = combining_class(uv,
 				    u8s + i, sz);
 				start[last] = i;
-				disp[last] = sz;
+				disp[last] = (uchar_t)sz;
 
 				last++;
 				i += sz;
@@ -1601,7 +1601,7 @@ COLLECT_A_HANGUL:
 TURN_STREAM_SAFE:
 					*state = U8_STATE_START;
 					comb_class[last] = 0;
-					start[last] = saved_sz;
+					start[last] = (uchar_t)saved_sz;
 					disp[last] = 2;
 					last++;
 
@@ -1627,7 +1627,7 @@ TURN_STREAM_SAFE:
 						    combining_class(uv,
 						    uts + j, sz);
 						start[last] = saved_sz + j;
-						disp[last] = sz;
+						disp[last] = (uchar_t)sz;
 
 						last++;
 						if (last >=
@@ -1646,8 +1646,8 @@ TURN_STREAM_SAFE:
 						u8s[saved_sz++] = uts[i];
 				} else {
 					comb_class[last] = i;
-					start[last] = saved_sz;
-					disp[last] = sz;
+					start[last] = (uchar_t)saved_sz;
+					disp[last] = (uchar_t)sz;
 					last++;
 
 					for (i = 0; i < sz; i++)

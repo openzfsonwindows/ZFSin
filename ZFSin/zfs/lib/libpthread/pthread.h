@@ -809,7 +809,7 @@ static int pthread_create(pthread_t *th, pthread_attr_t *attr, void *(* func)(vo
 	if (attr)
 	{
 		tv->p_state = attr->p_state;
-		ssize = attr->s_size;
+		ssize = (unsigned int) attr->s_size;
 	}
 
 	/* Make sure tv->h has value of -1 */
@@ -965,7 +965,7 @@ static int pthread_mutex_timedlock(pthread_mutex_t *m, struct timespec *ts)
 		if (ct > t) return ETIMEDOUT;
 
 		/* Wait on semaphore within critical section */
-		WaitForSingleObject(((struct _pthread_crit_t *)m)->sem, t - ct);
+		WaitForSingleObject(((struct _pthread_crit_t *)m)->sem, (DWORD) (t - ct));
 
 		/* Try to grab lock */
 		if (!pthread_mutex_trylock(m)) return 0;
@@ -1305,7 +1305,7 @@ static int pthread_cond_timedwait(pthread_cond_t *c, pthread_mutex_t *m, struct 
 
 	pthread_testcancel();
 
-	if (!SleepConditionVariableCS(c, m, tm)) return ETIMEDOUT;
+	if (!SleepConditionVariableCS(c, m, (DWORD)tm)) return ETIMEDOUT;
 
 	/* We can have a spurious wakeup after the timeout */
 	if (!_pthread_rel_time_in_ms(t)) return ETIMEDOUT;

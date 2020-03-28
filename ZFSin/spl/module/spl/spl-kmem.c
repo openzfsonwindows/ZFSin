@@ -63,9 +63,9 @@
 // proxy to the machine experiencing memory pressure.
 //
 // xnu vm variables
-extern volatile unsigned int vm_page_free_wanted; // 0 by default smd
-extern unsigned int vm_page_free_min; // 3500 by default smd kern.vm_page_free_min, rarely changes
-extern volatile unsigned int vm_page_free_count; // will tend to vm_page_free_min smd
+extern volatile uint64_t vm_page_free_wanted; // 0 by default smd
+extern uint64_t vm_page_free_min; // 3500 by default smd kern.vm_page_free_min, rarely changes
+extern volatile uint64_t vm_page_free_count; // will tend to vm_page_free_min smd
 
 #define SMALL_PRESSURE_INCURSION_PAGES (vm_page_free_min >> 5)
 

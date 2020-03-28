@@ -2100,6 +2100,8 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 				continue;
 			}
 #endif
+			GUID* guid = NULL;
+			char guid_string[37] = { 0 }; // 32 hex chars + 4 hyphens + null terminator
 			DWORD ior;
 			PDRIVE_LAYOUT_INFORMATION_EX partitions;
 			DWORD partitionsSize = sizeof(DRIVE_LAYOUT_INFORMATION_EX) + 127 * sizeof(PARTITION_INFORMATION_EX);
@@ -2116,8 +2118,15 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 							partitions->PartitionEntry[i].PartitionLength.QuadPart); fflush(stderr);
 						break;
 					case PARTITION_STYLE_GPT:
-						fprintf(stderr, "    gpt %d: type %x off 0x%llx len 0x%llx\n", i,
-							partitions->PartitionEntry[i].Gpt.PartitionType,
+						guid = &(partitions->PartitionEntry[i].Gpt.PartitionType);
+						snprintf(guid_string, sizeof(guid_string),
+							"%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+							guid->Data1, guid->Data2, guid->Data3,
+							guid->Data4[0], guid->Data4[1], guid->Data4[2],
+							guid->Data4[3], guid->Data4[4], guid->Data4[5],
+							guid->Data4[6], guid->Data4[7]);
+						fprintf(stderr, "    gpt %d: type %s off 0x%llx len 0x%llx\n", i,
+							guid_string,
 							partitions->PartitionEntry[i].StartingOffset.QuadPart,
 							partitions->PartitionEntry[i].PartitionLength.QuadPart); fflush(stderr);
 						break;
@@ -2166,7 +2175,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 				fprintf(stderr, "asking libefi to read label\n"); fflush(stderr);
 				int error;
 				struct dk_gpt *vtoc;
-				error = efi_alloc_and_read(disk, &vtoc);
+				error = efi_alloc_and_read((uint64_t) disk, &vtoc);
 				if (error >= 0) {
 					fprintf(stderr, "EFI read OK, max partitions %d\n", vtoc->efi_nparts); fflush(stderr);
 					for (int i = 0; i < vtoc->efi_nparts; i++) {
