@@ -597,13 +597,6 @@ ScsiOpModeSense(
 /**************************************************************************************************/     
 /*                                                                                                */     
 /**************************************************************************************************/     
-VOID ReverseIndian(UCHAR *x)
-{
-	UCHAR t;
-	UCHAR* d = (UCHAR*)x;
-	t = d[0]; d[0] = d[3]; d[3] = t; t = d[1]; d[1] = d[2]; d[2] = t;
-}
-
 UCHAR
 ScsiOpReportLuns(                                     
                  __in __out pHW_HBA_EXT         pHBAExt,   // Adapter device-object extension from StorPort.
@@ -637,8 +630,7 @@ ScsiOpReportLuns(
         }
     } // else: we chose to not report any LUN through that HBA (see FindAdapter routine).
 
-	*((ULONG*)&pLunList->LunListLength) = totalLun * sizeof(pLunList->Lun[0]);
-	ReverseIndian(pLunList->LunListLength);
+	*((ULONG*)&pLunList->LunListLength) = RtlUlongByteSwap(totalLun * sizeof(pLunList->Lun[0]));
 	pSrb->DataTransferLength = FIELD_OFFSET(LUN_LIST, Lun) + (GoodLunIdx * sizeof(pLunList->Lun[0]));
 
     return status;
