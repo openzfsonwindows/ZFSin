@@ -644,9 +644,8 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	PSCSI_REQUEST_BLOCK       pSrb = pWkRtnParms->pSrb;
 	PCDB                      pCdb = (PCDB)pSrb->Cdb;
 	PHW_SRB_EXTENSION         pSrbExt = (PHW_SRB_EXTENSION)pSrb->SrbExtension;
-	ULONG                     startingSector,
-		sectorOffset,
-		lclStatus;
+	ULONGLONG                 startingSector, sectorOffset;
+	ULONG                     lclStatus;
 	UCHAR                     status;
 
 	zvol_state_t *zv;
