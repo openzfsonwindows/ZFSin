@@ -3945,11 +3945,11 @@ zfs_ioc_destroy(zfs_cmd_t *zc)
 #ifdef _WIN32
 		zvol_state_t *zv;
 		extern zvol_state_t *zvol_name2minor(const char *name, minor_t *minor);
-		extern void wzvol_clear_targetid(uint8_t targetid);
+		extern void wzvol_clear_targetid(uint8_t targetid, uint8_t lun);
 		zv = zvol_name2minor(zc->zc_name, NULL);
 		if (zv) {
 			zvol_close_impl(zv, FWRITE, 0, NULL);
-			wzvol_clear_targetid(zv->zv_target_id);
+			wzvol_clear_targetid(zv->zv_target_id,zv->zv_lun_id);
 		}
 #endif
 
