@@ -7671,11 +7671,6 @@ zfsdev_ioctl(dev_t dev, u_long cmd, caddr_t arg, int xflag, struct proc *p)
 	nvlist_free(innvl);
 
 	//arg = Irp->UserBuffer;
-	// Assuming METHOD_NEITHER is used for Control Codes used in DeviceIoControl,
-	// the output buffer is stored in Irp->UserBuffer.
-	// In using irpSp->Parameters.DeviceIoControl.Type3InputBuffer for output buffer,
-	// we are assuming the same input buffer is used for output as well.
-	ASSERT(Irp->UserBuffer == irpSp->Parameters.DeviceIoControl.Type3InputBuffer);
 	arg = irpSp->Parameters.DeviceIoControl.Type3InputBuffer;
 	rc = ddi_copyout(zc, (void *)arg, sizeof (zfs_cmd_t), flag);
 	if (error == 0 && rc != 0) {

@@ -3378,7 +3378,7 @@ NTSTATUS ioctl_disk_get_partition_info(PDEVICE_OBJECT DeviceObject, PIRP Irp, PI
 	part->HiddenSectors = (ULONG)(1L);
 	part->RecognizedPartition = TRUE;
 	part->RewritePartition = FALSE;
-	part->PartitionType = 0x7F;	// 'ZFS'; // https://en.wikipedia.org/wiki/Partition_type
+	part->PartitionType = 'ZFS';
 
 	ZFS_EXIT(zfsvfs);
 

@@ -34,7 +34,6 @@
 #include <mountmgr.h>
 #include <Mountdev.h>
 #include <ntddvol.h>
-
  // I have no idea what black magic is needed to get ntifs.h to define these
 
 
@@ -1550,11 +1549,10 @@ NTSTATUS pnp_query_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	zmo = (mount_t *)DeviceObject->DeviceExtension;
 
-	Irp->IoStatus.Information = (ULONG_PTR) ExAllocatePoolWithTag(PagedPool, 2 * (zmo->bus_name.Length + 1), '!OIZ');
+	Irp->IoStatus.Information = (ULONG_PTR) ExAllocatePoolWithTag(PagedPool, zmo->bus_name.Length + sizeof(UNICODE_NULL), '!OIZ');
 	if (Irp->IoStatus.Information == (ULONG_PTR) NULL) return STATUS_NO_MEMORY;
 
-	RtlCopyMemory((void*)(Irp->IoStatus.Information), zmo->bus_name.Buffer, 2 * zmo->bus_name.Length);
-	((WCHAR*)(Irp->IoStatus.Information))[zmo->bus_name.Length] = L'\0';
+	RtlCopyMemory(Irp->IoStatus.Information, zmo->bus_name.Buffer, zmo->bus_name.Length);
 	dprintf("replying with '%.*S'\n", zmo->uuid.Length/sizeof(WCHAR), Irp->IoStatus.Information);
 
 	return STATUS_SUCCESS;
