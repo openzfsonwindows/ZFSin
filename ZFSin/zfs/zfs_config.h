@@ -64,9 +64,6 @@
 /* zfs debugging enabled */
 /* #undef ZFS_DEBUG */
 
-/* Define the project alias string. */
-#define ZFS_META_ALIAS "zfs-1.6.0-1"
-
 /* Define the project author. */
 #define ZFS_META_AUTHOR "OpenZFS on OS X"
 
@@ -92,5 +89,7 @@
 #define ZFS_META_RELEASE "1"
 
 /* Define the project version. */
-#define ZFS_META_VERSION "1.6.0"
+#define ZFS_META_VERSION "0.2.3"
 
+/* Define the project alias string. */
+#define ZFS_META_ALIAS "zfs-" ZFS_META_VERSION "-" ZFS_META_RELEASE

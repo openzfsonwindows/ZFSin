@@ -74,7 +74,7 @@
 #define SPL_META_RELEASE "7-gc1b4a00"
 
 /* Define the project version. */
-#define SPL_META_VERSION "1.6.0"
+#define SPL_META_VERSION "0.2.3"
 
 /* Define ZFS_BOOT to enable kext load at boot */
 #define ZFS_BOOT 1
