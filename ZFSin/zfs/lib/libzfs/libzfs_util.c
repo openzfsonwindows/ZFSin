@@ -2235,14 +2235,30 @@ zfs_version_userland(char *version, int len)
  * Fill given version buffer with zfs kernel version read from ZFS_SYSFS_DIR
  * Returns 0 on success, and -1 on error (with errno set)
  * "zfs.kext_version: 1.9.0-1"
+ * "zfs-kmod-0.8.1-1"
  */
 int
 zfs_version_kernel(char *version, int len)
 {
-	size_t rlen = len;
+	HKEY hKey; // SYSTEM\ControlSet001\Services\ZFSin
+	LSTATUS status = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SYSTEM\\ControlSet001\\Services\\ZFSin", 0, KEY_READ, &hKey);
 
-	snprintf(version, len, "port me!");
+	if (status != ERROR_SUCCESS)
+		return -1;
 
+	DWORD count = len;
+	DWORD type;
+
+	status = RegQueryValueExA(hKey, "version", 0, &type, version, &count);
+	
+	RegCloseKey(hKey);
+
+	if (status == ERROR_SUCCESS &&
+		(type == REG_SZ)) {
+		return 0;
+	}
+
+	snprintf(version, len, "(registry lookup failed)");
 	return (0);
 }
 

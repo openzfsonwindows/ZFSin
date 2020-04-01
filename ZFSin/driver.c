@@ -101,14 +101,6 @@ void spl_create_hostid(HANDLE h, PUNICODE_STRING pRegistryPath)
 	UNICODE_STRING                AttachKey;
 	RtlInitUnicodeString(&AttachKey, L"hostid");
 
-	ULONG                         Length;
-	Length = sizeof(KEY_VALUE_FULL_INFORMATION) + AttachKey.Length * sizeof(WCHAR) + sizeof(unsigned long);
-
-	PKEY_VALUE_FULL_INFORMATION   keyValue;
-	keyValue = ExAllocatePoolWithTag(NonPagedPoolNx,
-		Length,
-		'geRa');
-
 	random_get_bytes(&spl_hostid, sizeof(spl_hostid));
 
 	Status =  ZwSetValueKey(
@@ -125,11 +117,34 @@ void spl_create_hostid(HANDLE h, PUNICODE_STRING pRegistryPath)
 		spl_hostid = 0;
 	}
 
-	ExFreePoolWithTag(keyValue, 'geRa');
-
 	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "SPL: created hostid 0x%04x\n", spl_hostid));
 }
 
+// Whenever we start up, write the version string to registry.
+#include <../zfs_config.h>
+
+void spl_update_version(HANDLE h, PUNICODE_STRING pRegistryPath)
+{
+	NTSTATUS                      Status;
+
+	UNICODE_STRING                AttachKey;
+	UNICODE_STRING                ValueKey;
+	RtlInitUnicodeString(&AttachKey, L"version");
+	RtlInitUnicodeString(&ValueKey, L""ZFS_META_VERSION "-" ZFS_META_RELEASE);
+
+	Status = ZwSetValueKey(
+		h,
+		&AttachKey,
+		0,
+		REG_SZ,
+		ValueKey.Buffer,
+		ValueKey.Length
+		);
+
+	if (!NT_SUCCESS(Status)) {
+		KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "%s: Unable to create Registry %wZ/version: 0x%x. hostid unset.\n", __func__, pRegistryPath, Status));
+	}
+}
 
 int spl_check_assign_types(kstat_named_t *kold, PKEY_VALUE_FULL_INFORMATION regBuffer)
 {
@@ -287,6 +302,9 @@ int spl_kstat_registry(PUNICODE_STRING pRegistryPath, kstat_t *ksp)
 	if (spl_hostid == 0) {
 		spl_create_hostid(h, pRegistryPath);
 	}
+
+	// Make sure version is updated
+	spl_update_version(h, pRegistryPath);
 
 	ZwClose(h);
 	return (changed);
