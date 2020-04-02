@@ -41,6 +41,9 @@
       <Project>{6352bfdb-d45e-47fd-bde8-f9320caecf9b}</Project>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\..\..\resources\resources.rc" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{4778CE42-0E64-4BC5-86A4-3568F977C0F9}</ProjectGuid>

@@ -29,6 +29,9 @@
       <Project>{72e27cac-9d5c-4100-ac4f-3830a0e0c316}</Project>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\..\resources\resources.rc" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{124252BB-55ED-429B-AF4B-9D19043912D1}</ProjectGuid>
