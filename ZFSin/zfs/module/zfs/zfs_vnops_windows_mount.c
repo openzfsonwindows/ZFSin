@@ -167,8 +167,8 @@ NTSTATUS mountmgr_get_mountpoint(PDEVICE_OBJECT mountmgr,
 			Index < ppoints->NumberOfMountPoints;
 			Index++) {
 			PMOUNTMGR_MOUNT_POINT ipoint = ppoints->MountPoints + Index;
-			PUCHAR DeviceName = (PUCHAR)ppoints + ipoint->DeviceNameOffset;
-			PUCHAR SymbolicLinkName = (PUCHAR)ppoints + ipoint->SymbolicLinkNameOffset;
+			PWCHAR DeviceName = (PWCHAR)((PUCHAR)ppoints + ipoint->DeviceNameOffset);
+			PWCHAR SymbolicLinkName = (PWCHAR)((PUCHAR)ppoints + ipoint->SymbolicLinkNameOffset);
 
 			// Why is this hackery needed, we should be able to lookup the drive letter from volume name
 			dprintf("   point %d: '%.*S' '%.*S'\n", Index,
@@ -820,13 +820,13 @@ NTSTATUS mountmgr_is_driveletter_assigned(PDEVICE_OBJECT mountmgr,
 	dprintf("IOCTL_MOUNTMGR_QUERY_POINTS return %x - looking for driveletter '%c'\n",
 		Status, driveletter);
 	if (Status == STATUS_SUCCESS) {
-		char mpt_name[PATH_MAX];
+		char mpt_name[PATH_MAX] = { 0 };
 		for (int Index = 0;
 			Index < ppoints->NumberOfMountPoints;
 			Index++) {
 			PMOUNTMGR_MOUNT_POINT ipoint = ppoints->MountPoints + Index;
-			PUCHAR DeviceName = (PUCHAR)ppoints + ipoint->DeviceNameOffset;
-			PUCHAR SymbolicLinkName = (PUCHAR)ppoints + ipoint->SymbolicLinkNameOffset;
+			PWCHAR DeviceName = (PWCHAR)((PUCHAR)ppoints + ipoint->DeviceNameOffset);
+			PWCHAR SymbolicLinkName = (PWCHAR)((PUCHAR)ppoints + ipoint->SymbolicLinkNameOffset);
 
 			dprintf("   point %d: '%.*S' '%.*S'\n", Index,
 				ipoint->DeviceNameLength / sizeof(WCHAR), DeviceName,
