@@ -39,6 +39,9 @@
     <ClCompile Include="..\zdb.c" />
     <ClCompile Include="..\zdb_il.c" />
   </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\..\..\resources\resources.rc" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{1727E0FD-46FF-4690-BC35-78B7AA300679}</ProjectGuid>

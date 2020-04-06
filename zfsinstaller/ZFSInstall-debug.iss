@@ -26,13 +26,13 @@ AllowNoIcons=yes
 LicenseFile={#SourcePath}\OPENSOLARIS.LICENSE.txt
 InfoBeforeFile={#SourcePath}\readme.txt
 OutputBaseFilename=OpenZFSOnWindows-debug
-SetupIconFile={#SourcePath}\ZFSinlogo.ico
+SetupIconFile={#SourcePath}\..\ZFSin\zfs\resources\openzfs.ico
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
 OutputDir={#SourcePath}\..
 ChangesEnvironment=true
-WizardSmallImageFile="{#SourcePath}\Small.bmp"
+WizardSmallImageFile="{#SourcePath}\openzfs-small.bmp"
 WizardImageFile="{#SourcePath}\Large.bmp"
 ; Tools/Configure Sign Tools -> Add -> 
 ; "signtoola" = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.17763.0\x64\signtool.exe sign /sha1 ab8e4f6b94cecfa4638847122b511e507e147c50 /n $qJoergen Lundman$q /t http://timestamp.digicert.com /fd sha1 /d $qOpenZFS on Windows$q $f"

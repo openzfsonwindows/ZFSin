@@ -46,6 +46,9 @@
       <Project>{745dec58-ebb3-47a9-a9b8-4c6627c01bf8}</Project>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="..\..\..\resources\resources.rc" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{D923B8A4-5161-4E28-9E69-D3193114DAC4}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
