@@ -2358,10 +2358,12 @@ zvol_write(zvol_state_t *zv, uio_t *uio)
 	dprintf("zvol_write_iokit(offset "
 	    "0x%llx bytes 0x%llx)\n", uio_offset(uio), uio_resid(uio));
 
-	// If Windows can pass SYNC along the storport request, add
-	// argument to zvol_write and add to this test:
+	/* If Windows can pass SYNC along the storport request, add
+	 * argument to zvol_write and add to this test:
 	sync = !(zv->zv_flags & ZVOL_WCE) ||
 	    (zv->zv_objset->os_sync == ZFS_SYNC_ALWAYS);
+	*/
+	sync = (zv->zv_objset->os_sync == ZFS_SYNC_ALWAYS);
 
 	/* Lock the entire range */
 	lr = rangelock_enter(&zv->zv_rangelock, 
