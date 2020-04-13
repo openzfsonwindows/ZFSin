@@ -153,11 +153,17 @@ ScsiExecuteMain(
             status = ScsiOpReadCapacity(pHBAExt, pSrb);
             break;
 
+        case SCSIOP_READ_CAPACITY16:
+            status = ScsiOpReadCapacity16(pHBAExt, pSrb);
+            break;
+
         case SCSIOP_READ:
+        case SCSIOP_READ16:
             status = ScsiOpRead(pHBAExt, pSrb, pResult);
             break;
 
         case SCSIOP_WRITE:
+        case SCSIOP_WRITE16:
             status = ScsiOpWrite(pHBAExt, pSrb, pResult);
             break;
 
@@ -460,20 +466,48 @@ ScsiOpReadCapacity(
     //blockSize = MP_BLOCK_SIZE;
 	blockSize = zv->zv_volblocksize;
 
-    readCapacity->BytesPerBlock =
-      (((PUCHAR)&blockSize)[0] << 24) |  (((PUCHAR)&blockSize)[1] << 16) |
-      (((PUCHAR)&blockSize)[2] <<  8) | ((PUCHAR)&blockSize)[3];
-
-	maxBlocks = zv->zv_volsize / blockSize;
+	if ((zv->zv_volsize / blockSize) > ULONG_MAX)
+		maxBlocks = ULONG_MAX;
+	else
+		maxBlocks = (zv->zv_volsize / blockSize) - 1;
 
 	dprintf("Block Size: 0x%x Total Blocks: 0x%x\n", blockSize, maxBlocks);
-
-    readCapacity->LogicalBlockAddress =
-      (((PUCHAR)&maxBlocks)[0] << 24) | (((PUCHAR)&maxBlocks)[1] << 16) |
-      (((PUCHAR)&maxBlocks)[2] <<  8) | ((PUCHAR)&maxBlocks)[3];
+	REVERSE_BYTES(&readCapacity->BytesPerBlock, &blockSize);
+	REVERSE_BYTES(&readCapacity->LogicalBlockAddress, &maxBlocks);
 
 	return SRB_STATUS_SUCCESS;
 }                                                     // End ScsiOpReadCapacity.
+
+/**************************************************************************************************/
+/*                                                                                                */
+/**************************************************************************************************/
+UCHAR
+ScsiOpReadCapacity16(
+                        __in pHW_HBA_EXT          pHBAExt,
+                        __in PSCSI_REQUEST_BLOCK  pSrb
+                    )
+{
+	PREAD_CAPACITY16_DATA  readCapacity = pSrb->DataBuffer;
+	ULONGLONG maxBlocks = 0;
+	ULONG blockSize = 0;
+	UNREFERENCED_PARAMETER(pHBAExt);
+
+	zvol_state_t * zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
+	if (NULL == zv) {
+		dprintf("Unable to get zv context for device %d:%d:%d\n",
+			pSrb->PathId, pSrb->TargetId, pSrb->Lun);
+			pSrb->DataTransferLength = 0;
+		return SRB_STATUS_NO_DEVICE;
+	}
+	RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength);
+	blockSize = zv->zv_volblocksize;
+	maxBlocks = (zv->zv_volsize / blockSize) - 1;
+
+	dprintf("Block Size: 0x%x Total Blocks: 0x%llx\n", blockSize, maxBlocks);
+	REVERSE_BYTES(&readCapacity->BytesPerBlock, &blockSize);
+	REVERSE_BYTES_QUAD(&readCapacity->LogicalBlockAddress.QuadPart, &maxBlocks);
+	return SRB_STATUS_SUCCESS;
+}
 
 /**************************************************************************************************/     
 /*                                                                                                */     
@@ -644,7 +678,7 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	PSCSI_REQUEST_BLOCK       pSrb = pWkRtnParms->pSrb;
 	PCDB                      pCdb = (PCDB)pSrb->Cdb;
 	PHW_SRB_EXTENSION         pSrbExt = (PHW_SRB_EXTENSION)pSrb->SrbExtension;
-	ULONGLONG                 startingSector, sectorOffset;
+	ULONGLONG                 startingSector=0ULL, sectorOffset=0ULL;
 	ULONG                     lclStatus;
 	UCHAR                     status;
 
@@ -667,14 +701,23 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 		goto Done;
 	}
 
-	startingSector = pCdb->CDB10.LogicalBlockByte3 |
-		pCdb->CDB10.LogicalBlockByte2 << 8 |
-		pCdb->CDB10.LogicalBlockByte1 << 16 |
-		pCdb->CDB10.LogicalBlockByte0 << 24;
+	if (pSrb->CdbLength == 10) {
+		startingSector = (ULONG)pCdb->CDB10.LogicalBlockByte3 |
+			pCdb->CDB10.LogicalBlockByte2 << 8 |
+			pCdb->CDB10.LogicalBlockByte1 << 16 |
+			pCdb->CDB10.LogicalBlockByte0 << 24;
+	}
+	else if (pSrb->CdbLength == 16) {
+		REVERSE_BYTES_QUAD(&startingSector, pCdb->CDB16.LogicalBlock);
+	}
+	else {
+		status = SRB_STATUS_ERROR;
+		goto Done;
+	}
 
 	sectorOffset = startingSector * zv->zv_volblocksize;
 
-	dprintf("MpWkRtn Action: %X, starting sector: 0x%X, sector offset: 0x%X\n", pWkRtnParms->Action, startingSector, sectorOffset);
+	dprintf("MpWkRtn Action: %X, starting sector: 0x%llX, sector offset: 0x%llX\n", pWkRtnParms->Action, startingSector, sectorOffset);
 	dprintf("MpWkRtn pSrb: 0x%p, pSrb->DataBuffer: 0x%p\n", pSrb, pSrb->DataBuffer);
 
 	if (sectorOffset >= zv->zv_volsize) {      // Starting sector beyond the bounds?
