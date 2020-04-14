@@ -316,6 +316,12 @@ ScsiOpReadCapacity(
 );
 
 UCHAR
+ScsiOpReadCapacity16(
+	IN pHW_HBA_EXT DevExt,
+	IN PSCSI_REQUEST_BLOCK Srb
+);
+
+UCHAR
 ScsiOpRead(
 	IN pHW_HBA_EXT          DevExt,
 	IN PSCSI_REQUEST_BLOCK  Srb,
