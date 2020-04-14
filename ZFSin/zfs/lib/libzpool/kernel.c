@@ -695,7 +695,7 @@ getrootdir()
 int
 vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
 {
-	int fd;
+	zfs_fd_t fd;
 	vnode_t *vp;
 	int old_umask = 0;
 	char *realpath;
@@ -721,7 +721,7 @@ vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
 #endif
 		char *dsk;
 		fd = open(path, O_RDONLY);
-		if (fd == -1) {
+		if (fd == ZFS_FD_UNSET) {
 			err = errno;
 			free(realpath);
 			return (err);
@@ -768,7 +768,7 @@ vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
 	if (flags & FCREAT)
 		(void) umask(old_umask);
 
-	if (fd == -1)
+	if (fd == ZFS_FD_UNSET)
 		return (errno);
 
 	if (fstat_blk(fd, &st) == -1) {

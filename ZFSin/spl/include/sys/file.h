@@ -11,7 +11,7 @@
 struct spl_fileproc {
     void        *f_vnode;  // this points to the "fd" so we can look it up.
     list_node_t  f_next;   /* next zfsdev_state_t link */
-    uint64_t     f_fd;
+    HANDLE     f_fd;
     uint64_t     f_offset;
     void        *f_proc;
     void        *f_fp;
@@ -22,8 +22,8 @@ struct spl_fileproc {
 //typedef struct spl_fileproc file_t;
 #define file_t struct spl_fileproc
 
-void *getf(uint64_t fd);
-void releasef(uint64_t fd);
+void *getf(HANDLE fd);
+void releasef(HANDLE fd);
 /* O3X extended - get vnode from previos getf() */
 struct vnode *getf_vnode(void *fp);
 

@@ -626,7 +626,7 @@ extern int file_drop(int);
  * releasef(). On OSX we will also look up the vnode of the fd for calls
  * to spl_vn_rdwr().
  */
-void *getf(uint64_t fd)
+void *getf(HANDLE fd)
 {
 	struct spl_fileproc *sfp = NULL;
 	HANDLE h;
@@ -689,7 +689,7 @@ struct vnode *getf_vnode(void *fp)
 	return vp;
 }
 
-void releasef(uint64_t fd)
+void releasef(HANDLE fd)
 {
 
 #if 1

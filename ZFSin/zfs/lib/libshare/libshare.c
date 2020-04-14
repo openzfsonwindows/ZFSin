@@ -190,7 +190,7 @@ static void
 update_sharetab(sa_handle_impl_t impl_handle)
 {
 	sa_share_impl_t impl_share;
-	int temp_fd;
+	zfs_fd_t temp_fd;
 	FILE *temp_fp;
 	char tempfile[] = "/etc/dfs/sharetab.XXXXXX";
 	sa_fstype_t *fstype;

@@ -994,7 +994,7 @@ static int
 dmu_send_impl(void *tag, dsl_pool_t *dp, dsl_dataset_t *to_ds,
     zfs_bookmark_phys_t *ancestor_zb, boolean_t is_clone,
     boolean_t embedok, boolean_t large_block_ok, boolean_t compressok,
-    boolean_t rawok, int outfd, uint64_t resumeobj, uint64_t resumeoff,
+    boolean_t rawok, zfs_fd_t outfd, uint64_t resumeobj, uint64_t resumeoff,
     vnode_t *vp, offset_t *off)
 {
 	objset_t *os;
@@ -1260,7 +1260,7 @@ out:
 int
 dmu_send_obj(const char *pool, uint64_t tosnap, uint64_t fromsnap,
     boolean_t embedok, boolean_t large_block_ok, boolean_t compressok,
-    boolean_t rawok, int outfd, vnode_t *vp, offset_t *off)
+    boolean_t rawok, zfs_fd_t outfd, vnode_t *vp, offset_t *off)
 {
 	dsl_pool_t *dp;
 	dsl_dataset_t *ds;
@@ -1324,7 +1324,7 @@ dmu_send_obj(const char *pool, uint64_t tosnap, uint64_t fromsnap,
 int
 dmu_send(const char *tosnap, const char *fromsnap, boolean_t embedok,
     boolean_t large_block_ok, boolean_t compressok, boolean_t rawok,
-    int outfd, uint64_t resumeobj, uint64_t resumeoff, vnode_t *vp,
+	zfs_fd_t outfd, uint64_t resumeobj, uint64_t resumeoff, vnode_t *vp,
     offset_t *off)
 {
 	dsl_pool_t *dp;

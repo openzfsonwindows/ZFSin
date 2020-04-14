@@ -5035,7 +5035,7 @@ zfs_hold_one(zfs_handle_t *zhp, void *arg)
 
 int
 zfs_hold(zfs_handle_t *zhp, const char *snapname, const char *tag,
-    boolean_t recursive, int cleanup_fd)
+    boolean_t recursive, zfs_fd_t cleanup_fd)
 {
 	int ret;
 	struct holdarg ha;
@@ -5066,7 +5066,7 @@ zfs_hold(zfs_handle_t *zhp, const char *snapname, const char *tag,
 }
 
 int
-zfs_hold_nvl(zfs_handle_t *zhp, int cleanup_fd, nvlist_t *holds)
+zfs_hold_nvl(zfs_handle_t *zhp, zfs_fd_t cleanup_fd, nvlist_t *holds)
 {
 	int ret;
 	nvlist_t *errors;

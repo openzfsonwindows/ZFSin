@@ -77,7 +77,7 @@
 extern void zfs_setprop_error(libzfs_handle_t *, zfs_prop_t, int, char *);
 
 static int zfs_receive_impl(libzfs_handle_t *, const char *, const char *,
-    recvflags_t *, int, const char *, nvlist_t *, avl_tree_t *, char **, int,
+    recvflags_t *, zfs_fd_t, const char *, nvlist_t *, avl_tree_t *, char **, zfs_fd_t,
     uint64_t *, const char *, nvlist_t *);
 static int guid_to_name(libzfs_handle_t *, const char *,
     uint64_t, boolean_t, char *);
@@ -85,14 +85,14 @@ static int guid_to_name(libzfs_handle_t *, const char *,
 static const zio_cksum_t zero_cksum = { { 0 } };
 
 typedef struct dedup_arg {
-	int	inputfd;
-	int	outputfd;
+	zfs_fd_t	inputfd;
+	zfs_fd_t	outputfd;
 	libzfs_handle_t  *dedup_hdl;
 } dedup_arg_t;
 
 typedef struct progress_arg {
 	zfs_handle_t *pa_zhp;
-	int pa_fd;
+	zfs_fd_t pa_fd;
 	boolean_t pa_parsable;
 } progress_arg_t;
 
@@ -210,7 +210,7 @@ ddt_update(libzfs_handle_t *hdl, dedup_table_t *ddt, zio_cksum_t *cs,
 
 static int
 dump_record(dmu_replay_record_t *drr, void *payload, int payload_len,
-    zio_cksum_t *zc, int outfd)
+    zio_cksum_t *zc, zfs_fd_t outfd)
 {
 	ASSERT3U(offsetof(dmu_replay_record_t, drr_u.drr_checksum.drr_checksum),
 	    ==, sizeof (dmu_replay_record_t) - sizeof (zio_cksum_t));
@@ -260,7 +260,7 @@ cksummer(void *arg)
 	dmu_replay_record_t thedrr;
 	dmu_replay_record_t *drr = &thedrr;
 	FILE *ofp;
-	int outfd;
+	zfs_fd_t outfd;
 	dedup_table_t ddt;
 	zio_cksum_t stream_cksum;
     size_t len;
@@ -305,7 +305,7 @@ cksummer(void *arg)
 	// Note we do not change fread()/fwrite() from FILE*
 	// as they are used throughout userland. The fix
 	// resides in ssread(). Should we change the type?
-	ofp = (FILE*)ITOH(dda->inputfd);
+	ofp = (FILE*)(dda->inputfd);
 #else
 	ofp = fdopen(dda->inputfd, "r");
 #endif
@@ -1107,7 +1107,7 @@ typedef struct send_dump_data {
 	boolean_t seenfrom, seento, replicate, doall, fromorigin;
 	boolean_t verbose, dryrun, parsable, progress, embed_data, std_out;
 	boolean_t large_block, compress, raw, holds;
-	int outfd;
+	zfs_fd_t outfd;
 	boolean_t err;
 	nvlist_t *fss;
 	nvlist_t *snapholds;
@@ -1116,7 +1116,7 @@ typedef struct send_dump_data {
 	void *filter_cb_arg;
 	nvlist_t *debugnv;
 	char holdtag[ZFS_MAX_DATASET_NAME_LEN];
-	int cleanup_fd;
+	zfs_fd_t cleanup_fd;
 	uint64_t size;
 } send_dump_data_t;
 
@@ -1179,7 +1179,7 @@ zfs_send_space(zfs_handle_t *zhp, const char *snapname, const char *from,
  */
 static int
 dump_ioctl(zfs_handle_t *zhp, const char *fromsnap, uint64_t fromsnap_obj,
-    boolean_t fromorigin, int outfd, enum lzc_send_flags flags,
+    boolean_t fromorigin, zfs_fd_t outfd, enum lzc_send_flags flags,
     nvlist_t *debugnv)
 {
 	zfs_cmd_t zc = {"\0"};
@@ -1190,7 +1190,7 @@ dump_ioctl(zfs_handle_t *zhp, const char *fromsnap, uint64_t fromsnap_obj,
 	assert(fromsnap_obj == 0 || !fromorigin);
 
 	(void) strlcpy(zc.zc_name, zhp->zfs_name, sizeof (zc.zc_name));
-	zc.zc_cookie = outfd;
+	zc.zc_cookie = (uint64_t)outfd;
 	zc.zc_obj = fromorigin;
 	zc.zc_sendobj = zfs_prop_get_int(zhp, ZFS_PROP_OBJSETID);
 	zc.zc_fromobj = fromsnap_obj;
@@ -1298,7 +1298,7 @@ send_progress_thread(void *arg)
 		0, NULL, OPEN_EXISTING, 0, NULL);
 	libzfs_handle_t tmp;
 	if (h != INVALID_HANDLE_VALUE) {
-		tmp.libzfs_fd = HTOI(h);
+		tmp.libzfs_fd = h;
 		hdl = &tmp;
 	}
 #endif
@@ -1314,7 +1314,7 @@ send_progress_thread(void *arg)
 	for (;;) {
 		(void) sleep(1);
 
-		zc.zc_cookie = pa->pa_fd;
+		zc.zc_cookie = (uint64_t)pa->pa_fd;
 		if (zfs_ioctl(hdl, ZFS_IOC_SEND_PROGRESS, &zc) != 0)
 			return ((void *)-1);
 
@@ -1814,7 +1814,7 @@ zfs_send_resume_token_to_nvlist(libzfs_handle_t *hdl, const char *token)
 }
 
 int
-zfs_send_resume(libzfs_handle_t *hdl, sendflags_t *flags, int outfd,
+zfs_send_resume(libzfs_handle_t *hdl, sendflags_t *flags, zfs_fd_t outfd,
     const char *resume_token)
 {
 	char errbuf[1024];
@@ -1992,7 +1992,7 @@ zfs_send_resume(libzfs_handle_t *hdl, sendflags_t *flags, int outfd,
  */
 int
 zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
-    sendflags_t *flags, int outfd, snapfilter_cb_t filter_func,
+    sendflags_t *flags, zfs_fd_t outfd, snapfilter_cb_t filter_func,
     void *cb_arg, nvlist_t **debugnvp)
 {
 	char errbuf[1024];
@@ -2004,7 +2004,7 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 	int spa_version;
 	pthread_t tid;
 	int tid_set = 0;
-	int pipefd[2];
+	zfs_fd_t pipefd[2];
 	dedup_arg_t dda = { 0 };
 	int featureflags = 0;
 	FILE *fout;
@@ -2182,13 +2182,13 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 		(void) snprintf(sdd.holdtag, sizeof (sdd.holdtag),
 		    ".send-%d-%llu", getpid(), (u_longlong_t)holdseq);
 		sdd.cleanup_fd = open(ZFS_DEV, O_RDWR);
-		if (sdd.cleanup_fd < 0) {
+		if (sdd.cleanup_fd == ZFS_FD_UNSET) {
 			err = errno;
 			goto stderr_out;
 		}
 		sdd.snapholds = fnvlist_alloc();
 	} else {
-		sdd.cleanup_fd = -1;
+		sdd.cleanup_fd = ZFS_FD_UNSET;
 		sdd.snapholds = NULL;
 	}
 
@@ -2254,9 +2254,9 @@ zfs_send(zfs_handle_t *zhp, const char *fromsnap, const char *tosnap,
 		(void) pthread_join(tid, NULL);
 	}
 
-	if (sdd.cleanup_fd != -1) {
+	if (sdd.cleanup_fd != ZFS_FD_UNSET) {
 		VERIFY(0 == close(sdd.cleanup_fd));
-		sdd.cleanup_fd = -1;
+		sdd.cleanup_fd = ZFS_FD_UNSET;
 	}
 
 	if (!flags->dryrun && (flags->replicate || flags->doall ||
@@ -2283,7 +2283,7 @@ err_out:
 	nvlist_free(fss);
 	fnvlist_free(sdd.snapholds);
 
-	if (sdd.cleanup_fd != -1)
+	if (sdd.cleanup_fd != ZFS_FD_UNSET)
 		VERIFY(0 == close(sdd.cleanup_fd));
 
 	if (tid_set != 0) {
@@ -2295,7 +2295,7 @@ err_out:
 }
 
 int
-zfs_send_one(zfs_handle_t *zhp, const char *from, int fd, sendflags_t flags)
+zfs_send_one(zfs_handle_t *zhp, const char *from, zfs_fd_t fd, sendflags_t flags)
 {
 	int err = 0;
 	libzfs_handle_t *hdl = zhp->zfs_hdl;
@@ -2384,7 +2384,7 @@ zfs_send_one(zfs_handle_t *zhp, const char *from, int fd, sendflags_t flags)
  */
 
 static int
-recv_read(libzfs_handle_t *hdl, int fd, void *buf, int ilen,
+recv_read(libzfs_handle_t *hdl, zfs_fd_t fd, void *buf, int ilen,
     boolean_t byteswap, zio_cksum_t *zc)
 {
 	char *cp = buf;
@@ -2414,7 +2414,7 @@ recv_read(libzfs_handle_t *hdl, int fd, void *buf, int ilen,
 }
 
 static int
-recv_read_nvlist(libzfs_handle_t *hdl, int fd, int len, nvlist_t **nvp,
+recv_read_nvlist(libzfs_handle_t *hdl, zfs_fd_t fd, int len, nvlist_t **nvp,
     boolean_t byteswap, zio_cksum_t *zc)
 {
 	char *buf;
@@ -3269,9 +3269,9 @@ doagain:
 }
 
 static int
-zfs_receive_package(libzfs_handle_t *hdl, int fd, const char *destname,
+zfs_receive_package(libzfs_handle_t *hdl, zfs_fd_t fd, const char *destname,
     recvflags_t *flags, dmu_replay_record_t *drr, zio_cksum_t *zc,
-    char **top_zfs, int cleanup_fd, uint64_t *action_handlep,
+    char **top_zfs, zfs_fd_t cleanup_fd, uint64_t *action_handlep,
     nvlist_t *cmdprops)
 {
 	nvlist_t *stream_nv = NULL;
@@ -3496,7 +3496,7 @@ trunc_prop_errs(int truncated)
 }
 
 static int
-recv_skip(libzfs_handle_t *hdl, int fd, boolean_t byteswap)
+recv_skip(libzfs_handle_t *hdl, zfs_fd_t fd, boolean_t byteswap)
 {
 	dmu_replay_record_t *drr;
 	void *buf = zfs_alloc(hdl, SPA_MAXBLOCKSIZE);
@@ -3808,10 +3808,10 @@ error:
  * Restores a backup of tosnap from the file descriptor specified by infd.
  */
 static int
-zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
+zfs_receive_one(libzfs_handle_t *hdl, zfs_fd_t infd, const char *tosnap,
     const char *originsnap, recvflags_t *flags, dmu_replay_record_t *drr,
     dmu_replay_record_t *drr_noswap, const char *sendfs, nvlist_t *stream_nv,
-    avl_tree_t *stream_avl, char **top_zfs, int cleanup_fd,
+    avl_tree_t *stream_avl, char **top_zfs, zfs_fd_t cleanup_fd,
     uint64_t *action_handlep, const char *finalsnap, nvlist_t *cmdprops)
 {
 	time_t begin_time;
@@ -4395,7 +4395,7 @@ zfs_receive_one(libzfs_handle_t *hdl, int infd, const char *tosnap,
 	if (err == 0 && snapholds_nvlist) {
 		nvpair_t *pair;
 		nvlist_t *holds, *errors = NULL;
-		int cleanup_fd = -1;
+		zfs_fd_t cleanup_fd = ZFS_FD_UNSET;
 
 		VERIFY(0 == nvlist_alloc(&holds, 0, KM_SLEEP));
 		for (pair = nvlist_next_nvpair(snapholds_nvlist, NULL);
@@ -4686,8 +4686,8 @@ zfs_receive_checkprops(libzfs_handle_t *hdl, nvlist_t *props,
 
 static int
 zfs_receive_impl(libzfs_handle_t *hdl, const char *tosnap,
-    const char *originsnap, recvflags_t *flags, int infd, const char *sendfs,
-    nvlist_t *stream_nv, avl_tree_t *stream_avl, char **top_zfs, int cleanup_fd,
+    const char *originsnap, recvflags_t *flags, zfs_fd_t infd, const char *sendfs,
+    nvlist_t *stream_nv, avl_tree_t *stream_avl, char **top_zfs, zfs_fd_t cleanup_fd,
     uint64_t *action_handlep, const char *finalsnap, nvlist_t *cmdprops)
 {
 	int err;
@@ -4824,11 +4824,11 @@ zfs_receive_impl(libzfs_handle_t *hdl, const char *tosnap,
  */
 int
 zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
-	recvflags_t *flags, int infd, avl_tree_t *stream_avl)
+	recvflags_t *flags, zfs_fd_t infd, avl_tree_t *stream_avl)
 {
 	char *top_zfs = NULL;
 	int err;
-	int cleanup_fd;
+	zfs_fd_t cleanup_fd;
 	uint64_t action_handle = 0;
 	struct _stat64 sb;
 	char *originsnap = NULL;
@@ -4882,7 +4882,7 @@ zfs_receive(libzfs_handle_t *hdl, const char *tosnap, nvlist_t *props,
 			return (err);
 	}
 	cleanup_fd = open(ZFS_DEV, O_RDWR);
-	VERIFY(cleanup_fd >= 0);
+	VERIFY(cleanup_fd != ZFS_FD_UNSET);
 
 	err = zfs_receive_impl(hdl, tosnap, originsnap, flags, infd, NULL, NULL,
 	    stream_avl, &top_zfs, cleanup_fd, &action_handle, NULL, props);

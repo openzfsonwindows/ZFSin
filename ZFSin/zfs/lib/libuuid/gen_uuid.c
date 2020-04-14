@@ -253,7 +253,7 @@ static int get_clock(uint32_t *clock_high, uint32_t *clock_low,
 {
 	THREAD_LOCAL int		adjustment = 0;
 	THREAD_LOCAL struct timeval	last = {0, 0};
-	THREAD_LOCAL int		state_fd = -2;
+	THREAD_LOCAL zfs_fd_t		state_fd = -2;
 	THREAD_LOCAL FILE		*state_f;
 	THREAD_LOCAL uint16_t		clock_seq;
 	struct timeval			tv;
@@ -266,11 +266,11 @@ static int get_clock(uint32_t *clock_high, uint32_t *clock_low,
 		save_umask = umask(0);
 		state_fd = open(LIBUUID_CLOCK_FILE, O_RDWR|O_CREAT|O_CLOEXEC, 0660);
 		(void) umask(save_umask);
-		if (state_fd != -1) {
+		if (state_fd != ZFS_FD_UNSET) {
 			state_f = fdopen(state_fd, "r+" UL_CLOEXECSTR);
 			if (!state_f) {
 				close(state_fd);
-				state_fd = -1;
+				state_fd = ZFS_FD_UNSET;
 				ret = -1;
 			}
 		}
@@ -284,7 +284,7 @@ static int get_clock(uint32_t *clock_high, uint32_t *clock_low,
 				continue;
 			fclose(state_f);
 			close(state_fd);
-			state_fd = -1;
+			state_fd = ZFS_FD_UNSET;
 			ret = -1;
 			break;
 		}
@@ -520,7 +520,6 @@ int uuid_generate_time_safe(uuid_t out)
 {
 	return uuid_generate_time_generic(out);
 }
-
 
 void __uuid_generate_random(uuid_t out, int *num)
 {

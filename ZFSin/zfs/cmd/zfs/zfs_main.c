@@ -5698,7 +5698,7 @@ zfs_do_hold_rele_impl(int argc, char **argv, boolean_t holding)
 			continue;
 		}
 		if (holding) {
-			if (zfs_hold(zhp, delim+1, tag, recursive, -1) != 0)
+			if (zfs_hold(zhp, delim+1, tag, recursive, ZFS_FD_UNSET) != 0)
 				++errors;
 		} else {
 			if (zfs_release(zhp, delim+1, tag, recursive) != 0)
@@ -7474,7 +7474,8 @@ usage:
 static int
 zfs_do_channel_program(int argc, char **argv)
 {
-	int ret, fd, c;
+	int ret, c;
+	zfs_fd_t fd;
 	char *progbuf, *filename, *poolname;
 	size_t progsize, progread;
 	nvlist_t *outnvl = NULL;
@@ -7551,7 +7552,7 @@ zfs_do_channel_program(int argc, char **argv)
 	if (strcmp(filename, "-") == 0) {
 		fd = 0;
 		filename = "standard input";
-	} else if ((fd = open(filename, O_RDONLY)) < 0) {
+	} else if ((fd = open(filename, O_RDONLY)) == ZFS_FD_UNSET) {
 		(void) fprintf(stderr, gettext("cannot open '%s': %s\n"),
 		    filename, strerror(errno));
 		return (1);

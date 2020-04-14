@@ -64,7 +64,7 @@ int dmu_recv_begin(char *tofs, char *tosnap,
     nvlist_t *localprops, nvlist_t *hidden_args, char *origin,
     dmu_recv_cookie_t *drc);
 int dmu_recv_stream(dmu_recv_cookie_t *drc, struct vnode *vp, offset_t *voffp,
-    int cleanup_fd, uint64_t *action_handlep);
+    zfs_fd_t cleanup_fd, uint64_t *action_handlep);
 int dmu_recv_end(dmu_recv_cookie_t *drc, void *owner);
 boolean_t dmu_objset_is_receiving(objset_t *os);
 

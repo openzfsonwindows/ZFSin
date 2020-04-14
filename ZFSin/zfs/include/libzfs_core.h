@@ -71,7 +71,7 @@ int lzc_trim(const char *, pool_trim_func_t, uint64_t, boolean_t,
 
 int lzc_snaprange_space(const char *, const char *, uint64_t *);
 
-int lzc_hold(nvlist_t *, int, nvlist_t **);
+int lzc_hold(nvlist_t *, zfs_fd_t, nvlist_t **);
 int lzc_release(nvlist_t *, nvlist_t **);
 int lzc_get_holds(const char *, nvlist_t **);
 
@@ -82,25 +82,25 @@ enum lzc_send_flags {
 	LZC_SEND_FLAG_RAW = 1 << 3,
 };
 
-int lzc_send(const char *, const char *, int, enum lzc_send_flags);
-int lzc_send_resume(const char *, const char *, int,
+int lzc_send(const char *, const char *, zfs_fd_t, enum lzc_send_flags);
+int lzc_send_resume(const char *, const char *, zfs_fd_t,
     enum lzc_send_flags, uint64_t, uint64_t);
 int lzc_send_space(const char *, const char *, enum lzc_send_flags, uint64_t *);
 
 struct dmu_replay_record;
 
 int lzc_receive(const char *, nvlist_t *, const char *, boolean_t, boolean_t,
-    int);
+    zfs_fd_t);
 int lzc_receive_resumable(const char *, nvlist_t *, const char *, boolean_t,
-    boolean_t, int);
+    boolean_t, zfs_fd_t);
 int lzc_receive_with_header(const char *, nvlist_t *, const char *, boolean_t,
-    boolean_t, boolean_t, int, const struct dmu_replay_record *);
+    boolean_t, boolean_t, zfs_fd_t, const struct dmu_replay_record *);
 int lzc_receive_one(const char *, nvlist_t *, const char *, boolean_t,
-    boolean_t, boolean_t, int, const struct dmu_replay_record *, int,
+    boolean_t, boolean_t, zfs_fd_t, const struct dmu_replay_record *, zfs_fd_t,
     uint64_t *, uint64_t *, uint64_t *, nvlist_t **);
 int lzc_receive_with_cmdprops(const char *, nvlist_t *, nvlist_t *,
-    uint8_t *, uint_t, const char *, boolean_t, boolean_t, boolean_t, int,
-    const struct dmu_replay_record *, int, uint64_t *, uint64_t *,
+    uint8_t *, uint_t, const char *, boolean_t, boolean_t, boolean_t, zfs_fd_t,
+    const struct dmu_replay_record *, zfs_fd_t, uint64_t *, uint64_t *,
     uint64_t *, nvlist_t **);
 
 boolean_t lzc_exists(const char *);

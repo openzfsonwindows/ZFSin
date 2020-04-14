@@ -50,8 +50,8 @@ extern void zfs_onexit_destroy(zfs_onexit_t *zo);
 
 #endif
 
-extern int zfs_onexit_fd_hold(int fd, minor_t *minorp);
-extern void zfs_onexit_fd_rele(int fd);
+extern int zfs_onexit_fd_hold(zfs_fd_t fd, minor_t *minorp);
+extern void zfs_onexit_fd_rele(zfs_fd_t fd);
 extern int zfs_onexit_add_cb(minor_t minor, void (*func)(void *), void *data,
     uint64_t *action_handle);
 extern int zfs_onexit_del_cb(minor_t minor, uint64_t action_handle,

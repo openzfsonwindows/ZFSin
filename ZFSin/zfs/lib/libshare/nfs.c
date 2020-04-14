@@ -452,8 +452,8 @@ nfs_enable_share(sa_share_impl_t impl_share)
 	FILE *exportfile = NULL;
 	char line[256];
 	static char tempfile[] = EXPORTFILE".XXXXXX";
-	int fd = -1;
-	int exportfd;
+	zfs_fd_t fd = ZFS_FD_UNSET;
+	zfs_fd_t exportfd;
 
 	shareopts = FSINFO(impl_share, nfs_fstype)->shareopts;
 	mountpoint = impl_share->sharepath;
@@ -480,7 +480,7 @@ nfs_enable_share(sa_share_impl_t impl_share)
 	// Create temporary file
 	fd = mkstemp(tempfile);
 
-	if (fd < 0)
+	if (fd == ZFS_FD_UNSET)
 		goto failed;
 
 	file = fdopen(fd, "r+");
@@ -516,7 +516,7 @@ nfs_enable_share(sa_share_impl_t impl_share)
 	free(osx_opts);
 	if (exportfile)
 		fclose(exportfile);
-	if (exportfd >=0)
+	if (exportfd != ZFS_FD_UNSET)
 		close(exportfd);
 	fclose(file);
 	close(fd);
@@ -549,8 +549,8 @@ nfs_disable_share(sa_share_impl_t impl_share)
 	char line[256];
 	char *mountpoint;
 	static char tempfile[] = EXPORTFILE"XXXXXX";
-	int fd = -1;
-	int exportfd;
+	zfs_fd_t fd = ZFS_FD_UNSET;
+	zfs_fd_t exportfd;
 	int rc = SA_OK;
 
 	mountpoint = impl_share->sharepath;
@@ -569,7 +569,7 @@ nfs_disable_share(sa_share_impl_t impl_share)
 
 	fd = mkstemp(tempfile);
 
-	if (fd < 0)
+	if (fd == ZFS_FD_UNSET)
 		goto failed;
 
 	file = fdopen(fd, "r+");
@@ -578,7 +578,7 @@ nfs_disable_share(sa_share_impl_t impl_share)
 
 	// Open the export file, exclusive?
 	exportfd = open(EXPORTFILE, O_RDONLY|O_EXLOCK);
-	if (exportfd >= 0)
+	if (exportfd != ZFS_FD_UNSET)
 		exportfile = fdopen(exportfd, "r");
 
 	// If exist, copy contents over

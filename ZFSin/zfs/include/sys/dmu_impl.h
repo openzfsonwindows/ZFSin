@@ -263,7 +263,7 @@ typedef struct dmu_sendarg {
 #else
 	vnode_t *dsa_vp;
 #endif
-	int dsa_outfd;
+    zfs_fd_t dsa_outfd;
 	struct proc *dsa_proc;
 	offset_t *dsa_off;
 	objset_t *dsa_os;

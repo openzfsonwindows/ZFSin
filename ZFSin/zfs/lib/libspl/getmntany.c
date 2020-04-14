@@ -65,7 +65,7 @@ static int allfs = 0;
 
 
 DIR *
-fdopendir(int fd)
+fdopendir(zfs_fd_t fd)
 {
 	char fullpath[MAXPATHLEN];
 
@@ -78,21 +78,22 @@ fdopendir(int fd)
 //		perror("fcntl");
 //		return (NULL);
 //	}
-	if (close(fd) < 0) {
+	if (close(fd) == -1) {
 		return (NULL);
 	}
 
 	return (opendir(fullpath));
 }
 
-static int
-chdir_block_begin(int newroot_fd)
+static zfs_fd_t
+chdir_block_begin(zfs_fd_t newroot_fd)
 {
-	int cwdfd, error;
+	zfs_fd_t cwdfd;
+	int error;
 
 	cwdfd = open(".", O_RDONLY /*| O_DIRECTORY*/);
-	if (cwdfd == -1)
-		return (-1);
+	if (cwdfd == ZFS_FD_UNSET)
+		return (ZFS_FD_UNSET);
 
 //	if (fchdir(newroot_fd) == -1) {
 //		error = errno;
@@ -104,7 +105,7 @@ chdir_block_begin(int newroot_fd)
 }
 
 static void
-chdir_block_end(int cwdfd)
+chdir_block_end(zfs_fd_t cwdfd)
 {
 	int error = errno;
 //	(void) fchdir(cwdfd);
@@ -112,13 +113,14 @@ chdir_block_end(int cwdfd)
 	errno = error;
 }
 
-int
-openat64(int dirfd, const char *path, int flags, ...)
+zfs_fd_t
+openat64(zfs_fd_t dirfd, const char *path, int flags, ...)
 {
-	int cwdfd, filefd;
+	zfs_fd_t cwdfd;
+	zfs_fd_t filefd;
 
-	if ((cwdfd = chdir_block_begin(dirfd)) == -1)
-		return (-1);
+	if ((cwdfd = chdir_block_begin(dirfd)) == ZFS_FD_UNSET)
+		return (ZFS_FD_UNSET);
 
 	if ((flags & O_CREAT) != 0) {
 		va_list ap;
@@ -137,11 +139,12 @@ openat64(int dirfd, const char *path, int flags, ...)
 }
 
 int
-fstatat64(int dirfd, const char *path, struct _stat64 *statbuf, int flag)
+fstatat64(zfs_fd_t dirfd, const char *path, struct _stat64 *statbuf, int flag)
 {
-	int cwdfd, error;
+	zfs_fd_t cwdfd;
+	int error;
 
-	if ((cwdfd = chdir_block_begin(dirfd)) == -1)
+	if ((cwdfd = chdir_block_begin(dirfd)) == ZFS_FD_UNSET)
 		return (-1);
 
 	//if (flag == AT_SYMLINK_NOFOLLOW)

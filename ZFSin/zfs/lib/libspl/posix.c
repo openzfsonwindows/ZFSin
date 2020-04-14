@@ -139,9 +139,8 @@ int statfs(const char *path, struct statfs *buf)
 	HANDLE handle;
 	DWORD len;
 
-	int fd = open(path, O_RDONLY | O_BINARY);
-	handle = (HANDLE) _get_osfhandle(fd);
-	if (!DeviceIoControl(handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
+	zfs_fd_t fd = open(path, O_RDONLY | O_BINARY);
+	if (!DeviceIoControl(fd, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
 		&geometry_ex, sizeof(geometry_ex), &len, NULL))
 		return -1;
 	close(fd);
@@ -162,15 +161,15 @@ int statfs(const char *path, struct statfs *buf)
 
 static const char letters[] =
 "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-int
-mkstemp(char *tmpl)
+zfs_fd_t
+wosix_mkstemp(char *tmpl)
 {
 	int len;
 	char *XXXXXX;
 	static unsigned long long value;
 	unsigned long long random_time_bits;
 	unsigned int count;
-	int fd = -1;
+	zfs_fd_t fd = ZFS_FD_UNSET;
 	int save_errno = errno;
 
 #define ATTEMPTS_MIN (62 * 62 * 62)
@@ -185,7 +184,7 @@ mkstemp(char *tmpl)
 	if (len < 6 || strcmp(&tmpl[len - 6], "XXXXXX"))
 	{
 		errno = EINVAL;
-		return -1;
+		return ZFS_FD_UNSET;
 	}
 
 	XXXXXX = &tmpl[len - 6];
@@ -200,7 +199,7 @@ mkstemp(char *tmpl)
 		if (!SystemTimeToFileTime(&stNow, &ftNow))
 		{
 			errno = -1;
-			return -1;
+			return ZFS_FD_UNSET;
 		}
 
 		random_time_bits = (((unsigned long long)ftNow.dwHighDateTime << 32)
@@ -226,18 +225,18 @@ mkstemp(char *tmpl)
 		XXXXXX[5] = letters[v % 62];
 
 		fd = open(tmpl, O_RDWR | O_CREAT | O_EXCL, _S_IREAD | _S_IWRITE);
-		if (fd >= 0)
+		if (fd != ZFS_FD_UNSET)
 		{
 			errno = save_errno;
 			return fd;
 		}
 		else if (errno != EEXIST)
-			return -1;
+			return ZFS_FD_UNSET;
 	}
 
 	/* We got out of the loop because we ran out of combinations to try.  */
 	errno = EEXIST;
-	return -1;
+	return ZFS_FD_UNSET;
 }
 
 int readlink(const char *path, char *buf, size_t bufsize)
@@ -620,7 +619,7 @@ closelog(void)
 }
 
 int
-pipe(int fildes[2])
+pipe(zfs_fd_t fildes[2])
 {
 	return wosix_socketpair(AF_UNIX, SOCK_STREAM, 0, fildes);
 }
@@ -701,12 +700,12 @@ int setrlimit(int resource, const struct rlimit *rlp)
 	return 0;
 }
 
-int tcgetattr(int fildes, struct termios *termios_p)
+int tcgetattr(zfs_fd_t fildes, struct termios *termios_p)
 {
 	return 0;
 }
 
-int tcsetattr(int fildes, int optional_actions,
+int tcsetattr(zfs_fd_t fildes, int optional_actions,
 	const struct termios *termios_p)
 {
 	return 0;
@@ -780,14 +779,14 @@ ssize_t getline(char **linep, size_t* linecapp,
 /* Windows POSIX wrappers */
 
 
-int wosix_fsync(int fd)
+int wosix_fsync(zfs_fd_t fd)
 {
-	if (!FlushFileBuffers(ITOH(fd)))
+	if (!FlushFileBuffers(fd))
 		return EIO;
 	return 0;
 }
 
-int wosix_open(const char *path, int oflag, ...)
+zfs_fd_t wosix_open(const char *path, int oflag, ...)
 {
 	HANDLE h;
 	DWORD mode = GENERIC_READ; // RDONLY=0, WRONLY=1, RDWR=2;
@@ -837,18 +836,16 @@ int wosix_open(const char *path, int oflag, ...)
 			errno = EEXIST;
 			break;
 		}
-		return -1;
+		return ZFS_FD_UNSET;
 	}
-	return (HTOI(h));
+	return (h);
 }
 
 // Figure out when to call WSAStartup();
 static int posix_init_winsock = 0;
 
-int wosix_close(int fd)
+int wosix_close(zfs_fd_t h)
 {
-	HANDLE h = ITOH(fd);
-
 	// Use CloseHandle() for everything except sockets.
 	if ((GetFileType(h) == FILE_TYPE_REMOTE) &&
 		!GetNamedPipeInfo(h, NULL, NULL, NULL, NULL)) {
@@ -862,12 +859,12 @@ int wosix_close(int fd)
 	return -1;
 }
 
-int wosix_ioctl(int fd, unsigned long request, zfs_cmd_t *zc)
+int wosix_ioctl(zfs_fd_t fd, unsigned long request, zfs_cmd_t *zc)
 {
 	int error;
 	ULONG bytesReturned;
 
-	error = DeviceIoControl(ITOH(fd),
+	error = DeviceIoControl(fd,
 		(DWORD)request,
 		zc,
 		(DWORD)sizeof(zfs_cmd_t),
@@ -901,7 +898,7 @@ int wosix_ioctl(int fd, unsigned long request, zfs_cmd_t *zc)
 	return error;
 }
 
-uint64_t wosix_lseek(int fd, uint64_t offset, int seek)
+uint64_t wosix_lseek(zfs_fd_t fd, uint64_t offset, int seek)
 {
 	LARGE_INTEGER LOFF, LNEW;
 	int type = FILE_BEGIN;
@@ -918,37 +915,37 @@ uint64_t wosix_lseek(int fd, uint64_t offset, int seek)
 		type = FILE_END;
 		break;
 	}
-	if (!SetFilePointerEx(ITOH(fd), LOFF, &LNEW, type))
+	if (!SetFilePointerEx(fd, LOFF, &LNEW, type))
 		return -1;
 	return LNEW.QuadPart;
 }
 
-int wosix_read(int fd, void *data, uint32_t len)
+int wosix_read(zfs_fd_t fd, void *data, uint32_t len)
 {
 	DWORD red;
 	OVERLAPPED ow = {0};
 
-	if (GetFileType(ITOH(fd)) == FILE_TYPE_PIPE) {
-		if (!ReadFile(ITOH(fd), data, len, &red, &ow))
+	if (GetFileType(fd) == FILE_TYPE_PIPE) {
+		if (!ReadFile(fd, data, len, &red, &ow))
 			return -1;
 	} else {
-		if (!ReadFile(ITOH(fd), data, len, &red, NULL))
+		if (!ReadFile(fd, data, len, &red, NULL))
 			return -1;
 	}
 
 	return red;
 }
 
-int wosix_write(int fd, const void *data, uint32_t len)
+int wosix_write(zfs_fd_t fd, const void *data, uint32_t len)
 {
 	DWORD wrote;
 	OVERLAPPED ow = { 0 };
 
-	if (GetFileType(ITOH(fd)) == FILE_TYPE_PIPE) {
-		if (!WriteFile(ITOH(fd), data, len, &wrote, &ow))
+	if (GetFileType(fd) == FILE_TYPE_PIPE) {
+		if (!WriteFile(fd, data, len, &wrote, &ow))
 			return -1;
 	} else {
-		if (!WriteFile(ITOH(fd), data, len, &wrote, NULL))
+		if (!WriteFile(fd, data, len, &wrote, NULL))
 			return -1;
 	}
 	return wrote;
@@ -965,20 +962,19 @@ int wosix_write(int fd, const void *data, uint32_t len)
 // Extend isatty() slightly to return 1 for DOS Console, or
 // 2 for cygwin/mingw - as we will have to do different things
 // for NOECHO etc.
-int wosix_isatty(int fd)
+int wosix_isatty(zfs_fd_t fd)
 {
 	DWORD mode;
-	HANDLE h = ITOH(fd);
 	int ret;
 
 	// First, check if we are in a regular dos box, if yes, return.
 	// If not, check for cygwin ...
 	// check for mingw ...
 	// check for powershell ...
-	if (GetConsoleMode(h, &mode)) return 1;
+	if (GetConsoleMode(fd, &mode)) return 1;
 
 	// Not CMDbox, check mingw
-	if (GetFileType(h) == FILE_TYPE_PIPE) {
+	if (GetFileType(fd) == FILE_TYPE_PIPE) {
 
 		int size = sizeof(FILE_NAME_INFO) + sizeof(WCHAR) * (MAX_PATH - 1);
 		FILE_NAME_INFO* nameinfo;
@@ -986,7 +982,7 @@ int wosix_isatty(int fd)
 
 		nameinfo = malloc(size + sizeof(WCHAR));
 		if (nameinfo != NULL) {
-			if (GetFileInformationByHandleEx(h, FileNameInfo, nameinfo, size)) {
+			if (GetFileInformationByHandleEx(fd, FileNameInfo, nameinfo, size)) {
 				nameinfo->FileName[nameinfo->FileNameLength / sizeof(WCHAR)] = L'\0';
 				p = nameinfo->FileName;
 				if (is_wprefix(p, L"\\cygwin-")) {      /* Cygwin */
@@ -1037,12 +1033,11 @@ int wosix_mkdir(const char *path, mode_t mode)
 // Only fill in what we actually use in ZFS
 // Mostly used to test for existance, st_mode, st_size
 // also FIFO and BLK (fixme)
-int wosix_fstat(int fd, struct _stat64 *st)
+int wosix_fstat(zfs_fd_t fd, struct _stat64 *st)
 {
-	HANDLE h = ITOH(fd);
 	BY_HANDLE_FILE_INFORMATION info;
 
-	if (!GetFileInformationByHandle(h, &info))
+	if (!GetFileInformationByHandle(fd, &info))
 		return wosix_fstat_blk(fd, st); 
 
 	st->st_dev = 0;
@@ -1061,13 +1056,12 @@ int wosix_fstat(int fd, struct _stat64 *st)
 	return 0;
 }
 
-int wosix_fstat_blk(int fd, struct _stat64 *st)
+int wosix_fstat_blk(zfs_fd_t fd, struct _stat64 *st)
 {
 	DISK_GEOMETRY_EX geometry_ex;
-	HANDLE handle = ITOH(fd);
 	DWORD len;
 
-	if (!DeviceIoControl(handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
+	if (!DeviceIoControl(fd, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
 		&geometry_ex, sizeof(geometry_ex), &len, NULL))
 		return -1; // errno?
 
@@ -1108,14 +1102,13 @@ int pread_win(HANDLE h, void *buf, size_t nbyte, off_t offset)
 	return red;
 }
 
-int wosix_pread(int fd, void *buf, size_t nbyte, off_t offset)
+int wosix_pread(zfs_fd_t fd, void *buf, size_t nbyte, off_t offset)
 {
-	return pread_win(ITOH(fd), buf, nbyte, offset);
+	return pread_win(fd, buf, nbyte, offset);
 }
 
-int wosix_pwrite(int fd, const void *buf, size_t nbyte, off_t offset)
+int wosix_pwrite(zfs_fd_t fd, const void *buf, size_t nbyte, off_t offset)
 {
-	HANDLE h = ITOH(fd);
 	uint64_t off;
 	DWORD wrote;
 	LARGE_INTEGER large;
@@ -1125,46 +1118,45 @@ int wosix_pwrite(int fd, const void *buf, size_t nbyte, off_t offset)
 
 	// Find current position
 	large.QuadPart = 0;
-	SetFilePointerEx(h, large, &lnew, FILE_CURRENT);
+	SetFilePointerEx(fd, large, &lnew, FILE_CURRENT);
 
 	// Seek to place to read
 	large.QuadPart = offset;
-	SetFilePointerEx(h, large, NULL, FILE_CURRENT);
+	SetFilePointerEx(fd, large, NULL, FILE_CURRENT);
 
 	// Write
-	if (!WriteFile(h, buf, nbyte, &wrote, NULL))
+	if (!WriteFile(fd, buf, nbyte, &wrote, NULL))
 		wrote = -GetLastError();
 
 	// Restore position
-	SetFilePointerEx(h, lnew, NULL, FILE_BEGIN);
+	SetFilePointerEx(fd, lnew, NULL, FILE_BEGIN);
 
 	return wrote;
 }
 
-int wosix_fdatasync(int fd)
+int wosix_fdatasync(zfs_fd_t fd)
 {
 	//if (fcntl(fd, F_FULLFSYNC) == -1)
 	//	return -1;
 	return 0;
 }
 
-int wosix_ftruncate(int fd, off_t length)
+int wosix_ftruncate(zfs_fd_t fd, off_t length)
 {
-	HANDLE h = ITOH(fd);
 	LARGE_INTEGER lnew;
 
 	lnew.QuadPart = length;
-	if (SetFilePointerEx(h, lnew, NULL, FILE_BEGIN) &&
-		SetEndOfFile(h))
+	if (SetFilePointerEx(fd, lnew, NULL, FILE_BEGIN) &&
+		SetEndOfFile(fd))
 		return 0; // Success
 	// errno?
 	return -1;
 }
 
-FILE *wosix_fdopen(int fd, const char *mode)
+FILE *wosix_fdopen(zfs_fd_t fd, const char *mode)
 {
 	// Convert HANDLE to int
-	int temp = _open_osfhandle((intptr_t)ITOH(fd), _O_APPEND | _O_RDONLY);
+	int temp = _open_osfhandle((intptr_t)fd, _O_APPEND | _O_RDONLY);
 
 	if (temp == -1) {
 		return NULL;
@@ -1185,9 +1177,10 @@ FILE *wosix_fdopen(int fd, const char *mode)
 	return (f);
 }
 
-int wosix_socketpair(int domain, int type, int protocol, int sv[2])
+int wosix_socketpair(int domain, int type, int protocol, zfs_fd_t sv[2])
 {
-	int temp, s1, s2, result;
+	int result;
+	SOCKET temp, s1, s2;
 	struct sockaddr_in saddr;
 	int nameLen;
 	unsigned long option_arg = 1;
@@ -1272,14 +1265,14 @@ int wosix_socketpair(int domain, int type, int protocol, int sv[2])
 		return -7;
 	}
 
-	sv[0] = s1; sv[1] = s2;
+	sv[0] = (zfs_fd_t)s1; sv[1] = (zfs_fd_t)s2;
 
-	if ((sv[0] < 0) || (sv[1] < 0)) return -8;
+	if ((sv[0] == ZFS_FD_UNSET) || (sv[1] == ZFS_FD_UNSET)) return -8;
 
 	return 0;  /* normal case */
 }
 
-int wosix_dup2(int fildes, int fildes2)
+int wosix_dup2(zfs_fd_t fildes, zfs_fd_t fildes2)
 {
 	return -1;
 }

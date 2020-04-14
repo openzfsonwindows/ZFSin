@@ -4672,8 +4672,8 @@ static boolean_t zfs_ioc_recv_inject_err;
 static int
 zfs_ioc_recv_impl(char *tofs, char *tosnap, char *origin, nvlist_t *recvprops,
     nvlist_t *localprops, nvlist_t *hidden_args, boolean_t force,
-    boolean_t resumable, int input_fd, dmu_replay_record_t *begin_record,
-    int cleanup_fd, uint64_t *read_bytes, uint64_t *errflags,
+    boolean_t resumable, zfs_fd_t input_fd, dmu_replay_record_t *begin_record,
+	zfs_fd_t cleanup_fd, uint64_t *read_bytes, uint64_t *errflags,
     uint64_t *action_handle, nvlist_t **errors)
 {
 	dmu_recv_cookie_t drc;
@@ -5068,7 +5068,7 @@ zfs_ioc_recv(zfs_cmd_t *zc)
 	begin_record.drr_u.drr_begin = zc->zc_begin_record;
 
 	error = zfs_ioc_recv_impl(tofs, tosnap, origin, recvdprops, localprops,
-	    NULL, zc->zc_guid, B_FALSE, zc->zc_cookie, &begin_record,
+	    NULL, zc->zc_guid, B_FALSE, (zfs_fd_t)zc->zc_cookie, &begin_record,
 	    zc->zc_cleanup_fd, &zc->zc_cookie, &zc->zc_obj,
 	    &zc->zc_action_handle, &errors);
 	nvlist_free(recvdprops);
@@ -5121,10 +5121,10 @@ static const zfs_ioc_key_t zfs_keys_recv_new[] = {
 	{"localprops",		DATA_TYPE_NVLIST,	ZK_OPTIONAL},
 	{"origin",		DATA_TYPE_STRING,	ZK_OPTIONAL},
 	{"begin_record",	DATA_TYPE_BYTE_ARRAY,	0},
-	{"input_fd",		DATA_TYPE_INT32,	0},
+	{"input_fd",		DATA_TYPE_UINT64,	0},
 	{"force",		DATA_TYPE_BOOLEAN,	ZK_OPTIONAL},
 	{"resumable",		DATA_TYPE_BOOLEAN,	ZK_OPTIONAL},
-	{"cleanup_fd",		DATA_TYPE_INT32,	ZK_OPTIONAL},
+	{"cleanup_fd",		DATA_TYPE_UINT64,	ZK_OPTIONAL},
 	{"action_handle",	DATA_TYPE_UINT64,	ZK_OPTIONAL},
 	{"hidden_args",		DATA_TYPE_NVLIST,	ZK_OPTIONAL},
 };
@@ -5147,9 +5147,10 @@ zfs_ioc_recv_new(const char *fsname, nvlist_t *innvl, nvlist_t *outnvl)
 	uint64_t action_handle = 0;
 	uint64_t read_bytes = 0;
 	uint64_t errflags = 0;
-	int input_fd = -1;
-	int cleanup_fd = -1;
+	zfs_fd_t input_fd = ZFS_FD_UNSET;
+	zfs_fd_t cleanup_fd = ZFS_FD_UNSET;
 	int error;
+	uint64_t value64;
 
 	snapname = fnvlist_lookup_string(innvl, "snapname");
 
@@ -5171,14 +5172,15 @@ zfs_ioc_recv_new(const char *fsname, nvlist_t *innvl, nvlist_t *outnvl)
 	if (error != 0 || begin_record_size != sizeof (*begin_record))
 		return (SET_ERROR(EINVAL));
 
-	input_fd = fnvlist_lookup_int32(innvl, "input_fd");
+	input_fd = (zfs_fd_t)fnvlist_lookup_uint64(innvl, "input_fd");
 
 	force = nvlist_exists(innvl, "force");
 	resumable = nvlist_exists(innvl, "resumable");
 
-	error = nvlist_lookup_int32(innvl, "cleanup_fd", &cleanup_fd);
+	error = nvlist_lookup_uint64(innvl, "cleanup_fd", &value64);
 	if (error && error != ENOENT)
 		return (error);
+	cleanup_fd = (zfs_fd_t)value64;
 
 	error = nvlist_lookup_uint64(innvl, "action_handle", &action_handle);
 	if (error && error != ENOENT)
@@ -5292,7 +5294,7 @@ zfs_ioc_send(zfs_cmd_t *zc)
 		dsl_dataset_rele(tosnap, FTAG);
 		dsl_pool_rele(dp, FTAG);
 	} else {
-		file_t *fp = getf(zc->zc_cookie);
+		file_t *fp = getf((zfs_fd_t)zc->zc_cookie);
 		if (fp == NULL)
 			return EBADF;
 
@@ -5300,11 +5302,11 @@ zfs_ioc_send(zfs_cmd_t *zc)
 
 		error = dmu_send_obj(zc->zc_name, zc->zc_sendobj,
 		    zc->zc_fromobj, embedok, large_block_ok, compressok, rawok,
-		    zc->zc_cookie, fp->f_vnode, &off);
+		    (zfs_fd_t)zc->zc_cookie, fp->f_vnode, &off);
 
 		//if (VOP_SEEK(fp->f_vnode, fp->f_offset, &off, NULL) == 0)
 		fp->f_offset = off;
-		releasef(zc->zc_cookie);
+		releasef((zfs_fd_t)zc->zc_cookie);
 
 	}
 	return (error);
@@ -5349,7 +5351,7 @@ zfs_ioc_send_progress(zfs_cmd_t *zc)
 
 	for (dsp = list_head(&ds->ds_sendstreams); dsp != NULL;
          dsp = list_next(&ds->ds_sendstreams, dsp)) {
-		if (dsp->dsa_outfd == zc->zc_cookie &&
+		if (dsp->dsa_outfd == (zfs_fd_t)zc->zc_cookie &&
             dsp->dsa_proc == curproc)
             break;
     }
@@ -5818,7 +5820,7 @@ zfs_ioc_diff(zfs_cmd_t *zc)
 	offset_t off;
 	int error;
 
-	fp = getf(zc->zc_cookie);
+	fp = getf((zfs_fd_t)zc->zc_cookie);
 	if (fp == NULL)
 		return (SET_ERROR(EBADF));
 
@@ -5832,7 +5834,7 @@ zfs_ioc_diff(zfs_cmd_t *zc)
 	if (VOP_SEEK(fp->f_vnode, fp->f_offset, &off, NULL) == 0)
 		fp->f_offset = off;
 #endif
-	releasef(zc->zc_cookie);
+	releasef((zfs_fd_t)zc->zc_cookie);
 
 	return (error);
 }
@@ -6004,7 +6006,7 @@ zfs_ioc_smb_acl(zfs_cmd_t *zc)
  */
 static const zfs_ioc_key_t zfs_keys_hold[] = {
 	{"holds",		DATA_TYPE_NVLIST,	0},
-	{"cleanup_fd",		DATA_TYPE_INT32,	ZK_OPTIONAL},
+	{"cleanup_fd",		DATA_TYPE_UINT64,	ZK_OPTIONAL},
 };
 
 /* ARGSUSED */
@@ -6013,10 +6015,10 @@ zfs_ioc_hold(const char *pool, nvlist_t *args, nvlist_t *errlist)
 {
 	nvpair_t *pair;
 	nvlist_t *holds;
-	int cleanup_fd = -1;
+	zfs_fd_t cleanup_fd = ZFS_FD_UNSET;
 	int error;
 	minor_t minorx = 0;
-
+	uint64_t value64;
 	holds = fnvlist_lookup_nvlist(args, "holds");
 
 	/* make sure the user didn't pass us any invalid (empty) tags */
@@ -6032,7 +6034,8 @@ zfs_ioc_hold(const char *pool, nvlist_t *args, nvlist_t *errlist)
 			return (SET_ERROR(EINVAL));
 	}
 
-	if (nvlist_lookup_int32(args, "cleanup_fd", &cleanup_fd) == 0) {
+	if (nvlist_lookup_uint64(args, "cleanup_fd", &value64) == 0) {
+		cleanup_fd = (zfs_fd_t)value64;
 		error = zfs_onexit_fd_hold(cleanup_fd, &minorx);
 		if (error != 0)
 			return (error);
@@ -6326,7 +6329,7 @@ zfs_ioc_space_snaps(const char *lastsnap, nvlist_t *innvl, nvlist_t *outnvl)
  * outnvl is unused
  */
 static const zfs_ioc_key_t zfs_keys_send_new[] = {
-	{"fd",			DATA_TYPE_INT32,	0},
+	{"fd",			DATA_TYPE_UINT64,	0},
 	{"fromsnap",		DATA_TYPE_STRING,	ZK_OPTIONAL},
 	{"largeblockok",	DATA_TYPE_BOOLEAN,	ZK_OPTIONAL},
 	{"embedok",		DATA_TYPE_BOOLEAN,	ZK_OPTIONAL},
@@ -6343,7 +6346,7 @@ zfs_ioc_send_new(const char *snapname, nvlist_t *innvl, nvlist_t *outnvl)
 	int error;
 	offset_t off;
 	char *fromname = NULL;
-	int fd;
+	zfs_fd_t fd;
 	file_t *fp;
 	boolean_t largeblockok;
 	boolean_t embedok;
@@ -6351,8 +6354,10 @@ zfs_ioc_send_new(const char *snapname, nvlist_t *innvl, nvlist_t *outnvl)
 	boolean_t rawok;
 	uint64_t resumeobj = 0;
 	uint64_t resumeoff = 0;
+	uint64_t value64;
 
-	fd = fnvlist_lookup_int32(innvl, "fd");
+	nvlist_lookup_uint64(innvl, "fd", &value64);
+	fd = (zfs_fd_t)value64;
 
 	(void) nvlist_lookup_string(innvl, "fromsnap", &fromname);
 
@@ -7864,7 +7869,7 @@ zfs_attach(void)
 		&ioctlDeviceObject);                // Returned ptr to Device Object
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf(("ZFS: Couldn't create the device object /dev/zfs (%wZ)\n", ZFS_DEV_KERNEL));
+		dprintf("ZFS: Couldn't create the device object /dev/zfs (%wZ)\n", ZFS_DEV_KERNEL);
 		return ntStatus;
 	}
 	dprintf("ZFS: created kernel device node: %p: name %wZ\n", ioctlDeviceObject, ZFS_DEV_KERNEL);

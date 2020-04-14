@@ -447,7 +447,7 @@ extern void	system_taskq_fini(void);
  */
 struct vnode {
 	uint64_t	v_size;
-	int		v_fd;
+	zfs_fd_t		v_fd;
 	char		*v_path;
 #ifdef _WIN32
 	ino_t v_id;

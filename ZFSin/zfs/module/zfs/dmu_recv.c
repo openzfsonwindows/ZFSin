@@ -2481,7 +2481,7 @@ resume_check(struct receive_arg *ra, nvlist_t *begin_nvl)
  */
 int
 dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
-    int cleanup_fd, uint64_t *action_handlep)
+	zfs_fd_t cleanup_fd, uint64_t *action_handlep)
 {
 	int err = 0;
 	struct receive_arg *ra;
@@ -2530,13 +2530,13 @@ dmu_recv_stream(dmu_recv_cookie_t *drc, vnode_t *vp, offset_t *voffp,
 	if (featureflags & DMU_BACKUP_FEATURE_DEDUP) {
 		minor_t minor;
 
-		if (cleanup_fd == -1) {
+		if (cleanup_fd == ZFS_FD_UNSET) {
 			err = SET_ERROR(EBADF);
 			goto out;
 		}
 		err = zfs_onexit_fd_hold(cleanup_fd, &minor);
 		if (err != 0) {
-			cleanup_fd = -1;
+			cleanup_fd = ZFS_FD_UNSET;
 			goto out;
 		}
 
@@ -2721,7 +2721,7 @@ out:
 		kmem_free(ra->next_rrd, sizeof (*ra->next_rrd));
 
 	nvlist_free(begin_nvl);
-	if ((featureflags & DMU_BACKUP_FEATURE_DEDUP) && (cleanup_fd != -1))
+	if ((featureflags & DMU_BACKUP_FEATURE_DEDUP) && (cleanup_fd != ZFS_FD_UNSET))
 		zfs_onexit_fd_rele(cleanup_fd);
 
 	if (err != 0) {

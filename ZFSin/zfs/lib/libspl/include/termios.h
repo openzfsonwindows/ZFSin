@@ -32,9 +32,9 @@ struct termios
 	int c_lflag;
 };
 
-int tcgetattr(int fildes, struct termios *termios_p);
+int tcgetattr(zfs_fd_t fildes, struct termios *termios_p);
 
-int tcsetattr(int fildes, int optional_actions,
+int tcsetattr(zfs_fd_t fildes, int optional_actions,
 	const struct termios *termios_p);
 
 #endif

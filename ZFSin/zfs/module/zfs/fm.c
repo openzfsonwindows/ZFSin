@@ -584,7 +584,7 @@ zfs_zevent_minor_to_state(minor_t minor, zfs_zevent_t **ze)
 }
 
 int
-zfs_zevent_fd_hold(int fd, minor_t *minorp, zfs_zevent_t **ze)
+zfs_zevent_fd_hold(zfs_fd_t fd, minor_t *minorp, zfs_zevent_t **ze)
 {
 	file_t *fp;
 	int error;
@@ -603,7 +603,7 @@ zfs_zevent_fd_hold(int fd, minor_t *minorp, zfs_zevent_t **ze)
 }
 
 void
-zfs_zevent_fd_rele(int fd)
+zfs_zevent_fd_rele(zfs_fd_t fd)
 {
 	releasef(fd);
 }

@@ -91,7 +91,7 @@
 #include <sys/stat.h>
 #include <sys/zfs_ioctl.h>
 
-static int g_fd = -1;
+static zfs_fd_t g_fd = ZFS_FD_UNSET;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static int g_refcount;
 
@@ -156,9 +156,9 @@ libzfs_core_fini(void)
 	if (g_refcount > 0)
 		g_refcount--;
 
-	if (g_refcount == 0 && g_fd != -1) {
+	if (g_refcount == 0 && g_fd != ZFS_FD_UNSET) {
 		(void) close(g_fd);
-		g_fd = -1;
+		g_fd = ZFS_FD_UNSET;
 	}
 	(void) pthread_mutex_unlock(&g_lock);
 }
@@ -170,7 +170,7 @@ libzfs_core_fini(void)
  * can handle this, so this wrapper is not required.
  */
 static int
-zioctl(int fildes, zfs_ioc_t ioc, zfs_cmd_t *zc)
+zioctl(zfs_fd_t fildes, zfs_ioc_t ioc, zfs_cmd_t *zc)
 {
 	return ioctl(g_fd, ioc, zc);
 }
@@ -185,7 +185,7 @@ lzc_ioctl(zfs_ioc_t ioc, const char *name,
 	size_t size = 0;
 
 	ASSERT3S(g_refcount, >, 0);
-	VERIFY3S(g_fd, !=, -1);
+	VERIFY3S(g_fd, !=, ZFS_FD_UNSET);
 
 #ifdef ZFS_DEBUG
 	if (ioc == fail_ioc_cmd)
@@ -304,7 +304,7 @@ lzc_promote(const char *fsname, char *snapnamebuf, int snapnamelen)
 	zfs_cmd_t zc = { { 0 } };
 
 	ASSERT3S(g_refcount, >, 0);
-	VERIFY3S(g_fd, !=, -1);
+	VERIFY3S(g_fd, !=, ZFS_FD_UNSET);
 
 	(void) strlcpy(zc.zc_name, fsname, sizeof (zc.zc_name));
 	if (zioctl(g_fd, ZFS_IOC_PROMOTE, &zc) != 0) {
@@ -332,7 +332,7 @@ lzc_rename(const char *source, const char *target)
 	zfs_cmd_t zc = { "\0" };
 	int error;
 	ASSERT3S(g_refcount, > , 0);
-	VERIFY3S(g_fd, != , -1);
+	VERIFY3S(g_fd, != , ZFS_FD_UNSET);
 	(void)strlcpy(zc.zc_name, source, sizeof(zc.zc_name));
 	(void)strlcpy(zc.zc_value, target, sizeof(zc.zc_value));
 	error = zioctl(g_fd, ZFS_IOC_RENAME, &zc);
@@ -526,7 +526,7 @@ lzc_sync(const char *pool_name, nvlist_t *innvl, nvlist_t **outnvl)
  * (name = snapshot), with its value being the error code (int32).
  */
 int
-lzc_hold(nvlist_t *holds, int cleanup_fd, nvlist_t **errlist)
+lzc_hold(nvlist_t *holds, zfs_fd_t cleanup_fd, nvlist_t **errlist)
 {
 	char pool[ZFS_MAX_DATASET_NAME_LEN];
 	nvlist_t *args;
@@ -542,8 +542,8 @@ lzc_hold(nvlist_t *holds, int cleanup_fd, nvlist_t **errlist)
 
 	args = fnvlist_alloc();
 	fnvlist_add_nvlist(args, "holds", holds);
-	if (cleanup_fd != -1)
-		fnvlist_add_int32(args, "cleanup_fd", cleanup_fd);
+	if (cleanup_fd != ZFS_FD_UNSET)
+		fnvlist_add_uint64(args, "cleanup_fd", (uint64_t)cleanup_fd);
 
 	error = lzc_ioctl(ZFS_IOC_HOLD, pool, args, errlist);
 	nvlist_free(args);
@@ -628,21 +628,21 @@ lzc_get_holds(const char *snapname, nvlist_t **holdsp)
  * for the "embedded_data" feature).
  */
 int
-lzc_send(const char *snapname, const char *from, int fd,
+lzc_send(const char *snapname, const char *from, zfs_fd_t fd,
     enum lzc_send_flags flags)
 {
 	return (lzc_send_resume(snapname, from, fd, flags, 0, 0));
 }
 
 int
-lzc_send_resume(const char *snapname, const char *from, int fd,
+lzc_send_resume(const char *snapname, const char *from, zfs_fd_t fd,
     enum lzc_send_flags flags, uint64_t resumeobj, uint64_t resumeoff)
 {
 	nvlist_t *args;
 	int err;
 
 	args = fnvlist_alloc();
-	fnvlist_add_int32(args, "fd", fd);
+	fnvlist_add_uint64(args, "fd", (uint64_t)fd);
 	if (from != NULL)
 		fnvlist_add_string(args, "fromsnap", from);
 	if (flags & LZC_SEND_FLAG_LARGE_BLOCK)
@@ -705,7 +705,7 @@ lzc_send_space(const char *snapname, const char *from,
 }
 
 static int
-recv_read(int fd, void *buf, int ilen)
+recv_read(zfs_fd_t fd, void *buf, int ilen)
 {
 	char *cp = buf;
 	int rv;
@@ -734,8 +734,8 @@ recv_read(int fd, void *buf, int ilen)
 static int
 recv_impl(const char *snapname, nvlist_t *recvdprops, nvlist_t *localprops,
     uint8_t *wkeydata, uint_t wkeylen, const char *origin, boolean_t force,
-    boolean_t resumable, boolean_t raw, int input_fd,
-    const dmu_replay_record_t *begin_record, int cleanup_fd,
+    boolean_t resumable, boolean_t raw, zfs_fd_t input_fd,
+    const dmu_replay_record_t *begin_record, zfs_fd_t cleanup_fd,
     uint64_t *read_bytes, uint64_t *errflags, uint64_t *action_handle,
     nvlist_t **errors)
 {
@@ -745,7 +745,7 @@ recv_impl(const char *snapname, nvlist_t *recvdprops, nvlist_t *localprops,
 	int error;
 
 	ASSERT3S(g_refcount, >, 0);
-	VERIFY3S(g_fd, !=, -1);
+	VERIFY3S(g_fd, !=, ZFS_FD_UNSET);
 
 	/* Set 'fsname' to the name of containing filesystem */
 	(void) strlcpy(fsname, snapname, sizeof (fsname));
@@ -811,7 +811,7 @@ recv_impl(const char *snapname, nvlist_t *recvdprops, nvlist_t *localprops,
 		fnvlist_add_byte_array(innvl, "begin_record",
 		    (uchar_t *)&drr, sizeof (drr));
 
-		fnvlist_add_int32(innvl, "input_fd", input_fd);
+		fnvlist_add_uint64(innvl, "input_fd", (uint64_t)input_fd);
 
 		if (force)
 			fnvlist_add_boolean(innvl, "force");
@@ -819,8 +819,8 @@ recv_impl(const char *snapname, nvlist_t *recvdprops, nvlist_t *localprops,
 		if (resumable)
 			fnvlist_add_boolean(innvl, "resumable");
 
-		if (cleanup_fd >= 0)
-			fnvlist_add_int32(innvl, "cleanup_fd", cleanup_fd);
+		if (cleanup_fd != ZFS_FD_UNSET)
+			fnvlist_add_uint64(innvl, "cleanup_fd", (uint64_t)cleanup_fd);
 
 		if (action_handle != NULL)
 			fnvlist_add_uint64(innvl, "action_handle",
@@ -878,11 +878,11 @@ recv_impl(const char *snapname, nvlist_t *recvdprops, nvlist_t *localprops,
 		ASSERT3S(drr.drr_type, ==, DRR_BEGIN);
 		zc.zc_begin_record = drr.drr_u.drr_begin;
 		zc.zc_guid = force;
-		zc.zc_cookie = input_fd;
-		zc.zc_cleanup_fd = -1;
+		zc.zc_cookie = (uint64_t)input_fd;
+		zc.zc_cleanup_fd = ZFS_FD_UNSET;
 		zc.zc_action_handle = 0;
 
-		if (cleanup_fd >= 0)
+		if (cleanup_fd != ZFS_FD_UNSET)
 			zc.zc_cleanup_fd = cleanup_fd;
 
 		if (action_handle != NULL)
@@ -934,10 +934,10 @@ recv_impl(const char *snapname, nvlist_t *recvdprops, nvlist_t *localprops,
  */
 int
 lzc_receive(const char *snapname, nvlist_t *props, const char *origin,
-    boolean_t force, boolean_t raw, int fd)
+    boolean_t force, boolean_t raw, zfs_fd_t fd)
 {
 	return (recv_impl(snapname, props, NULL, NULL, 0, origin, force,
-        B_FALSE, raw, fd, NULL, -1, NULL, NULL, NULL, NULL));
+        B_FALSE, raw, fd, NULL, ZFS_FD_UNSET, NULL, NULL, NULL, NULL));
 }
 
 /*
@@ -948,10 +948,10 @@ lzc_receive(const char *snapname, nvlist_t *props, const char *origin,
  */
 int
 lzc_receive_resumable(const char *snapname, nvlist_t *props, const char *origin,
-    boolean_t force, boolean_t raw, int fd)
+    boolean_t force, boolean_t raw, zfs_fd_t fd)
 {
 	return (recv_impl(snapname, props, NULL, NULL, 0, origin, force,
-        B_TRUE, raw, fd, NULL, -1, NULL, NULL, NULL, NULL));
+        B_TRUE, raw, fd, NULL, ZFS_FD_UNSET, NULL, NULL, NULL, NULL));
 }
 
 /*
@@ -968,13 +968,13 @@ lzc_receive_resumable(const char *snapname, nvlist_t *props, const char *origin,
 int
 lzc_receive_with_header(const char *snapname, nvlist_t *props,
     const char *origin, boolean_t force, boolean_t resumable, boolean_t raw,
-    int fd, const dmu_replay_record_t *begin_record)
+	zfs_fd_t fd, const dmu_replay_record_t *begin_record)
 {
 	if (begin_record == NULL)
 		return (EINVAL);
 
 	return (recv_impl(snapname, props, NULL, NULL, 0, origin, force,
-	    resumable, raw, fd, begin_record, -1, NULL, NULL, NULL, NULL));
+	    resumable, raw, fd, begin_record, ZFS_FD_UNSET, NULL, NULL, NULL, NULL));
 }
 
 /*
@@ -999,7 +999,7 @@ lzc_receive_with_header(const char *snapname, nvlist_t *props,
  */
 int lzc_receive_one(const char *snapname, nvlist_t *props,
     const char *origin, boolean_t force, boolean_t resumable, boolean_t raw,
-    int input_fd, const dmu_replay_record_t *begin_record, int cleanup_fd,
+	zfs_fd_t input_fd, const dmu_replay_record_t *begin_record, zfs_fd_t cleanup_fd,
     uint64_t *read_bytes, uint64_t *errflags, uint64_t *action_handle,
     nvlist_t **errors)
 {
@@ -1017,8 +1017,8 @@ int lzc_receive_one(const char *snapname, nvlist_t *props,
  */
 int lzc_receive_with_cmdprops(const char *snapname, nvlist_t *props,
     nvlist_t *cmdprops, uint8_t *wkeydata, uint_t wkeylen, const char *origin,
-    boolean_t force, boolean_t resumable, boolean_t raw, int input_fd,
-    const dmu_replay_record_t *begin_record, int cleanup_fd,
+    boolean_t force, boolean_t resumable, boolean_t raw, zfs_fd_t input_fd,
+    const dmu_replay_record_t *begin_record, zfs_fd_t cleanup_fd,
     uint64_t *read_bytes, uint64_t *errflags, uint64_t *action_handle,
     nvlist_t **errors)
 {

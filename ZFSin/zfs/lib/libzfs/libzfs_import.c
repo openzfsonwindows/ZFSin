@@ -101,11 +101,11 @@ typedef struct pool_list {
 static char *
 get_devid(const char *path)
 {
-	int fd;
+	zfs_fd_t fd;
 	ddi_devid_t devid;
 	char *minor, *ret;
 
-	if ((fd = open(path, O_RDONLY)) < 0)
+	if ((fd = open(path, O_RDONLY)) == ZFS_FD_UNSET)
 		return (NULL);
 
 	minor = NULL;
@@ -947,7 +947,7 @@ label_offset(uint64_t size, int l)
  * Return 0 on success, or -1 on failure
  */
 int
-zpool_read_label(int fd, nvlist_t **config, int *num_labels)
+zpool_read_label(zfs_fd_t fd, nvlist_t **config, int *num_labels)
 {
 	struct _stat64 statbuf;
 	int l, count = 0;
@@ -1093,7 +1093,7 @@ typedef struct rdsk_node {
 	char *rn_parent;
 #endif
 	int rn_num_labels;
-	int rn_dfd;
+	zfs_fd_t rn_dfd;
 	libzfs_handle_t *rn_hdl;
 	nvlist_t *rn_config;
 	avl_tree_t *rn_avl;
@@ -1178,7 +1178,7 @@ nozpool_all_slices(avl_tree_t *r, const char *sname)
 }
 
 static void
-check_slices(avl_tree_t *r, int fd, const char *sname)
+check_slices(avl_tree_t *r, zfs_fd_t fd, const char *sname)
 {
 #ifdef sun
 	struct extvtoc vtoc;
@@ -1304,7 +1304,7 @@ zpool_open_func(void *arg)
 #endif
 	nvlist_t *config;
 	int num_labels;
-	int fd;
+	zfs_fd_t fd;
 fprintf(stderr, "%s: enter\n", __func__); fflush(stderr);
 	if (rn->rn_nozpool)
 		return;
@@ -1463,7 +1463,7 @@ zpool_open_func_win(void *arg)
 	struct _stat64 statbuf;
 	nvlist_t *config;
 	int num_labels;
-	HANDLE fd;
+	zfs_fd_t fd;
 	uint64_t drive_len;
 	fprintf(stderr, "%s: enter\n", __func__); fflush(stderr);
 	if (rn->rn_nozpool)
@@ -1503,7 +1503,7 @@ zpool_open_func_win(void *arg)
 			OPEN_EXISTING,
 			FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
 			NULL);
-		if (fd == INVALID_HANDLE_VALUE) {
+		if (fd == ZFS_FD_UNSET) {
 			int error = GetLastError();
 			return;
 		}
@@ -1563,7 +1563,7 @@ zpool_open_func_win(void *arg)
 		* Try to read the disk label first so we don't have to
 		* open a bunch of minor nodes that can't have a zpool.
 		*/
-		check_slices(rn->rn_avl, HTOI(fd), rn->rn_name);
+		check_slices(rn->rn_avl, fd, rn->rn_name);
 	}
 
 	if ((zpool_read_label_win(fd, drive_len, &config, &num_labels)) != 0) {
@@ -1588,7 +1588,7 @@ zpool_open_func_win(void *arg)
  * Given a file descriptor, clear (zero) the label information.
  */
 int
-zpool_clear_label(int fd)
+zpool_clear_label(zfs_fd_t fd)
 {
 	struct _stat64 statbuf;
 	int l;
@@ -1836,7 +1836,7 @@ zpool_find_import_impl(libzfs_handle_t *hdl, importargs_t *iarg)
 			slice->rn_name = zfs_strdup(hdl, name);
 			slice->rn_parent = zfs_strdup(hdl, path);
 			slice->rn_avl = &slice_cache;
-			slice->rn_dfd = HTOI(dfd);
+			slice->rn_dfd = dfd;
 			slice->rn_hdl = hdl;
 			slice->rn_nozpool = B_FALSE;
 			avl_add(&slice_cache, slice);
@@ -1997,7 +1997,7 @@ zpool_find_import_win(libzfs_handle_t *hdl, importargs_t *iarg)
 	{
 		taskq_t *t;
 		char rdsk[MAXPATHLEN];
-		int dfd;
+		zfs_fd_t dfd;
 		boolean_t config_failed = B_FALSE;
 		DIR *dirp;
 
@@ -2350,7 +2350,7 @@ zpool_find_import_cached(libzfs_handle_t *hdl, const char *cachefile,
     char *poolname, uint64_t guid)
 {
 	char *buf;
-	int fd;
+	zfs_fd_t fd;
 	struct _stat64 statbuf;
 	nvlist_t *raw, *src, *dst;
 	nvlist_t *pools;
@@ -2361,14 +2361,14 @@ zpool_find_import_cached(libzfs_handle_t *hdl, const char *cachefile,
 
 	verify(poolname == NULL || guid == 0);
 
-	if ((fd = open(cachefile, O_RDONLY)) < 0) {
+	if ((fd = open(cachefile, O_RDONLY)) == ZFS_FD_UNSET) {
 		zfs_error_aux(hdl, "%s", strerror(errno));
 		(void) zfs_error(hdl, EZFS_BADCACHE,
 		    dgettext(TEXT_DOMAIN, "failed to open cache file"));
 		return (NULL);
 	}
 
-	if (_fstat64(fd, &statbuf) != 0) {
+	if (fstat(fd, &statbuf) != 0) {
 		zfs_error_aux(hdl, "%s", strerror(errno));
 		(void) close(fd);
 		(void) zfs_error(hdl, EZFS_BADCACHE,
@@ -2640,7 +2640,7 @@ find_aux(zpool_handle_t *zhp, void *data)
  * must be freed by the caller.
  */
 int
-zpool_in_use(libzfs_handle_t *hdl, int fd, pool_state_t *state, char **namestr,
+zpool_in_use(libzfs_handle_t *hdl, zfs_fd_t fd, pool_state_t *state, char **namestr,
     boolean_t *inuse)
 {
 	nvlist_t *config;

@@ -71,8 +71,8 @@ struct mnttab {
 };
 #define        extmnttab        mnttab
 
-extern DIR *fdopendir(int fd);
-extern int openat64(int, const char *, int, ...);
+extern DIR *fdopendir(zfs_fd_t fd);
+extern zfs_fd_t openat64(zfs_fd_t, const char *, int, ...);
 
 //From FreeBSD
 extern int getmntany(FILE *fd, struct mnttab *mgetp, struct mnttab *mrefp);
@@ -85,6 +85,6 @@ extern void statfs2mnttab(struct statfs *sfs, struct mnttab *mp);
 #define AT_SYMLINK_NOFOLLOW     0x100
 #endif
 
-extern int fstatat64(int, const char *, struct _stat64 *, int);
+extern int fstatat64(zfs_fd_t, const char *, struct _stat64 *, int);
 
 #endif

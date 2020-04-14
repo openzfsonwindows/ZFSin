@@ -82,7 +82,7 @@ devid_free_nmlist(devid_nmlist_t *list)
 static inline
 int
 devid_get(
-    int fd,
+    zfs_fd_t fd,
     ddi_devid_t *retdevid)
 {
 	return (DEVID_FAILURE);
@@ -91,7 +91,7 @@ devid_get(
 static inline
 int
 devid_get_minor_name(
-    int fd,
+    zfs_fd_t fd,
     char **retminor_name)
 {
 	return (-1);

@@ -2847,11 +2847,11 @@ zpool_get_physpath(zpool_handle_t *zhp, char *physpath, size_t phypath_size)
  * can block ZFS from accessing the device. This function allows limited retries
  * in order to work around this behavior.
  */
-static int
+static zfs_fd_t
 zpool_open_delay(int timeout, const char *path, int oflag)
 {
 	int i = 0;
-	HANDLE fd;
+	zfs_fd_t fd;
 
 	if (path[0] == '#') {
 		uint64_t offset;
@@ -2883,7 +2883,7 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 			NULL);
 
 	}
-	if (fd == INVALID_HANDLE_VALUE) {
+	if (fd == ZFS_FD_UNSET) {
 		int error = -GetLastError();
 	}
 
@@ -2893,7 +2893,7 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 //		fd = open(path, oflag);
 //	}
 
-	return (HTOI(fd));
+	return (fd);
 }
 
 /*
@@ -2903,10 +2903,10 @@ zpool_open_delay(int timeout, const char *path, int oflag)
 static int
 zpool_relabel_disk(libzfs_handle_t *hdl, const char *path, const char *msg)
 {
-	int fd;
+	zfs_fd_t fd;
 	int error;
 
-	if ((fd = zpool_open_delay(10, path, O_RDWR|O_DIRECT|O_SHLOCK)) < 0) {
+	if ((fd = zpool_open_delay(10, path, O_RDWR|O_DIRECT|O_SHLOCK)) == ZFS_FD_UNSET) {
 		zfs_error_aux(hdl, dgettext(TEXT_DOMAIN, "cannot "
 		    "relabel '%s': unable to open device: %d"), path, errno);
 		return (zfs_error(hdl, EZFS_OPENFAILED, msg));
@@ -3995,11 +3995,11 @@ devid_to_path(char *devid_str)
 static char *
 path_to_devid(const char *path)
 {
-	int fd;
+	zfs_fd_t fd;
 	ddi_devid_t devid;
 	char *minor, *ret;
 
-	if ((fd = zpool_open_delay(10, path, O_RDONLY)) < 0)
+	if ((fd = zpool_open_delay(10, path, O_RDONLY)) == ZFS_FD_UNSET)
 		return (NULL);
 
 	minor = NULL;
@@ -4572,7 +4572,7 @@ zpool_get_history(zpool_handle_t *zhp, nvlist_t **nvhisp)
  */
 int
 zpool_events_next(libzfs_handle_t *hdl, nvlist_t **nvp,
-    int *dropped, unsigned flags, int zevent_fd)
+    int *dropped, unsigned flags, zfs_fd_t zevent_fd)
 {
 	zfs_cmd_t zc = {"\0"};
 	int error = 0;
@@ -4659,7 +4659,7 @@ zpool_events_clear(libzfs_handle_t *hdl, int *count)
  * otherwise -1 is returned and hdl->libzfs_error is set to the errno.
  */
 int
-zpool_events_seek(libzfs_handle_t *hdl, uint64_t eid, int zevent_fd)
+zpool_events_seek(libzfs_handle_t *hdl, uint64_t eid, zfs_fd_t zevent_fd)
 {
 	zfs_cmd_t zc = {"\0"};
 	int error = 0;
@@ -4749,7 +4749,7 @@ static int
 read_efi_label(nvlist_t *config, diskaddr_t *sb)
 {
 	char *path;
-	int fd;
+	zfs_fd_t fd;
 	char diskname[MAXPATHLEN];
 	int err = -1;
 
@@ -4758,7 +4758,7 @@ read_efi_label(nvlist_t *config, diskaddr_t *sb)
 
 	(void) snprintf(diskname, sizeof (diskname), "%s%s", ZFS_DISK_ROOT,
 	    strrchr(path, '/'));
-	if ((fd = zpool_open_delay(10, diskname, O_RDWR|O_DIRECT)) >= 0) {
+	if ((fd = zpool_open_delay(10, diskname, O_RDWR|O_DIRECT)) != ZFS_FD_UNSET) {
 		struct dk_gpt *vtoc;
 
 		if ((err = efi_alloc_and_read(fd, &vtoc)) >= 0) {
@@ -4832,9 +4832,9 @@ zpool_label_disk_check(char *path)
 {
 	struct dk_gpt *vtoc;
 	int err;
-	int fd;
+	zfs_fd_t fd;
 
-	if ((fd = zpool_open_delay(10, path, O_RDWR|O_DIRECT)) < 0)
+	if ((fd = zpool_open_delay(10, path, O_RDWR|O_DIRECT)) == ZFS_FD_UNSET)
 		return (errno);
 
 	if ((err = efi_alloc_and_read(fd, &vtoc)) != 0) {
@@ -4863,7 +4863,7 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 	char path[MAXPATHLEN];
 	struct dk_gpt *vtoc;
 	int rval;
-	int fd;
+	zfs_fd_t fd;
 	size_t resv = EFI_MIN_RESV_SIZE;
 	uint64_t slice_size;
 	diskaddr_t start_block;
@@ -4904,7 +4904,7 @@ zpool_label_disk(libzfs_handle_t *hdl, zpool_handle_t *zhp, const char *name)
 	(void) snprintf(path, sizeof (path), "%s/%s", ZFS_DISK_ROOT, name);
 #endif
 
-	if ((fd = zpool_open_delay(10, path, O_RDWR|O_DIRECT)) < 0) {
+	if ((fd = zpool_open_delay(10, path, O_RDWR|O_DIRECT)) == ZFS_FD_UNSET) {
 		/*
 		 * This shouldn't happen.  We've long since verified that this
 		 * is a valid device.

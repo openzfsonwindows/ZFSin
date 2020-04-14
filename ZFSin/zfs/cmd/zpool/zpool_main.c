@@ -1070,7 +1070,8 @@ zpool_do_labelclear(int argc, char **argv)
 	char vdev[MAXPATHLEN];
 	char *name = NULL;
 	struct _stat64 st;
-	int c, fd, ret = 0;
+	int c, ret = 0;
+	zfs_fd_t fd;
 	nvlist_t *config;
 	pool_state_t state;
 	boolean_t inuse = B_FALSE;
@@ -1124,7 +1125,7 @@ zpool_do_labelclear(int argc, char **argv)
 		}
 	}
 
-	if ((fd = open(vdev, O_RDWR)) < 0) {
+	if ((fd = open(vdev, O_RDWR)) == ZFS_FD_UNSET) {
 		(void) fprintf(stderr, gettext("failed to open %s: %s\n"),
 		    vdev, strerror(errno));
 		return (1);
@@ -8380,7 +8381,8 @@ static int
 zpool_do_events_next(ev_opts_t *opts)
 {
 	nvlist_t *nvl;
-	int zevent_fd, ret, dropped;
+	zfs_fd_t zevent_fd;
+	int ret, dropped;
 
 	zevent_fd = open(ZFS_DEV, O_RDWR);
 	VERIFY(zevent_fd >= 0);

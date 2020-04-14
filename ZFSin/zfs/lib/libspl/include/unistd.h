@@ -62,7 +62,6 @@ size_t strlcat(register char* s, register const char* t, register size_t n);
 ssize_t getline(char** linep, size_t *linecapp, FILE* stream);
 
 int pread_win(HANDLE h, void* buf, size_t nbyte, off_t offset);
-int pipe(int fildes[2]);
 char* realpath(const char* file_name, char* resolved_name);
 int usleep(__int64 usec);
 int vasprintf(char** strp, const char* fmt, va_list ap);
@@ -73,7 +72,6 @@ const char* getexecname(void);
 uint64_t geteuid(void);
 
 struct zfs_cmd;
-int mkstemp(char* tmpl);
 int64_t gethrtime(void);
 int gettimeofday(struct timeval* tp, struct timezone* tzp);
 void flockfile(FILE* file);

@@ -53,6 +53,22 @@
 
 #include <sys/sysevent/eventdefs.h>
 
+/*
+ * Define the System standard file descriptor
+ */
+#ifdef _WIN32
+typedef HANDLE zfs_fd_t;
+#ifdef INVALID_HANDLE_VALUE 
+#define ZFS_FD_UNSET INVALID_HANDLE_VALUE
+#else
+#define ZFS_FD_UNSET ((HANDLE)(LONG_PTR)-1)  // kernel
+#endif
+#else
+typedef int zfs_fd_t;
+#define ZFS_FD_UNSET -1
+#endif
+
+
 // warning C4146: unary minus operator applied to unsigned type, result still unsigned
 // warning C4242: 'function': conversion from 'uint64_t' to 'int',
 #pragma warning (disable: 4146 4242)

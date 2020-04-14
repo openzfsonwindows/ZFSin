@@ -45,14 +45,14 @@ extern hrtime_t gethrtime(void);
 #endif /* _LP64 */
 
 /*ARGSUSED*/
-int
+zfs_fd_t
 uu_open_tmp(const char *dir, uint_t uflags)
 {
-	int f;
+    zfs_fd_t f;
 	char *fname = uu_zalloc(PATH_MAX);
 
 	if (fname == NULL)
-		return (-1);
+		return (ZFS_FD_UNSET);
 
 	for (;;) {
 		(void) snprintf(fname, PATH_MAX, "%s/uu%lld", dir, gethrtime());

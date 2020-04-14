@@ -17,7 +17,7 @@
 
 #include "c.h"
 
-static inline int write_all(int fd, const void *buf, size_t count)
+static inline int write_all(zfs_fd_t fd, const void *buf, size_t count)
 {
 	while (count) {
 		ssize_t tmp;
@@ -56,7 +56,7 @@ static inline int fwrite_all(const void *ptr, size_t size,
 	return 0;
 }
 
-static inline ssize_t read_all(int fd, char *buf, size_t count)
+static inline ssize_t read_all(zfs_fd_t fd, char *buf, size_t count)
 {
 	ssize_t ret;
 	ssize_t c = 0;

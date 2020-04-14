@@ -122,7 +122,7 @@ int efi_debug = 1;
 int efi_debug = 0;
 #endif
 
-static int efi_read(int, struct dk_gpt *);
+static int efi_read(zfs_fd_t, struct dk_gpt *);
 
 /*
  * Return a 32-bit CRC of the contents of the buffer.  Pre-and-post
@@ -139,13 +139,13 @@ efi_crc32(const unsigned char *buf, unsigned int size)
 }
 
 static int
-read_disk_info(int fd, diskaddr_t *capacity, uint_t *lbsize)
+read_disk_info(zfs_fd_t fd, diskaddr_t *capacity, uint_t *lbsize)
 {
 	DISK_GEOMETRY_EX geometry_ex;
 	DWORD len; 
 
 	LARGE_INTEGER large;
-	if (DeviceIoControl(ITOH(fd), IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
+	if (DeviceIoControl(fd, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, NULL, 0,
 		&geometry_ex, sizeof(geometry_ex), &len, NULL)) {
 
 		*lbsize = (uint_t)geometry_ex.Geometry.BytesPerSector;
@@ -158,7 +158,7 @@ read_disk_info(int fd, diskaddr_t *capacity, uint_t *lbsize)
 }
 
 static int
-efi_get_info(int fd, struct dk_cinfo *dki_info)
+efi_get_info(zfs_fd_t fd, struct dk_cinfo *dki_info)
 {
 	int rval = 0;
 #if defined(__linux__)
@@ -328,7 +328,7 @@ efi_get_info(int fd, struct dk_cinfo *dki_info)
 	PARTITION_INFORMATION partInfo;
 	DWORD retcount = 0;
 	int err;
-	err = DeviceIoControl(ITOH(fd),
+	err = DeviceIoControl(fd,
 		IOCTL_DISK_GET_PARTITION_INFO,
 		(LPVOID)NULL,
 		(DWORD)0,
@@ -373,7 +373,7 @@ error:
 			    sizeof (struct dk_part))
 
 int
-efi_alloc_and_init(int fd, uint32_t nparts, struct dk_gpt **vtoc)
+efi_alloc_and_init(zfs_fd_t fd, uint32_t nparts, struct dk_gpt **vtoc)
 {
 	diskaddr_t	capacity = 0;
 	uint_t		lbsize = 0;
@@ -444,7 +444,7 @@ efi_alloc_and_init(int fd, uint32_t nparts, struct dk_gpt **vtoc)
  * Read EFI - return partition number upon success.
  */
 int
-efi_alloc_and_read(int fd, struct dk_gpt **vtoc)
+efi_alloc_and_read(zfs_fd_t fd, struct dk_gpt **vtoc)
 {
 	int			rval;
 	uint32_t		nparts;
@@ -489,7 +489,7 @@ efi_alloc_and_read(int fd, struct dk_gpt **vtoc)
 }
 
 static int
-efi_ioctl(int fd, int cmd, dk_efi_t *dk_ioc)
+efi_ioctl(zfs_fd_t fd, int cmd, dk_efi_t *dk_ioc)
 {
 	void *data = dk_ioc->dki_data;
 	int error;
@@ -609,7 +609,7 @@ efi_ioctl(int fd, int cmd, dk_efi_t *dk_ioc)
 }
 
 int
-efi_rescan(int fd)
+efi_rescan(zfs_fd_t fd)
 {
 #if defined(__linux__)
 	int retry = 10;
@@ -630,7 +630,7 @@ efi_rescan(int fd)
 }
 
 static int
-check_label(int fd, dk_efi_t *dk_ioc)
+check_label(zfs_fd_t fd, dk_efi_t *dk_ioc)
 {
 	efi_gpt_t		*efi;
 	uint_t			crc;
@@ -682,7 +682,7 @@ check_label(int fd, dk_efi_t *dk_ioc)
 }
 
 static int
-efi_read(int fd, struct dk_gpt *vtoc)
+efi_read(zfs_fd_t fd, struct dk_gpt *vtoc)
 {
 	int			i, j;
 	int			label_len;
@@ -947,7 +947,7 @@ efi_read(int fd, struct dk_gpt *vtoc)
 
 /* writes a "protective" MBR */
 static int
-write_pmbr(int fd, struct dk_gpt *vtoc)
+write_pmbr(zfs_fd_t fd, struct dk_gpt *vtoc)
 {
 	dk_efi_t	dk_ioc;
 	struct mboot	mb;
@@ -1138,7 +1138,7 @@ check_input(struct dk_gpt *vtoc)
  * add all the unallocated space to the current label
  */
 int
-efi_use_whole_disk(int fd)
+efi_use_whole_disk(zfs_fd_t fd)
 {
 	struct dk_gpt		*efi_label;
 	int			rval;
@@ -1220,7 +1220,7 @@ efi_use_whole_disk(int fd)
  * write EFI label and backup label
  */
 int
-efi_write(int fd, struct dk_gpt *vtoc)
+efi_write(zfs_fd_t fd, struct dk_gpt *vtoc)
 {
 	dk_efi_t		dk_ioc;
 	efi_gpt_t		*efi;
@@ -1434,7 +1434,7 @@ efi_free(struct dk_gpt *ptr)
  * Otherwise 0.
  */
 int
-efi_type(int fd)
+efi_type(zfs_fd_t fd)
 {
 #if 0
 	struct vtoc vtoc;
@@ -1551,7 +1551,7 @@ efi_err_check(struct dk_gpt *vtoc)
  * label type
  */
 int
-efi_auto_sense(int fd, struct dk_gpt **vtoc)
+efi_auto_sense(zfs_fd_t fd, struct dk_gpt **vtoc)
 {
 
 	int	i;

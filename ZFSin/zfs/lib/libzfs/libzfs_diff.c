@@ -72,9 +72,9 @@ typedef struct differ_info {
 	boolean_t timestamped;
 	uint64_t shares;
 	int zerr;
-	int cleanupfd;
-	int outputfd;
-	int datafd;
+	zfs_fd_t cleanupfd;
+	zfs_fd_t outputfd;
+	zfs_fd_t datafd;
 } differ_info_t;
 
 /*
@@ -747,7 +747,7 @@ setup_differ_info(zfs_handle_t *zhp, const char *fromsnap,
 	di->zhp = zhp;
 
 	di->cleanupfd = open(ZFS_DEV, O_RDWR);
-	VERIFY(di->cleanupfd >= 0);
+	VERIFY(di->cleanupfd != ZFS_FD_UNSET);
 
 	if (get_snapshot_names(di, fromsnap, tosnap) != 0)
 		return (-1);
@@ -762,14 +762,14 @@ setup_differ_info(zfs_handle_t *zhp, const char *fromsnap,
 }
 
 int
-zfs_show_diffs(zfs_handle_t *zhp, int outfd, const char *fromsnap,
+zfs_show_diffs(zfs_handle_t *zhp, zfs_fd_t outfd, const char *fromsnap,
     const char *tosnap, int flags)
 {
 	zfs_cmd_t zc = {"\0"};
 	char errbuf[1024];
 	differ_info_t di = { 0 };
 	pthread_t tid;
-	int pipefd[2];
+	zfs_fd_t pipefd[2];
 	int iocerr;
 
 	(void) snprintf(errbuf, sizeof (errbuf),
@@ -805,7 +805,7 @@ zfs_show_diffs(zfs_handle_t *zhp, int outfd, const char *fromsnap,
 	/* do the ioctl() */
 	(void) strlcpy(zc.zc_value, di.fromsnap, strlen(di.fromsnap) + 1);
 	(void) strlcpy(zc.zc_name, di.tosnap, strlen(di.tosnap) + 1);
-	zc.zc_cookie = pipefd[1];
+	zc.zc_cookie = (uint64_t) pipefd[1];
 
 	iocerr = zfs_ioctl(zhp->zfs_hdl, ZFS_IOC_DIFF, &zc);
 	if (iocerr != 0) {

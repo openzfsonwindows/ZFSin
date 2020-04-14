@@ -2462,12 +2462,12 @@ dump_config(spa_t *spa)
 static void
 dump_cachefile(const char *cachefile)
 {
-	int fd;
+	zfs_fd_t fd;
 	struct stat statbuf;
 	char *buf;
 	nvlist_t *config;
 
-	if ((fd = open(cachefile, O_RDONLY)) < 0) {
+	if ((fd = open(cachefile, O_RDONLY)) == ZFS_FD_UNSET) {
 		(void) printf("cannot open '%s': %s\n", cachefile,
 		    strerror(errno));
 		exit(1);
@@ -2905,7 +2905,7 @@ dump_path(char *ds, char *path)
 static int
 dump_label(const char *dev)
 {
-	int fd;
+	zfs_fd_t fd;
 	label_t labels[VDEV_LABELS];
 	char path[MAXPATHLEN];
 	struct stat statbuf;
@@ -5022,7 +5022,7 @@ zdb_dump_block_raw(void *buf, uint64_t size, int flags)
 {
 	if (flags & ZDB_FLAG_BSWAP)
 		byteswap_uint64_array(buf, size);
-	VERIFY(write(_fileno(stdout), buf, size) == size);
+	VERIFY(write(fileno(stdout), buf, size) == size);
 }
 
 static void

@@ -28,7 +28,7 @@
 
 /* Replace all the normal POSIX calls; open, read, write, close, lseek, fstat
  * As we have to use HANDLEs to open devices, we add a shim-layer to handle
- * int fd and the change in underlying API calls.
+ * int fd (zfs_fd_t) and the change in underlying API calls.
  * First, include the header that defines them in Windows.
  */
 #include <stdio.h>
@@ -36,31 +36,37 @@
 #include <sys/stat.h>
 #include <corecrt_io.h>
 
-#define HTOI(H) ((int)(unsigned __int64)(H))
-#define ITOH(I) ((HANDLE)(unsigned __int64)(I))
+#ifdef _WIN32
+typedef HANDLE zfs_fd_t;
+#define ZFS_FD_UNSET INVALID_HANDLE_VALUE
+#else
+typedef int zfs_fd_t;
+#define ZFS_FD_UNSET -1
+#endif
 
-extern int wosix_fsync(int fd);
-extern int wosix_open(const char *path, int oflag, ...);
-extern int wosix_close(int fd);
-extern int wosix_ioctl(int fd, unsigned long request, void *zc);
-extern int wosix_read(int fd, void *data, uint32_t len);
-extern int wosix_write(int fd, const void *data, uint32_t len);
-extern int wosix_isatty(int fd);
+extern int wosix_fsync(zfs_fd_t fd);
+extern zfs_fd_t wosix_open(const char *path, int oflag, ...);
+extern int wosix_close(zfs_fd_t fd);
+extern int wosix_ioctl(zfs_fd_t fd, unsigned long request, void *zc);
+extern int wosix_read(zfs_fd_t fd, void *data, uint32_t len);
+extern int wosix_write(zfs_fd_t fd, const void *data, uint32_t len);
+extern int wosix_isatty(zfs_fd_t fd);
 extern int wosix_mkdir(const char *path, mode_t mode);
-extern int wosix_pwrite(int fd, const void *buf, size_t nbyte, off_t offset);
-extern int wosix_pread(int fd, void *buf, size_t nbyte, off_t offset);
-extern int wosix_fstat(int fd, struct _stat64 *st);
-extern int wosix_fstat_blk(int fd, struct _stat64 *st);
-extern uint64_t wosix_lseek(int fd, uint64_t offset, int seek);
-extern int wosix_fdatasync(int fd);
-extern int wosix_ftruncate(int fd, off_t length);
-extern int wosix_socketpair(int domain, int type, int protocol, int socket_vector[2]);
-extern int wosix_dup2(int fildes, int fildes2);
-extern int wosix_pipe(int fildes[2]);
+extern int wosix_pwrite(zfs_fd_t fd, const void *buf, size_t nbyte, off_t offset);
+extern int wosix_pread(zfs_fd_t fd, void *buf, size_t nbyte, off_t offset);
+extern int wosix_fstat(zfs_fd_t fd, struct _stat64 *st);
+extern int wosix_fstat_blk(zfs_fd_t fd, struct _stat64 *st);
+extern uint64_t wosix_lseek(zfs_fd_t fd, uint64_t offset, int seek);
+extern int wosix_fdatasync(zfs_fd_t fd);
+extern int wosix_ftruncate(zfs_fd_t fd, off_t length);
+extern int wosix_socketpair(int domain, int type, int protocol, zfs_fd_t socket_vector[2]);
+extern int wosix_dup2(zfs_fd_t fildes, zfs_fd_t fildes2);
+extern int wosix_pipe(zfs_fd_t fildes[2]);
+extern zfs_fd_t wosix_mkstemp(char* tmpl);
 
-#define wosix_fileno(X) (_get_osfhandle(_fileno((X))))
+#define wosix_fileno(X) ((zfs_fd_t)_get_osfhandle((intptr_t)_fileno((X))))
 
-extern FILE *wosix_fdopen(int fildes, const char *mode);
+extern FILE *wosix_fdopen(zfs_fd_t fildes, const char *mode);
 
  /*
  * Thin wrapper for the POSIX IO calls, to translate to HANDLEs
@@ -108,5 +114,9 @@ extern FILE *wosix_fdopen(int fildes, const char *mode);
 #define fdopen	wosix_fdopen
 #undef  pipe
 #define pipe	wosix_pipe
+#undef  dup2
+#define dup2	wosix_dup2
+#undef  mkstemp
+#define mkstemp	wosix_mkstemp
 
 #endif /* WOSIX_HEADER */

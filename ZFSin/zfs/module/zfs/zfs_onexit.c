@@ -122,7 +122,7 @@ zfs_onexit_minor_to_state(minor_t minor, zfs_onexit_t **zo)
  * using the minor number.
  */
 int
-zfs_onexit_fd_hold(int fd, minor_t *minorp)
+zfs_onexit_fd_hold(zfs_fd_t fd, minor_t *minorp)
 {
 	file_t *fp = NULL;
 	zfs_onexit_t *zo;
@@ -136,7 +136,7 @@ zfs_onexit_fd_hold(int fd, minor_t *minorp)
 }
 
 void
-zfs_onexit_fd_rele(int fd)
+zfs_onexit_fd_rele(zfs_fd_t fd)
 {
     releasef(fd);
 }

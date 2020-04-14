@@ -338,12 +338,12 @@ static int
 check_file(const char *file, boolean_t force, boolean_t isspare)
 {
 	char  *name;
-	int fd;
+	zfs_fd_t fd;
 	int ret = 0;
 	pool_state_t state;
 	boolean_t inuse;
 
-	if ((fd = open(file, O_RDONLY)) < 0)
+	if ((fd = open(file, O_RDONLY)) == ZFS_FD_UNSET)
 		return (0);
 
 	if (zpool_in_use(g_zfs, fd, &state, &name, &inuse) == 0 && inuse) {
@@ -487,12 +487,13 @@ check_disk(const char *path, blkid_cache cache, int force,
 	char slice_path[MAXPATHLEN];
 	int err = 0;
 	int slice_err = 0;
-	int fd, i;
+	zfs_fd_t fd;
+	int i;
 
 	if (!iswholedisk)
 		return (check_slice(path, cache, force, isspare));
 
-	if ((fd = open(path, O_RDONLY|O_DIRECT)) < 0) {
+	if ((fd = open(path, O_RDONLY|O_DIRECT)) == ZFS_FD_UNSET) {
 		check_error(errno);
 		return (-1);
 	}
@@ -600,11 +601,11 @@ static boolean_t
 is_whole_disk(const char *path)
 {
 	struct dk_gpt *label;
-	HANDLE h;
+	zfs_fd_t h;
 	
 	//h = CreateFile("\\\\?\\SCSI\\DISK&VEN_VMWARE_&PROD_VMWARE_VIRTUAL_S\\5&1EC51BF7&0&000100", 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
 	h = CreateFile(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
-	if ((h == INVALID_HANDLE_VALUE))
+	if ((h == ZFS_FD_UNSET))
 		return (B_FALSE);
 	if (efi_alloc_and_init(h, EFI_NUMPAR, &label) != 0) {
 		(void) CloseHandle(h);
@@ -652,7 +653,7 @@ is_shorthand_path(const char *arg, char *path,
 static boolean_t
 is_spare(nvlist_t *config, const char *path)
 {
-	int fd;
+	zfs_fd_t fd;
 	pool_state_t state;
 	char *name = NULL;
 	nvlist_t *label;
@@ -662,7 +663,7 @@ is_spare(nvlist_t *config, const char *path)
 	uint_t i, nspares;
 	boolean_t inuse;
 
-	if ((fd = open(path, O_RDONLY)) < 0)
+	if ((fd = open(path, O_RDONLY)) == ZFS_FD_UNSET)
 		return (B_FALSE);
 
 	if (zpool_in_use(g_zfs, fd, &state, &name, &inuse) != 0 ||
@@ -1034,7 +1035,8 @@ get_replication(nvlist_t *nvroot, boolean_t fatal)
 				struct _stat64 statbuf;
 				uint64_t size = -1ULL;
 				char *childtype;
-				int fd, err;
+				zfs_fd_t fd;
+				int err;
 
 				rep.zprl_children++;
 
@@ -1102,7 +1104,7 @@ get_replication(nvlist_t *nvroot, boolean_t fatal)
 				 * by a size of 0 or MAXOFFSET_T), then ignore
 				 * this device altogether.
 				 */
-				if ((fd = open(path, O_RDONLY)) >= 0) {
+				if ((fd = open(path, O_RDONLY)) != ZFS_FD_UNSET) {
 					err = fstat(fd, &statbuf);
 					(void) close(fd);
 				} else {
@@ -1296,9 +1298,10 @@ zero_label(char *path)
 #define SIZE 4096
 	const int size = SIZE;
 	char buf[SIZE];
-	int err, fd;
+	int err;
+	zfs_fd_t fd;
 
-	if ((fd = open(path, O_WRONLY|O_EXCL)) < 0) {
+	if ((fd = open(path, O_WRONLY|O_EXCL)) == ZFS_FD_UNSET) {
 		(void) fprintf(stderr, gettext("cannot open '%s': %s\n"),
 		    path, strerror(errno));
 		return (-1);
@@ -1346,7 +1349,7 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 	uint64_t wholedisk;
 	struct _stat64 statbuf;
 	int is_exclusive = 0;
-	int fd;
+	zfs_fd_t fd;
 	int ret;
 
 	verify(nvlist_lookup_string(nv, ZPOOL_CONFIG_TYPE, &type) == 0);
@@ -1396,7 +1399,7 @@ make_disks(zpool_handle_t *zhp, nvlist_t *nv)
 		(void) zfs_append_partition(udevpath, MAXPATHLEN);
 
 		fd = open(devpath, O_RDWR|O_EXCL);
-		if (fd == -1) {
+		if (fd == ZFS_FD_UNSET) {
 			if (errno == EBUSY)
 				is_exclusive = 1;
 		} else {

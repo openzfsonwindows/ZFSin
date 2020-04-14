@@ -488,9 +488,9 @@ extern int zpool_get_history(zpool_handle_t *, nvlist_t **);
 extern int zpool_history_unpack(char *, uint64_t, uint64_t *,
     nvlist_t ***, uint_t *);
 extern int zpool_events_next(libzfs_handle_t *, nvlist_t **, int *, unsigned,
-    int);
+	zfs_fd_t);
 extern int zpool_events_clear(libzfs_handle_t *, int *);
-extern int zpool_events_seek(libzfs_handle_t *, uint64_t, int);
+extern int zpool_events_seek(libzfs_handle_t *, uint64_t, zfs_fd_t);
 extern void zpool_obj_to_path(zpool_handle_t *, uint64_t, uint64_t, char *,
     size_t len);
 extern int zfs_ioctl(libzfs_handle_t *, unsigned long, struct zfs_cmd *);
@@ -735,17 +735,17 @@ typedef struct sendflags {
 typedef boolean_t (snapfilter_cb_t)(zfs_handle_t *, void *);
 
 extern int zfs_send(zfs_handle_t *, const char *, const char *,
-    sendflags_t *, int, snapfilter_cb_t, void *, nvlist_t **);
-extern int zfs_send_one(zfs_handle_t *, const char *, int, sendflags_t flags);
-extern int zfs_send_resume(libzfs_handle_t *, sendflags_t *, int outfd,
+    sendflags_t *, zfs_fd_t, snapfilter_cb_t, void *, nvlist_t **);
+extern int zfs_send_one(zfs_handle_t *, const char *, zfs_fd_t, sendflags_t flags);
+extern int zfs_send_resume(libzfs_handle_t *, sendflags_t *, zfs_fd_t outfd,
     const char *);
 extern nvlist_t *zfs_send_resume_token_to_nvlist(libzfs_handle_t *hdl,
     const char *token);
 
 extern int zfs_promote(zfs_handle_t *);
 extern int zfs_hold(zfs_handle_t *, const char *, const char *,
-    boolean_t, int);
-extern int zfs_hold_nvl(zfs_handle_t *, int, nvlist_t *);
+    boolean_t, zfs_fd_t);
+extern int zfs_hold_nvl(zfs_handle_t *, zfs_fd_t, nvlist_t *);
 extern int zfs_release(zfs_handle_t *, const char *, const char *, boolean_t);
 extern int zfs_get_holds(zfs_handle_t *, nvlist_t **);
 extern uint64_t zvol_volsize_to_reservation(uint64_t, nvlist_t *);
@@ -801,7 +801,7 @@ typedef struct recvflags {
 } recvflags_t;
 
 extern int zfs_receive(libzfs_handle_t *, const char *, nvlist_t *,
-    recvflags_t *, int, avl_tree_t *);
+    recvflags_t *, zfs_fd_t, avl_tree_t *);
 
 typedef enum diff_flags {
 	ZFS_DIFF_PARSEABLE = 0x1,
@@ -809,7 +809,7 @@ typedef enum diff_flags {
 	ZFS_DIFF_CLASSIFY = 0x4
 } diff_flags_t;
 
-extern int zfs_show_diffs(zfs_handle_t *, int, const char *, const char *,
+extern int zfs_show_diffs(zfs_handle_t *, zfs_fd_t, const char *, const char *,
     int);
 
 /*
@@ -903,14 +903,14 @@ extern int zfs_version_print(void);
 /*
  * Given a device or file, determine if it is part of a pool.
  */
-extern int zpool_in_use(libzfs_handle_t *, int, pool_state_t *, char **,
+extern int zpool_in_use(libzfs_handle_t *, zfs_fd_t, pool_state_t *, char **,
     boolean_t *);
 
 /*
  * Label manipulation.
  */
-extern int zpool_read_label(int, nvlist_t **, int *);
-extern int zpool_clear_label(int);
+extern int zpool_read_label(zfs_fd_t, nvlist_t **, int *);
+extern int zpool_clear_label(zfs_fd_t);
 
 /*
  * Management interfaces for SMB ACL files

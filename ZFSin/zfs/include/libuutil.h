@@ -138,7 +138,7 @@ int uu_check_name(const char *, uint_t);
 /*
  * File creation functions.
  */
-extern int uu_open_tmp(const char *dir, uint_t uflags);
+extern zfs_fd_t uu_open_tmp(const char *dir, uint_t uflags);
 
 /*
  * Convenience functions.
