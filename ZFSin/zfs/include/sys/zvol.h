@@ -68,12 +68,9 @@ typedef struct zvol_state {
 	uint32_t zv_total_opens;	/* total open count */
 	zilog_t *zv_zilog;	/* ZIL handle */
 	rangelock_t		zv_rangelock;	/* for range locking */
+	dnode_t			*zv_dn;		/* dnode hold */
 	list_t zv_extents;	/* List of extents for dump */
-	dmu_buf_t *zv_dbuf;	/* bonus handle */
-	zvol_iokit_t *zv_iokitdev;	/* IOKit device */
 	uint64_t zv_openflags;	/* Remember flags used at open */
-	char zv_bsdname[MAXPATHLEN];
-	/* 'rdiskX' name, use [1] for diskX */
 	uint8_t zv_target_id;
 	uint8_t zv_lun_id;
 } zvol_state_t;
@@ -128,8 +125,6 @@ extern void *zvol_tag(zvol_state_t *);
 
 extern int zvol_open(dev_t dev, int flag, int otyp, struct proc *p);
 extern int zvol_close(dev_t dev, int flag, int otyp, struct proc *p);
-extern int zvol_read(dev_t dev, struct uio *uiop, int p);
-extern int zvol_write(dev_t dev, struct uio *uiop, int p);
 
 extern zvol_state_t *zvol_targetlun_lookup(uint8_t target, uint8_t lun);
 
@@ -151,11 +146,9 @@ extern int zvol_close_impl(zvol_state_t *zv, int flag,
 
 extern int zvol_get_volume_blocksize(dev_t dev);
 
-extern int zvol_read_win(zvol_state_t *zv, uint64_t offset,
-    uint64_t count, void *iomem);
+extern int zvol_read(zvol_state_t *zv, uio_t *uio);
+extern int zvol_write(zvol_state_t *zv, uio_t *uio);
 
-extern int zvol_write_win(zvol_state_t *zv, uint64_t offset,
-    uint64_t count, void *iomem);
 extern int zvol_unmap(zvol_state_t *zv, uint64_t off, uint64_t bytes);
 
 extern void zvol_add_symlink(zvol_state_t *zv, const char *bsd_disk,

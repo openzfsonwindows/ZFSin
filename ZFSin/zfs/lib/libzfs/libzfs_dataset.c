@@ -3802,6 +3802,9 @@ zfs_create(libzfs_handle_t *hdl, const char *path, zfs_type_t type,
 		zpool_close(zpool_handle);
 		return (-1);
 	}
+
+	// Look up ashift for later, in case we need it.
+	uint64_t ashift = zpool_get_prop_int(zpool_handle, ZPOOL_PROP_ASHIFT, NULL);
 	zpool_close(zpool_handle);
 
 	if (type == ZFS_TYPE_VOLUME) {
@@ -3848,6 +3851,14 @@ zfs_create(libzfs_handle_t *hdl, const char *path, zfs_type_t type,
 			    "size"));
 			return (zfs_error(hdl, EZFS_BADPROP, errbuf));
 		}
+
+		if ((ashift > 0ULL) &&
+			(blocksize < (1ULL << ashift))) {
+				(void) fprintf(stderr, dgettext(TEXT_DOMAIN, "Warning: "
+				    "volblocksize (%llu) < ashift (%llu / %llu)\n"
+				    "means all writes are amplified and space wasted.\n"),
+				    blocksize, ashift, 1ULL << ashift);
+			}
 	}
 
 	(void) parent_name(path, parent, sizeof (parent));
