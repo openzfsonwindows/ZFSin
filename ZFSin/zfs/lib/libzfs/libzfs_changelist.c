@@ -198,7 +198,9 @@ changelist_postfix(prop_changelist_t *clp)
 
 		boolean_t sharenfs;
 		boolean_t sharesmb;
+#ifdef __APPLE__
 		boolean_t shareafp = B_FALSE;
+#endif
 		boolean_t mounted;
 		boolean_t needs_key;
 
@@ -236,11 +238,11 @@ changelist_postfix(prop_changelist_t *clp)
 
 		mounted = zfs_is_mounted(cn->cn_handle, NULL);
 
-		if (!mounted && !needs_key && (cn->cn_mounted ||
-		    ((sharenfs || sharesmb || shareafp || clp->cl_waslegacy) &&
-		    (zfs_prop_get_int(cn->cn_handle,
-		    ZFS_PROP_CANMOUNT) == ZFS_CANMOUNT_ON)))) {
 #ifdef __APPLE__
+		if (!mounted && !needs_key && (cn->cn_mounted ||
+			((sharenfs || sharesmb || shareafp || clp->cl_waslegacy) &&
+			(zfs_prop_get_int(cn->cn_handle,
+			ZFS_PROP_CANMOUNT) == ZFS_CANMOUNT_ON)))) {
 			/*
 			 * Do not mount snapshots. On OS X zfs_mount allows
 			 * snapshots to be mounted, so we need to explicitly
@@ -248,6 +250,11 @@ changelist_postfix(prop_changelist_t *clp)
 			 */
 			if (!(clp->cl_gflags & CL_GATHER_SKIP_SNAPSHOT) ||
 			    zfs_get_type(cn->cn_handle) != ZFS_TYPE_SNAPSHOT) {
+#else
+		if (!mounted && !needs_key && (cn->cn_mounted ||
+			((sharenfs || sharesmb || clp->cl_waslegacy) &&
+			(zfs_prop_get_int(cn->cn_handle,
+			ZFS_PROP_CANMOUNT) == ZFS_CANMOUNT_ON)))) {
 #endif
 				if (zfs_mount(cn->cn_handle, NULL, 0) != 0)
 					errors++;
@@ -278,10 +285,12 @@ changelist_postfix(prop_changelist_t *clp)
 			errors += zfs_share_smb(cn->cn_handle);
 		else if (cn->cn_shared || clp->cl_waslegacy)
 			errors += zfs_unshare_smb(cn->cn_handle, NULL);
+#ifdef __APPLE__
 		if (shareafp && mounted)
 			errors += zfs_share_afp(cn->cn_handle);
 		else if (cn->cn_shared || clp->cl_waslegacy)
 			errors += zfs_unshare_afp(cn->cn_handle, NULL);
+#endif
 	}
 
 	return (errors ? -1 : 0);
