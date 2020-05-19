@@ -560,23 +560,15 @@ ScsiReadWriteSetup(
 )
 {
 	PCDB                         pCdb = (PCDB)pSrb->Cdb;
+	PHW_SRB_EXTENSION			pSrbExt = pSrb->SrbExtension;
 	ULONG                        startingSector,
 		sectorOffset;
 	USHORT                       numBlocks;
-	pMP_WorkRtnParms             pWkRtnParms;
+	pMP_WorkRtnParms             pWkRtnParms = &pSrbExt->WkRtnParms;
 
 	ASSERT(pSrb->DataBuffer != NULL);
 
 	*pResult = ResultDone;                            // Assume no queuing.
-
-	pWkRtnParms =                                     // Allocate parm area for work routine.
-		(pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(MP_WorkRtnParms) + IoSizeofWorkItem(), MP_TAG_GENERAL);
-
-	if (NULL == pWkRtnParms) {
-		dprintf("ScsiReadWriteSetup Failed to allocate work parm structure\n");
-
-		return SRB_STATUS_ERROR;
-	}
 
 	RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
 
@@ -587,7 +579,6 @@ ScsiReadWriteSetup(
 	IoInitializeWorkItem((PDEVICE_OBJECT)pHBAExt->pDrvObj, (PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
 
 	// Save the SRB in a list allowing cancellation via SRB_FUNCTION_RESET_xxx
-	PHW_SRB_EXTENSION pSrbExt = pSrb->SrbExtension;
 	pSrbExt->pSrbBackPtr = pSrb;
 	pSrbExt->Cancelled = 0;
 	KIRQL oldIrql;
@@ -750,8 +741,6 @@ Done:
 	// Tell StorPort this action has been completed.
 
 	StorPortNotification(RequestComplete, pHBAExt, pSrb);
-
-	ExFreePoolWithTag(pWkParms, MP_TAG_GENERAL);      // Free parm list.
 }                                                     // End MpWkRtn().
 
 

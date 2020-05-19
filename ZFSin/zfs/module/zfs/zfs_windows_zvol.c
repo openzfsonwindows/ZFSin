@@ -110,7 +110,7 @@ int zvol_start(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING pRegistryPath)
 
 	hwInitData.DeviceExtensionSize = sizeof(HW_HBA_EXT);
 	hwInitData.SpecificLuExtensionSize = sizeof(HW_LU_EXTENSION);
-	hwInitData.SrbExtensionSize = sizeof(HW_SRB_EXTENSION);
+	hwInitData.SrbExtensionSize = sizeof(HW_SRB_EXTENSION) + IoSizeofWorkItem(); // see MP_WorkRtnParms structure.
 
 	hwInitData.TaggedQueuing = TRUE;
 	hwInitData.AutoRequestSense = TRUE;
