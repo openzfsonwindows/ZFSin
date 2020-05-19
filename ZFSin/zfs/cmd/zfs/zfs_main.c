@@ -6019,11 +6019,16 @@ share_mount_one(zfs_handle_t *zhp, int op, int flags, char *protocol,
 	char mountpoint[ZFS_MAXPROPLEN];
 	char shareopts[ZFS_MAXPROPLEN];
 	char smbshareopts[ZFS_MAXPROPLEN];
+#ifdef __APPLE__
 	char afpshareopts[ZFS_MAXPROPLEN];
+#endif
 	const char *cmdname = op == OP_SHARE ? "share" : "mount";
 	struct mnttab mnt;
 	uint64_t zoned, canmount;
-	boolean_t shared_nfs, shared_smb, shared_afp;
+	boolean_t shared_nfs, shared_smb;
+#ifdef __APPLE__
+	boolean_t shared_afp;
+#endif
 
     /*
      * We will allow snapshot for a short time as well on OSX
@@ -6068,14 +6073,21 @@ share_mount_one(zfs_handle_t *zhp, int op, int flags, char *protocol,
 	    sizeof (shareopts), NULL, NULL, 0, B_FALSE) == 0);
 	verify(zfs_prop_get(zhp, ZFS_PROP_SHARESMB, smbshareopts,
 	    sizeof (smbshareopts), NULL, NULL, 0, B_FALSE) == 0);
-#if 0
+#ifdef __APPLE__
 	verify(zfs_prop_get(zhp, ZFS_PROP_SHAREAFP, afpshareopts,
 	    sizeof (afpshareopts), NULL, NULL, 0, B_FALSE) == 0);
 #endif
 
+
+#ifdef __APPLE__
 	if (op == OP_SHARE && strcmp(shareopts, "off") == 0 &&
 	    strcmp(smbshareopts, "off") == 0 &&
-	    strcmp(afpshareopts, "off") == 0) {
+	    strcmp(afpshareopts, "off") == 0)
+#else
+	if (op == OP_SHARE && strcmp(shareopts, "off") == 0 &&
+		strcmp(smbshareopts, "off") == 0)
+#endif
+	{
 		if (!explicit)
 			return (0);
 
@@ -6180,8 +6192,11 @@ share_mount_one(zfs_handle_t *zhp, int op, int flags, char *protocol,
 
 		shared_nfs = zfs_is_shared_nfs(zhp, NULL);
 		shared_smb = zfs_is_shared_smb(zhp, NULL);
+#ifdef __APPLE__
 		shared_afp = zfs_is_shared_afp(zhp, NULL);
+#endif
 
+#ifdef __APPLE__
 		if ((shared_nfs && shared_smb && shared_afp) ||
 		    ((shared_nfs && strcmp(shareopts, "on") == 0) &&
 		    (strcmp(smbshareopts, "off") == 0)) ||
@@ -6189,6 +6204,13 @@ share_mount_one(zfs_handle_t *zhp, int op, int flags, char *protocol,
 		    (strcmp(shareopts, "off") == 0)) ||
 		    ((shared_afp && strcmp(afpshareopts, "on") == 0) &&
 		    (strcmp(shareopts, "off") == 0))) {
+#else
+		if ((shared_nfs && shared_smb) ||
+			((shared_nfs && strcmp(shareopts, "on") == 0) &&
+				(strcmp(smbshareopts, "off") == 0)) ||
+			((shared_smb && strcmp(smbshareopts, "on") == 0) &&
+				(strcmp(shareopts, "off") == 0))) {
+#endif
 			if (!explicit)
 				return (0);
 
@@ -6211,10 +6233,14 @@ share_mount_one(zfs_handle_t *zhp, int op, int flags, char *protocol,
 		} else if (strcmp(protocol, "smb") == 0) {
 			if (zfs_share_smb(zhp))
 				return (1);
-		} else if (strcmp(protocol, "afp") == 0) {
+		}
+#ifdef __APPLE__
+		else if (strcmp(protocol, "afp") == 0) {
 			if (zfs_share_afp(zhp))
 				return (1);
-		} else {
+		}
+#endif
+		else {
 			(void) fprintf(stderr, gettext("cannot share "
 			    "'%s': invalid share type '%s' "
 			    "specified\n"),

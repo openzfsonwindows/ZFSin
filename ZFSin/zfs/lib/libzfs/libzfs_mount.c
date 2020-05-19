@@ -129,14 +129,19 @@ zfs_share_proto_t smb_only[] = {
 	PROTO_END
 };
 
+#ifdef __APPLE__
 zfs_share_proto_t afp_only[] = {
 	PROTO_AFP,
 	PROTO_END
 };
+#endif
+
 zfs_share_proto_t share_all_proto[] = {
 	PROTO_NFS,
 	PROTO_SMB,
+#ifdef __APPLE__
 	PROTO_AFP,
+#endif
 	PROTO_END
 };
 
@@ -219,8 +224,10 @@ is_shared(libzfs_handle_t *hdl, const char *mountpoint, zfs_share_proto_t proto)
 					return (SHARED_NFS);
 				case PROTO_SMB:
 					return (SHARED_SMB);
+#ifdef __APPLE__
 				case PROTO_AFP:
 					return (SHARED_AFP);
+#endif
 				default:
 					return (0);
 				}
@@ -1176,12 +1183,14 @@ zfs_is_shared_smb(zfs_handle_t *zhp, char **where)
 	    PROTO_SMB) != SHARED_NOT_SHARED);
 }
 
+#ifdef __APPLE__
 boolean_t
 zfs_is_shared_afp(zfs_handle_t *zhp, char **where)
 {
 	return (zfs_is_shared_proto(zhp, where,
 	    PROTO_AFP) != SHARED_NOT_SHARED);
 }
+#endif
 
 /*
  * zfs_init_libshare(zhandle, service)
@@ -1358,11 +1367,13 @@ zfs_share_smb(zfs_handle_t *zhp)
 	return (zfs_share_proto(zhp, smb_only));
 }
 
+#ifdef __APPLE__
 int
 zfs_share_afp(zfs_handle_t *zhp)
 {
 	return (zfs_share_proto(zhp, afp_only));
 }
+#endif
 
 int
 zfs_shareall(zfs_handle_t *zhp)
@@ -1465,11 +1476,13 @@ zfs_unshare_smb(zfs_handle_t *zhp, const char *mountpoint)
 	return (zfs_unshare_proto(zhp, mountpoint, smb_only));
 }
 
+#ifdef __APPLE__
 int
 zfs_unshare_afp(zfs_handle_t *zhp, const char *mountpoint)
 {
 	return (zfs_unshare_proto(zhp, mountpoint, afp_only));
 }
+#endif
 
 /*
  * Same as zfs_unmountall(), but for NFS and SMB unshares.
@@ -1502,11 +1515,13 @@ zfs_unshareall_smb(zfs_handle_t *zhp)
 	return (zfs_unshareall_proto(zhp, smb_only));
 }
 
+#ifdef __APPLE__
 int
 zfs_unshareall_afp(zfs_handle_t *zhp)
 {
 	return (zfs_unshareall_proto(zhp, afp_only));
 }
+#endif
 
 int
 zfs_unshareall(zfs_handle_t *zhp)
