@@ -213,10 +213,10 @@ typedef enum {
 typedef struct _MP_WorkRtnParms {
 	pHW_HBA_EXT          pHBAExt;
 	PSCSI_REQUEST_BLOCK  pSrb;
-	PIO_WORKITEM         pQueueWorkItem;
 	PEPROCESS            pReqProcess;
 	MpWkRtnAction        Action;
 	ULONG                SecondsToDelay;
+	CHAR				 pQueueWorkItem[1]; // IO_WORKITEM structure. always at the end of this block. dynamically allocated.
 } MP_WorkRtnParms, *pMP_WorkRtnParms;
 
 enum ResultType {
