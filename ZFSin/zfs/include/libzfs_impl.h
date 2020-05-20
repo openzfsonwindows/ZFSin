@@ -129,8 +129,13 @@ struct zpool_handle {
 typedef enum {
 	PROTO_NFS = 0,
 	PROTO_SMB = 1,
+#ifdef __APPLE__
 	PROTO_AFP = 2,
 	PROTO_END = 3
+#else
+	PROTO_END = 2
+#endif
+
 } zfs_share_proto_t;
 
 /*
