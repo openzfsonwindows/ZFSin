@@ -151,6 +151,7 @@ typedef struct osx_kstat {
 	kstat_named_t zfs_disable_wincache;
 	kstat_named_t zfs_disable_removablemedia;
 
+	kstat_named_t zfs_vdev_initialize_value;
 } osx_kstat_t;
 
 
@@ -261,6 +262,8 @@ extern uint64_t  zfs_special_class_metadata_reserve_pct;
 
 extern uint64_t zfs_disable_wincache;
 extern uint64_t zfs_disable_removablemedia;
+
+extern uint64_t zfs_initialize_value;
 
 int        kstat_osx_init(void *);
 void       kstat_osx_fini(void);
