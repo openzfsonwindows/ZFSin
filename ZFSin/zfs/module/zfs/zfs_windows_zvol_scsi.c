@@ -461,15 +461,12 @@ ScsiOpReadCapacity(
 
     RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength );
 
-    // Claim 512-byte blocks (big-endian).
-	// Ask ZVOL about block size
-    //blockSize = MP_BLOCK_SIZE;
-	blockSize = zv->zv_volblocksize;
-
-	if ((zv->zv_volsize / blockSize) > ULONG_MAX)
-		maxBlocks = ULONG_MAX;
-	else
-		maxBlocks = (zv->zv_volsize / blockSize) - 1;
+	/* fake maxBlocks to ULONG_MAX so that Windows calls with SCSIOP_READ_CAPACITY16.
+	 * This would help specify non-zero LogicalPerPhysicalExponent that makes logical
+	 * and physical sector size of a zvol different, kind of 512e disk!
+	*/
+	maxBlocks = ULONG_MAX;
+	blockSize = MP_BLOCK_SIZE;
 
 	dprintf("Block Size: 0x%x Total Blocks: 0x%x\n", blockSize, maxBlocks);
 	REVERSE_BYTES(&readCapacity->BytesPerBlock, &blockSize);
@@ -490,6 +487,8 @@ ScsiOpReadCapacity16(
 	PREAD_CAPACITY16_DATA  readCapacity = pSrb->DataBuffer;
 	ULONGLONG maxBlocks = 0;
 	ULONG blockSize = 0;
+	UCHAR lppExponent = 0;
+	ULONG lppFactor;
 	UNREFERENCED_PARAMETER(pHBAExt);
 
 	zvol_state_t * zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
@@ -500,12 +499,17 @@ ScsiOpReadCapacity16(
 		return SRB_STATUS_NO_DEVICE;
 	}
 	RtlZeroMemory((PUCHAR)pSrb->DataBuffer, pSrb->DataTransferLength);
-	blockSize = zv->zv_volblocksize;
+	blockSize = MP_BLOCK_SIZE;
 	maxBlocks = (zv->zv_volsize / blockSize) - 1;
 
 	dprintf("Block Size: 0x%x Total Blocks: 0x%llx\n", blockSize, maxBlocks);
 	REVERSE_BYTES(&readCapacity->BytesPerBlock, &blockSize);
 	REVERSE_BYTES_QUAD(&readCapacity->LogicalBlockAddress.QuadPart, &maxBlocks);
+	lppFactor = zv->zv_volblocksize / MP_BLOCK_SIZE;
+	ASSERT((lppFactor & (lppFactor - 1)) == 0); // make sure the factor is power of 2
+	while (lppFactor >>= 1)
+		lppExponent++;
+	readCapacity->LogicalPerPhysicalExponent = lppExponent;
 	return SRB_STATUS_SUCCESS;
 }
 
@@ -715,7 +719,7 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 		goto Done;
 	}
 
-	sectorOffset = startingSector * zv->zv_volblocksize;
+	sectorOffset = startingSector * MP_BLOCK_SIZE;
 
 	dprintf("MpWkRtn Action: %X, starting sector: 0x%llX, sector offset: 0x%llX\n", pWkRtnParms->Action, startingSector, sectorOffset);
 	dprintf("MpWkRtn pSrb: 0x%p, pSrb->DataBuffer: 0x%p\n", pSrb, pSrb->DataBuffer);
