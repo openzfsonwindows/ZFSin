@@ -564,23 +564,15 @@ ScsiReadWriteSetup(
 )
 {
 	PCDB                         pCdb = (PCDB)pSrb->Cdb;
+	PHW_SRB_EXTENSION			pSrbExt = pSrb->SrbExtension;
 	ULONG                        startingSector,
 		sectorOffset;
 	USHORT                       numBlocks;
-	pMP_WorkRtnParms             pWkRtnParms;
+	pMP_WorkRtnParms             pWkRtnParms = &pSrbExt->WkRtnParms;
 
 	ASSERT(pSrb->DataBuffer != NULL);
 
 	*pResult = ResultDone;                            // Assume no queuing.
-
-	pWkRtnParms =                                     // Allocate parm area for work routine.
-		(pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(MP_WorkRtnParms), MP_TAG_GENERAL);
-
-	if (NULL == pWkRtnParms) {
-		dprintf("ScsiReadWriteSetup Failed to allocate work parm structure\n");
-
-		return SRB_STATUS_ERROR;
-	}
 
 	RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
 
@@ -588,18 +580,9 @@ ScsiReadWriteSetup(
 	pWkRtnParms->pSrb = pSrb;
 	pWkRtnParms->Action = ActionRead == WkRtnAction ? ActionRead : ActionWrite;
 
-	pWkRtnParms->pQueueWorkItem = IoAllocateWorkItem((PDEVICE_OBJECT)pHBAExt->pDrvObj);
-
-	if (NULL == pWkRtnParms->pQueueWorkItem) {
-		dprintf("ScsiReadWriteSetup: Failed to allocate work item\n");
-
-		ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
-
-		return SRB_STATUS_ERROR;
-	}
+	IoInitializeWorkItem((PDEVICE_OBJECT)pHBAExt->pDrvObj, (PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
 
 	// Save the SRB in a list allowing cancellation via SRB_FUNCTION_RESET_xxx
-	PHW_SRB_EXTENSION pSrbExt = pSrb->SrbExtension;
 	pSrbExt->pSrbBackPtr = pSrb;
 	pSrbExt->Cancelled = 0;
 	KIRQL oldIrql;
@@ -609,7 +592,7 @@ ScsiReadWriteSetup(
 
 	// Queue work item, which will run in the System process.
 
-	IoQueueWorkItem(pWkRtnParms->pQueueWorkItem, wzvol_GeneralWkRtn, DelayedWorkQueue, pWkRtnParms);
+	IoQueueWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem, wzvol_GeneralWkRtn, DelayedWorkQueue, pWkRtnParms);
 
 	*pResult = ResultQueued;                          // Indicate queuing.
 
@@ -762,8 +745,6 @@ Done:
 	// Tell StorPort this action has been completed.
 
 	StorPortNotification(RequestComplete, pHBAExt, pSrb);
-
-	ExFreePoolWithTag(pWkParms, MP_TAG_GENERAL);      // Free parm list.
 }                                                     // End MpWkRtn().
 
 
@@ -776,10 +757,7 @@ wzvol_GeneralWkRtn(
 	pMP_WorkRtnParms        pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
 
 	UNREFERENCED_PARAMETER(pDummy);
-
-	IoFreeWorkItem(pWkRtnParms->pQueueWorkItem);      // Free queue item.
-
-	pWkRtnParms->pQueueWorkItem = NULL;               // Be neat.
+	IoUninitializeWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
 
 	// If the next starts, it has to be stopped by a kernel debugger.
 

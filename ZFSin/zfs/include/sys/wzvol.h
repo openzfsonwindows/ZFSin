@@ -198,12 +198,6 @@ typedef struct _HW_LU_EXTENSION {                     // LUN extension allocated
 	UCHAR                 Lun;
 } HW_LU_EXTENSION, *pHW_LU_EXTENSION;
 
-typedef struct _HW_SRB_EXTENSION {
-	SCSIWMI_REQUEST_CONTEXT WmiRequestContext;
-	LIST_ENTRY  QueuedForProcessing;
-	volatile ULONG Cancelled;
-	PSCSI_REQUEST_BLOCK pSrbBackPtr;
-} HW_SRB_EXTENSION, *PHW_SRB_EXTENSION;
 
 typedef enum {
 	ActionRead,
@@ -213,11 +207,19 @@ typedef enum {
 typedef struct _MP_WorkRtnParms {
 	pHW_HBA_EXT          pHBAExt;
 	PSCSI_REQUEST_BLOCK  pSrb;
-	PIO_WORKITEM         pQueueWorkItem;
 	PEPROCESS            pReqProcess;
 	MpWkRtnAction        Action;
 	ULONG                SecondsToDelay;
+	CHAR				 pQueueWorkItem[1]; // IO_WORKITEM structure: keep at the end of this block (dynamically allocated).
 } MP_WorkRtnParms, *pMP_WorkRtnParms;
+
+typedef struct _HW_SRB_EXTENSION {
+	SCSIWMI_REQUEST_CONTEXT WmiRequestContext;
+	LIST_ENTRY  QueuedForProcessing;
+	volatile ULONG Cancelled;
+	PSCSI_REQUEST_BLOCK pSrbBackPtr;
+	MP_WorkRtnParms WkRtnParms; // keep at the end of this block (pQueueWorkItem dynamically allocated). 
+} HW_SRB_EXTENSION, *PHW_SRB_EXTENSION;
 
 enum ResultType {
 	ResultDone,
