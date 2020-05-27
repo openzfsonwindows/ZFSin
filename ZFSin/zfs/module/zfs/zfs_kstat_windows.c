@@ -181,7 +181,7 @@ osx_kstat_t osx_kstat = {
 
 	{ "zfs_disable_wincache",		KSTAT_DATA_UINT64 },
 	{ "zfs_disable_removablemedia",		KSTAT_DATA_UINT64 },
-
+	{ "zfs_vdev_initialize_value",		KSTAT_DATA_UINT64 },
 };
 
 
@@ -391,7 +391,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			ks->zfs_disable_wincache.value.ui64;
 		zfs_disable_removablemedia =
 			ks->zfs_disable_removablemedia.value.ui64;
-
+		zfs_initialize_value =
+			ks->zfs_vdev_initialize_value.value.ui64;
 	} else {
 
 		/* kstat READ */
@@ -581,7 +582,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			zfs_disable_wincache;
 		ks->zfs_disable_removablemedia.value.ui64 =
 			zfs_disable_removablemedia;
-
+		ks->zfs_vdev_initialize_value.value.ui64 =
+			zfs_initialize_value;
 	}
 
 	return 0;
