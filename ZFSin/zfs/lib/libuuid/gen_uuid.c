@@ -559,7 +559,7 @@ void uuid_generate_random(uuid_t out)
  */
 static int have_random_source(void)
 {
-	struct stat s;
+	struct _stat64 s;
 
 	return (!stat("/dev/random", &s) || !stat("/dev/urandom", &s));
 }

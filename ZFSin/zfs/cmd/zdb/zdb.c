@@ -63,6 +63,8 @@
 #include <sys/abd.h>
 #include <sys/dsl_crypt.h>
 #include <sys/blkptr.h>
+#include <sys/zfs_file.h>
+#include <sys/efi_partition.h>
 #include <zfs_comutil.h>
 #include <libzfs.h>
 #include <getopt.h>
@@ -2462,43 +2464,56 @@ dump_config(spa_t *spa)
 static void
 dump_cachefile(const char *cachefile)
 {
-	int fd;
-	struct stat statbuf;
 	char *buf;
 	nvlist_t *config;
+	int err;
+	zfs_file_t hFile;
+	zfs_file_attr_t attr;
+	ssize_t resid;
+	char pathname[MAXPATHLEN];
 
-	if ((fd = open(cachefile, O_RDONLY)) < 0) {
+	// unpack cachefile path
+	if (strncmp(cachefile, "\\SystemRoot\\", 12) == 0) {
+		(void)snprintf(pathname, MAXPATHLEN, "%s\\%s",
+			getenv("SystemRoot"), cachefile + 12);
+	} else
+		(void)snprintf(pathname, MAXPATHLEN, "%s", cachefile);
+
+	err = zfs_file_open(pathname, O_RDONLY, 0, &hFile);
+	if (err) {
 		(void) printf("cannot open '%s': %s\n", cachefile,
-		    strerror(errno));
+	    strerror(errno));
 		exit(1);
 	}
 
-	if (fstat(fd, &statbuf) != 0) {
+	err = zfs_file_getattr(&hFile, &attr);
+	if (err) {
 		(void) printf("failed to stat '%s': %s\n", cachefile,
-		    strerror(errno));
+	    strerror(errno));
 		exit(1);
 	}
 
-	if ((buf = malloc(statbuf.st_size)) == NULL) {
+	if ((buf = (char*)umem_alloc(attr.zfa_size, UMEM_NOFAIL)) == NULL) {
 		(void) fprintf(stderr, "failed to allocate %llu bytes\n",
-		    (u_longlong_t)statbuf.st_size);
+			(u_longlong_t)attr.zfa_size);
 		exit(1);
 	}
 
-	if (read(fd, buf, statbuf.st_size) != statbuf.st_size) {
+	err = zfs_file_read(&hFile, buf, attr.zfa_size, &resid);
+	if (err) {
 		(void) fprintf(stderr, "failed to read %llu bytes\n",
-		    (u_longlong_t)statbuf.st_size);
+			(u_longlong_t)attr.zfa_size);
 		exit(1);
 	}
 
-	(void) close(fd);
+	zfs_file_close(&hFile);
 
-	if (nvlist_unpack(buf, statbuf.st_size, &config, 0) != 0) {
+	if (nvlist_unpack(buf, attr.zfa_size, &config, 0) != 0) {
 		(void) fprintf(stderr, "failed to unpack nvlist\n");
 		exit(1);
 	}
 
-	free(buf);
+	umem_free(buf, attr.zfa_size);
 
 	dump_nvlist(config, 0);
 
@@ -2919,11 +2934,16 @@ dump_label(const char* dev)
 
 	(void)strlcpy(path, dev, sizeof(path));
 
+int err;
 #ifdef WIN32
 	if (dev[0] != '/' &&
 		dev[0] != '\\') {
-		(void)snprintf(path, sizeof(path), "\\\\?\\%s",
-			dev);
+		err = zfs_resolve_shortname(dev, path, MAXPATHLEN);
+		if (err != 0) {
+			(void)printf("failed to find device %s, try specify"
+				"absolute path instead\n", dev);
+			return (1);
+		}
 	} else {
 		char* r;
 		while (r = strchr(path, '/'))
@@ -2947,35 +2967,28 @@ dump_label(const char* dev)
 			(void) strlcat(path, "s0", sizeof (path));
 	}
 #endif
-
-	if ((fd = open(path, O_RDONLY)) < 0) {
+	zfs_file_t hFile;
+	zfs_file_attr_t zattr;
+	err = zfs_file_open(path, O_RDONLY, 0, &hFile);
+	if (err != 0) {
 		(void) fprintf(stderr, "cannot open '%s': %s\n", path,
-		    strerror(errno));
+		strerror(errno));
 		exit(1);
 	}
 
-	if (fstat(fd, &statbuf) != 0) {
-		(void) fprintf(stderr, "failed to stat '%s': %s\n", path,
-		    strerror(errno));
-		(void) close(fd);
-		exit(1);
+	struct dk_gpt* vtoc;
+	char udevpath[MAXPATHLEN];
+	if ((efi_alloc_and_read(hFile, &vtoc)) == 0) {
+		psize = vtoc->efi_parts[0].p_start * (uint64_t)vtoc->efi_lbasize + vtoc->efi_parts[0].p_size * (uint64_t)vtoc->efi_lbasize;
+		efi_free(vtoc);
 	}
-
-	if (S_ISBLK(statbuf.st_mode)) {
-		(void) fprintf(stderr,
-		    "cannot use '%s': character device required\n", path);
-		(void) close(fd);
-		exit(1);
-	}
-
-	psize = statbuf.st_size;
-	psize = P2ALIGN(psize, (uint64_t)sizeof (vdev_label_t));
-
+	psize = P2ALIGN(psize, (uint64_t)sizeof(vdev_label_t));
 	for (l = 0; l < VDEV_LABELS; l++) {
 		nvlist_t *config = NULL;
 		label_t *label = &labels[l];
 		char *buf = label->label.vl_vdev_phys.vp_nvlist;
 		size_t buflen = sizeof (label->label.vl_vdev_phys.vp_nvlist);
+		ssize_t red;
 
 		if (!dump_opt['q']) {
 			(void) printf("------------------------------------\n");
@@ -2983,16 +2996,14 @@ dump_label(const char* dev)
 			(void) printf("------------------------------------\n");
 		}
 
-		if (pread(fd, &label->label, sizeof (label->label),
-		    vdev_label_offset(psize, l, 0)) != sizeof (label->label)) {
+		if (zfs_file_pread(&hFile, &label->label, sizeof(label->label), vdev_label_offset(psize, l, 0),&red) != 0)
+		{
 			if (!dump_opt['q'])
 				(void) printf("failed to read label %d\n", l);
 			continue;
 		}
 
 		if (nvlist_unpack(buf, buflen, &config, 0) != 0) {
-			if (!dump_opt['q'])
-				(void) printf("failed to unpack label %d\n", l);
 			ashift = SPA_MINBLOCKSHIFT;
 		} else {
 			nvlist_t *vdev_tree = NULL;
@@ -3011,7 +3022,7 @@ dump_label(const char* dev)
 			dump_label_uberblocks(label, ashift, l);
 	}
 
-	(void) close(fd);
+	zfs_file_close(&hFile);
 	free(labels);
 	return (label_found ? 0 : 2);
 }
@@ -4004,7 +4015,9 @@ dump_block_stats(spa_t *spa)
 	int e, c;
 	bp_embedded_type_t i;
 
-	zcb = malloc(sizeof (zdb_cb_t));
+	zcb = umem_alloc(sizeof(zdb_cb_t), UMEM_NOFAIL);
+	bzero(zcb, sizeof (zdb_cb_t));
+
 	(void) printf("\nTraversing all blocks %s%s%s%s%s...\n\n",
 	    (dump_opt['c'] || !dump_opt['L']) ? "to verify " : "",
 	    (dump_opt['c'] == 1) ? "metadata " : "",
@@ -4020,7 +4033,6 @@ dump_block_stats(spa_t *spa)
 	 * it's not part of any space map) is a double allocation,
 	 * reference to a freed block, or an unclaimed log block.
 	 */
-	bzero(zcb, sizeof (zdb_cb_t));
 	zdb_leak_init(spa, zcb);
 
 	/*
@@ -4278,17 +4290,21 @@ dump_block_stats(spa_t *spa)
 	}
 
 	(void) printf("\n");
+	int err = 0;
 
-	if (leaks)
-		return (2);
+	if (leaks) {
+		err = 2;
+		goto exit;
+	}
 
-	int haderrors = zcb->zcb_haderrors;
-	free(zcb);
-
-	if (haderrors)
-		return (3);
-
-	return (0);
+	if (zcb->zcb_haderrors) {
+		err = 3;
+		goto exit;
+	}
+	
+exit:
+	umem_free(zcb, sizeof(zdb_cb_t));
+	return (err);
 }
 
 typedef struct zdb_ddt_entry {
@@ -5511,6 +5527,8 @@ main(int argc, char **argv)
 	char *spa_config_path_env;
 	boolean_t target_is_spa = B_TRUE;
 	nvlist_t *cfg = NULL;
+	struct _stat64 st;
+	char buf[MAXPATHLEN];
 
 	(void) setrlimit(RLIMIT_NOFILE, &rl);
 #ifdef _sun
@@ -5598,6 +5616,16 @@ main(int argc, char **argv)
 			}
 			break;
 		case 'U':
+#ifdef _WIN32
+			(void)snprintf(buf, MAXPATHLEN, "%s%s", "\\??\\", optarg);
+			spa_config_path = buf;
+			if (stat(spa_config_path, &st) != 0) {
+				(void)fprintf(stderr,
+					"cachefile must be an absolute path "
+					"(i.e. start with a drive letter)\n");
+				usage();
+			}
+#else
 			spa_config_path = optarg;
 			if (spa_config_path[0] != '/') {
 				(void) fprintf(stderr,
@@ -5605,6 +5633,7 @@ main(int argc, char **argv)
 				    "(i.e. start with a slash)\n");
 				usage();
 			}
+#endif
 			break;
 		case 'v':
 			verbose++;
@@ -5650,7 +5679,7 @@ main(int argc, char **argv)
 	 */
 	spa_load_verify_dryrun = B_TRUE;
 
-	kernel_init(FREAD);
+	kernel_init(SPA_MODE_READ);
 	if ((g_zfs = libzfs_init()) == NULL) {
 		(void) fprintf(stderr, "%s", libzfs_error_init(errno));
 		return (1);
@@ -5860,7 +5889,7 @@ main(int argc, char **argv)
 	dump_debug_buffer();
 
 	libzfs_fini(g_zfs);
-	kernel_fini();
+	//kernel_fini(); //TODO fix hang in arc_fini()
 
 	return (error);
 }

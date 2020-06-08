@@ -96,8 +96,12 @@ extern FILE *wosix_fdopen(int fildes, const char *mode);
 #define pwrite64	wosix_pwrite
 #undef  fstat
 #define fstat	wosix_fstat
+#undef  _fstat64
+#define _fstat64	wosix_fstat
 #undef  fstat_blk
 #define fstat_blk	wosix_fstat_blk
+#undef  stat
+#define stat	wosix_stat
 #undef  fdatasync
 #define fdatasync	wosix_fdatasync
 #undef  ftruncate

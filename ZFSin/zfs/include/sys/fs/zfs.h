@@ -805,7 +805,7 @@ typedef struct zpool_load_policy {
  * The location of the pool configuration repository, shared between kernel and
  * userland.
  */
-#define	ZPOOL_CACHE		"/etc/zfs/zpool.cache"
+#define	ZPOOL_CACHE		"\\SystemRoot\\System32\\drivers\\zpool.cache"
 
 /*
  * vdev states are ordered from least to most healthy.

@@ -265,6 +265,7 @@ void l2arc_init(void);
 void l2arc_fini(void);
 void l2arc_start(void);
 void l2arc_stop(void);
+void l2arc_stop2(void);
 
 extern int zfs_arc_average_blocksize;
 

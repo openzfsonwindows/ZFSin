@@ -40,7 +40,9 @@ typedef unsigned long			ulong_t;
 typedef unsigned long long		uint64_t;
 typedef unsigned long long		u_longlong_t;
 typedef unsigned long long		rlim64_t;
+#ifndef loff_t
 typedef unsigned long long		loff_t;
+#endif
 #define _CLOCK_T_DEFINED
 typedef unsigned long long		clock_t;
 typedef long long				int64_t;

@@ -243,7 +243,7 @@ static kmutex_t spa_l2cache_lock;
 static avl_tree_t spa_l2cache_avl;
 
 kmem_cache_t *spa_buffer_pool;
-int spa_mode_global;
+spa_mode_t spa_mode_global = SPA_MODE_UNINIT;
 
 uint64_t zfs_flags = 0;
 
@@ -2049,7 +2049,7 @@ spa_boot_init(void)
 
 
 void
-spa_init(int mode)
+spa_init(spa_mode_t mode)
 {
 	mutex_init(&spa_namespace_lock, NULL, MUTEX_DEFAULT, NULL);
 	mutex_init(&spa_spare_lock, NULL, MUTEX_DEFAULT, NULL);
@@ -2071,7 +2071,7 @@ spa_init(int mode)
 #ifdef _KERNEL
 	spa_arch_init();
 #else
-	if (spa_mode_global != FREAD && dprintf_find_string("watch")) {
+	if (spa_mode_global != SPA_MODE_READ && dprintf_find_string("watch")) {
 		arc_procfd = open("/proc/self/ctl", O_WRONLY);
 		if (arc_procfd == -1) {
 			perror("could not enable watchpoints: "

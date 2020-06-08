@@ -50,7 +50,6 @@ extern "C" {
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/cpuvar.h>
-#include <sys/kobj.h>
 #include <sys/conf.h>
 #include <sys/disp.h>
 #include <sys/debug.h>
