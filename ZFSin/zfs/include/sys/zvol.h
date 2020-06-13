@@ -73,6 +73,7 @@ typedef struct zvol_state {
 	uint64_t zv_openflags;	/* Remember flags used at open */
 	uint8_t zv_target_id;
 	uint8_t zv_lun_id;
+    void* zv_target_context; // for I/O drainage (see assign_targetid, clear_targetid)
 } zvol_state_t;
 
 enum zfs_soft_state_type {

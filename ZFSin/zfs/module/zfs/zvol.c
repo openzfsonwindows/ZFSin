@@ -98,7 +98,7 @@ extern int zfs_bmajor;
 
 void wzvol_announce_buschange(void);
 int wzvol_assign_targetid(zvol_state_t *zv);
-void wzvol_clear_targetid(uint8_t targetid, uint8_t lun);
+void wzvol_clear_targetid(uint8_t targetid, uint8_t lun, zvol_state_t* zv);
 
 /*
  * ZFS minor numbers can refer to either a control device instance or
@@ -1113,9 +1113,8 @@ zvol_last_close(zvol_state_t *zv)
 
 	dprintf("zvol_last_close\n");
 	if (zv->zv_total_opens != 0)
-		dprintf("ZFS: last_close but zv_total_opens==%d\n",
-			   zv->zv_total_opens);
-
+		xprintf("ZFS: %s - last_close but zv_total_opens=%d\n",
+			   zv->zv_name,zv->zv_total_opens);
 
 	if (zv->zv_zilog)
 		zil_close(zv->zv_zilog);
@@ -1215,6 +1214,7 @@ zvol_remove_minors_impl(const char *name)
 	zvol_state_t *zv;
 	minor_t minor;
 	int namelen = ((name) ? strlen(name) : 0);
+	boolean_t bBusChanged = B_FALSE;
 
 	if (zvol_inhibit_dev)
 		return;
@@ -1239,9 +1239,10 @@ zvol_remove_minors_impl(const char *name)
 			// Close the Storport open
 			if (zv->zv_total_opens == 1) {
 				mutex_exit(&zfsdev_state_lock);
+				wzvol_clear_targetid(zv->zv_target_id, zv->zv_lun_id,zv);
+				bBusChanged = B_TRUE;
 				zvol_close_impl(zv, FWRITE, 0, NULL);
 				mutex_enter(&zfsdev_state_lock);
-				wzvol_clear_targetid(zv->zv_target_id, zv->zv_lun_id);
 			}
 
 			(void) zvol_remove_zv(zv);
@@ -1249,8 +1250,8 @@ zvol_remove_minors_impl(const char *name)
 		}
 	}
 	mutex_exit(&zfsdev_state_lock);
-
-	wzvol_announce_buschange();
+	if (bBusChanged)
+		wzvol_announce_buschange();
 
 }
 
@@ -2344,7 +2345,7 @@ zvol_write(zvol_state_t *zv, uio_t *uio)
 	boolean_t sync;
 	uint64_t offset = 0;
 
-	if (zv == NULL)
+	if (zv == NULL || zv->zv_dn == NULL)
 		return (ENXIO);
 
 	/* Some requests are just for flush and nothing else. */
