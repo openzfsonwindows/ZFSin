@@ -280,6 +280,11 @@ get_key_material(libzfs_handle_t *hdl, boolean_t do_verify, boolean_t newkey,
 		}
 		break;
 	case ZFS_KEYLOCATION_URI:
+#ifdef WIN32
+		// If "/C:/..." make it "C:/..."
+		if (keylocation[9] == ':')
+			keylocation++;
+#endif
 		fd = fopen(&keylocation[7], "r");
 		if (!fd) {
 			ret = errno;
