@@ -328,13 +328,74 @@ vdev_file_close(vdev_t *vd)
 }
 
 #ifdef _KERNEL
+struct vdev_file_callback_struct {
+	zio_t *zio;
+	PIRP irp;
+	void *b_data;
+	char work_item[0];
+};
+typedef struct vdev_file_callback_struct vf_callback_t;
+
+static void
+vdev_file_io_start_done(void *param)
+{
+	vf_callback_t *vb = (vf_callback_t *)param;
+
+	ASSERT(vb != NULL);
+
+	NTSTATUS status = vb->irp->IoStatus.Status;
+	zio_t *zio = vb->zio;
+	zio->io_error = (!NT_SUCCESS(status) ? EIO : 0);
+
+	// Return abd buf
+	if (zio->io_type == ZIO_TYPE_READ) {
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_copy_off(zio->io_abd, vb->b_data,
+			0, zio->io_size, zio->io_abd->abd_size);
+	} else {
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_off(zio->io_abd, vb->b_data,
+			0, zio->io_size, zio->io_abd->abd_size);
+	}
+
+	UnlockAndFreeMdl(vb->irp->MdlAddress);
+	zio_delay_interrupt(zio);
+	IoFreeIrp(vb->irp);
+	kmem_free(vb, sizeof(vf_callback_t) + IoSizeofWorkItem());
+	vb = NULL;
+}
+
+static VOID
+FileIoWkRtn(
+	__in PVOID           pDummy,           // Not used.
+	__in PVOID           pWkParms          // Parm list pointer.
+)
+{
+	vf_callback_t *vb = (vf_callback_t *)pWkParms;
+
+	UNREFERENCED_PARAMETER(pDummy);
+	IoUninitializeWorkItem((PIO_WORKITEM)vb->work_item);
+	vdev_file_io_start_done(vb);
+}
+
 static NTSTATUS
 vdev_file_io_intrxxx(PDEVICE_OBJECT DeviceObject, PIRP irp, PVOID Context)
 {
-	KeSetEvent((KEVENT*)Context, NT_SUCCESS(irp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT, FALSE);
-	// zfs/zfs-15
-	UnlockAndFreeMdl(irp->MdlAddress);
-	IoFreeIrp(irp);
+	vf_callback_t *vb = (vf_callback_t *)Context;
+
+	ASSERT(vb != NULL);
+
+	/* If IRQL is below DIPATCH_LEVEL then there is no issue in calling
+	 * vdev_file_io_start_done() directly; otherwise queue a new Work Item
+	*/
+	if (KeGetCurrentIrql() < DISPATCH_LEVEL)
+		vdev_file_io_start_done(vb);
+	else {
+		vdev_file_t *vf = vb->zio->io_vd->vdev_tsd;
+		IoInitializeWorkItem(vf->vf_DeviceObject, (PIO_WORKITEM)vb->work_item);
+		IoQueueWorkItem((PIO_WORKITEM)vb->work_item, FileIoWkRtn, DelayedWorkQueue, vb);
+	}
+
 	return STATUS_MORE_PROCESSING_REQUIRED;
 }
 #endif
@@ -405,17 +466,23 @@ vdev_file_io_start(zio_t *zio)
 #ifdef _KERNEL
 	vdev_file_t *vf = vd->vdev_tsd;
 
-	NTSTATUS status;
 	PIRP irp = NULL;
 	PIO_STACK_LOCATION irpStack = NULL;
-	KEVENT Event;
 	IO_STATUS_BLOCK IoStatusBlock = { 0 };
 	LARGE_INTEGER offset;
-	void *b_data = NULL;
 
 	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
 
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
+	/* Preallocate space for IoWorkItem, required for vdev_file_io_start_done callback */
+	vf_callback_t *vb = (vf_callback_t *)kmem_alloc(sizeof(vf_callback_t) + IoSizeofWorkItem(), KM_SLEEP);
+
+	if (!vb) {
+		zio->io_error = EIO;
+		zio_interrupt(zio);
+		return;
+	}
+
+	vb->zio = zio;
 
 #ifdef DEBUG
 	if (zio->io_abd->abd_size != zio->io_size) {
@@ -428,31 +495,32 @@ vdev_file_io_start(zio_t *zio)
 
 	if (zio->io_type == ZIO_TYPE_READ) {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
-		b_data =
+		vb->b_data =
 			abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
 	} else {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
-		b_data =
+		vb->b_data =
 			abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
 	}
 
 	if (zio->io_type == ZIO_TYPE_READ) {
 		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ,
 			vf->vf_DeviceObject,
-			b_data,
+			vb->b_data,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	} else {
 		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_WRITE,
 			vf->vf_DeviceObject,
-			b_data,
+			vb->b_data,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	}
 
 	if (!irp) {
+		kmem_free(vb, sizeof(vf_callback_t) + IoSizeofWorkItem());
 		zio->io_error = EIO;
 		zio_interrupt(zio);
 		return;
@@ -466,33 +534,12 @@ vdev_file_io_start(zio_t *zio)
 
 	IoSetCompletionRoutine(irp,
 		vdev_file_io_intrxxx,
-		&Event, // "Context" in vdev_disk_io_intr()
+		vb, // "Context" in vdev_file_io_intr()
 		TRUE, // On Success
 		TRUE, // On Error
 		TRUE);// On Cancel
 
-	status = IoCallDriver(vf->vf_DeviceObject, irp);
-
-	if (status == STATUS_PENDING) {
-		// Wait for IoCompletionRoutine to have been called.
-		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-		status = IoStatusBlock.Status;
-	}
-
-	zio->io_error = (!NT_SUCCESS(status) ? EIO : 0);
-
-	// Return abd buf
-	if (zio->io_type == ZIO_TYPE_READ) {
-		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
-		abd_return_buf_copy_off(zio->io_abd, b_data,
-			0, zio->io_size, zio->io_abd->abd_size);
-	} else {
-		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
-		abd_return_buf_off(zio->io_abd, b_data,
-			0, zio->io_size, zio->io_abd->abd_size);
-	}
-
-	zio_delay_interrupt(zio);
+	IoCallDriver(vf->vf_DeviceObject, irp);
 #endif
 
     return;
