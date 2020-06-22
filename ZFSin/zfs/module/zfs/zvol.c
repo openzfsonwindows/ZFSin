@@ -90,6 +90,12 @@
 
 #include "zfs_namecheck.h"
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zvol.tmh"
+#endif
+
+
 uint64_t zvol_inhibit_dev = 0;
 dev_info_t zfs_dip_real = { 0 };
 dev_info_t *zfs_dip = &zfs_dip_real;

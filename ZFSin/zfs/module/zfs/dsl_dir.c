@@ -52,6 +52,12 @@
 #include "zfs_namecheck.h"
 #include "zfs_prop.h"
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "dsl_dir.tmh"
+#endif
+
+
 /*
  * Filesystem and Snapshot Limits
  * ------------------------------

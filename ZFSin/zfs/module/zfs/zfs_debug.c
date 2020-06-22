@@ -25,6 +25,12 @@
 
 #include <sys/zfs_context.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_debug.tmh"
+#endif
+
+
 #if !defined(_KERNEL) || !defined(__linux__)
 list_t zfs_dbgmsgs;
 int zfs_dbgmsg_size;

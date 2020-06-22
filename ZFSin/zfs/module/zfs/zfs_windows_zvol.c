@@ -30,6 +30,12 @@
 #include <wdf.h>
 #include <sys/wzvol.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_windows_zvol.tmh"
+#endif
+
+
 extern PDRIVER_OBJECT WIN_DriverObject;
 static pHW_HBA_EXT STOR_HBAExt = NULL;
 
@@ -656,9 +662,9 @@ wzvol_HwStartIo(
 	NTSTATUS                  status;
 	UCHAR                     Result = ResultDone;
 
-	dprintf(
-		"MpHwStartIo:  SCSI Request Block = %!SRB!\n",
-		pSrb);
+	//dprintf(
+	//	"MpHwStartIo:  SCSI Request Block = %!SRB!\n",
+	//	pSrb);
 
 	_InterlockedExchangeAdd((volatile LONG *)&pHBAExt->SRBsSeen, 1);   // Bump count of SRBs encountered.
 

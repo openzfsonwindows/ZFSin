@@ -224,6 +224,12 @@
 //#include <sys/panic.h>
 //#include <stdbool.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-vmem.tmh"
+#endif
+
+
 #define	VMEM_INITIAL		21	/* early vmem arenas */
 #define	VMEM_SEG_INITIAL	800
 //200 //400	/* early segments */

@@ -79,6 +79,12 @@
 //#include <vfs/vfs_support.h>
 //#include <sys/ioccom.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_vnops_windows.tmh"
+#endif
+
+
 
 PDEVICE_OBJECT ioctlDeviceObject = NULL;
 PDEVICE_OBJECT fsDiskDeviceObject = NULL;
@@ -1292,7 +1298,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 			// only parse $LX attrs right now -- things we can store before the file
 			// gets created.
 			if (vattr_apply_lx_ea(&vap, ea)) {
-				dprintf("  encountered special attrs EA '%.*s'\n", ea->EaNameLength, ea->EaName);
+				dprintf("  encountered special attrs EA '%S' of length %u\n", ea->EaName, ea->EaNameLength);
 			}
 			if (ea->NextEntryOffset == 0)
 				break;
@@ -1329,7 +1335,7 @@ int zfs_vnop_lookup(PIRP Irp, PIO_STACK_LOCATION IrpSp, mount_t *zmo)
 				&qocContext->LxInformation);
 		}
 		if (BooleanFlagOn(classes, QoCFileEaInformation)) {
-			dprintf("%s: unsupported QoC: QoCFileEaInformation\n");
+			dprintf("%s: unsupported QoC: QoCFileEaInformation\n", __func__);
 		}
 #if defined (NTDDI_WIN10_19H1) && (NTDDI_VERSION >= NTDDI_WIN10_19H1)
 		// We should fill this in, right? Only set those we understand.
@@ -1553,7 +1559,7 @@ NTSTATUS pnp_query_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 	if (Irp->IoStatus.Information == NULL) return STATUS_NO_MEMORY;
 
 	RtlCopyMemory(Irp->IoStatus.Information, zmo->bus_name.Buffer, zmo->bus_name.Length);
-	dprintf("replying with '%.*S'\n", zmo->uuid.Length/sizeof(WCHAR), Irp->IoStatus.Information);
+	dprintf("replying with '%S' of length %u\n", Irp->IoStatus.Information, zmo->uuid.Length / sizeof(WCHAR));
 
 	return STATUS_SUCCESS;
 }
@@ -3329,9 +3335,9 @@ NTSTATUS delete_entry(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	// Unfortunately, filename is littered with "\", clean it up,
 	// or search based on ID to get name?
-	dprintf("%s: deleting '%.*S'\n", __func__,
-		IrpSp->FileObject->FileName.Length / sizeof(WCHAR),
-		IrpSp->FileObject->FileName.Buffer);
+	dprintf("%s: deleting '%S' of length %u\n", __func__,
+		IrpSp->FileObject->FileName.Buffer,
+		IrpSp->FileObject->FileName.Length / sizeof(WCHAR));
 
 	error = RtlUnicodeToUTF8N(filename, MAXNAMELEN, &outlen,
 		IrpSp->FileObject->FileName.Buffer, IrpSp->FileObject->FileName.Length);
@@ -3875,7 +3881,7 @@ ioctlDispatcher(
 
 	case IRP_MJ_CREATE:
 		dprintf("IRP_MJ_CREATE: zfsdev FileObject %p name '%wZ' length %u flags 0x%x\n",
-			IrpSp->FileObject, IrpSp->FileObject->FileName, 
+			IrpSp->FileObject, &IrpSp->FileObject->FileName, 
 			IrpSp->FileObject->FileName.Length, IrpSp->Flags);
 		Status = zfsdev_open(IrpSp->FileObject, Irp);
 		break;
@@ -4062,7 +4068,7 @@ diskDispatcher(
 	case IRP_MJ_CREATE:
 		dprintf("IRP_MJ_CREATE: volume FileObject %p related %p name '%wZ' flags 0x%x\n",
 			IrpSp->FileObject, IrpSp->FileObject ? IrpSp->FileObject->RelatedFileObject : NULL,
-			IrpSp->FileObject->FileName, IrpSp->Flags);
+			&IrpSp->FileObject->FileName, IrpSp->Flags);
 
 		Status = volume_create(DeviceObject, Irp, IrpSp);
 		break;
@@ -4341,7 +4347,7 @@ fsDispatcher(
 		else
 			dprintf("IRP_MJ_CREATE: FileObject %p related %p name '%wZ' flags 0x%x sharing 0x%x options %s attr 0x%x DesAcc 0x%x\n",
 				IrpSp->FileObject, IrpSp->FileObject ? IrpSp->FileObject->RelatedFileObject : NULL,
-				IrpSp->FileObject->FileName, IrpSp->Flags, IrpSp->Parameters.Create.ShareAccess,
+				&IrpSp->FileObject->FileName, IrpSp->Flags, IrpSp->Parameters.Create.ShareAccess,
 				create_options(IrpSp->Parameters.Create.Options), IrpSp->Parameters.Create.FileAttributes, IrpSp->Parameters.Create.SecurityContext->DesiredAccess);
 
 		Irp->IoStatus.Information = FILE_OPENED;
@@ -4640,7 +4646,7 @@ fsDispatcher(
 			VN_HOLD(vp) == 0) {
 			if (CcIsFileCached(IrpSp->FileObject)) {
 				CcSetFileSizes(IrpSp->FileObject, (PCC_FILE_SIZES)&vp->FileHeader.AllocationSize);
-				dprintf("sizechanged, updated to %llx\n", vp->FileHeader.FileSize);
+				dprintf("sizechanged, updated to %llx\n", vp->FileHeader.FileSize.QuadPart);
 				vnode_setsizechange(vp, 0);
 			}
 			VN_RELE(vp);

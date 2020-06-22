@@ -58,6 +58,12 @@
 #include <sys/avl.h>
 #include <spl-debug.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-tsd.tmh"
+#endif
+
+
 /* Initial size of array, and realloc growth size */
 #define TSD_ALLOC_SIZE 5
 

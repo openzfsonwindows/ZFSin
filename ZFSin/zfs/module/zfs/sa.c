@@ -45,6 +45,12 @@
 #include <sys/errno.h>
 #include <sys/zfs_context.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "sa.tmh"
+#endif
+
+
 /*
  * ZFS System attributes:
  *

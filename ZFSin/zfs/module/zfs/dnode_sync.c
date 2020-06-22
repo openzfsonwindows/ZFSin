@@ -37,6 +37,12 @@
 #include <sys/range_tree.h>
 #include <sys/zfeature.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "dnode_sync.tmh"
+#endif
+
+
 static void
 dnode_increase_indirection(dnode_t *dn, dmu_tx_t *tx)
 {

@@ -86,6 +86,12 @@
 #include <sys/zfs_vfsops.h>
 #include <sys/vnode.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_vnops.tmh"
+#endif
+
+
 //#define dprintf printf
 
 int zfs_vnop_force_formd_normalized_output = 0; /* disabled by default */
@@ -2816,9 +2822,9 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 					skip_this_entry = 1;
 			}
 #if 0
-			dprintf("comparing names '%.*S' == '%.*S' skip %d\n",
-				thisname.Length / sizeof(WCHAR), thisname.Buffer,
-				zccb->searchname.Length / sizeof(WCHAR), zccb->searchname.Buffer,
+			dprintf("comparing names '%S' (of length %u) == '%S' (of length %u) skip %d\n",
+				thisname.Buffer, thisname.Length / sizeof(WCHAR),
+				zccb->searchname.Buffer, zccb->searchname.Length / sizeof(WCHAR),
 				skip_this_entry);
 #endif
 			}
@@ -3028,8 +3034,8 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 				error = RtlUTF8ToUnicodeN(nameptr, namelenholder, &namelenholder2, zap.za_name, namelen);
 				ASSERT(namelenholder == namelenholder2);
 #if 0
-				dprintf("%s: '%.*S' -> '%s' (namelen %d bytes: structsize %d)\n", __func__,
-					namelenholder / sizeof(WCHAR), nameptr, zap.za_name, namelenholder, structsize);
+				dprintf("%s: '%S of length %u' -> '%s' (namelen %d bytes: structsize %d)\n", __func__,
+					nameptr, namelenholder / sizeof(WCHAR), zap.za_name, namelenholder, structsize);
 #endif
 
 				// If we aren't to skip, advance all pointers

@@ -103,6 +103,12 @@
 #include <sys/zfs_vnops.h>
 #include <sys/systeminfo.h>
 #include <sys/zfs_mount.h>
+
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_vfsops.tmh"
+#endif
+
 #endif /* _WIN32 */
 
 //#define dprintf kprintf

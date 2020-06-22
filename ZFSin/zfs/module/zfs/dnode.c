@@ -39,6 +39,12 @@
 #include <sys/range_tree.h>
 #include <sys/trace_dnode.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "dnode.tmh"
+#endif
+
+
 dnode_stats_t dnode_stats = {
 	{ "dnode_hold_dbuf_hold",		KSTAT_DATA_UINT64 },
 	{ "dnode_hold_dbuf_read",		KSTAT_DATA_UINT64 },

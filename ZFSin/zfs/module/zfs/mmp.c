@@ -33,6 +33,12 @@
 #include <sys/callb.h>
 #include <sys/time.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "mmp.tmh"
+#endif
+
+
 /*
  * Multi-Modifier Protection (MMP) attempts to prevent a user from importing
  * or opening a pool on more than one host at a time.  In particular, it

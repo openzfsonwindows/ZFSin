@@ -40,6 +40,12 @@
 #include <sys/varargs.h>
 #include <sys/trace_dmu.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "dmu_tx.tmh"
+#endif
+
+
 typedef void (*dmu_tx_hold_func_t)(dmu_tx_t *tx, struct dnode *dn,
     uint64_t arg1, uint64_t arg2);
 

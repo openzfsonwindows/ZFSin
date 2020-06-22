@@ -71,6 +71,11 @@
 #include "zfs_prop.h"
 #include "zfs_comutil.h"
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_znode.tmh"
+#endif
+
 /* Used by fstat(1). */
 #ifndef _WIN32
 SYSCTL_INT(_debug_sizeof, OID_AUTO, znode, CTLFLAG_RD, 0, sizeof (znode_t),
@@ -872,6 +877,7 @@ zfs_znode_alloc(zfsvfs_t *zfsvfs, dmu_buf_t *db, int blksz,
 
 #include <sys/dbuf.h>
 
+
 		dmu_buf_impl_t *db2 = (dmu_buf_impl_t *)db;
 		zbookmark_phys_t zb;
 
@@ -1560,7 +1566,7 @@ zfs_rezget(znode_t *zp)
 	}
 	mutex_exit(&zp->z_acl_lock);
 
-	dprintf("rezget: %p %p %p\n", zp, zp->z_xattr_lock,
+	dprintf("rezget: %p %p %p\n", zp, &zp->z_xattr_lock,
 	    zp->z_xattr_parent);
 
 	rw_enter(&zp->z_xattr_lock, RW_WRITER);

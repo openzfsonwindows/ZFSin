@@ -76,6 +76,12 @@
 #include <sys/time.h>
 #include <sys/zfs_ioctl.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "fm.tmh"
+#endif
+
+
 int zfs_zevent_len_max = 0;
 int zfs_zevent_cols = 80;
 int zfs_zevent_console = 0;

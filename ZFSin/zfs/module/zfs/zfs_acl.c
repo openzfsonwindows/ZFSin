@@ -53,6 +53,12 @@
 #include <sys/sa.h>
 //#include <acl/acl_common.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_acl.tmh"
+#endif
+
+
 #define	ALLOW	ACE_ACCESS_ALLOWED_ACE_TYPE
 #define	DENY	ACE_ACCESS_DENIED_ACE_TYPE
 #define	MAX_ACE_TYPE	ACE_SYSTEM_ALARM_CALLBACK_OBJECT_ACE_TYPE

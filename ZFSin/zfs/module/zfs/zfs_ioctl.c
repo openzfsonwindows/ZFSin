@@ -232,6 +232,11 @@
 #include <sys/lua/lua.h>
 #include <sys/lua/lauxlib.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_ioctl.tmh"
+#endif
+
 /*
  * Limit maximum nvlist size.  We don't want users passing in insane values
  * for zc->zc_nvlist_src_size, since we will need to allocate that much memory.
@@ -7825,12 +7830,13 @@ VOID  DriverNotificationRoutine(
 		dprintf("Filesystem %p: '%wZ'\n", DeviceObject, name_info);
 	}
 	else {
-		dprintf("Filesystem %p: '%wZ'\n", DeviceObject, DeviceObject->DriverObject->DriverName);
+		dprintf("Filesystem %p: '%wZ'\n", DeviceObject, &DeviceObject->DriverObject->DriverName);
 	}
 }
 
 
 #include <Wdmsec.h>
+
 static int
 zfs_attach(void)
 {
@@ -7864,7 +7870,7 @@ zfs_attach(void)
 		&ioctlDeviceObject);                // Returned ptr to Device Object
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf(("ZFS: Couldn't create the device object /dev/zfs (%wZ)\n", ZFS_DEV_KERNEL));
+		dprintf("ZFS: Couldn't create the device object /dev/zfs (%wZ)\n", ZFS_DEV_KERNEL);
 		return ntStatus;
 	}
 	dprintf("ZFS: created kernel device node: %p: name %wZ\n", ioctlDeviceObject, ZFS_DEV_KERNEL);
@@ -7910,7 +7916,7 @@ zfs_attach(void)
 		&ntWin32NameString, &ntUnicodeString);
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf(("ZFS: Couldn't create userland symbolic link to /dev/zfs (%wZ)\n", ZFS_DEV));
+		dprintf("ZFS: Couldn't create userland symbolic link to /dev/zfs (%wZ)\n", ZFS_DEV);
 		IoDeleteDevice(ioctlDeviceObject);
 		return -1;
 	}

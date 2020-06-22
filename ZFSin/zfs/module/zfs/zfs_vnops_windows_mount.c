@@ -60,6 +60,12 @@
 #undef _NTDDK_
 
 #include <wdmsec.h>
+
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_vnops_windows_mount.tmh"
+#endif
+
 #pragma comment(lib, "wdmsec.lib")
 
 
@@ -92,7 +98,7 @@ NTSTATUS mountmgr_add_drive_letter(PDEVICE_OBJECT mountmgr, PUNICODE_STRING devp
 
 	mmdlt->DeviceNameLength = devpath->Length;
 	RtlCopyMemory(&mmdlt->DeviceName, devpath->Buffer, devpath->Length);
-	dprintf("mmdlt = %.*S\n", mmdlt->DeviceNameLength / sizeof(WCHAR), mmdlt->DeviceName);
+	dprintf("mmdlt = %S and length %u\n", mmdlt->DeviceName, mmdlt->DeviceNameLength / sizeof(WCHAR));
 
 	Status = dev_ioctl(mountmgr, IOCTL_MOUNTMGR_NEXT_DRIVE_LETTER, mmdlt, mmdltsize, &mmdli, sizeof(MOUNTMGR_DRIVE_LETTER_INFORMATION), FALSE, NULL);
 
@@ -171,9 +177,9 @@ NTSTATUS mountmgr_get_mountpoint(PDEVICE_OBJECT mountmgr,
 			PWCHAR SymbolicLinkName = (PWCHAR)((PUCHAR)ppoints + ipoint->SymbolicLinkNameOffset);
 
 			// Why is this hackery needed, we should be able to lookup the drive letter from volume name
-			dprintf("   point %d: '%.*S' '%.*S'\n", Index,
-				ipoint->DeviceNameLength / sizeof(WCHAR), DeviceName,
-				ipoint->SymbolicLinkNameLength / sizeof(WCHAR), SymbolicLinkName);
+			dprintf("   point %d: '%S' of length %u '%S' of length %u\n", Index,
+				DeviceName, ipoint->DeviceNameLength / sizeof(WCHAR),
+				SymbolicLinkName, ipoint->SymbolicLinkNameLength / sizeof(WCHAR));
 			if (wcsncmp(DeviceName, devpath->Buffer, ipoint->DeviceNameLength / sizeof(WCHAR)) == 0) {
 				ULONG length = 0;
 				RtlUnicodeToUTF8N(savename, MAXPATHLEN, &length, SymbolicLinkName, ipoint->SymbolicLinkNameLength);
@@ -828,9 +834,9 @@ NTSTATUS mountmgr_is_driveletter_assigned(PDEVICE_OBJECT mountmgr,
 			PWCHAR DeviceName = (PWCHAR)((PUCHAR)ppoints + ipoint->DeviceNameOffset);
 			PWCHAR SymbolicLinkName = (PWCHAR)((PUCHAR)ppoints + ipoint->SymbolicLinkNameOffset);
 
-			dprintf("   point %d: '%.*S' '%.*S'\n", Index,
-				ipoint->DeviceNameLength / sizeof(WCHAR), DeviceName,
-				ipoint->SymbolicLinkNameLength / sizeof(WCHAR), SymbolicLinkName);
+			dprintf("   point %d: '%S' of length %u '%S' of length %u\n", Index,
+				DeviceName, ipoint->DeviceNameLength / sizeof(WCHAR),
+				SymbolicLinkName, ipoint->SymbolicLinkNameLength / sizeof(WCHAR));
 
 			ULONG length = 0;
 			RtlUnicodeToUTF8N(mpt_name, MAXPATHLEN, &length, SymbolicLinkName,
@@ -947,8 +953,8 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 	mdn2 = kmem_alloc(256, KM_SLEEP);
 	status = dev_ioctl(pdo, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, mdn2, 256, TRUE, NULL);
 	if (NT_SUCCESS(status)) {
-		dprintf("%s: given deviceName '%.*S'\n", __func__,
-			mdn2->NameLength / sizeof(WCHAR), mdn2->Name);
+		dprintf("%s: given deviceName '%S' of length %u\n", __func__,
+			mdn2->Name, mdn2->NameLength / sizeof(WCHAR));
 		delay(hz << 1);
 	}
 
@@ -957,8 +963,8 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		dprintf(".. going deeper %p\n", pdo);
 		status = dev_ioctl(pdo, IOCTL_MOUNTDEV_QUERY_DEVICE_NAME, NULL, 0, mdn2, 256, TRUE, NULL);
 		if (NT_SUCCESS(status)) {
-			dprintf("%s: given deviceName '%.*S'\n", __func__,
-				mdn2->NameLength / sizeof(WCHAR), mdn2->Name);
+			dprintf("%s: given deviceName '%S' of length %u\n", __func__,
+				mdn2->Name, mdn2->NameLength / sizeof(WCHAR));
 			delay(hz << 1);
 		}
 	}

@@ -77,6 +77,11 @@
 #include <vm/anon.h>
 #include <vm/seg_kmem.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-kstat.tmh"
+#endif
+
 /*
 * Global lock to protect the AVL trees and kstat_chain_id.
 */
@@ -1247,6 +1252,7 @@ kstat_timer_stop(kstat_timer_t *ktp)
 #include <sys/atomic.h>
 #include <sys/policy.h>
 #include <sys/zone.h>
+
 
 static dev_info_t *kstat_devi;
 

@@ -33,6 +33,12 @@
 #include <ntdddisk.h>
 #include <Ntddstor.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "vdev_disk.tmh"
+#endif
+
+
 
 /*
  * Virtual device vector for disks.

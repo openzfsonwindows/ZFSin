@@ -52,6 +52,12 @@
 #include <sys/trace_txg.h>
 #include <sys/mmp.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "dsl_pool.tmh"
+#endif
+
+
 /*
  * ZFS Write Throttle
  * ------------------

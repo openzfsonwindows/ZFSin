@@ -61,6 +61,12 @@
 #include "zfs_prop.h"
 #include <sys/zfeature.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spa_misc.tmh"
+#endif
+
+
 /*
  * SPA locking
  *

@@ -36,6 +36,12 @@
 
 #include <ntddk.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-thread.tmh"
+#endif
+
+
 uint64_t zfs_threads = 0;
 
 kthread_t *

@@ -45,6 +45,11 @@
 #include <sys/callb.h>
 //#include <stdbool.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-kmem.tmh"
+#endif
+
 // ===============================================================
 // Options
 // ===============================================================
@@ -1020,6 +1025,7 @@ kmem_error(int error, kmem_cache_t *cparg, void *bufarg)
 			   (void *)sp, cp->cache_name);
 
 //#include <../um/DbgHelp.h>
+
 //#pragma comment(lib, "Dbghelp.lib")
 //		HANDLE         process;
 //		process = GetCurrentProcess();
@@ -4941,7 +4947,7 @@ spl_event_thread(void *notused)
 	HANDLE low_mem_handle;
 	low_mem_event = IoCreateNotificationEvent((PUNICODE_STRING)&low_mem_name, &low_mem_handle);
 	if (low_mem_event == NULL) {
-		dprintf("%s: failed IoCreateNotificationEvent(\\KernelObjects\\LowMemoryCondition)");
+		dprintf("%s: failed IoCreateNotificationEvent(\\KernelObjects\\LowMemoryCondition)", __func__);
 		thread_exit();
 	}
 	KeClearEvent(low_mem_event);

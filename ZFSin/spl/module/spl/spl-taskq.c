@@ -502,6 +502,12 @@
 #include <sys/sysdc.h>
 #include <sys/note.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-taskq.tmh"
+#endif
+
+
 static kmem_cache_t *taskq_ent_cache, *taskq_cache;
 
 /*

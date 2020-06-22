@@ -96,7 +96,7 @@ extern void printBuffer(const char *fmt, ...);
 	#define IOLog(...)
 	#define PANIC(fmt, ...)						\
 	do {									\
-		dprintf(fmt, __VA_ARGS__); \
+		xprintf(fmt, __VA_ARGS__); \
 	} while (0)
 #endif
 

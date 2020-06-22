@@ -60,6 +60,12 @@
 #include <sys/zvol.h>
 #include <sys/policy.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "dmu_recv.tmh"
+#endif
+
+
 int zfs_recv_queue_length = SPA_MAXBLOCKSIZE;
 
 static char *dmu_recv_tag = "dmu_recv_tag";

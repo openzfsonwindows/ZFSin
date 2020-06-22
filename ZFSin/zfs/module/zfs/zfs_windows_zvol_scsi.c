@@ -62,6 +62,12 @@
 //#undef dprintf
 //#define dprintf
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_windows_zvol_scsi.tmh"
+#endif
+
+
 /*
  * We have a list of ZVOLs, and we receive incoming (Target, Lun) requests that needs to be mapped
  * to the correct "zv" ptr.

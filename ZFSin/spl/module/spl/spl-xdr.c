@@ -32,6 +32,12 @@
 #include <spl-debug.h>
 #include <sys/byteorder.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-xdr.tmh"
+#endif
+
+
 
 /*
  * SPL's XDR mem implementation.

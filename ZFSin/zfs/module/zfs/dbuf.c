@@ -51,6 +51,12 @@
 #include <sys/cityhash.h>
 #include <sys/spa_impl.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "dbuf.tmh"
+#endif
+
+
 uint_t zfs_dbuf_evict_key;
 
 //

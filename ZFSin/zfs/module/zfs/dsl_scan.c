@@ -54,6 +54,12 @@
 #include <sys/range_tree.h>
 #ifdef _KERNEL
 #include <sys/zfs_vfsops.h>
+
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "dsl_scan.tmh"
+#endif
+
 #endif
 
 /*

@@ -31,6 +31,12 @@
 //#include <sys/malloc.h>
 //#include <libkern/libkern.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-kobj.tmh"
+#endif
+
+
 struct _buf *
 kobj_open_file(char *name)
 {

@@ -40,6 +40,12 @@
 
 #ifdef _KERNEL
 #include <sys/sunddi.h>
+
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zap_micro.tmh"
+#endif
+
 #endif
 
 extern inline mzap_phys_t *zap_m_phys(zap_t *zap);

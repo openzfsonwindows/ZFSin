@@ -156,7 +156,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin;$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
@@ -164,6 +164,20 @@
       <RuntimeLibrary>
       </RuntimeLibrary>
       <DisableSpecificWarnings>4018;4100;4146;4152;4200;4201;4204;4210;4211;4242;4244;4389;4706;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <WppEnabled>false</WppEnabled>
+      <WppAdditionalIncludeDirectories>$(SolutionDir)\ZFSin\spl\include;$(SolutionDir)\ZFSin\zfs\include;$(SolutionDir)\ZFSin\zfs\module/icp/include;$(SolutionDir)\ZFSin\zfs\lib\zlib-1.2.3;</WppAdditionalIncludeDirectories>
+      <WppGenerateUsingTemplateFile>
+      </WppGenerateUsingTemplateFile>
+      <WppScanConfigurationData>
+      </WppScanConfigurationData>
+      <PreprocessToFile>false</PreprocessToFile>
+      <WppTraceFunction>
+      </WppTraceFunction>
+      <ForcedUsingFiles>
+      </ForcedUsingFiles>
+      <ForcedIncludeFiles>$(KIT_SHARED_IncludePath)\warning.h; </ForcedIncludeFiles>
+      <WppPreprocessorDefinitions>
+      </WppPreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -174,14 +188,24 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)\ZFSin;$(SolutionDir)\ZFSin\$(Platform)\$(ConfigurationName);$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>RUN_WPP;_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
       <RuntimeLibrary>
       </RuntimeLibrary>
       <DisableSpecificWarnings>4018;4100;4146;4152;4200;4201;4204;4210;4211;4242;4244;4389;4706;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <PreprocessToFile>false</PreprocessToFile>
+      <WppAdditionalIncludeDirectories>$(SolutionDir)\ZFSin\spl\include;$(SolutionDir)\ZFSin\zfs\include;$(SolutionDir)\ZFSin\zfs\module/icp/include;$(SolutionDir)\ZFSin\zfs\lib\zlib-1.2.3;</WppAdditionalIncludeDirectories>
+      <WppEnabled>true</WppEnabled>
+      <WppTraceFunction>dprintf{FLAGS=MYDRIVER_ALL_INFO, LEVEL=TRACE_LEVEL_INFORMATION}(MSG, ...);</WppTraceFunction>
+      <WppPreprocessorDefinitions>WPP_INLINE __inline</WppPreprocessorDefinitions>
+      <ForcedUsingFiles>
+      </ForcedUsingFiles>
+      <ForcedIncludeFiles>$(KIT_SHARED_IncludePath)\warning.h; </ForcedIncludeFiles>
+      <WppScanConfigurationData>$(KMDF_INC_PATH)$(KMDF_VER_PATH)\WdfTraceEnums.h</WppScanConfigurationData>
+      <WppGenerateUsingTemplateFile>{km-default.tpl}*.tmh</WppGenerateUsingTemplateFile>
     </ClCompile>
     <Link>
       <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -364,7 +388,6 @@
     <ClCompile Include="zfs\module\zfs\dsl_destroy.c" />
     <ClCompile Include="zfs\module\zfs\dsl_dir.c" />
     <ClCompile Include="zfs\module\zfs\dsl_pool.c" />
-    <ClCompile Include="zfs\module\zfs\dsl_proc.c" />
     <ClCompile Include="zfs\module\zfs\dsl_prop.c" />
     <ClCompile Include="zfs\module\zfs\dsl_scan.c" />
     <ClCompile Include="zfs\module\zfs\dsl_synctask.c" />

@@ -41,6 +41,10 @@
 #include <sys/zfs_znode.h>
 #endif
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-vnode.tmh"
+#endif
 
 //#define FIND_MAF
 
@@ -603,6 +607,7 @@ void spl_vnode_fini(void)
 }
 
 #include <sys/file.h>
+
 struct fileproc;
 
 extern int fp_drop(struct proc *p, int fd, struct fileproc *fp, int locked);
@@ -1360,7 +1365,7 @@ int vnode_drain_delayclose(int force)
 			(vp->SectionObjectPointers.ImageSectionObject == NULL) &&
 			(vp->SectionObjectPointers.DataSectionObject == NULL)) {
 			// We are ready to let go
-			dprintf("%s: drain %vp\n", __func__, vp);
+			dprintf("%s: drain %p\n", __func__, vp);
 
 			// Pass VNODELOCKED as we hold vp, recycle will unlock.
 			// We have to give up all_list due to recycle -> reclaim -> rmnode -> purgedir -> zget -> vnode_create

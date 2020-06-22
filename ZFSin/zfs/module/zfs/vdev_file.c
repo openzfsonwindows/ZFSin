@@ -34,6 +34,12 @@
 #include <sys/fm/fs/zfs.h>
 #include <sys/vnode.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "vdev_file.tmh"
+#endif
+
+
 /*
  * Virtual device vector for files.
  */

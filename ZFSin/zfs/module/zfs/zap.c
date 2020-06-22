@@ -49,6 +49,12 @@
 #include <sys/zap_impl.h>
 #include <sys/zap_leaf.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zap.tmh"
+#endif
+
+
 int fzap_default_block_shift = 14; /* 16k blocksize */
 
 extern inline zap_phys_t *zap_f_phys(zap_t *zap);

@@ -29,6 +29,12 @@
 #include <sys/cmn_err.h>
 #include <spl-debug.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-err.tmh"
+#endif
+
+
 
 void
 vcmn_err(int ce, const char *fmt, va_list ap)

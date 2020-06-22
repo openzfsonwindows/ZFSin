@@ -62,6 +62,12 @@
 #include <sys/dmu_send.h>
 #include <sys/zio_checksum.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "dsl_dataset.tmh"
+#endif
+
+
 /*
  * The SPA supports block sizes up to 16MB.  However, very large blocks
  * can have an impact on i/o latency (e.g. tying up a spinning disk for

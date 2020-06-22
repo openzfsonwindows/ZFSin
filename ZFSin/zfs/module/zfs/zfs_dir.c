@@ -59,6 +59,12 @@
 #include <sys/dnlc.h>
 #include <sys/extdirent.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_dir.tmh"
+#endif
+
+
 /*
  * zfs_match_find() is used by zfs_dirent_lock() to peform zap lookups
  * of names after deciding which is the appropriate lookup interface.

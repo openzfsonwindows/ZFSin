@@ -60,6 +60,12 @@
 #include <sys/dmu_recv.h>
 #include "zfs_namecheck.h"
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "dmu_objset.tmh"
+#endif
+
+
 /*
  * Needed to close a window in dnode_move() that allows the objset to be freed
  * before it can be safely accessed.

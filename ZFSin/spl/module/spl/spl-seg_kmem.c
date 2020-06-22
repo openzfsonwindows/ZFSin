@@ -94,6 +94,12 @@
 #ifdef _KERNEL
 #define XNU_KERNEL_PRIVATE
 //#include <mach/vm_types.h>
+
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-seg_kmem.tmh"
+#endif
+
 //extern vm_map_t kernel_map;
 
 /*

@@ -102,7 +102,6 @@
     <ClCompile Include="..\..\..\module\zfs\dsl_destroy.c" />
     <ClCompile Include="..\..\..\module\zfs\dsl_dir.c" />
     <ClCompile Include="..\..\..\module\zfs\dsl_pool.c" />
-    <ClCompile Include="..\..\..\module\zfs\dsl_proc.c" />
     <ClCompile Include="..\..\..\module\zfs\dsl_prop.c" />
     <ClCompile Include="..\..\..\module\zfs\dsl_scan.c" />
     <ClCompile Include="..\..\..\module\zfs\dsl_synctask.c" />

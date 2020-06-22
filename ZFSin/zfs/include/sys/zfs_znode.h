@@ -281,6 +281,7 @@ typedef struct znode {
  * ZFS_EXIT() must be called before exitting the vop.
  * ZFS_VERIFY_ZP() verifies the znode is valid.
  */
+#ifdef DBG
 #define ZFS_ENTER(zfsvfs)                       \
     {                                                                   \
 		if (!POINTER_IS_VALID(zfsvfs)) {								\
@@ -293,6 +294,18 @@ typedef struct znode {
             return (EIO);                                               \
         }                                                               \
     }
+#else
+#define ZFS_ENTER(zfsvfs)                       \
+    {                                                                   \
+		if (!POINTER_IS_VALID(zfsvfs)) {								\
+			return EIO; }												\
+		rrm_enter_read(&(zfsvfs)->z_teardown_lock, FTAG);				\
+        if ((zfsvfs)->z_unmounted) {                                    \
+            ZFS_EXIT(zfsvfs);                                           \
+            return (EIO);                                               \
+        }                                                               \
+    }
+#endif
 
 #define ZFS_ENTER_NOERROR(zfsvfs)                                       \
 	rrm_enter_read(&(zfsvfs)->z_teardown_lock, FTAG)

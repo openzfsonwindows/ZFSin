@@ -33,6 +33,12 @@
 #include <sys/zio.h>
 #include <sys/range_tree.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "range_tree.tmh"
+#endif
+
+
 /*
  * Range trees are tree-based data structures that can be used to
  * track free space or generally any space allocation information.

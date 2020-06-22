@@ -65,6 +65,11 @@
 
 #undef _NTDDK_
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zfs_vnops_windows_lib.tmh"
+#endif
+
 typedef struct {
 	UCHAR revision;
 	UCHAR elements;
@@ -572,8 +577,8 @@ static int vnode_apply_single_ea(struct vnode *vp, struct vnode *xdvp, FILE_FULL
 	int error;
 	struct vnode *xvp = NULL;
 
-	dprintf("%s: xattr '%.*s' valuelen %u\n", __func__,
-		ea->EaNameLength, ea->EaName, ea->EaValueLength);
+	dprintf("%s: xattr '%S' xattr len %u  valuelen %u\n", __func__,
+		ea->EaName, ea->EaNameLength, ea->EaValueLength);
 
 	if (ea->EaValueLength == 0) {
 
@@ -630,7 +635,7 @@ NTSTATUS vnode_apply_eas(struct vnode *vp, PFILE_FULL_EA_INFORMATION eas, ULONG 
 	int error;
 	for (PFILE_FULL_EA_INFORMATION ea = eas; ; ea = (PFILE_FULL_EA_INFORMATION)((uint8_t*)ea + ea->NextEntryOffset)) {
 		if (vattr_apply_lx_ea(&vap, ea)) {
-			dprintf("  encountered special attrs EA '%.*s'\n", ea->EaNameLength, ea->EaName);
+			dprintf("  encountered special attrs EA '%S' and length %u\n", ea->EaName, ea->EaNameLength);
 		} else {
 			// optimization: defer creating an xattr dir until the first standard EA
 			if (xdvp == NULL) {
@@ -1291,6 +1296,7 @@ zfs_vfs_uuid_unparse(uuid_t uuid, char *dst)
 }
 
 #include <sys/md5.h>
+
 int
 zfs_vfs_uuid_gen(const char *osname, uuid_t uuid)
 {
@@ -1475,7 +1481,7 @@ void zfs_send_notify_stream(zfsvfs_t *zfsvfs, char *name, int nameoffset, ULONG 
 	AsciiStringToUnicodeString(name, &ustr);
 
 	dprintf("%s: '%wZ' part '%S' %u %u\n", __func__, &ustr, 
-		/*&name[nameoffset],*/ &ustr.Buffer[nameoffset],
+		&ustr.Buffer[nameoffset],
 		FilterMatch, Action);
 
 	if (stream != NULL) {
@@ -1967,7 +1973,7 @@ NTSTATUS file_disposition_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO
 	if (vp) {
 		dprintf("Deletion %s on '%wZ'\n",
 			fdi->DeleteFile ? "set" : "unset",
-			IrpSp->FileObject->FileName);
+			&IrpSp->FileObject->FileName);
 		Status = STATUS_SUCCESS;
 		if (fdi->DeleteFile) {
 			Status = zfs_setunlink(IrpSp->FileObject, NULL);
@@ -2138,7 +2144,7 @@ NTSTATUS file_link_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	*/
 
 	FILE_LINK_INFORMATION *link = Irp->AssociatedIrp.SystemBuffer;
-	dprintf("* FileLinkInformation: %.*S\n", link->FileNameLength / sizeof(WCHAR), link->FileName);
+	dprintf("* FileLinkInformation: %S of length %u\n", link->FileName, link->FileNameLength / sizeof(WCHAR));
 
 	// So, use FileObject to get VP.
 	// Use VP to lookup parent.
@@ -2271,7 +2277,7 @@ NTSTATUS file_rename_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 	*/
 
 	FILE_RENAME_INFORMATION *ren = Irp->AssociatedIrp.SystemBuffer;
-	dprintf("* FileRenameInformation: %.*S\n", ren->FileNameLength / sizeof(WCHAR), ren->FileName);
+	dprintf("* FileRenameInformation: %S and length %u\n", ren->FileName, ren->FileNameLength / sizeof(WCHAR));
 
 	//ASSERT(ren->RootDirectory == NULL);
 
@@ -2986,9 +2992,9 @@ NTSTATUS file_name_information(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 	// which is used with sizeof(struct) to work out how much bigger the return is.
 	if (usedspace) *usedspace = space; // Space will always be 2 or more, since struct has room for 1 wchar
 
-	dprintf("* %s: %s name of '%.*S' struct size 0x%x and FileNameLength 0x%x Usedspace 0x%x\n", __func__,
+	dprintf("* %s: %s name of '%S' and length %u struct size 0x%x and FileNameLength 0x%x Usedspace 0x%x\n", __func__,
 		Status == STATUS_BUFFER_OVERFLOW ? "partial" : "",
-		space / 2, name->FileName,
+		name->FileName, space / 2,
 		sizeof(FILE_NAME_INFORMATION), name->FileNameLength, space);
 
 	return Status;
@@ -3246,7 +3252,7 @@ NTSTATUS ioctl_query_device_name(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STAC
 		Status = STATUS_SUCCESS;
 	ASSERT(Irp->IoStatus.Information <= IrpSp->Parameters.DeviceIoControl.OutputBufferLength);
 
-	dprintf("replying with '%.*S'\n", space + sizeof(name->Name) / sizeof(WCHAR), name->Name);
+	dprintf("replying with '%S' of length %u\n", name->Name, space + sizeof(name->Name) / sizeof(WCHAR));
 
 	return Status;
 }
@@ -3619,7 +3625,7 @@ NTSTATUS ioctl_query_unique_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 		RtlCopyMemory((PCHAR)uniqueId->UniqueId, osname, uniqueId->UniqueIdLength);
 		Irp->IoStatus.Information = FIELD_OFFSET(MOUNTDEV_UNIQUE_ID, UniqueId[0]) +
 			uniqueId->UniqueIdLength;
-		dprintf("replying with '%.*s'\n", uniqueId->UniqueIdLength, uniqueId->UniqueId);
+		dprintf("replying with '%S' of length %u\n", uniqueId->UniqueId, uniqueId->UniqueIdLength);
 		return STATUS_SUCCESS;
 	}
 	else {
@@ -3698,7 +3704,7 @@ NTSTATUS ioctl_mountdev_query_suggested_link_name(PDEVICE_OBJECT DeviceObject, P
 		Irp->IoStatus.Information =
 			FIELD_OFFSET(MOUNTDEV_SUGGESTED_LINK_NAME, Name[0]) +
 			linkName->NameLength;
-		dprintf("  LinkName %wZ (%d)\n", MountPoint, MountPoint.Length);
+		dprintf("  LinkName %wZ (%d)\n", &MountPoint, MountPoint.Length);
 		return 	STATUS_SUCCESS;
 	}
 

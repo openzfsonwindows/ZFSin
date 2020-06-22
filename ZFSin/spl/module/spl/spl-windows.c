@@ -69,6 +69,12 @@ uint64_t spl_GetPhysMem(void);
 #define	_task_user_
 //#include <IOKit/IOLib.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "spl-windows.tmh"
+#endif
+
+
 
 // Size in bytes of the memory allocated in seg_kmem
 extern uint64_t		segkmem_total_mem_allocated;

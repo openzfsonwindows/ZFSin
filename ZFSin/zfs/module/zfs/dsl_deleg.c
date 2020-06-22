@@ -82,6 +82,12 @@
 
 #include "zfs_deleg.h"
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "dsl_deleg.tmh"
+#endif
+
+
 /*
  * Validate that user is allowed to delegate specified permissions.
  *

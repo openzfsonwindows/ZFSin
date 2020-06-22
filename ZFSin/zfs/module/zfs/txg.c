@@ -34,6 +34,12 @@
 #include <sys/callb.h>
 #include <sys/trace_txg.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "txg.tmh"
+#endif
+
+
 //#define dprintf printf
 #undef dprintf
 #define dprintf

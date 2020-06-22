@@ -40,6 +40,12 @@
 #include <sys/zap_leaf.h>
 #include <sys/arc.h>
 
+#ifdef RUN_WPP
+#include "Trace.h"
+#include "zap_leaf.tmh"
+#endif
+
+
 static uint16_t *zap_leaf_rehash_entry(zap_leaf_t *l, uint16_t entry);
 
 #define	CHAIN_END 0xffff /* end of the chunk chain */
