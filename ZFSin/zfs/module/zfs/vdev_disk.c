@@ -352,7 +352,6 @@ vdev_disk_close(vdev_t *vd)
 	if (vd->vdev_reopening || dvd == NULL)
 		return;
 
-
 	vd->vdev_delayed_close = B_FALSE;
 	/*
 	 * If we closed the LDI handle due to an offline notify from LDI,
@@ -399,25 +398,6 @@ vdev_disk_physio(vdev_t *vd, caddr_t data,
 	return EIO;
 }
 
-/*
-* IO has finished callback, in Windows this is called as a different
-* IRQ level, so we can practically do nothing here. (Can't call mutex
-* locking, like from kmem_free())
-*/
-
-IO_COMPLETION_ROUTINE vdev_disk_io_intrxxx;
-
-static NTSTATUS
-vdev_disk_io_intrxxx(PDEVICE_OBJECT DeviceObject, PIRP irp, PVOID Context)
-{
-	KeSetEvent((KEVENT *)Context, NT_SUCCESS(irp->IoStatus.Status) ? IO_DISK_INCREMENT : IO_NO_INCREMENT, FALSE);
-	// zfs/zfs-15
-	UnlockAndFreeMdl(irp->MdlAddress);
-	IoFreeIrp(irp);
-	return STATUS_MORE_PROCESSING_REQUIRED;
-}
-
-
 static void
 vdev_disk_ioctl_free(zio_t *zio)
 {
@@ -437,6 +417,85 @@ vdev_disk_ioctl_done(void *zio_arg, int error)
 	zio->io_error = error;
 
 	zio_interrupt(zio);
+}
+
+struct vdev_disk_callback_struct {
+	zio_t *zio;
+	PIRP irp;
+	void *b_addr;
+	char work_item[0];
+};
+typedef struct vdev_disk_callback_struct vd_callback_t;
+
+static void
+vdev_disk_io_start_done(void *param)
+{
+	vd_callback_t *vb = (vd_callback_t *)param;
+
+	ASSERT(vb != NULL);
+
+	NTSTATUS status = vb->irp->IoStatus.Status;
+	zio_t *zio = vb->zio;
+	zio->io_error = (!NT_SUCCESS(status) ? EIO : 0);
+
+	// Return abd buf
+	if (zio->io_type == ZIO_TYPE_READ) {
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_copy_off(zio->io_abd, vb->b_addr,
+			0, zio->io_size, zio->io_abd->abd_size);
+	} else {
+		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
+		abd_return_buf_off(zio->io_abd, vb->b_addr,
+			0, zio->io_size, zio->io_abd->abd_size);
+	}
+
+	UnlockAndFreeMdl(vb->irp->MdlAddress);
+	IoFreeIrp(vb->irp);
+	kmem_free(vb, sizeof(vd_callback_t) + IoSizeofWorkItem());
+	vb = NULL;
+	zio_delay_interrupt(zio);
+}
+
+static VOID
+DiskIoWkRtn(
+	__in PVOID           pDummy,           // Not used.
+	__in PVOID           pWkParms          // Parm list pointer.
+)
+{
+	vd_callback_t *vb = (vd_callback_t *)pWkParms;
+
+	UNREFERENCED_PARAMETER(pDummy);
+	IoUninitializeWorkItem((PIO_WORKITEM)vb->work_item);
+	vdev_disk_io_start_done(vb);
+}
+
+/*
+* IO has finished callback, in Windows this is called as a different
+* IRQ level, so we can practically do nothing here. (Can't call mutex
+* locking, like from kmem_free())
+*/
+
+IO_COMPLETION_ROUTINE vdev_disk_io_intrxxx;
+
+static NTSTATUS
+vdev_disk_io_intrxxx(PDEVICE_OBJECT DeviceObject, PIRP irp, PVOID Context)
+{
+	vd_callback_t *vb = (vd_callback_t *)Context;
+
+	ASSERT(vb != NULL);
+
+	vdev_disk_t *dvd = vb->zio->io_vd->vdev_tsd;
+
+	/* If IRQL is below DIPATCH_LEVEL then there is no issue in calling
+	 * vdev_disk_io_start_done() directly; otherwise queue a new Work Item
+	*/
+	if (KeGetCurrentIrql() < DISPATCH_LEVEL)
+		vdev_disk_io_start_done(vb);
+	else {
+		IoInitializeWorkItem(dvd->vd_DeviceObject, (PIO_WORKITEM)vb->work_item);
+		IoQueueWorkItem((PIO_WORKITEM)vb->work_item, DiskIoWkRtn, DelayedWorkQueue, vb);
+	}
+	return STATUS_MORE_PROCESSING_REQUIRED;
 }
 
 static void
@@ -549,60 +608,53 @@ vdev_disk_io_start(zio_t *zio)
 
 	zio->io_target_timestamp = zio_handle_io_delay(zio);
 
-	/*
-	* If we use vdev_disk_io_intr() as the IoSetCompletionRoutine() we BSOD as
-	* the IoSetCompletionRoutine() is called in higher priority, and vdev_disk_io_intr()
-	* calls zio_taskq_dispatch() which uses mutex calls, and that is not allowed at
-	* that IRQ level. So for now we block waiting on IoSetCompletionRoutine() setting
-	* and Event, then we manually call vdev_disk_io_intr().
-	* We should change this to call zio_taskq_dispatch() before IO, but to a new
-	* taskq, which immediately blocks waiting for Event to be set. That way we
-	* as async, and not blocking.
-	*/
-
 	ASSERT(zio->io_size != 0);
 
-	NTSTATUS status;
 	PIRP irp = NULL;
 	PIO_STACK_LOCATION irpStack = NULL;
-	void *b_addr = NULL;
 	IO_STATUS_BLOCK IoStatusBlock = { 0 };
 	LARGE_INTEGER offset;
-	KEVENT Event;
 
 	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
 
+	/* Preallocate space for IoWorkItem, required for vdev_disk_io_start_done callback */
+	vd_callback_t *vb = (vd_callback_t *)kmem_alloc(sizeof(vd_callback_t) + IoSizeofWorkItem(), KM_SLEEP);
+
+	vb->zio = zio;
+
 	if (zio->io_type == ZIO_TYPE_READ) {
 		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
-		b_addr =
+		vb->b_addr =
 			abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
 	} else {
-		b_addr =
+		vb->b_addr =
 			abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
 	}
-	KeInitializeEvent(&Event, NotificationEvent, FALSE);
 
 	if (flags & B_READ) {
 		irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ,
 			dvd->vd_DeviceObject,
-			b_addr,
+			vb->b_addr,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	} else {
 			irp = IoBuildAsynchronousFsdRequest(IRP_MJ_WRITE,
 			dvd->vd_DeviceObject,
-			b_addr,
+			vb->b_addr,
 			(ULONG)zio->io_size,
 			&offset,
 			&IoStatusBlock);
 	}
 	
 	if (!irp) {
+		kmem_free(vb, sizeof(vd_callback_t) + IoSizeofWorkItem());
 		zio->io_error = EIO;
 		zio_interrupt(zio);
 		return;
 	}
+
+	vb->irp = irp;
 
 	irpStack = IoGetNextIrpStackLocation(irp);
 
@@ -612,33 +664,13 @@ vdev_disk_io_start(zio_t *zio)
 
 	IoSetCompletionRoutine(irp,
 		vdev_disk_io_intrxxx,
-		&Event, // "Context" in vdev_disk_io_intr()
+		vb, // "Context" in vdev_disk_io_intr()
 		TRUE, // On Success
 		TRUE, // On Error
 		TRUE);// On Cancel
 
-	status = IoCallDriver(dvd->vd_DeviceObject, irp);
+	IoCallDriver(dvd->vd_DeviceObject, irp);
 
-	if (status == STATUS_PENDING) {
-		// Wait for IoCompletionRoutine to have been called.
-		KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL); 
-		status = IoStatusBlock.Status;
-	}
-
-	zio->io_error = (!NT_SUCCESS(status) ? EIO : 0);
-
-	// Return abd buf
-	if (zio->io_type == ZIO_TYPE_READ) {
-		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
-		abd_return_buf_copy_off(zio->io_abd, b_addr,
-			0, zio->io_size, zio->io_abd->abd_size);
-	} else {
-		VERIFY3S(zio->io_abd->abd_size, >= , zio->io_size);
-		abd_return_buf_off(zio->io_abd, b_addr,
-			0, zio->io_size, zio->io_abd->abd_size);
-	}
-
-	zio_delay_interrupt(zio);
 	return;
 }
 
