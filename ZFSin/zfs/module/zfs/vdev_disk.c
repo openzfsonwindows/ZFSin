@@ -67,6 +67,31 @@ vdev_disk_free(vdev_t *vd)
 	vd->vdev_tsd = NULL;
 }
 
+static void disk_exclusive(DEVICE_OBJECT *device, boolean_t excl)
+{
+	SET_DISK_ATTRIBUTES diskAttrs = { 0 };
+	DWORD requiredSize;
+	DWORD returnedSize;
+
+	// Set disk attributes.
+	diskAttrs.Version = sizeof(diskAttrs);
+	diskAttrs.AttributesMask = DISK_ATTRIBUTE_OFFLINE | DISK_ATTRIBUTE_READ_ONLY;
+	diskAttrs.Attributes = excl ? DISK_ATTRIBUTE_OFFLINE | DISK_ATTRIBUTE_READ_ONLY : 0;
+	diskAttrs.Persist = FALSE;
+
+	if (kernel_ioctl(device, IOCTL_DISK_SET_DISK_ATTRIBUTES,
+		&diskAttrs, sizeof(diskAttrs), NULL, 0, &requiredSize, NULL) != 0) {
+		dprintf("IOCTL_DISK_SET_DISK_ATTRIBUTES");
+		return;
+	}
+
+	// Tell the system that the disk was changed.
+	if (kernel_ioctl(device, IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0, &requiredSize, NULL) != 0)
+		dprintf("IOCTL_DISK_UPDATE_PROPERTIES");
+
+}
+
+
 /*
  * We want to be loud in DEBUG kernels when DKIOCGMEDIAINFOEXT fails, or when
  * even a fallback to DKIOCGMEDIAINFO fails.
@@ -262,6 +287,9 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	dvd->vd_FileObject = FileObject;
 	dvd->vd_DeviceObject = DeviceObject;
 
+	// Make disk readonly and offline, so that users can't partition/format it.
+	disk_exclusive(DeviceObject, TRUE);
+
 
 skip_open:
 
@@ -364,6 +392,9 @@ vdev_disk_close(vdev_t *vd)
 
 	if (dvd->vd_lh != NULL) {
 		dprintf("%s: \n", __func__);
+
+		// Undo disk readonly and offline.
+		disk_exclusive(dvd->vd_DeviceObject, FALSE);
 
 		// Release our holds
 		ObDereferenceObject(dvd->vd_FileObject);
