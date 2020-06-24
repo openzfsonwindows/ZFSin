@@ -450,10 +450,10 @@ vdev_disk_io_start_done(void *param)
 	}
 
 	UnlockAndFreeMdl(vb->irp->MdlAddress);
-	zio_delay_interrupt(zio);
 	IoFreeIrp(vb->irp);
 	kmem_free(vb, sizeof(vd_callback_t) + IoSizeofWorkItem());
 	vb = NULL;
+	zio_delay_interrupt(zio);
 }
 
 static VOID
@@ -619,12 +619,6 @@ vdev_disk_io_start(zio_t *zio)
 
 	/* Preallocate space for IoWorkItem, required for vdev_disk_io_start_done callback */
 	vd_callback_t *vb = (vd_callback_t *)kmem_alloc(sizeof(vd_callback_t) + IoSizeofWorkItem(), KM_SLEEP);
-
-	if (!vb) {
-		zio->io_error = EIO;
-		zio_interrupt(zio);
-		return;
-	}
 
 	vb->zio = zio;
 
