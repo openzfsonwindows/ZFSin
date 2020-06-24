@@ -86,11 +86,11 @@ int zvol_start(PDRIVER_OBJECT  DriverObject, PUNICODE_STRING pRegistryPath)
 	//pwzvolDrvInfo->MaximumNumberOfTargets = (pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA <= SCSI_MAXIMUM_TARGETS_PER_BUS ? pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA : SCSI_MAXIMUM_TARGETS_PER_BUS);
 	pwzvolDrvInfo->MaximumNumberOfLogicalUnits = (pwzvolDrvInfo->wzvolRegInfo.NbrLUNsperHBA / pwzvolDrvInfo->MaximumNumberOfTargets) + 1;
 	pwzvolDrvInfo->NumberOfBuses = 1; // supporting more would mean bigger changes in the zv_targets array. now we can go up to 32,640 zvols.
-	pwzvolDrvInfo->zvContextArray = (PVOID*)ExAllocatePoolWithTag(NonPagedPoolNx, ((SIZE_T)pwzvolDrvInfo->MaximumNumberOfTargets * pwzvolDrvInfo->MaximumNumberOfLogicalUnits * sizeof(PVOID)), MP_TAG_GENERAL);
+	pwzvolDrvInfo->zvContextArray = (wzvolContext*)ExAllocatePoolWithTag(NonPagedPoolNx, ((SIZE_T)pwzvolDrvInfo->MaximumNumberOfTargets * pwzvolDrvInfo->MaximumNumberOfLogicalUnits * sizeof(wzvolContext)), MP_TAG_GENERAL);
 	if (pwzvolDrvInfo->zvContextArray == NULL)
 		return (STATUS_NO_MEMORY);
-	RtlZeroMemory(pwzvolDrvInfo->zvContextArray, ((SIZE_T)pwzvolDrvInfo->MaximumNumberOfTargets * pwzvolDrvInfo->MaximumNumberOfLogicalUnits * sizeof(PVOID)));
-
+	RtlZeroMemory(pwzvolDrvInfo->zvContextArray, ((SIZE_T)pwzvolDrvInfo->MaximumNumberOfTargets * pwzvolDrvInfo->MaximumNumberOfLogicalUnits * (sizeof(wzvolContext))));
+		
 	RtlZeroMemory(&hwInitData, sizeof(VIRTUAL_HW_INITIALIZATION_DATA));
 
 	hwInitData.HwInitializationDataSize = sizeof(VIRTUAL_HW_INITIALIZATION_DATA);

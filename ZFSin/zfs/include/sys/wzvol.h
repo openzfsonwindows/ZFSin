@@ -101,6 +101,12 @@ typedef struct _MP_REG_INFO {
 	ULONG            bCombineVirtDisks;  // 0 => do not combine virtual disks a la MPIO.
 } WZVOL_REG_INFO, *pWZVOL_REG_INFO;
 
+typedef struct _wzvolContext {
+	PVOID	zv;
+	PIO_REMOVE_LOCK pIoRemLock;
+	volatile LONGLONG refCnt;
+} wzvolContext, * pwzvolContext;
+
 typedef struct _wzvolDriverInfo {                        // The master miniport object. In effect, an extension of the driver object for the miniport.
 	WZVOL_REG_INFO                    wzvolRegInfo;
 	KSPIN_LOCK                     DrvInfoLock;
@@ -110,7 +116,7 @@ typedef struct _wzvolDriverInfo {                        // The master miniport 
 	LIST_ENTRY                     ListMPIOExt;       // Header of list of HW_LU_EXTENSION_MPIO objects.
 	LIST_ENTRY					   ListSrbExt;		  // Heade rof List of HW_SRB_EXTENSION
 	PDRIVER_OBJECT                 pDriverObj;
-	PVOID						*zvContextArray;
+	wzvolContext				*zvContextArray;
 	ULONG                          DrvInfoNbrMPHBAObj;// Count of items in ListMPHBAObj.
 	ULONG                          DrvInfoNbrMPIOExtObj; // Count of items in ListMPIOExt.
 	UCHAR						MaximumNumberOfLogicalUnits;

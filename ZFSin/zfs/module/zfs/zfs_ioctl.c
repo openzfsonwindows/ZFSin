@@ -3948,8 +3948,8 @@ zfs_ioc_destroy(zfs_cmd_t *zc)
 		extern void wzvol_clear_targetid(uint8_t targetid, uint8_t lun);
 		zv = zvol_name2minor(zc->zc_name, NULL);
 		if (zv) {
+			wzvol_clear_targetid(zv->zv_target_id,zv->zv_lun_id,zv);
 			zvol_close_impl(zv, FWRITE, 0, NULL);
-			wzvol_clear_targetid(zv->zv_target_id,zv->zv_lun_id);
 		}
 #endif
 

@@ -65,45 +65,162 @@
 /*
  * We have a list of ZVOLs, and we receive incoming (Target, Lun) requests that needs to be mapped
  * to the correct "zv" ptr.
+ *
+ * ssv-18807: fixed the race condition in the zvol destroy processing by adding remove lock logic
+ * to ensure no new I/O can be processed from the front end (StorPort) and all outstanding host I/Os 
+ * have left the pipeline.
+ *
+ * The zv control block starts to get protected in wzvol_assign_targetid() and this until wzvol_clear_targetid()
+ * is called.
+ * 
+ * Once wzvol_find_target(t,l) returns a valid pointer to the zv, that zv is protected via an extra 
+ * reference on its remove lock so it can't be freed unless all references on it are cleared.  
+ * It is the caller's responsibility to clear the extra reference it got by calling wzvol_unlock_target(zv). 
+ *
+ * wzvol_find_target(t,l) will take an extra reference each time its called so each of those will need their  
+ * wzvol_unlock_target(zv) counterpart call.
+ *
+ * The wzvol_lock_target(zv) call is commented out because not used yet but its purpose is for when nested
+ * extra references need to be taken on the zv after wzvol_find_target(t,l) was called.  That can be useful 
+ * for when asynchronous processing (queueing) involving the zv control block need to make sure that zv
+ * stays allocated.
+ *
+ * When the zvol is destroyed the wzvol_clear_targetid(t,l,zv) will actively wait for all references to 
+ * be released and no new one can be taken. 
+ *
+ * programming notes: the remove lock must be dynamically allocated because it cannot be reinitialized. An 
+ * interlocked refcnt variable is also necessary to protect the remove lock control block's allocation.
+ * when the refcnt reaches 0 it is safe to free the remove lock cb. 
  */
-
+extern wzvolDriverInfo STOR_wzvolDriverInfo;
 
 inline int resolveArrayIndex(int t, int l, int nbL) { return (t * nbL) + l; }
-extern wzvolDriverInfo STOR_wzvolDriverInfo;
+static inline void wzvol_decref_target(wzvolContext* zvc) 
+{
+	if (atomic_dec_64_nv(&zvc->refCnt) == 0) {
+		PIO_REMOVE_LOCK pIoRemLock = zvc->pIoRemLock;
+		ASSERT(pIoRemLock != NULL);
+		// when refCnt is 0 we can free the remove lock block. All IoReleaseRemoveLock have been called.
+		atomic_cas_ptr(&zvc->pIoRemLock, pIoRemLock, NULL);
+		kmem_free(pIoRemLock, sizeof(*pIoRemLock));
+	}
+}
+
+/* not used now but left for completeness in case we need to have an extra reference after calling find_targetid */
+static inline BOOLEAN wzvol_lock_target(zvol_state_t* zv)
+{
+	wzvolContext* zvc = (pwzvolContext)zv->zv_target_context;
+	if (zvc) {
+		if (atomic_inc_64_nv(&zvc->refCnt) > 1) {
+			// safe to access the remove lock. Make sure we are on the same zv.
+			if (zvc->zv == zv) {
+				if (STATUS_SUCCESS == IoAcquireRemoveLock(zvc->pIoRemLock, zv))
+					return TRUE;
+				else
+					wzvol_decref_target(zvc);	// we are in the process of clearing the t-l		
+			}
+			else
+				wzvol_decref_target(zvc);	// another zv is using this entry.
+		}
+		else
+			atomic_dec_64_nv(&zvc->refCnt);	// we are in the process of clearing the t-l
+	}
+
+	return FALSE;
+}
+static inline void wzvol_unlock_target(zvol_state_t *zv)
+{		
+	wzvolContext* zvc = (pwzvolContext)zv->zv_target_context;
+	IoReleaseRemoveLock(zvc->pIoRemLock, zv);	
+	wzvol_decref_target(zvc);
+}
+
 int wzvol_assign_targetid(zvol_state_t *zv)
 {
-	zvol_state_t** zv_targets = (zvol_state_t **)STOR_wzvolDriverInfo.zvContextArray;
-	for (uint8_t l = 0; l < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits; l++) {
-		for (uint8_t t = 0; t < STOR_wzvolDriverInfo.MaximumNumberOfTargets; t++) {
-			if ((zv_targets[resolveArrayIndex(t,l, STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)] == NULL) &&
-				(atomic_cas_ptr(&zv_targets[resolveArrayIndex(t, l, STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)], NULL, zv) == NULL)) {
-				zv->zv_target_id = t;
-				zv->zv_lun_id = l;
-				return 1;
+	wzvolContext* zv_targets = STOR_wzvolDriverInfo.zvContextArray;
+	ASSERT(zv->zv_target_context == NULL);
+	PIO_REMOVE_LOCK pIoRemLock = kmem_zalloc(sizeof(*pIoRemLock), KM_SLEEP);
+	if (!pIoRemLock) {
+		dprintf("ZFS: Unable to assign targetid - out of memory.\n");
+		ASSERT("Unable to assign targetid - out of memory.");
+		return 0;
+	}
+	IoInitializeRemoveLock(pIoRemLock, 'KLRZ', 0, 0);
+	if (STATUS_SUCCESS != IoAcquireRemoveLock(pIoRemLock, zv)) {
+		dprintf("ZFS: Unable to assign targetid - can't acquire the remlock.\n");
+		ASSERT("Unable to assign targetid - can't acquire the remlock.");
+	}
+	else {
+		for (uint8_t l = 0; l < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits; l++) {
+			for (uint8_t t = 0; t < STOR_wzvolDriverInfo.MaximumNumberOfTargets; t++) {
+				int zvidx = resolveArrayIndex(t, l, STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits);
+				if (zv_targets[zvidx].zv == NULL && zv_targets[zvidx].pIoRemLock == NULL) {
+					if (atomic_inc_64_nv(&zv_targets[zvidx].refCnt) == 1) {
+						// brand new entry - got it. 
+						ASSERT(zv_targets[zvidx].pIoRemLock == NULL);
+						zv->zv_target_id = t;
+						zv->zv_lun_id = l;
+						zv->zv_target_context = &zv_targets[zvidx];
+						zv_targets[zvidx].pIoRemLock = pIoRemLock;
+						atomic_cas_ptr(&zv_targets[zvidx].zv, NULL, zv); // zv is now searchable
+						return 1;
+					}
+					else { // assign_targetid collision (very rare)
+						wzvol_decref_target(&zv_targets[zvidx]);
+					}				
+				}
 			}
 		}
+		IoReleaseRemoveLock(pIoRemLock, zv);	// housekeeping. it will be freed next.
 	}
+
+	kmem_free(pIoRemLock, sizeof(*pIoRemLock));
 	dprintf("ZFS: Unable to assign targetid - out of room.\n");
 	ASSERT("Unable to assign targetid - out of room.");
 	return 0;
 }
 
+/* note: find_target will lock the zv's remove lock. caller is responsible to unlock_target 
+		 if a non-NULL zv pointer is returned
+*/
 static inline zvol_state_t *wzvol_find_target(uint8_t targetid, uint8_t lun)
 {
+	wzvolContext* zv_targets = STOR_wzvolDriverInfo.zvContextArray;
 	ASSERT(targetid < STOR_wzvolDriverInfo.MaximumNumberOfTargets);
 	ASSERT(lun < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits);
-	if (targetid < STOR_wzvolDriverInfo.MaximumNumberOfTargets && lun < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)
-		return (zvol_state_t *)STOR_wzvolDriverInfo.zvContextArray[resolveArrayIndex(targetid, lun, STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)];
-	else
-		return NULL;
+	if (targetid < STOR_wzvolDriverInfo.MaximumNumberOfTargets && lun < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits) {
+		int zvidx = resolveArrayIndex(targetid, lun, STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits);
+		zvol_state_t *zv = zv_targets[zvidx].zv;
+		if (zv) {
+			if (atomic_inc_64_nv(&zv_targets[zvidx].refCnt) > 1) {	
+				// safe to access the remove lock
+				if (STATUS_SUCCESS == IoAcquireRemoveLock(zv_targets[zvidx].pIoRemLock, zv))
+					return (zvol_state_t*)zv_targets[zvidx].zv;				
+				else
+					wzvol_decref_target(&zv_targets[zvidx]);		// we are in the process of clearing the t-l				
+			}
+			else
+				atomic_dec_64_nv(&zv_targets[zvidx].refCnt);		// we are in the process of clearing the t-l			
+		} // nothing in that t-l
+	}	
+	return NULL;
 }
 
-void wzvol_clear_targetid(uint8_t targetid, uint8_t lun)
+
+void wzvol_clear_targetid(uint8_t targetid, uint8_t lun, zvol_state_t* zv)
 {
+	wzvolContext* zvc = (pwzvolContext)zv->zv_target_context;
+
+	ASSERT(KeGetCurrentIrql() < DISPATCH_LEVEL);
 	ASSERT(targetid < STOR_wzvolDriverInfo.MaximumNumberOfTargets);
 	ASSERT(lun < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits);
-	if (targetid < STOR_wzvolDriverInfo.MaximumNumberOfTargets && lun < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)
-		STOR_wzvolDriverInfo.zvContextArray[resolveArrayIndex(targetid, lun, STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)] = NULL;
+	if (targetid < STOR_wzvolDriverInfo.MaximumNumberOfTargets && lun < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits) {
+		/* make sure no new I/O can enter the front-end + all outstanding I/Os are completed (ssv-18807). */
+		if (atomic_cas_ptr(&STOR_wzvolDriverInfo.zvContextArray[resolveArrayIndex(targetid, lun, STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits)].zv, zv, NULL) == zv) {
+			IoReleaseRemoveLockAndWait(zvc->pIoRemLock, zv);	// new calls to acquire remove lock will fail from now on 
+			wzvol_decref_target(zvc);
+		}
+	}
 }
 
 /**************************************************************************************************/     
@@ -305,13 +422,14 @@ ScsiOpInquiry(
 	__in PSCSI_REQUEST_BLOCK  pSrb)
 {
 	UCHAR status = SRB_STATUS_SUCCESS;
+	zvol_state_t* zv = NULL;
 
 	if (pHBAExt->bDontReport) {
 		status = SRB_STATUS_NO_DEVICE;
 		goto out;
 	}
 
-	zvol_state_t* zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
+	zv = wzvol_find_target(pSrb->TargetId, pSrb->Lun);
 	if (NULL == zv) {
 		dprintf("Unable to get zv context for device %d:%d:%d\n",
 			pSrb->PathId, pSrb->TargetId, pSrb->Lun);
@@ -350,6 +468,8 @@ ScsiOpInquiry(
 	}
 
 out:
+	if (zv)
+		wzvol_unlock_target(zv);
 	return status;
 }                                                     // End ScsiOpInquiry.
 
@@ -472,6 +592,7 @@ ScsiOpReadCapacity(
 	REVERSE_BYTES(&readCapacity->BytesPerBlock, &blockSize);
 	REVERSE_BYTES(&readCapacity->LogicalBlockAddress, &maxBlocks);
 
+	wzvol_unlock_target(zv);
 	return SRB_STATUS_SUCCESS;
 }                                                     // End ScsiOpReadCapacity.
 
@@ -510,6 +631,7 @@ ScsiOpReadCapacity16(
 	while (lppFactor >>= 1)
 		lppExponent++;
 	readCapacity->LogicalPerPhysicalExponent = lppExponent;
+	wzvol_unlock_target(zv);
 	return SRB_STATUS_SUCCESS;
 }
 
@@ -628,6 +750,7 @@ ScsiOpReportLuns(
     PLUN_LIST pLunList = (PLUN_LIST)pSrb->DataBuffer; // Point to LUN list.
     uint8_t   GoodLunIdx = 0;
 	uint8_t   totalLun = 0;
+	zvol_state_t* zv;
 
     if (FALSE==pHBAExt->bReportAdapterDone) {         // This opcode will be one of the earliest I/O requests for a new HBA (and may be received later, too).
         wzvol_HwReportAdapter(pHBAExt);                   // WMIEvent test.
@@ -641,12 +764,13 @@ ScsiOpReportLuns(
         // Set the LUN numbers if there is enough room, and set only those LUNs to be reported.       
         for (uint8_t i = 0; i < STOR_wzvolDriverInfo.MaximumNumberOfLogicalUnits; i ++) {
 			// make sure we have the space for 1 more LUN each time.
-			if (wzvol_find_target(pSrb->TargetId, i)) {
+			if ((zv = wzvol_find_target(pSrb->TargetId, i))!=NULL) {
 				totalLun++;
 				if (pSrb->DataTransferLength >= FIELD_OFFSET(LUN_LIST, Lun) + (GoodLunIdx * sizeof(pLunList->Lun[0])) + sizeof(pLunList->Lun[0])) {
 					pLunList->Lun[GoodLunIdx][1] = (UCHAR)i;
 					GoodLunIdx++;
 				}
+				wzvol_unlock_target(zv);
 			}
         }
     } // else: we chose to not report any LUN through that HBA (see FindAdapter routine).
@@ -669,7 +793,7 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	ULONG                     lclStatus;
 	UCHAR                     status;
 
-	zvol_state_t *zv;
+	zvol_state_t *zv = NULL;
 
 	// Find out if that SRB has been cancelled and busy it back if it was.
 	KIRQL oldIrql;
@@ -740,6 +864,9 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	uio_free(uio);
 
 Done:
+	if (zv)
+		wzvol_unlock_target(zv);
+
 	pSrb->SrbStatus = status;
 
 	// Tell StorPort this action has been completed.
