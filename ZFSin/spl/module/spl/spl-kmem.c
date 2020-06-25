@@ -3921,6 +3921,30 @@ kmem_cache_set_move(kmem_cache_t *cp,
 }
 
 void
+kmem_qcache_destroy()
+{
+	kmem_cache_t *cp;
+	kmem_cache_t* cache_to_destroy = NULL;
+
+	do {
+		cache_to_destroy = NULL;
+		mutex_enter(&kmem_cache_lock);
+		for (cp = list_head(&kmem_caches); cp != NULL;
+			cp = list_next(&kmem_caches, cp)) {
+			if (cp->cache_cflags & KMC_QCACHE) {
+				cache_to_destroy = cp;
+				break;
+			}
+		}
+		mutex_exit(&kmem_cache_lock);
+
+		if (cache_to_destroy) {
+			kmem_cache_destroy(cache_to_destroy);
+		}
+	} while (cache_to_destroy);
+}
+
+void
 kmem_cache_destroy(kmem_cache_t *cp)
 {
 	int cpu_seqid;
@@ -5290,6 +5314,7 @@ spl_kmem_fini(void)
 	// Destroy the VA associated caches
 	kmem_destroy_cache_by_name(KMEM_VA_PREFIX);
 
+	kmem_qcache_destroy();
 	// Destroy metadata caches
 	kmem_cache_destroy(kmem_bufctl_cache);
 	kmem_cache_destroy(kmem_bufctl_audit_cache);
