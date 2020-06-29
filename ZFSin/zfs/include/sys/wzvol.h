@@ -221,6 +221,7 @@ typedef struct _MP_WorkRtnParms {
 	/* ZFS ZVOLDI */
 	void* zv;
 	zfsiodesc_t ioDesc;
+	taskq_ent_t          ent;
 	CHAR				 pQueueWorkItem[1]; // IO_WORKITEM structure: keep at the end of this block (dynamically allocated).
 } MP_WorkRtnParms, *pMP_WorkRtnParms;
 

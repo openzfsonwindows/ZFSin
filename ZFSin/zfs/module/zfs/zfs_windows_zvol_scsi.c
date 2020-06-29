@@ -45,6 +45,7 @@
 //#include <wmistr.h>
 //#include <wdf.h>
 //#include <hbaapi.h>
+#include <sys/zfs_context.h>
 #include <sys/wzvol.h>
 //#include <sys/wzvolwmi.h>
 
@@ -93,6 +94,7 @@
  * when the refcnt reaches 0 it is safe to free the remove lock cb. 
  */
 extern wzvolDriverInfo STOR_wzvolDriverInfo;
+extern taskq_t *zvol_taskq;
 
 inline int resolveArrayIndex(int t, int l, int nbL) { return (t * nbL) + l; }
 static inline void wzvol_decref_target(wzvolContext* zvc) 
@@ -906,7 +908,6 @@ wzvol_GeneralWkRtn(
 
 VOID
 bzvol_ReadWriteWkRtn(
-	__in PVOID           pDummy,           // Not used.
 	__in PVOID           pWkParms          // Parm list pointer.
 )
 {
@@ -915,9 +916,6 @@ bzvol_ReadWriteWkRtn(
 	zfsiodesc_t* pIo = &pWkRtnParms->ioDesc;
 	uio_t* uio = pWkRtnParms->pUio;
 	int iores;
-
-	UNREFERENCED_PARAMETER(pDummy);
-	IoUninitializeWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
 
 	/* Call ZFS to read/write data */
 	if (ActionRead == pWkRtnParms->Action) {
@@ -931,7 +929,7 @@ bzvol_ReadWriteWkRtn(
 		pIo->Cb(pIo, iores == 0 ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL, TRUE);
 	}
 	uio_free(uio);
-	ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
+	kmem_free(pWkRtnParms, sizeof(MP_WorkRtnParms));
 }
 
 NTSTATUS
@@ -955,21 +953,14 @@ DiReadWriteSetup(
 
 	if (pIo->Flags & ZFSZVOLFG_AlwaysPend) {
 		pMP_WorkRtnParms pWkRtnParms = NULL;
-		pWkRtnParms = (pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPool, sizeof(MP_WorkRtnParms)+IoSizeofWorkItem(), MP_TAG_GENERAL);
-		if (NULL == pWkRtnParms) {
-			uio_free(uio);
-			return STATUS_INSUFFICIENT_RESOURCES;
-		}
-
+		pWkRtnParms = kmem_alloc(sizeof (MP_WorkRtnParms), KM_SLEEP);
 		RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
 		pWkRtnParms->ioDesc = *pIo;
 		pWkRtnParms->pUio = uio;
 		pWkRtnParms->zv = zv;
 		pWkRtnParms->Action = action;
-		extern PDEVICE_OBJECT ioctlDeviceObject;
-		IoInitializeWorkItem(ioctlDeviceObject, (PIO_WORKITEM)pWkRtnParms->pQueueWorkItem);
-
-		IoQueueWorkItem((PIO_WORKITEM)pWkRtnParms->pQueueWorkItem, bzvol_ReadWriteWkRtn, DelayedWorkQueue, pWkRtnParms);
+		taskq_init_ent(&pWkRtnParms->ent);
+		taskq_dispatch_ent(zvol_taskq, bzvol_ReadWriteWkRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
 		return STATUS_PENDING; // queued up.
 	}
 	else {
