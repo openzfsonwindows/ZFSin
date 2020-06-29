@@ -156,14 +156,20 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)\ZFSin;$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WPPFILE="%(Filename).tmh";_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
       <RuntimeLibrary>
       </RuntimeLibrary>
       <DisableSpecificWarnings>4018;4100;4146;4152;4200;4201;4204;4210;4211;4242;4244;4389;4706;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <WppEnabled>false</WppEnabled>
+      <WppTraceFunction>TraceEvent{FLAGS=MYDRIVER_ALL_INFO}(LEVEL, MSG, ...);dprintf{FLAGS=MYDRIVER_ALL_INFO, LEVEL=TRACE_INFO}(MSG, ...);</WppTraceFunction>
+      <WppGenerateUsingTemplateFile>{km-default.tpl}*.tmh</WppGenerateUsingTemplateFile>
+      <WppScanConfigurationData>$(KMDF_INC_PATH)$(KMDF_VER_PATH)\WdfTraceEnums.h</WppScanConfigurationData>
+      <WppPreprocessorDefinitions>WPP_INLINE __inline</WppPreprocessorDefinitions>
+      <UndefinePreprocessorDefinitions>RUN_WPP</UndefinePreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -174,14 +180,19 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(SolutionDir)\ZFSin;$(SolutionDir)\$(Platform)\$(ConfigurationName)\;$(SolutionDir)\ZFSin;$(SolutionDir)\ZFSin\$(Platform)\$(ConfigurationName);$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>RUN_WPP;WPPFILE="%(Filename).tmh";_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
       <RuntimeLibrary>
       </RuntimeLibrary>
       <DisableSpecificWarnings>4018;4100;4146;4152;4200;4201;4204;4210;4211;4242;4244;4389;4706;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <WppEnabled>true</WppEnabled>
+      <WppTraceFunction>TraceEvent{FLAGS=MYDRIVER_ALL_INFO}(LEVEL, MSG, ...);dprintf{FLAGS=MYDRIVER_ALL_INFO, LEVEL=TRACE_INFO}(MSG, ...);</WppTraceFunction>
+      <WppPreprocessorDefinitions>WPP_INLINE __inline</WppPreprocessorDefinitions>
+      <WppScanConfigurationData>$(KMDF_INC_PATH)$(KMDF_VER_PATH)\WdfTraceEnums.h</WppScanConfigurationData>
+      <WppGenerateUsingTemplateFile>{km-default.tpl}*.tmh</WppGenerateUsingTemplateFile>
     </ClCompile>
     <Link>
       <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
@@ -249,6 +260,7 @@
     <ClCompile Include="spl\module\spl\spl-vnode.c" />
     <ClCompile Include="spl\module\spl\spl-windows.c" />
     <ClCompile Include="spl\module\spl\spl-xdr.c" />
+    <ClCompile Include="Wpp.c" />
     <ClCompile Include="zfs\lib\zlib-1.2.3\adler32.c" />
     <ClCompile Include="zfs\lib\zlib-1.2.3\compress.c" />
     <ClCompile Include="zfs\lib\zlib-1.2.3\contrib\masmx64\inffas8664.c" />
@@ -334,7 +346,12 @@
     <ClCompile Include="zfs\module\zcommon\zprop_common.c" />
     <ClCompile Include="zfs\module\zfs\abd.c" />
     <ClCompile Include="zfs\module\zfs\aggsum.c" />
-    <ClCompile Include="zfs\module\zfs\arc.c" />
+    <ClCompile Include="zfs\module\zfs\arc.c">
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+    </ClCompile>
     <ClCompile Include="zfs\module\zfs\blkptr.c" />
     <ClCompile Include="zfs\module\zfs\bplist.c" />
     <ClCompile Include="zfs\module\zfs\bpobj.c" />
@@ -364,7 +381,12 @@
     <ClCompile Include="zfs\module\zfs\dsl_destroy.c" />
     <ClCompile Include="zfs\module\zfs\dsl_dir.c" />
     <ClCompile Include="zfs\module\zfs\dsl_pool.c" />
-    <ClCompile Include="zfs\module\zfs\dsl_proc.c" />
+    <ClCompile Include="zfs\module\zfs\dsl_proc.c">
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+    </ClCompile>
     <ClCompile Include="zfs\module\zfs\dsl_prop.c" />
     <ClCompile Include="zfs\module\zfs\dsl_scan.c" />
     <ClCompile Include="zfs\module\zfs\dsl_synctask.c" />
@@ -423,29 +445,74 @@
     <ClCompile Include="zfs\module\zfs\zcp_synctask.c" />
     <ClCompile Include="zfs\module\zfs\zfeature.c" />
     <ClCompile Include="zfs\module\zfs\zfeature_common.c" />
-    <ClCompile Include="zfs\module\zfs\zfs_acl.c" />
+    <ClCompile Include="zfs\module\zfs\zfs_acl.c">
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+    </ClCompile>
     <ClCompile Include="zfs\module\zfs\zfs_byteswap.c" />
     <ClCompile Include="zfs\module\zfs\zfs_debug.c" />
     <ClCompile Include="zfs\module\zfs\zfs_dir.c" />
     <ClCompile Include="zfs\module\zfs\zfs_fm.c" />
     <ClCompile Include="zfs\module\zfs\zfs_fuid.c" />
-    <ClCompile Include="zfs\module\zfs\zfs_ioctl.c" />
+    <ClCompile Include="zfs\module\zfs\zfs_ioctl.c">
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+    </ClCompile>
     <ClCompile Include="zfs\module\zfs\zfs_kstat_windows.c" />
     <ClCompile Include="zfs\module\zfs\zfs_log.c" />
     <ClCompile Include="zfs\module\zfs\zfs_onexit.c" />
     <ClCompile Include="zfs\module\zfs\zfs_replay.c" />
     <ClCompile Include="zfs\module\zfs\zfs_rlock.c" />
     <ClCompile Include="zfs\module\zfs\zfs_sa.c" />
-    <ClCompile Include="zfs\module\zfs\zfs_vfsops.c" />
-    <ClCompile Include="zfs\module\zfs\zfs_vnops.c" />
-    <ClCompile Include="zfs\module\zfs\zfs_vnops_windows.c" />
-    <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_lib.c" />
-    <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_mount.c" />
+    <ClCompile Include="zfs\module\zfs\zfs_vfsops.c">
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_vnops.c">
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_vnops_windows.c">
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_lib.c">
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_mount.c">
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+    </ClCompile>
     <ClCompile Include="zfs\module\zfs\zfs_windows.c" />
-    <ClCompile Include="zfs\module\zfs\zfs_windows_zvol.c" />
+    <ClCompile Include="zfs\module\zfs\zfs_windows_zvol.c">
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+    </ClCompile>
     <ClCompile Include="zfs\module\zfs\zfs_windows_zvol_scsi.c" />
     <ClCompile Include="zfs\module\zfs\zfs_windows_zvol_wmi.c" />
-    <ClCompile Include="zfs\module\zfs\zfs_znode.c" />
+    <ClCompile Include="zfs\module\zfs\zfs_znode.c">
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
+    </ClCompile>
     <ClCompile Include="zfs\module\zfs\zil.c" />
     <ClCompile Include="zfs\module\zfs\zio.c" />
     <ClCompile Include="zfs\module\zfs\zio_checksum.c" />

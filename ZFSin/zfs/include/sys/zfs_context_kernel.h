@@ -118,6 +118,7 @@ typedef struct direntry dirent64_t;
 
 extern PDRIVER_OBJECT WIN_DriverObject;
 
+#include <Trace.h>
 
 #endif /* _KERNEL */
 

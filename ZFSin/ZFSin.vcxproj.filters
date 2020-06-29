@@ -807,6 +807,9 @@
     <ClCompile Include="zfs\module\zfs\zfs_vnops_windows_mount.c">
       <Filter>Source Files\ZFS\module\zfs</Filter>
     </ClCompile>
+    <ClCompile Include="Wpp.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h">

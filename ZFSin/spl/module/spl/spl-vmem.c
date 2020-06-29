@@ -224,6 +224,8 @@
 //#include <sys/panic.h>
 //#include <stdbool.h>
 
+#include <Trace.h>
+
 #define	VMEM_INITIAL		21	/* early vmem arenas */
 #define	VMEM_SEG_INITIAL	800
 //200 //400	/* early segments */
@@ -611,8 +613,8 @@ vmem_freelist_insert_sort_by_time(vmem_t *vmp, vmem_seg_t *vsp)
 
 	ASSERT(vsp->vs_span_createtime != 0);
 	if (vsp->vs_span_createtime == 0) {
-		dprintf("SPL: %s: WARNING: vsp->vs_span_createtime == 0 (%s)!\n",
-		    __func__, vmp->vm_name);
+		TraceEvent(TRACE_WARNING, "SPL: %s: WARNING: vsp->vs_span_createtime == 0 (%s)!\n",
+		           __func__, vmp->vm_name);
 	}
 
 	// continuing our example, starts with p at flist[8k]
@@ -3064,13 +3066,13 @@ static uint64_t
 spl_validate_bucket_span_size(uint64_t val)
 {
 	if (!ISP2(val)) {
-		dprintf("SPL: %s: WARNING %llu is not a power of two, not changing.\n",
-		    __func__, val);
+		TraceEvent(TRACE_WARNING, "SPL: %s: WARNING %llu is not a power of two, not changing.\n",
+		           __func__, val);
 		return (0);
 	}
 	if (val < 128ULL*1024ULL || val > 16ULL*1024ULL*1024ULL) {
-		dprintf("SPL: %s: WARNING %llu is out of range [128k - 16M], not changing.\n",
-		    __func__, val);
+		TraceEvent(TRACE_WARNING, "SPL: %s: WARNING %llu is out of range [128k - 16M], not changing.\n",
+		           __func__, val);
 		return (0);
 	}
 	return (val);

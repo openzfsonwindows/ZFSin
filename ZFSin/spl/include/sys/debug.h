@@ -72,18 +72,20 @@ extern void printBuffer(const char *fmt, ...);
 		#define dprintf(...) printBuffer(__VA_ARGS__)
 		#define IOLog(...) printBuffer(__VA_ARGS__)
 		#define xprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
+		#define TraceEvent(x, ...) printBuffer(__VA_ARGS__)
 	#else
 		#undef KdPrintEx
 		#define KdPrintEx(_x_) DbgPrintEx _x_
 		#define dprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
 		#define IOLog(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
 		#define xprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
+		#define TraceEvent(level, ...) KdPrintEx((DPFLTR_IHVDRIVER_ID, level, __VA_ARGS__))
 		//#define dprintf(...)
 		//#define IOLog(...)
 	#endif
 		#define PANIC(fmt, ...)						\
 		do {									\
-			dprintf(fmt, __VA_ARGS__); \
+			xprintf(fmt, __VA_ARGS__); \
 			DbgBreakPoint(); \
 		} while (0)
 #else
@@ -91,12 +93,13 @@ extern void printBuffer(const char *fmt, ...);
 	//#define KdPrintEx(_x_) DbgPrintEx _x_
 	//#define dprintf(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
 	//#define IOLog(...) KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__))
+    #define TraceEvent(x, ...)
 	#define xprintf(...) DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, __VA_ARGS__)
 	#define dprintf(...)
 	#define IOLog(...)
 	#define PANIC(fmt, ...)						\
 	do {									\
-		dprintf(fmt, __VA_ARGS__); \
+		xprintf(fmt, __VA_ARGS__); \
 	} while (0)
 #endif
 

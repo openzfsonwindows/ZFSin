@@ -31,6 +31,8 @@
 //#include <sys/malloc.h>
 //#include <libkern/libkern.h>
 
+#include <Trace.h>
+
 struct _buf *
 kobj_open_file(char *name)
 {
@@ -44,7 +46,7 @@ kobj_open_file(char *name)
    // (void) vfs_context_rele(vctx);
 
     if (error) {
-        dprintf("kobj_open_file: \"%s\", err %d from vnode_open\n", name ? name : "", error);
+        TraceEvent(TRACE_ERROR, "kobj_open_file: \"%s\", err %d from vnode_open\n", name ? name : "", error);
 
         return ((struct _buf *)-1);
     }
