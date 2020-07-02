@@ -1560,7 +1560,7 @@ zfs_rezget(znode_t *zp)
 	}
 	mutex_exit(&zp->z_acl_lock);
 
-	dprintf("rezget: %p %p %p\n", zp, zp->z_xattr_lock,
+	dprintf("rezget: %p %p %p\n", zp, &zp->z_xattr_lock,
 	    zp->z_xattr_parent);
 
 	rw_enter(&zp->z_xattr_lock, RW_WRITER);

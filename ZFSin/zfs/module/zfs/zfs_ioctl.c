@@ -7864,7 +7864,7 @@ zfs_attach(void)
 		&ioctlDeviceObject);                // Returned ptr to Device Object
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf(("ZFS: Couldn't create the device object /dev/zfs (%wZ)\n", ZFS_DEV_KERNEL));
+		dprintf("ZFS: Couldn't create the device object /dev/zfs (%wZ)\n", ZFS_DEV_KERNEL);
 		return ntStatus;
 	}
 	dprintf("ZFS: created kernel device node: %p: name %wZ\n", ioctlDeviceObject, ZFS_DEV_KERNEL);
@@ -7910,7 +7910,7 @@ zfs_attach(void)
 		&ntWin32NameString, &ntUnicodeString);
 
 	if (!NT_SUCCESS(ntStatus)) {
-		dprintf(("ZFS: Couldn't create userland symbolic link to /dev/zfs (%wZ)\n", ZFS_DEV));
+		dprintf("ZFS: Couldn't create userland symbolic link to /dev/zfs (%wZ)\n", ZFS_DEV);
 		IoDeleteDevice(ioctlDeviceObject);
 		return -1;
 	}
