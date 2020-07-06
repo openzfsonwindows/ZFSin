@@ -7,6 +7,8 @@
 
 #include <sys/wzvol.h>
 
+#include "Trace.h"
+
 DRIVER_INITIALIZE DriverEntry;
 //EVT_WDF_DRIVER_DEVICE_ADD ZFSin_Init;
 
@@ -23,7 +25,6 @@ PDRIVER_UNLOAD STOR_DriverUnload;
 PDRIVER_DISPATCH STOR_MajorFunction[IRP_MJ_MAXIMUM_FUNCTION + 1];
 
 wzvolDriverInfo STOR_wzvolDriverInfo;
-
 
 DRIVER_UNLOAD ZFSin_Fini;
 void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
@@ -43,6 +44,7 @@ void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
 		ExFreePoolWithTag(STOR_wzvolDriverInfo.zvContextArray, MP_TAG_GENERAL);
 		STOR_wzvolDriverInfo.zvContextArray = NULL;
 	}
+	ZFSWppCleanup(DriverObject);
 }
 
 /*
@@ -51,7 +53,8 @@ void ZFSin_Fini(PDRIVER_OBJECT  DriverObject)
 NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRegistryPath)
 {
 	NTSTATUS status;
-
+	ZFSWppInit(DriverObject, pRegistryPath);
+	
 	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "ZFSin: DriverEntry\n"));
 
 	// Setup global so zfs_ioctl.c can setup devnode

@@ -29,6 +29,7 @@
 #include <sys/cmn_err.h>
 #include <spl-debug.h>
 
+#include <Trace.h>
 
 void
 vcmn_err(int ce, const char *fmt, va_list ap)
@@ -47,7 +48,7 @@ vcmn_err(int ce, const char *fmt, va_list ap)
 			dprintf("SPL: Notice: %s\n", msg);
 			break;
         case CE_WARN:
-			dprintf("SPL: Warning: %s\n", msg);
+			TraceEvent(TRACE_WARNING, "SPL: Warning: %s\n", msg);
 			break;
         case CE_PANIC:
 			PANIC("%s", msg);

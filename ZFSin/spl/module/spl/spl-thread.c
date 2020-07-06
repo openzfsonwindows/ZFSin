@@ -36,6 +36,8 @@
 
 #include <ntddk.h>
 
+#include <Trace.h>
+
 uint64_t zfs_threads = 0;
 
 kthread_t *

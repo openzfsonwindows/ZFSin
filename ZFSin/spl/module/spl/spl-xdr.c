@@ -32,6 +32,7 @@
 #include <spl-debug.h>
 #include <sys/byteorder.h>
 
+#include <Trace.h>
 
 /*
  * SPL's XDR mem implementation.
@@ -148,7 +149,7 @@ xdrmem_create(XDR *xdrs, const caddr_t addr, const uint_t size,
 			xdrs->x_ops = &xdrmem_decode_ops;
 			break;
 		default:
-			dprintf("SPL: Invalid op value: %d\n", op);
+			TraceEvent(TRACE_ERROR, "SPL: Invalid op value: %d\n", op);
 			xdrs->x_ops = NULL; /* Let the caller know we failed */
 			return;
 	}
@@ -158,7 +159,7 @@ xdrmem_create(XDR *xdrs, const caddr_t addr, const uint_t size,
 	xdrs->x_addr_end = addr + size;
 
 	if (xdrs->x_addr_end < xdrs->x_addr) {
-		dprintf("SPL: Overflow while creating xdrmem: %p, %u\n", addr, size);
+		TraceEvent(TRACE_ERROR, "SPL: Overflow while creating xdrmem: %p, %u\n", addr, size);
 		xdrs->x_ops = NULL;
 	}
 }
@@ -170,7 +171,7 @@ xdrmem_control(XDR *xdrs, int req, void *info)
 	struct xdr_bytesrec *rec = (struct xdr_bytesrec *) info;
 
 	if (req != XDR_GET_BYTES_AVAIL) {
-		dprintf("SPL: Called with unknown request: %d\n", req);
+		TraceEvent(TRACE_ERROR, "SPL: Called with unknown request: %d\n", req);
 		return FALSE;
 	}
 

@@ -502,6 +502,8 @@
 #include <sys/sysdc.h>
 #include <sys/note.h>
 
+#include <Trace.h>
+
 static kmem_cache_t *taskq_ent_cache, *taskq_cache;
 
 /*

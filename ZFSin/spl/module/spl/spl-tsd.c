@@ -58,6 +58,8 @@
 #include <sys/avl.h>
 #include <spl-debug.h>
 
+#include <Trace.h>
+
 /* Initial size of array, and realloc growth size */
 #define TSD_ALLOC_SIZE 5
 
