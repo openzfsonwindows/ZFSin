@@ -69,6 +69,7 @@ uint64_t spl_GetPhysMem(void);
 #define	_task_user_
 //#include <IOKit/IOLib.h>
 
+#include <Trace.h>
 
 // Size in bytes of the memory allocated in seg_kmem
 extern uint64_t		segkmem_total_mem_allocated;
@@ -250,7 +251,7 @@ ddi_copyin(const void *from, void *to, size_t len, int flags)
 		error = GetExceptionCode();
 	}
 	if (error) {
-		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
+		TraceEvent(TRACE_ERROR, "SPL: Exception while accessing inBuf 0X%08X\n", error);
 		goto out;
 	}
 
@@ -268,7 +269,7 @@ ddi_copyin(const void *from, void *to, size_t len, int flags)
 		error = GetExceptionCode();
 	}
 	if (error) {
-		dprintf("SPL: Exception while locking inBuf 0X%08X\n", error);
+		TraceEvent(TRACE_ERROR, "SPL: Exception while locking inBuf 0X%08X\n", error);
 		goto out;
 	}
 
@@ -318,7 +319,7 @@ ddi_copyout(const void *from, void *to, size_t len, int flags)
 	mdl = IoAllocateMdl(to, len, FALSE, FALSE, NULL);
 	if (!mdl) {
 		error = STATUS_INSUFFICIENT_RESOURCES;
-		dprintf("SPL: copyout failed to allocate mdl\n");
+		TraceEvent(TRACE_ERROR, "SPL: copyout failed to allocate mdl\n");
 		goto out;
 	}
 
@@ -330,7 +331,7 @@ ddi_copyout(const void *from, void *to, size_t len, int flags)
 		error = GetExceptionCode();
 	}
 	if (error != 0) {
-		dprintf("SPL: Exception while locking outBuf 0X%08X\n",
+		TraceEvent(TRACE_ERROR, "SPL: Exception while locking outBuf 0X%08X\n",
 			error);
 		goto out;
 	}
@@ -377,7 +378,7 @@ ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl)
 		error = GetExceptionCode();
 	}
 	if (error) {
-		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
+		TraceEvent(TRACE_ERROR, "SPL: Exception while accessing inBuf 0X%08X\n", error);
 		goto out;
 	}
 
@@ -389,14 +390,14 @@ ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl)
 		error = GetExceptionCode();
 	}
 	if (error) {
-		dprintf("SPL: Exception while accessing inBuf 0X%08X\n", error);
+		TraceEvent(TRACE_ERROR, "SPL: Exception while accessing inBuf 0X%08X\n", error);
 		goto out;
 	}
 
 	mdl = IoAllocateMdl(to, len, FALSE, FALSE, NULL);
 	if (!mdl) {
 		error = STATUS_INSUFFICIENT_RESOURCES;
-		dprintf("SPL: copyout failed to allocate mdl\n");
+		TraceEvent(TRACE_ERROR, "SPL: copyout failed to allocate mdl\n");
 		goto out;
 	}
 
@@ -408,7 +409,7 @@ ddi_copysetup(void *to, size_t len, void **out_buffer, PMDL *out_mdl)
 		error = GetExceptionCode();
 	}
 	if (error != 0) {
-		dprintf("SPL: Exception while locking outBuf 0X%08X\n",
+		TraceEvent(TRACE_ERROR, "SPL: Exception while locking outBuf 0X%08X\n",
 			error);
 		goto out;
 	}
@@ -636,7 +637,7 @@ uint64_t spl_GetPhysMem(void)
 		query, NULL, NULL);
 
 	if (status != STATUS_SUCCESS) {
-		dprintf("%s: size query failed: 0x%x\n", __func__, status);
+		TraceEvent(TRACE_ERROR, "%s: size query failed: 0x%x\n", __func__, status);
 		return 0ULL;
 	}
 

@@ -94,6 +94,9 @@
 #ifdef _KERNEL
 #define XNU_KERNEL_PRIVATE
 //#include <mach/vm_types.h>
+
+#include <Trace.h>
+
 //extern vm_map_t kernel_map;
 
 /*

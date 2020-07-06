@@ -77,6 +77,8 @@
 #include <vm/anon.h>
 #include <vm/seg_kmem.h>
 
+#include <Trace.h>
+
 /*
 * Global lock to protect the AVL trees and kstat_chain_id.
 */

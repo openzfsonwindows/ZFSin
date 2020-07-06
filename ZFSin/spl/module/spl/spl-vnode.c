@@ -41,6 +41,7 @@
 #include <sys/zfs_znode.h>
 #endif
 
+#include <Trace.h>
 
 //#define FIND_MAF
 
@@ -1360,7 +1361,7 @@ int vnode_drain_delayclose(int force)
 			(vp->SectionObjectPointers.ImageSectionObject == NULL) &&
 			(vp->SectionObjectPointers.DataSectionObject == NULL)) {
 			// We are ready to let go
-			dprintf("%s: drain %vp\n", __func__, vp);
+			dprintf("%s: drain %p\n", __func__, vp);
 
 			// Pass VNODELOCKED as we hold vp, recycle will unlock.
 			// We have to give up all_list due to recycle -> reclaim -> rmnode -> purgedir -> zget -> vnode_create

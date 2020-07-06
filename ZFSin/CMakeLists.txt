@@ -109,6 +109,7 @@ add_subdirectory(zfs)
 wdk_add_driver(ZFSin
   debug.c
   driver.c
+  Wpp.c
 )
 
 target_link_libraries(ZFSin PRIVATE

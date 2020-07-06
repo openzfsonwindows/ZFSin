@@ -45,6 +45,8 @@
 #include <sys/callb.h>
 //#include <stdbool.h>
 
+#include <Trace.h>
+
 // ===============================================================
 // Options
 // ===============================================================
@@ -953,54 +955,54 @@ kmem_error(int error, kmem_cache_t *cparg, void *bufarg)
 	switch (error) {
 
 		case KMERR_MODIFIED:
-			dprintf("buffer modified after being freed\n");
+			TraceEvent(TRACE_ERROR, "buffer modified after being freed\n");
 			off = verify_pattern(KMEM_FREE_PATTERN, buf, cp->cache_verify);
 			if (off == NULL)	/* shouldn't happen */
 				off = buf;
-			dprintf("SPL: modification occurred at offset 0x%lx "
-				   "(0x%llx replaced by 0x%llx)\n",
-				   (uintptr_t)off - (uintptr_t)buf,
-				   (longlong_t)KMEM_FREE_PATTERN, (longlong_t)*off);
+			TraceEvent(TRACE_ERROR, "SPL: modification occurred at offset 0x%lx "
+						"(0x%llx replaced by 0x%llx)\n",
+						(uintptr_t)off - (uintptr_t)buf,
+						(longlong_t)KMEM_FREE_PATTERN, (longlong_t)*off);
 			break;
 
 		case KMERR_REDZONE:
-			dprintf("redzone violation: write past end of buffer\n");
+			TraceEvent(TRACE_ERROR, "redzone violation: write past end of buffer\n");
 			break;
 
 		case KMERR_BADADDR:
-			dprintf("invalid free: buffer not in cache\n");
+			TraceEvent(TRACE_ERROR, "invalid free: buffer not in cache\n");
 			break;
 
 		case KMERR_DUPFREE:
-			dprintf("duplicate free: buffer freed twice\n");
+			TraceEvent(TRACE_ERROR, "duplicate free: buffer freed twice\n");
 			break;
 
 		case KMERR_BADBUFTAG:
-			dprintf("boundary tag corrupted\n");
-			dprintf("SPL: bcp ^ bxstat = %lx, should be %lx\n",
-				   (intptr_t)btp->bt_bufctl ^ btp->bt_bxstat,
-				   KMEM_BUFTAG_FREE);
+			TraceEvent(TRACE_ERROR, "boundary tag corrupted\n");
+			TraceEvent(TRACE_ERROR, "SPL: bcp ^ bxstat = %lx, should be %lx\n",
+				      (intptr_t)btp->bt_bufctl ^ btp->bt_bxstat,
+				       KMEM_BUFTAG_FREE);
 			break;
 
 		case KMERR_BADBUFCTL:
-			dprintf("bufctl corrupted\n");
+			TraceEvent(TRACE_ERROR, "bufctl corrupted\n");
 			break;
 
 		case KMERR_BADCACHE:
-			dprintf("buffer freed to wrong cache\n");
-			dprintf("SPL: buffer was allocated from %s,\n", cp->cache_name);
-			dprintf("SPL: caller attempting free to %s.\n", cparg->cache_name);
+			TraceEvent(TRACE_ERROR, "buffer freed to wrong cache\n");
+			TraceEvent(TRACE_ERROR, "SPL: buffer was allocated from %s,\n", cp->cache_name);
+			TraceEvent(TRACE_ERROR, "SPL: caller attempting free to %s.\n", cparg->cache_name);
 			break;
 
 		case KMERR_BADSIZE:
-			dprintf("bad free: free size (%u) != alloc size (%u)\n",
-				   KMEM_SIZE_DECODE(((uint32_t *)btp)[0]),
-				   KMEM_SIZE_DECODE(((uint32_t *)btp)[1]));
+			TraceEvent(TRACE_ERROR, "bad free: free size (%u) != alloc size (%u)\n",
+				       KMEM_SIZE_DECODE(((uint32_t *)btp)[0]),
+				       KMEM_SIZE_DECODE(((uint32_t *)btp)[1]));
 			break;
 
 		case KMERR_BADBASE:
-			dprintf("bad free: free address (%p) != alloc address (%p)\n",
-				   bufarg, buf);
+			TraceEvent(TRACE_ERROR, "bad free: free address (%p) != alloc address (%p)\n",
+				       bufarg, buf);
 			break;
 	}
 
@@ -4357,7 +4359,7 @@ spl_free_set_and_wait_pressure(int64_t new_p, boolean_t fast, clock_t check_inte
 		mutex_exit(&spl_free_thread_lock);
 	        now = zfs_lbolt();
 		if (now > end_by) {
-			dprintf("%s: ERROR: timed out after one minute!\n", __func__);
+			TraceEvent(TRACE_ERROR, "%s: timed out after one minute!\n", __func__);
 			break;
 		} else if (now > double_again_at && !doubled_again) {
 			doubled_again = TRUE;
@@ -4965,7 +4967,7 @@ spl_event_thread(void *notused)
 	HANDLE low_mem_handle;
 	low_mem_event = IoCreateNotificationEvent((PUNICODE_STRING)&low_mem_name, &low_mem_handle);
 	if (low_mem_event == NULL) {
-		dprintf("%s: failed IoCreateNotificationEvent(\\KernelObjects\\LowMemoryCondition)");
+		TraceEvent(TRACE_ERROR, "%s: failed IoCreateNotificationEvent(\\KernelObjects\\LowMemoryCondition)", __func__);
 		thread_exit();
 	}
 	KeClearEvent(low_mem_event);
@@ -6852,7 +6854,7 @@ spl_zio_is_suppressed(const uint32_t size, const uint64_t now, const boolean_t b
 		return (FALSE);
 	} else if (ks->pointed_to < 1) {
 		ASSERT(ks->pointed_to > 0); // throw an assertion
-		dprintf("SPL: %s: ERROR: iksvec[%llu].ks_entry->pointed_to == %u for size %llu\n",
+		TraceEvent(TRACE_ERROR, "SPL: %s: ERROR: iksvec[%llu].ks_entry->pointed_to == %u for size %llu\n",
 		    __func__, (uint64_t)cachenum, ks->pointed_to, (uint64_t)size);
 		return (FALSE);
 	} else if (ks->suppress_count == 0) {
@@ -6872,7 +6874,7 @@ spl_zio_is_suppressed(const uint32_t size, const uint64_t now, const boolean_t b
 				if (ks->cp_metadata != NULL) {
 					atomic_inc_64(&ks->cp_metadata->arc_no_grow);
 				} else {
-					dprintf("WARNING: %s: "
+					TraceEvent(TRACE_WARNING, "WARNING: %s: "
 					    "ks_set_cp->metadata == NULL after ks_set_cp !"
 					    "size = %lu\n",
 					    __func__, size);
@@ -6886,7 +6888,7 @@ spl_zio_is_suppressed(const uint32_t size, const uint64_t now, const boolean_t b
 				if (ks->cp_filedata != NULL) {
 					atomic_inc_64(&ks->cp_filedata->arc_no_grow);
 				} else {
-					dprintf("WARNING: %s: "
+					TraceEvent(TRACE_WARNING, "WARNING: %s: "
 					    "ks_set_cp->filedata == NULL after ks_set_cp !"
 					    "size = %lu\n",
 					    __func__, size);
@@ -7042,20 +7044,20 @@ kmem_cache_buf_in_cache(kmem_cache_t *cparg, void *bufarg)
 	}
 
 	if (sp == NULL) {
-		dprintf("SPL: %s: KMERR_BADADDR orig cache = %s\n",
-		    __func__, cparg->cache_name);
+		TraceEvent(TRACE_ERROR, "SPL: %s: KMERR_BADADDR orig cache = %s\n",
+		           __func__, cparg->cache_name);
 		return (NULL);
 	}
 
 	if (cp == NULL) {
-		dprintf("SPL: %s: ERROR cp == NULL; cparg == %s",
-		    __func__, cparg->cache_name);
+		TraceEvent(TRACE_ERROR, "SPL: %s: ERROR cp == NULL; cparg == %s",
+		           __func__, cparg->cache_name);
 		return (NULL);
 	}
 
 	if (cp != cparg) {
-		dprintf("SPL: %s: KMERR_BADCACHE arg cache = %s but found in %s instead\n",
-		    __func__, cparg->cache_name, cp->cache_name);
+		TraceEvent(TRACE_ERROR, "SPL: %s: KMERR_BADCACHE arg cache = %s but found in %s instead\n",
+		           __func__, cparg->cache_name, cp->cache_name);
 		return(cp);
 	}
 
