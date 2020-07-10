@@ -48,7 +48,7 @@ extern void zvol_rename_minors(spa_t *spa, const char *oldname,
 #define	ZVOL_RDONLY	0x1
 #define	ZVOL_DUMPIFIED	0x2
 #define	ZVOL_EXCL	0x4
-#define	ZVOL_WCE	0x8
+#define	ZVOL_WRITE_SYNC	0x8
 
 /* struct wrapper for IOKit class */
 typedef struct zvol_iokit zvol_iokit_t;
@@ -147,8 +147,8 @@ extern int zvol_close_impl(zvol_state_t *zv, int flag,
 
 extern int zvol_get_volume_blocksize(dev_t dev);
 
-extern int zvol_read(zvol_state_t *zv, uio_t *uio);
-extern int zvol_write(zvol_state_t *zv, uio_t *uio);
+extern int zvol_read(zvol_state_t *zv, uio_t *uio, int);
+extern int zvol_write(zvol_state_t *zv, uio_t *uio, int);
 
 extern int zvol_unmap(zvol_state_t *zv, uint64_t off, uint64_t bytes);
 

@@ -2289,7 +2289,7 @@ zvol_dump(dev_t dev, caddr_t addr, daddr_t blkno, int nblocks)
 /*
  */
 int
-zvol_read(zvol_state_t *zv, uio_t *uio)
+zvol_read(zvol_state_t *zv, uio_t *uio, int flags)
 {
 	locked_range_t *lr;
 	int error = 0;
@@ -2337,7 +2337,7 @@ zvol_read(zvol_state_t *zv, uio_t *uio)
  */
 
 int
-zvol_write(zvol_state_t *zv, uio_t *uio)
+zvol_write(zvol_state_t *zv, uio_t *uio, int flags)
 {
 	uint64_t volsize;
 	locked_range_t *lr;
@@ -2359,12 +2359,8 @@ zvol_write(zvol_state_t *zv, uio_t *uio)
 	dprintf("zvol_write_iokit(offset "
 	    "0x%llx bytes 0x%llx)\n", uio_offset(uio), uio_resid(uio));
 
-	/* If Windows can pass SYNC along the storport request, add
-	 * argument to zvol_write and add to this test:
-	sync = !(zv->zv_flags & ZVOL_WCE) ||
+	sync = (flags & ZVOL_WRITE_SYNC) ||
 	    (zv->zv_objset->os_sync == ZFS_SYNC_ALWAYS);
-	*/
-	sync = (zv->zv_objset->os_sync == ZFS_SYNC_ALWAYS);
 
 	/* Lock the entire range */
 	lr = rangelock_enter(&zv->zv_rangelock, 
@@ -2619,18 +2615,6 @@ zvol_get_volume_blocksize(dev_t dev)
 	mutex_exit(&zfsdev_state_lock);
 	// return (zv->zv_volblocksize);
 	return (DEV_BSIZE);
-}
-
-/*
- * Return the current WCE setting to an external caller.
- * The WCE setting can change while the volume is open.
- */
-int
-zvol_get_volume_wce(void *minor_hdl)
-{
-	zvol_state_t *zv = minor_hdl;
-
-	return ((zv->zv_flags & ZVOL_WCE) ? 1 : 0);
 }
 
 /*

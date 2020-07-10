@@ -792,7 +792,7 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 	ULONGLONG                 startingSector=0ULL, sectorOffset=0ULL;
 	ULONG                     lclStatus;
 	UCHAR                     status;
-
+	int flags = 0;
 	zvol_state_t *zv = NULL;
 
 	// Find out if that SRB has been cancelled and busy it back if it was.
@@ -817,9 +817,13 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 			pCdb->CDB10.LogicalBlockByte2 << 8 |
 			pCdb->CDB10.LogicalBlockByte1 << 16 |
 			pCdb->CDB10.LogicalBlockByte0 << 24;
+		if (pCdb->CDB10.ForceUnitAccess)
+			flags |= ZVOL_WRITE_SYNC;
 	}
 	else if (pSrb->CdbLength == 16) {
 		REVERSE_BYTES_QUAD(&startingSector, pCdb->CDB16.LogicalBlock);
+		if (pCdb->CDB16.ForceUnitAccess)
+			flags |= ZVOL_WRITE_SYNC;
 	}
 	else {
 		status = SRB_STATUS_ERROR;
@@ -853,11 +857,11 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 
 	/* Call ZFS to read/write data */
 	if (ActionRead == pWkRtnParms->Action) {           
-		status = zvol_read(zv, uio);
+		status = zvol_read(zv, uio, flags);
 	} else {                                           
-		status = zvol_write(zv, uio);
+		status = zvol_write(zv, uio, flags);
 	}
-
+	
 	if (status == 0)
 		status = SRB_STATUS_SUCCESS;
 
