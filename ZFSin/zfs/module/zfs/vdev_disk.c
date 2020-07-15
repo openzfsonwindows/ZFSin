@@ -42,6 +42,8 @@
 #undef dprintf
 #define dprintf
 
+wchar_t zfs_vdev_protection_filter[64] = { L"\0" };
+
 static void vdev_disk_close(vdev_t *);
 
 extern void UnlockAndFreeMdl(PMDL);
@@ -80,13 +82,13 @@ static void disk_exclusive(DEVICE_OBJECT *device, boolean_t excl)
 	diskAttrs.Persist = FALSE;
 
 	if (kernel_ioctl(device, IOCTL_DISK_SET_DISK_ATTRIBUTES,
-		&diskAttrs, sizeof(diskAttrs), NULL, 0, &requiredSize, NULL) != 0) {
+		&diskAttrs, sizeof(diskAttrs), NULL, 0) != 0) {
 		dprintf("IOCTL_DISK_SET_DISK_ATTRIBUTES");
 		return;
 	}
 
 	// Tell the system that the disk was changed.
-	if (kernel_ioctl(device, IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0, &requiredSize, NULL) != 0)
+	if (kernel_ioctl(device, IOCTL_DISK_UPDATE_PROPERTIES, NULL, 0, NULL, 0) != 0)
 		dprintf("IOCTL_DISK_UPDATE_PROPERTIES");
 
 }
@@ -278,8 +280,37 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 		return EIO;
 	}
 
+
 	// Convert FileObject to DeviceObject
-	DeviceObject = IoGetRelatedDeviceObject(FileObject);
+	PDEVICE_OBJECT pTopDevice = IoGetRelatedDeviceObject(FileObject);
+	PDEVICE_OBJECT pSendToDevice = pTopDevice; // default
+
+	/*
+		Move to the top of the device stack or until we find the protection filter driver.
+		We need to stay under that driver so we can still access the disk
+		after protecting it.
+		The custom protection filter is optional: if none set we stay under the default "partmgr" driver;
+		otherwise we will stay under the first one found.
+		By default the disk gets minimal protection being set offline and read only through "partmgr". 
+		A custom filter driver can provide enhanced protection for the vdev disk.
+	*/
+	UNICODE_STRING customFilterName;
+	UNICODE_STRING defaultFilterName;
+	RtlInitUnicodeString(&customFilterName, zfs_vdev_protection_filter);
+	RtlInitUnicodeString(&defaultFilterName, L"\\Driver\\partmgr"); // default
+
+	DeviceObject = FileObject->DeviceObject; // bottom of stack
+	while (DeviceObject) {
+		if ((zfs_vdev_protection_filter[0] != L'\0' ? !RtlCompareUnicodeString(&DeviceObject->DriverObject->DriverName, &customFilterName, TRUE) : FALSE) ||
+			!RtlCompareUnicodeString(&DeviceObject->DriverObject->DriverName, &defaultFilterName, TRUE)) {
+			dprintf("%s: disk %s : vdev protection filter set to %S\n", __func__,
+				FileName, DeviceObject->DriverObject->DriverName.Buffer);
+			break;
+		}
+		pSendToDevice = DeviceObject;
+		DeviceObject = DeviceObject->AttachedDevice;
+	}
+	DeviceObject = pSendToDevice;
 
 	// Grab a reference to DeviceObject
 	ObReferenceObject(DeviceObject);
@@ -288,8 +319,7 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	dvd->vd_DeviceObject = DeviceObject;
 
 	// Make disk readonly and offline, so that users can't partition/format it.
-	disk_exclusive(DeviceObject, TRUE);
-
+	disk_exclusive(pTopDevice, TRUE);
 
 skip_open:
 
@@ -394,7 +424,7 @@ vdev_disk_close(vdev_t *vd)
 		dprintf("%s: \n", __func__);
 
 		// Undo disk readonly and offline.
-		disk_exclusive(dvd->vd_DeviceObject, FALSE);
+		disk_exclusive(IoGetRelatedDeviceObject(dvd->vd_FileObject), FALSE);
 
 		// Release our holds
 		ObDereferenceObject(dvd->vd_FileObject);

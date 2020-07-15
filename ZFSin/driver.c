@@ -206,7 +206,7 @@ int spl_check_assign_types(kstat_named_t *kold, PKEY_VALUE_FULL_INFORMATION regB
 //     return 0 (OK)
 // write kstat values (if OK)
 //
-
+extern wchar_t zfs_vdev_protection_filter[64];
 int spl_kstat_registry(PUNICODE_STRING pRegistryPath, kstat_t *ksp)
 {
 	OBJECT_ATTRIBUTES             ObjectAttributes;
@@ -270,31 +270,51 @@ int spl_kstat_registry(PUNICODE_STRING pRegistryPath, kstat_t *ksp)
 		// Output string is only null terminated if input is, so do so now.
 		keyname[outlen] = 0;
 
-		// Now iterate kstats and attempt to match name with 'keyname'.
-		kstat_named_t *kold;
-		kold = ksp->ks_data;
-		for (unsigned int i = 0; i < ksp->ks_ndata; i++, kold++) {
+		// Support for registry values that are not tunable through kstat.  Those bypass the kstat name matching loop
+		// and get directly set in the corresponding code variable.
+		//
+		if (strcasecmp("zfs_vdev_protection_filter", keyname) == 0) {
+			if (regBuffer->Type != REG_SZ ||
+				regBuffer->DataLength > (sizeof(zfs_vdev_protection_filter)-sizeof(wchar_t))) { // will be NULL terminated
+				KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "%s: registry '%s'. Type needs to be REG_SZ (63 wchar max)\n", __func__,
+					keyname));
+				ExFreePool(regBuffer);
+				continue;
+			}
+			char* newvalue = (char*)((uint8_t*)regBuffer + regBuffer->DataOffset);
+			KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "%s: registry '%s': %S\n", __func__,
+				keyname, newvalue));
 
-			// Find name?
-			if (kold->name != NULL &&
-				!strcasecmp(kold->name, keyname)) {
+			bzero(zfs_vdev_protection_filter, sizeof(zfs_vdev_protection_filter));
+			bcopy(newvalue, zfs_vdev_protection_filter, min(sizeof(zfs_vdev_protection_filter), regBuffer->DataLength));
+		}
+		else {
+			// Now iterate kstats and attempt to match name with 'keyname'.
+			kstat_named_t *kold;
+			kold = ksp->ks_data;
+			for (unsigned int i = 0; i < ksp->ks_ndata; i++, kold++) {
 
-				// Check types match and are supported
-				if (!spl_check_assign_types(kold, regBuffer))
+				// Find name?
+				if (kold->name != NULL &&
+					!strcasecmp(kold->name, keyname)) {
+
+					// Check types match and are supported
+					if (!spl_check_assign_types(kold, regBuffer))
+						break;
+
+					// Special case 'hostid' is automatically generated if not
+					// set, so if we read it in, signal to not set it.
+					// KSTAT_UPDATE is called after this function completes.
+					if (spl_hostid == 0 &&
+						strcasecmp("hostid", keyname) == 0)
+						spl_hostid = 1; // Non-zero
+
+					changed++;
 					break;
-
-				// Special case 'hostid' is automatically generated if not
-				// set, so if we read it in, signal to not set it.
-				// KSTAT_UPDATE is called after this function completes.
-				if (spl_hostid == 0 &&
-					strcasecmp("hostid", keyname) == 0)
-					spl_hostid = 1; // Non-zero
-
-				changed++;
-				break;
+				}
 			}
 		}
-
+			
 		ExFreePool(regBuffer);
 	} // for() all keys
 
