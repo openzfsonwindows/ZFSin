@@ -805,8 +805,7 @@ zfs_mount(zfs_handle_t *zhp, const char *options, int flags)
 #endif /* __LINUX__ */
 
 	if (!zfs_is_mountable(zhp, mountpoint, sizeof (mountpoint), NULL))
-		return (zfs_error_fmt(hdl, EZFS_MOUNTFAILED,
-			dgettext(TEXT_DOMAIN, "cannot mount '%s'"), mountpoint));
+		return (0);
 
 #ifdef __LINUX__
 
