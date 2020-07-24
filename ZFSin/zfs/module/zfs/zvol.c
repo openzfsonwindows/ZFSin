@@ -90,9 +90,11 @@
 
 #include "zfs_namecheck.h"
 
+unsigned int zvol_threads = 32;
 uint64_t zvol_inhibit_dev = 0;
 dev_info_t zfs_dip_real = { 0 };
 dev_info_t *zfs_dip = &zfs_dip_real;
+taskq_t *zvol_taskq;
 extern int zfs_major;
 extern int zfs_bmajor;
 
@@ -452,7 +454,7 @@ zvol_replay_write(void *arg1, void *arg2, boolean_t byteswap)
 	if (error) {
 		dmu_tx_abort(tx);
 	} else {
-		dmu_write_by_dnode(zv->zv_dn, offset, length, data, tx);
+		dmu_write(os, ZVOL_OBJ, offset, length, data, tx);
 		dmu_tx_commit(tx);
 	}
 
@@ -634,7 +636,8 @@ zvol_create_minor_impl(const char *name)
 #endif
 	(void) strlcpy(zv->zv_name, name, MAXPATHLEN);
 	zv->zv_min_bs = DEV_BSHIFT;
-	zv->zv_minor = minor;
+	// zv->zv_minor = minor; minor init moved at the end of the routine. this way it signifies to zv context search routines 
+	// that the zvol is completely opened and ready.
 	zv->zv_objset = os;
 	if (dmu_objset_is_snapshot(os) || !spa_writeable(dmu_objset_spa(os)))
 		zv->zv_flags |= ZVOL_RDONLY;
@@ -697,7 +700,9 @@ zvol_create_minor_impl(const char *name)
 
 	// Announcing new DISK - we hold the zvol open the entire time storport has it.
 	error = zvol_open_impl(zv, FWRITE, 0, NULL);
-	
+	if (error == 0)
+		zv->zv_minor = minor; // zvol good to go and fully opened.
+
 	return (0);
 }
 
@@ -2840,7 +2845,13 @@ zvol_busy(void)
 int
 zvol_init(void)
 {
+	int threads = MIN(MAX(zvol_threads, 1), 1024);
+
 	dprintf("zvol_init\n");
+	zvol_taskq = taskq_create(ZVOL_DRIVER, threads, maxclsyspri,
+		threads * 2, INT_MAX, 0);
+	if (zvol_taskq == NULL)
+		return (-ENOMEM);
 	VERIFY(ddi_soft_state_init(&zfsdev_state, sizeof (zfs_soft_state_t),
 	    1) == 0);
 #ifdef illumos
@@ -2858,4 +2869,23 @@ zvol_fini(void)
 	mutex_destroy(&zfsdev_state_lock);
 #endif
 	ddi_soft_state_fini(&zfsdev_state);
+	taskq_destroy(zvol_taskq);
+}
+
+
+/* ZFS ZVOLDI */
+_Function_class_(PINTERFACE_REFERENCE)
+void IncZvolRef(PVOID Context) {
+	zvol_state_t* zv = (zvol_state_t*)Context;
+	mutex_enter(&zfsdev_state_lock);
+	atomic_inc_32(&zv->zv_total_opens);
+	mutex_exit(&zfsdev_state_lock);
+}
+
+_Function_class_(PINTERFACE_REFERENCE)
+void DecZvolRef(PVOID Context) {
+	zvol_state_t* zv = (zvol_state_t*)Context;
+	mutex_enter(&zfsdev_state_lock);
+	atomic_dec_32(&zv->zv_total_opens);
+	mutex_exit(&zfsdev_state_lock);
 }
