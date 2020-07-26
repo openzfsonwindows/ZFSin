@@ -452,7 +452,7 @@ zvol_replay_write(void *arg1, void *arg2, boolean_t byteswap)
 	if (error) {
 		dmu_tx_abort(tx);
 	} else {
-		dmu_write_by_dnode(zv->zv_dn, offset, length, data, tx);
+		dmu_write(os, ZVOL_OBJ, offset, length, data, tx);
 		dmu_tx_commit(tx);
 	}
 
