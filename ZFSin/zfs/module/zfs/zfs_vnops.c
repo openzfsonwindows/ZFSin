@@ -2570,7 +2570,6 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 	uint8_t		type;
     int		numdirent = 0;
     char		*bufptr;
-    boolean_t	isdotdir = B_TRUE;
 	void *nameptr = NULL;
 	ULONG namelenholder = 0;
 	uint32_t *eofp = &zccb->dir_eof;
@@ -2684,7 +2683,6 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 		ino64_t objnum;
 		ushort_t reclen, rawsize;
 		uint64_t *next = NULL;
-		uint8_t dtype;
 		size_t namelen;
 		int force_formd_normalized_output;
 		size_t  nfdlen;
@@ -2714,9 +2712,6 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			type = DT_DIR;
 #endif
 		} else {
-			/* This is not a special case directory */
-			isdotdir = B_FALSE;
-
 
 			/*
 			 * Grab next entry.
@@ -2754,13 +2749,6 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 #endif
 			}
 		}
-
-
-		/* Extract the object type for OSX to use */
-		if (isdotdir)
-			dtype = DT_DIR;
-		else
-			dtype = ZFS_DIRENT_TYPE(zap.za_first_integer);
 
 		/*
 		 * Check if name will fit.
@@ -2833,21 +2821,21 @@ zfs_readdir(vnode_t *vp, uio_t *uio, cred_t *cr, zfs_dirlist_t *zccb, int flags,
 			tzp = &dummy;
 
 			// If "." use zp, if ".." use dzp, neither needs releasing. Otherwise, call zget.
-			if (offset == 0)
+			if (offset == 0 || offset == 1)
 				tzp = zp;
 			else
 				get_zp = zfs_zget_ext(zfsvfs,
 					offset == 1 ? parent : objnum, &tzp,  // objnum is adjusted above
 #if 1
-					0);
+					ZGET_FLAG_UNLINKED);
 #else
-					ZGET_FLAG_WITHOUT_VNODE );
+				ZGET_FLAG_UNLINKED | ZGET_FLAG_WITHOUT_VNODE );
 #endif
 
 			// If we failed to get the node (someone else might have deleted it), but we
 			// need to return the name still, so it can be removed.
 			if (get_zp != 0 && tzp == NULL)
-				tzp = zp;
+				skip_this_entry = 1;
 
 			// Is it worth warning about failing stat here?
 			if (!skip_this_entry) {
