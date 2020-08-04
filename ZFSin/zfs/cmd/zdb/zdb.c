@@ -2903,19 +2903,34 @@ dump_path(char *ds, char *path)
 }
 
 static int
-dump_label(const char *dev)
+dump_label(const char* dev)
 {
 	int fd;
-	label_t labels[VDEV_LABELS];
+	//label_t labels[VDEV_LABELS];
+	label_t *labels;
 	char path[MAXPATHLEN];
-	struct stat statbuf;
+	struct _stat64 statbuf;
 	uint64_t psize, ashift;
 	int l;
 	boolean_t label_found = B_FALSE;
 
-	bzero(labels, sizeof (labels));
+	labels = malloc(sizeof(label_t) * VDEV_LABELS);
+	bzero(labels, sizeof(label_t) * VDEV_LABELS);
 
-	(void) strlcpy(path, dev, sizeof (path));
+	(void)strlcpy(path, dev, sizeof(path));
+
+#ifdef WIN32
+	if (dev[0] != '/' &&
+		dev[0] != '\\') {
+		(void)snprintf(path, sizeof(path), "\\\\?\\%s",
+			dev);
+	} else {
+		char* r;
+		while (r = strchr(path, '/'))
+			*r = '\\';
+	}
+#else
+
 	if (dev[0] == '/') {
 		if (strncmp(dev, ZFS_DISK_ROOTD,
 		    strlen(ZFS_DISK_ROOTD)) == 0) {
@@ -2931,6 +2946,7 @@ dump_label(const char *dev)
 		    !isdigit(*(s + 1)))
 			(void) strlcat(path, "s0", sizeof (path));
 	}
+#endif
 
 	if ((fd = open(path, O_RDONLY)) < 0) {
 		(void) fprintf(stderr, "cannot open '%s': %s\n", path,
@@ -2967,8 +2983,8 @@ dump_label(const char *dev)
 			(void) printf("------------------------------------\n");
 		}
 
-		if (pread(fd, &label, sizeof (label),
-		    vdev_label_offset(psize, l, 0)) != sizeof (label)) {
+		if (pread(fd, &label->label, sizeof (label->label),
+		    vdev_label_offset(psize, l, 0)) != sizeof (label->label)) {
 			if (!dump_opt['q'])
 				(void) printf("failed to read label %d\n", l);
 			continue;
@@ -2996,7 +3012,7 @@ dump_label(const char *dev)
 	}
 
 	(void) close(fd);
-
+	free(labels);
 	return (label_found ? 0 : 2);
 }
 

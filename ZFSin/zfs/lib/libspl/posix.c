@@ -1087,7 +1087,6 @@ int pread_win(HANDLE h, void *buf, size_t nbyte, off_t offset)
 	DWORD red;
 	LARGE_INTEGER large;
 	LARGE_INTEGER lnew;
-
 	// This code does all seeks based on "current" so we can pre-seek to offset start
 
 	// Find current position
@@ -1096,16 +1095,21 @@ int pread_win(HANDLE h, void *buf, size_t nbyte, off_t offset)
 
 	// Seek to place to read
 	large.QuadPart = offset;
-	SetFilePointerEx(h, large, NULL, FILE_CURRENT);
+	SetFilePointerEx(h, large, NULL, FILE_BEGIN);
 
-	// Read
-	if (!ReadFile(h, buf, nbyte, &red, NULL))
-		red = -GetLastError();
+	boolean_t ok;
+
+	ok = ReadFile(h, buf, nbyte, &red, NULL);
+
+	if (!ok) {
+		red = GetLastError();
+		red = -red;
+	}
 
 	// Restore position
 	SetFilePointerEx(h, lnew, NULL, FILE_BEGIN);
 
-	return red;
+	return (red);
 }
 
 int wosix_pread(int fd, void *buf, size_t nbyte, off_t offset)
