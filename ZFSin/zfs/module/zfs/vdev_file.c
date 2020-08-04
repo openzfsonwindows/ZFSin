@@ -520,6 +520,8 @@ vdev_file_io_start(zio_t *zio)
 		return;
 	}
 
+	vb->irp = irp;
+
 	irpStack = IoGetNextIrpStackLocation(irp);
 
 	irpStack->Flags |= SL_OVERRIDE_VERIFY_VOLUME; // SetFlag(IoStackLocation->Flags, SL_OVERRIDE_VERIFY_VOLUME);
