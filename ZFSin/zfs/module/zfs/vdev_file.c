@@ -34,6 +34,9 @@
 #include <sys/fm/fs/zfs.h>
 #include <sys/vnode.h>
 
+#ifndef _KERNEL
+#include <Fileapi.h>
+#endif
 /*
  * Virtual device vector for files.
  */
@@ -59,16 +62,16 @@ extern int VOP_GETATTR(struct vnode *vp, vattr_t *vap, int flags, void *x3, void
 #endif
 
 static int
-vdev_file_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
-    uint64_t *ashift)
+vdev_file_open(vdev_t* vd, uint64_t* psize, uint64_t* max_psize,
+	uint64_t* ashift)
 {
 #if _KERNEL
 	static vattr_t vattr;
-	vdev_file_t *vf;
 #endif
+	vdev_file_t *vf;
 	int error = 0;
 
-    dprintf("vdev_file_open %p\n", vd->vdev_tsd);
+	dprintf("vdev_file_open %p\n", vd->vdev_tsd);
 	/* Rotational optimizations only make sense on block devices */
 	vd->vdev_nonrot = B_TRUE;
 
@@ -98,15 +101,13 @@ vdev_file_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	 * Reopen the device if it's not currently open.  Otherwise,
 	 * just update the physical size of the device.
 	 */
-#ifdef _KERNEL
 	if (vd->vdev_tsd != NULL) {
 		ASSERT(vd->vdev_reopening);
 		vf = vd->vdev_tsd;
 		goto skip_open;
 	}
 
-	vf = vd->vdev_tsd = kmem_zalloc(sizeof (vdev_file_t), KM_SLEEP);
-#endif
+	vf = vd->vdev_tsd = kmem_zalloc(sizeof(vdev_file_t), KM_SLEEP);
 
 	/*
 	 * We always open the files from the root of the global zone, even if
@@ -117,20 +118,20 @@ vdev_file_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	ASSERT(vd->vdev_path != NULL && (
 		vd->vdev_path[0] == '/' || vd->vdev_path[0] == '\\'));
 
-    /*
-      vn_openat(char *pnamep,
-      enum uio_seg seg,
-      int filemode,
-      int createmode,
-      struct vnode **vpp,
-      enum create crwhy,
-      mode_t umask,
-      struct vnode *startvp)
-      extern int vn_openat(char *pnamep, enum uio_seg seg, int filemode,
-      int createmode, struct vnode **vpp, enum create crwhy,
-      mode_t umask, struct vnode *startvp);
-    */
-	uint8_t *FileName = NULL;
+	/*
+	  vn_openat(char *pnamep,
+	  enum uio_seg seg,
+	  int filemode,
+	  int createmode,
+	  struct vnode **vpp,
+	  enum create crwhy,
+	  mode_t umask,
+	  struct vnode *startvp)
+	  extern int vn_openat(char *pnamep, enum uio_seg seg, int filemode,
+	  int createmode, struct vnode **vpp, enum create crwhy,
+	  mode_t umask, struct vnode *startvp);
+	*/
+	uint8_t* FileName = NULL;
 	FileName = vd->vdev_path;
 
 	if (!strncmp("\\\\?\\", FileName, 4)) {
@@ -138,7 +139,6 @@ vdev_file_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 	}
 
 	dprintf("%s: opening '%s'\n", __func__, FileName);
-
 #ifdef _KERNEL
 
 	ANSI_STRING         AnsiFilespec;
@@ -189,7 +189,8 @@ vdev_file_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 
 	if (ntstatus == STATUS_SUCCESS) {
 		error = 0;
-	} else {
+	}
+	else {
 		vd->vdev_stat.vs_aux = VDEV_AUX_OPEN_FAILED;
 		goto failed;
 	}
@@ -223,7 +224,7 @@ vdev_file_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 
 	// This adds a reference to FileObject
 	status = ObReferenceObjectByHandle(
-		vf->vf_handle, 
+		vf->vf_handle,
 		0,
 		*IoFileObjectType,
 		KernelMode,
@@ -260,11 +261,25 @@ vdev_file_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 		0
 	);
 	dprintf("%s: set Sparse 0x%x.\n", __func__, status);
+#else // !KERNEL
+
+	vf->vf_handle = CreateFile(FileName,
+		GENERIC_READ | GENERIC_WRITE,
+		FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
+		NULL,
+		OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL /*| FILE_FLAG_OVERLAPPED*/,
+		NULL);
+	if (vf->vf_handle == INVALID_HANDLE_VALUE) {
+		vd->vdev_stat.vs_aux = VDEV_AUX_OPEN_FAILED;
+		goto failed;
+	}
 
 #endif
 
-#if _KERNEL
 skip_open:
+#if _KERNEL
+
 	/*
 	 * Determine the physical size of the file.
 	 */
@@ -277,10 +292,9 @@ skip_open:
 #ifdef _KERNEL
 	*max_psize = *psize = info.EndOfFile.QuadPart;
 #else
-    /* userland's vn_open() will get the device size for us, so we can
-     * just look it up - there is argument for a userland VOP_GETATTR to make
-     * this function cleaner. */
-//	*max_psize = *psize = vp->v_size;
+	LARGE_INTEGER size = { 0 };
+	GetFileSizeEx(vf->vf_handle, &size);
+	*max_psize = *psize = size.QuadPart;
 #endif
     *ashift = SPA_MINBLOCKSHIFT;
 
@@ -303,7 +317,6 @@ failed:
 static void
 vdev_file_close(vdev_t *vd)
 {
-#ifdef _KERNEL
 	vdev_file_t *vf = vd->vdev_tsd;
 
 	if (vd->vdev_reopening || vf == NULL)
@@ -312,19 +325,24 @@ vdev_file_close(vdev_t *vd)
 	if (vf->vf_handle != NULL) {
 
 		// Release our holds
+#ifdef _KERNEL
 		ObDereferenceObject(vf->vf_FileObject);
 		ObDereferenceObject(vf->vf_DeviceObject);
 
 		ZwClose(vf->vf_handle);
+#else
+		CloseHandle(vf->vf_handle);
+#endif
 	}
 
+#ifdef _KERNEL
 	vf->vf_FileObject = NULL;
 	vf->vf_DeviceObject = NULL;
+#endif
 	vf->vf_handle = NULL;
 	vd->vdev_delayed_close = B_FALSE;
 	kmem_free(vf, sizeof (vdev_file_t));
 	vd->vdev_tsd = NULL;
-#endif
 }
 
 #ifdef _KERNEL
@@ -463,15 +481,14 @@ vdev_file_io_start(zio_t *zio)
 
 	ASSERT(zio->io_size != 0);
 
-#ifdef _KERNEL
 	vdev_file_t *vf = vd->vdev_tsd;
+	LARGE_INTEGER offset;
+	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
 
+#ifdef _KERNEL
 	PIRP irp = NULL;
 	PIO_STACK_LOCATION irpStack = NULL;
 	IO_STATUS_BLOCK IoStatusBlock = { 0 };
-	LARGE_INTEGER offset;
-
-	offset.QuadPart = zio->io_offset + vd->vdev_win_offset;
 
 	/* Preallocate space for IoWorkItem, required for vdev_file_io_start_done callback */
 	vf_callback_t *vb = (vf_callback_t *)kmem_alloc(sizeof(vf_callback_t) + IoSizeofWorkItem(), KM_SLEEP);
@@ -536,6 +553,43 @@ vdev_file_io_start(zio_t *zio)
 		TRUE);// On Cancel
 
 	IoCallDriver(vf->vf_DeviceObject, irp);
+
+
+#else // !KERNEL
+
+	void *data;
+	boolean_t ok = FALSE;
+	DWORD red;
+
+	if (!SetFilePointerEx(vf->vf_handle, offset, NULL, FILE_BEGIN))
+		goto failed;
+
+	if (zio->io_type == ZIO_TYPE_READ) {
+		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
+		data =
+			abd_borrow_buf(zio->io_abd, zio->io_abd->abd_size);
+		ok = ReadFile(vf->vf_handle, data, zio->io_size, &red, NULL);
+		abd_return_buf_copy(zio->io_abd, data, zio->io_size);
+	} else {
+		ASSERT3S(zio->io_abd->abd_size, >= , zio->io_size);
+		data =
+			abd_borrow_buf_copy(zio->io_abd, zio->io_abd->abd_size);
+		ok = WriteFile(vf->vf_handle, data, zio->io_size, &red, NULL);
+		abd_return_buf_off(zio->io_abd, data,
+			0, zio->io_size, zio->io_abd->abd_size);
+	}
+
+failed:
+	if (!ok)
+		zio->io_error = EIO;
+	else if (red != zio->io_size)
+		zio->io_error = SET_ERROR(ENOSPC);
+	else
+		zio->io_error = 0;
+
+	zio_delay_interrupt(zio);
+	return;
+
 #endif
 
     return;
