@@ -78,7 +78,7 @@ static volatile _Atomic int64_t spl_free;
 int64_t spl_free_delta_ema;
 
 static boolean_t spl_event_thread_exit = FALSE;
-static PKEVENT low_mem_event = NULL;
+PKEVENT low_mem_event = NULL;
 
 static volatile _Atomic int64_t spl_free_manual_pressure = 0;
 static volatile _Atomic boolean_t spl_free_fast_pressure = FALSE;
