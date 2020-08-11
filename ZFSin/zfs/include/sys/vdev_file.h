@@ -33,14 +33,13 @@
 extern "C" {
 #endif
 
-#ifdef _KERNEL
-	typedef struct vdev_file {
+typedef struct vdev_file {
 	HANDLE vf_handle;
+#ifdef _KERNEL
 	PFILE_OBJECT vf_FileObject;
 	PDEVICE_OBJECT vf_DeviceObject;
-	uint32_t	vf_vid;
-} vdev_file_t;
 #endif
+} vdev_file_t;
 
 #ifdef	__cplusplus
 }
