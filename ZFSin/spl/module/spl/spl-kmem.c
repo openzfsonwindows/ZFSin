@@ -78,7 +78,7 @@ static volatile _Atomic int64_t spl_free;
 int64_t spl_free_delta_ema;
 
 static boolean_t spl_event_thread_exit = FALSE;
-static PKEVENT low_mem_event = NULL;
+PKEVENT low_mem_event = NULL;
 
 static volatile _Atomic int64_t spl_free_manual_pressure = 0;
 static volatile _Atomic boolean_t spl_free_fast_pressure = FALSE;
@@ -4495,6 +4495,11 @@ spl_free_thread(void *notused)
 	uint64_t ema_old = 0;
 	uint64_t alpha;
 
+	uint64_t last_reap = 0;
+	uint64_t now;
+	uint64_t elapsed = 60*hz;
+	boolean_t reap_now = FALSE;
+
 	CALLB_CPR_INIT(&cpr, &spl_free_thread_lock, callb_generic_cpr, FTAG);
 
 	spl_free = (int64_t)PAGESIZE *
@@ -4707,29 +4712,43 @@ spl_free_thread(void *notused)
 		// If we reap, stop processing spl_free on this pass, to
 		// let the reaps (and arc, if pressure has been set above)
 		// do their job for a few milliseconds.
-		if (emergency_lowmem || lowmem) {
-			static uint64_t last_reap = 0;
-			uint64_t now = time_now;
-			uint64_t elapsed = 60*hz;
-			if (emergency_lowmem)
-				elapsed = 15*hz; // minimum frequency from kmem_reap_interval
-			if (now - last_reap > elapsed) {
-				last_reap = now;
-				// spl_free_reap_caches() calls functions that will
-				// acquire locks and can take a while
-				// so set spl_free to a small positive value
-				// to stop arc shrinking too much during this period
-				// when we expect to be freeing up arc-usable memory,
-				// but low enough that arc_no_grow likely will be set.
-				const int64_t two_spamax = 32LL * 1024LL * 1024LL;
-				if (spl_free < two_spamax)
-					spl_free = two_spamax; // atomic!
-				spl_free_reap_caches();
-				// we do not have any lock now, so we can jump
-				// to just before the thread-suspending code
-				goto justwait;
-			}
+
+		now = time_now;
+		elapsed = 60*hz;
+		reap_now = FALSE;
+		if (emergency_lowmem)
+			elapsed = 15*hz; // minimum frequency from kmem_reap_interval
+
+		/*
+		 * Trigger a reap periodically
+		 */
+		if ((now - last_reap) > elapsed)
+			reap_now = TRUE;
+		if (emergency_lowmem || lowmem || reap_now) {
+
+			/*
+			 * skip reap if lowmem or emergency_lowmem and minimum reap interval is
+			 * not expired.
+			 */
+			if ((emergency_lowmem || lowmem) && reap_now == FALSE)
+				goto skip_reap;
+
+			last_reap = now;
+			// spl_free_reap_caches() calls functions that will
+			// acquire locks and can take a while
+			// so set spl_free to a small positive value
+			// to stop arc shrinking too much during this period
+			// when we expect to be freeing up arc-usable memory,
+			// but low enough that arc_no_grow likely will be set.
+			const int64_t two_spamax = 32LL * 1024LL * 1024LL;
+			if (spl_free < two_spamax)
+				spl_free = two_spamax; // atomic!
+			spl_free_reap_caches();
+			// we do not have any lock now, so we can jump
+			// to just before the thread-suspending code
+			goto justwait;
 		}
+skip_reap:
 
 		// a number or exceptions to reverse the lowmem / emergency_lowmem states
 		// if we have recently reaped.  we also take the strong reaction sting
