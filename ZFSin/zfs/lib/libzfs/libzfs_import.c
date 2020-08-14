@@ -1017,7 +1017,7 @@ zpool_read_label(int fd, nvlist_t **config, int *num_labels)
 }
 
 int
-zpool_read_label_win(HANDLE h, uint64_t len, nvlist_t **config, int *num_labels)
+zpool_read_label_win(HANDLE h, off_t offset, uint64_t len, nvlist_t **config, int *num_labels)
 {
 	int l, count = 0;
 	vdev_label_t *label;
@@ -1038,7 +1038,7 @@ zpool_read_label_win(HANDLE h, uint64_t len, nvlist_t **config, int *num_labels)
 		uint64_t state, guid, txg;
 
 		if (pread_win(h, label, sizeof(vdev_label_t),
-			label_offset(size, l)) != sizeof(vdev_label_t))
+			label_offset(size, l) + offset) != sizeof(vdev_label_t))
 			continue;
 
 		if (nvlist_unpack(label->vl_vdev_phys.vp_nvlist,
@@ -1464,6 +1464,8 @@ zpool_open_func_win(void *arg)
 	nvlist_t *config;
 	int num_labels;
 	HANDLE fd;
+	uint64_t offset = 0;
+	uint64_t len = 0;
 	uint64_t drive_len;
 	fprintf(stderr, "%s: enter\n", __func__); fflush(stderr);
 	if (rn->rn_nozpool)
@@ -1488,8 +1490,6 @@ zpool_open_func_win(void *arg)
 
 	// Check if this filename is encoded with "#start#len#name"
 	if (rn->rn_name[0] == '#') {
-		uint64_t offset;
-		uint64_t len;
 		char *end = NULL;
 
 		offset = strtoull(&rn->rn_name[1], &end, 10);
@@ -1516,7 +1516,8 @@ zpool_open_func_win(void *arg)
 	} else {
 		// We have no openat() - so stich paths togther.
 		char fullpath[MAX_PATH];
-		snprintf(fullpath, sizeof(fullpath), "%s%s", rn->rn_parent, rn->rn_name);
+		snprintf(fullpath, sizeof(fullpath), "%s%s", 
+			rn->rn_parent ? rn->rn_parent : "", rn->rn_name);
 		fd = CreateFile(fullpath,
 			GENERIC_READ,
 			FILE_SHARE_READ /*| FILE_SHARE_WRITE*/,
@@ -1566,7 +1567,7 @@ zpool_open_func_win(void *arg)
 		check_slices(rn->rn_avl, HTOI(fd), rn->rn_name);
 	}
 
-	if ((zpool_read_label_win(fd, drive_len, &config, &num_labels)) != 0) {
+	if ((zpool_read_label_win(fd, offset, drive_len, &config, &num_labels)) != 0) {
 		CloseHandle(fd);
 		(void)no_memory(rn->rn_hdl);
 		return;

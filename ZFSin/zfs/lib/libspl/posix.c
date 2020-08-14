@@ -1133,7 +1133,7 @@ int wosix_pwrite(int fd, const void *buf, size_t nbyte, off_t offset)
 
 	// Seek to place to read
 	large.QuadPart = offset;
-	SetFilePointerEx(h, large, NULL, FILE_CURRENT);
+	SetFilePointerEx(h, large, NULL, FILE_BEGIN);
 
 	// Write
 	if (!WriteFile(h, buf, nbyte, &wrote, NULL))
