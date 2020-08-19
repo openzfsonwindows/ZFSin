@@ -945,6 +945,10 @@ DiReadWriteSetup(
 		ActionRead == action ? UIO_READ : UIO_WRITE);
 	if (uio == NULL) {
 		dprintf("%s: out of memory.\n", __func__);
+		// ZFS-207: a failure prior to queueing the request must call the caller's IRP completion routine, if any set.
+		if (pIo->Cb) {
+			pIo->Cb(pIo, STATUS_INSUFFICIENT_RESOURCES, FALSE);
+		}
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 	VERIFY0(uio_addiov(uio, (user_addr_t)pIo->Buffer,
