@@ -907,8 +907,8 @@ wzvol_GeneralWkRtn(
 */
 
 VOID
-bzvol_ReadWriteWkRtn(
-	__in PVOID           pWkParms          // Parm list pointer.
+bzvol_ReadWriteTaskRtn(
+	__in PVOID           pWkParms          // Parm list 
 )
 {
 	NTSTATUS Status;
@@ -929,7 +929,22 @@ bzvol_ReadWriteWkRtn(
 		pIo->Cb(pIo, iores == 0 ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL, TRUE);
 	}
 	uio_free(uio);
-	kmem_free(pWkRtnParms, sizeof(MP_WorkRtnParms));
+	ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
+}
+
+VOID bzvol_TaskQueuingWkRtn(
+	__in PVOID           pDummy,           // Not used.	
+	__in PVOID           pWkParms          // Parm list 
+)
+{
+	pMP_WorkRtnParms pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
+	PIO_WORKITEM pWI = (PIO_WORKITEM)ALIGN_UP_POINTER_BY(pWkRtnParms->pQueueWorkItem, 16);
+
+	UNREFERENCED_PARAMETER(pDummy);
+	IoUninitializeWorkItem(pWI);
+
+	taskq_init_ent(&pWkRtnParms->ent);
+	taskq_dispatch_ent(zvol_taskq, bzvol_ReadWriteTaskRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
 }
 
 NTSTATUS
@@ -957,14 +972,36 @@ DiReadWriteSetup(
 
 	if (pIo->Flags & ZFSZVOLFG_AlwaysPend) {
 		pMP_WorkRtnParms pWkRtnParms = NULL;
-		pWkRtnParms = kmem_alloc(sizeof (MP_WorkRtnParms), KM_SLEEP);
+		// SSV-19147: cannot use kmem_alloc with sleep if IRQL dispatch so get straight from NP pool.
+		pWkRtnParms = (pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPool, ALIGN_UP_BY(sizeof(MP_WorkRtnParms),16) + IoSizeofWorkItem(), MP_TAG_GENERAL);
+		if (NULL == pWkRtnParms) {
+			uio_free(uio);
+			if (pIo->Cb) {
+				pIo->Cb(pIo, STATUS_INSUFFICIENT_RESOURCES, FALSE);
+			}
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
 		RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
 		pWkRtnParms->ioDesc = *pIo;
 		pWkRtnParms->pUio = uio;
 		pWkRtnParms->zv = zv;
 		pWkRtnParms->Action = action;
-		taskq_init_ent(&pWkRtnParms->ent);
-		taskq_dispatch_ent(zvol_taskq, bzvol_ReadWriteWkRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
+
+		// SSV-19147: cannot use taskq queuing at dispatch. must queue a work item to do it.
+		// since taskq queueing involves a possibly waiting mutex we do not want to slow down the caller so 
+		// perform taskq queuing always in the workitem.
+		/*
+		if (KeGetCurrentIrql() < DISPATCH_LEVEL) {
+			taskq_init_ent(&pWkRtnParms->ent);
+			taskq_dispatch_ent(zvol_taskq, bzvol_ReadWriteTaskRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
+		}
+		else {
+		*/
+			extern PDEVICE_OBJECT ioctlDeviceObject;
+			PIO_WORKITEM pWI = (PIO_WORKITEM)ALIGN_UP_POINTER_BY(pWkRtnParms->pQueueWorkItem, 16);
+			IoInitializeWorkItem(ioctlDeviceObject, pWI);
+			IoQueueWorkItem(pWI, bzvol_TaskQueuingWkRtn, DelayedWorkQueue, pWkRtnParms);
+		//}
 		return STATUS_PENDING; // queued up.
 	}
 	else {
