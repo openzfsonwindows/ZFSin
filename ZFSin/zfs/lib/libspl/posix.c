@@ -1034,6 +1034,16 @@ int wosix_mkdir(const char *path, mode_t mode)
 	return _mkdir(path);
 }
 
+int wosix_stat(char *path, struct _stat64 *st)
+{
+	int fd;
+
+	fd = open(path, O_RDONLY);
+	if (fd == -1)
+		return -1;
+	return wosix_fstat(fd, st);
+}
+
 // Only fill in what we actually use in ZFS
 // Mostly used to test for existance, st_mode, st_size
 // also FIFO and BLK (fixme)

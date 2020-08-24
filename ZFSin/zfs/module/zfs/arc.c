@@ -9252,7 +9252,7 @@ l2arc_fini(void)
 void
 l2arc_start(void)
 {
-	if (!(spa_mode_global & FWRITE))
+	if (!(spa_mode_global & SPA_MODE_WRITE))
 		return;
 
 	(void) thread_create(NULL, 0, l2arc_feed_thread, NULL, 0, &p0,
@@ -9262,7 +9262,7 @@ l2arc_start(void)
 void
 l2arc_stop(void)
 {
-	if (!(spa_mode_global & FWRITE))
+	if (!(spa_mode_global & SPA_MODE_WRITE))
 		return;
 
 	mutex_enter(&l2arc_feed_thr_lock);
@@ -9431,10 +9431,10 @@ arc_abd_move_thread(void *notused)
 {
 	callb_cpr_t cpr;
 #ifdef _KERNEL
-	clock_t wait_time = SEC2NSEC(60);
+	ULONGLONG wait_time = SEC2NSEC(60);
 	const int64_t threshold = physmem * 5LL / 100LL;
 #else
-	clock_t wait_time = SEC2NSEC(5);
+	ULONGLONG wait_time = SEC2NSEC(5);
 #endif
 
 	CALLB_CPR_INIT(&cpr, &arc_abd_move_thr_lock, callb_generic_cpr, FTAG);
@@ -9479,6 +9479,7 @@ arc_abd_move_thread(void *notused)
 		}
 
 	}
+	mutex_exit(&arc_abd_move_thr_lock);
 	arc_abd_move_thr_exit = 0;
 	cv_broadcast(&arc_abd_move_thr_cv);
 	CALLB_CPR_EXIT(&cpr); // drops arc_abd_move_thr_lock

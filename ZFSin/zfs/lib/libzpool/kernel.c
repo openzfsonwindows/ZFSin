@@ -52,7 +52,9 @@
 #include <sys/disk.h>
 #endif
 #include <sys/crypto/icp.h>
-
+#include <sys/zfs_file.h>
+#include <winternl.h>
+#include <sys/types32.h>
 /*
  * Emulation of kernel services in userland.
  */
@@ -691,6 +693,228 @@ getrootdir()
 
 #endif
 
+// create a new file if file not exist else open file on the basis of flags
+int zfs_file_open(const char *path, int flags, int mode, zfs_file_t *fpp)
+{
+	UNICODE_STRING uniName;
+	DWORD desiredAccess = 0;
+	DWORD dwCreationDisposition;
+
+	if (flags == O_RDONLY) {
+		desiredAccess = GENERIC_READ;
+		dwCreationDisposition = OPEN_EXISTING;
+	}
+	if (flags & O_WRONLY) {
+		desiredAccess = GENERIC_WRITE;
+		dwCreationDisposition = OPEN_ALWAYS | FILE_OVERWRITE_IF;
+	}
+	if (flags & O_RDWR) {
+		desiredAccess = GENERIC_READ | GENERIC_WRITE;
+		dwCreationDisposition = OPEN_ALWAYS | FILE_OVERWRITE_IF;
+	}
+	if (flags & O_TRUNC) {
+		dwCreationDisposition = FILE_SUPERSEDE;
+	}
+
+	HANDLE hFile = CreateFile(
+		path,
+		desiredAccess,
+		FILE_SHARE_READ | FILE_SHARE_WRITE,
+		NULL,
+		dwCreationDisposition,
+		FILE_ATTRIBUTE_NORMAL,
+		NULL
+	);
+	if (hFile == INVALID_HANDLE_VALUE) {
+		return ENOENT;
+	}
+	*fpp = hFile; 
+	return 0;
+}
+
+// read from a file and write to buf update next unread bytes
+int zfs_file_read(zfs_file_t *fp, void *buf, size_t len, ssize_t *resid)
+{
+	DWORD dwBytesRead;
+	BOOL res = ReadFile(
+		*fp,
+		buf,
+		(DWORD)len,
+		&dwBytesRead,
+		NULL
+	);
+	if (!res)
+		return EIO;
+
+	if (resid)
+		*resid = len - dwBytesRead;
+	else if (dwBytesRead != len)
+		return EIO;
+
+	return 0;
+}
+
+int zfs_file_write(zfs_file_t *fp, const void *buf, size_t len, ssize_t *resid)
+{
+	DWORD dwBytesWritten;
+	BOOL res = WriteFile(
+		*fp,
+		buf,
+		len,
+		&dwBytesWritten,
+		NULL
+	);
+	if (!res)
+		return EIO;
+
+	if (resid)
+		*resid = len - dwBytesWritten;
+	else if (len != dwBytesWritten)
+		return EIO;
+
+	return 0;
+}
+/*
+	Stateless read -> fp doesn't change with read operation 
+*/
+int zfs_file_pread(zfs_file_t *fp, void *buf, size_t count, loff_t off, ssize_t *resid)
+{
+	DWORD dwBytesRead;
+	OVERLAPPED ol = { 0 };
+	ol.Offset = (DWORD)(off & 0xFFFFFFFFLL);
+	ol.OffsetHigh = (DWORD)((off & 0xFFFFFFFF00000000LL) >> 32);
+	BOOL res = ReadFile(
+		*fp,
+		buf,
+		(DWORD)count,
+		&dwBytesRead,
+		&ol
+	);
+	if (!res)
+		return EIO;
+	if (resid)
+		*resid = count - dwBytesRead;
+	else if (count != dwBytesRead)
+		return EIO;
+	return 0;
+}
+
+/*
+	stateless write -> write at a given offset and os internal pointer is not updated
+*/
+int zfs_file_pwrite(zfs_file_t* hFile, const void* buf, size_t count, loff_t off, ssize_t *resid)
+{
+	/*
+	 * To simulate partial disk writes, we split writes into two
+	 * system calls so that the process can be killed in between.
+	 * This is used by ztest to simulate realistic failure modes.
+	 */
+	int sectors,split;
+	sectors = count >> SPA_MINBLOCKSHIFT;
+	split = (sectors > 0 ? rand() % sectors : 0) << SPA_MINBLOCKSHIFT;
+	DWORD dwBytesWritten;
+	OVERLAPPED ol = { 0 };
+	ol.Offset = (DWORD)(off & 0xFFFFFFFFLL);
+	ol.OffsetHigh = (DWORD)((off & 0xFFFFFFFF00000000LL) >> 32);
+	BOOL res = WriteFile(
+		*hFile,
+		buf,
+		split,
+		&dwBytesWritten,
+		&ol
+	);
+	if (res) {
+		OVERLAPPED ol2 = { 0 };
+		off += split;
+		ol2.Offset = (DWORD)(off & 0xFFFFFFFFLL);
+		ol2.OffsetHigh = (DWORD)((off & 0xFFFFFFFF00000000LL) >> 32);
+		res = WriteFile(
+			*hFile,
+			(char*)buf+split,
+			count-split,
+			&dwBytesWritten,
+			&ol2
+		);
+	}
+	if (!res)
+		return EIO;
+	if (resid)
+		*resid = count - dwBytesWritten;
+	else if (count != dwBytesWritten)
+		return EIO;
+	return 0;
+}
+
+void zfs_file_close(zfs_file_t* hFile)
+{
+	CloseHandle(*hFile);
+}
+/*ARGSUSED*/
+
+uint64_t zfs_file_off(zfs_file_t* hFile) // 1
+{
+	LARGE_INTEGER lpDistanceToMoveHigh;
+	LARGE_INTEGER off;
+	BOOL ret;
+
+	off.QuadPart = 0;
+	ret = SetFilePointerEx(
+		*hFile,
+		off,
+		&lpDistanceToMoveHigh, // this pointer is used for higher order 32 bits of the signed 64 bit distance to move, if set to NULL this won't be used
+		FILE_CURRENT
+	);
+	if (!ret)
+		return EFAULT;
+	return lpDistanceToMoveHigh.QuadPart;
+}
+
+DWORD zfs_file_seek(zfs_file_t* hFile, LONG offset, DWORD dwMoveMethod)
+{
+	LONG lpDistanceToMoveHigh;
+	return SetFilePointer(
+		*hFile,
+		offset,
+		&lpDistanceToMoveHigh, // this pointer is used for higher order 32 bits of the signed 64 bit distance to move
+		dwMoveMethod // FILE_BEGIN FILE_CURRENT FILE_END
+	);
+}
+
+int zfs_file_fsync(zfs_file_t* hFile, int flags) 
+{
+	return FlushFileBuffers(
+		*hFile
+	);
+}
+
+int zfs_file_getattr(zfs_file_t *hFile, zfs_file_attr_t *zfattr)
+{
+	DWORD dwFileSize;
+	DWORD dwFileType;
+	LARGE_INTEGER fSize;
+	if (GetFileSizeEx(*hFile, &fSize))
+		zfattr->zfa_size = fSize.QuadPart;
+	DWORD err = GetLastError();
+	dwFileType = GetFileType(*hFile);
+	zfattr->zfa_type = dwFileType;
+	return 0;
+}
+
+/*
+ * unlink file
+ *
+ * path - fully qualified file path
+ *
+ * Returns 0 on success.
+ *
+ * OPTIONAL
+ */
+int
+zfs_file_unlink(const char* path)
+{
+	return (EOPNOTSUPP);
+}
+
 /*ARGSUSED*/
 int
 vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
@@ -771,7 +995,7 @@ vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
 	if (fd == -1)
 		return (errno);
 
-	if (fstat_blk(fd, &st) == -1) {
+	if (fstat(fd, &st) == -1) {
 		err = errno;
 		close(fd);
 		return (err);
@@ -788,7 +1012,6 @@ vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
 	return (0);
 }
 
-/*ARGSUSED*/
 int
 vn_openat(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2,
           int x3, vnode_t *startvp/*, int fd*/)
@@ -797,7 +1020,7 @@ vn_openat(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2,
 	int ret;
 
 	ASSERT(startvp == rootdir);
-	(void) sprintf(realpath, "/%s", path);
+	(void) sprintf(realpath, "%s", path);
 
 	/* fd ignored for now, need if want to simulate nbmand support */
 	ret = vn_open(realpath, x1, flags, mode, vpp, x2, x3);
@@ -1283,9 +1506,7 @@ ddi_strtoul(const char *hw_serial, char **nptr, int base, unsigned long *result)
 int
 ddi_strtoull(const char *str, char **nptr, int base, u_longlong_t *result)
 {
-	char *end;
-
-	*result = strtoull(str, &end, base);
+	*result = strtoull(str, nptr, base);
 	if (*result == 0)
 		return (errno);
 	return (0);

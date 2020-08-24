@@ -805,8 +805,11 @@ typedef struct zpool_load_policy {
  * The location of the pool configuration repository, shared between kernel and
  * userland.
  */
+#ifdef _WIN32
+#define	ZPOOL_CACHE		"\\SystemRoot\\System32\\drivers\\zpool.cache"
+#else
 #define	ZPOOL_CACHE		"/etc/zfs/zpool.cache"
-
+#endif
 /*
  * vdev states are ordered from least to most healthy.
  * A vdev that's CANT_OPEN or below is considered unusable.

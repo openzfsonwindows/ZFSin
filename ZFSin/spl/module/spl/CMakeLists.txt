@@ -7,7 +7,6 @@ wdk_add_library(splkern
   spl-debug.c
   spl-err.c
   spl-kmem.c
-  spl-kobj.c
   spl-kstat.c
   spl-list.c
   spl-md5.c

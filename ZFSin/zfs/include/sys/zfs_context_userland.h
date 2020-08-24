@@ -689,11 +689,6 @@ typedef struct ace_object {
 #define	ACE_SYSTEM_AUDIT_OBJECT_ACE_TYPE	0x07
 #define	ACE_SYSTEM_ALARM_OBJECT_ACE_TYPE	0x08
 
-extern struct _buf *kobj_open_file(char *name);
-extern int kobj_read_file(struct _buf *file, char *buf, unsigned size,
-    unsigned off);
-extern void kobj_close_file(struct _buf *file);
-extern int kobj_get_filesize(struct _buf *file, uint64_t *size);
 extern int zfs_secpolicy_snapshot_perms(const char *name, cred_t *cr);
 extern int zfs_secpolicy_rename_perms(const char *from, const char *to,
     cred_t *cr);

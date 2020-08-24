@@ -67,7 +67,6 @@
 #include <sys/dnlc.h>
 //#include <sys/var.h>
 #include <sys/debug.h>
-#include <sys/kobj.h>
 #include <sys/avl.h>
 //#include <sys/pool_pset.h>
 #include <sys/cpupart.h>
@@ -1244,7 +1243,6 @@ kstat_timer_stop(kstat_timer_t *ktp)
 #include <sys/ddi.h>
 #include <sys/sunddi.h>
 //#include <sys/modctl.h>
-#include <sys/kobj.h>
 #include <sys/kstat.h>
 #include <sys/atomic.h>
 #include <sys/policy.h>
