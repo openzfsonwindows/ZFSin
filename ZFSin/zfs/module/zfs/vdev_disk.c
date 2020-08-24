@@ -178,12 +178,9 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 		while (end && end[0] == '#') end++;
 
 		FileName = end;
-
 	}
 	else {
-
 		FileName = vdev_path;
-
 	}
 
 	// Apparently in Userland it is "\\?\" but in
@@ -255,6 +252,7 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 
 	if (error) {
 		vd->vdev_stat.vs_aux = VDEV_AUX_OPEN_FAILED;
+		spa_strfree(vdev_path);
 		return (error);
 	}
 
@@ -278,6 +276,7 @@ vdev_disk_open(vdev_t *vd, uint64_t *psize, uint64_t *max_psize,
 		ZwClose(dvd->vd_lh);
 		dvd->vd_lh = NULL;
 		vd->vdev_stat.vs_aux = VDEV_AUX_OPEN_FAILED;
+		spa_strfree(vdev_path);
 		return EIO;
 	}
 

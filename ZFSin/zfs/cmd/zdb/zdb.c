@@ -2472,12 +2472,16 @@ dump_cachefile(const char *cachefile)
 	ssize_t resid;
 	char pathname[MAXPATHLEN];
 
+#ifdef WIN32
 	// unpack cachefile path
 	if (strncmp(cachefile, "\\SystemRoot\\", 12) == 0) {
 		(void)snprintf(pathname, MAXPATHLEN, "%s\\%s",
 			getenv("SystemRoot"), cachefile + 12);
 	} else
 		(void)snprintf(pathname, MAXPATHLEN, "%s", cachefile);
+#else
+	(void)snprintf(pathname, MAXPATHLEN, "%s", cachefile);
+#endif
 
 	err = zfs_file_open(pathname, O_RDONLY, 0, &hFile);
 	if (err) {
@@ -2514,7 +2518,6 @@ dump_cachefile(const char *cachefile)
 	}
 
 	umem_free(buf, attr.zfa_size);
-
 	dump_nvlist(config, 0);
 
 	nvlist_free(config);
