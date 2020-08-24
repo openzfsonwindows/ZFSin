@@ -938,13 +938,40 @@ VOID bzvol_TaskQueuingWkRtn(
 )
 {
 	pMP_WorkRtnParms pWkRtnParms = (pMP_WorkRtnParms)pWkParms;
+	zfsiodesc_t* pIo = &pWkRtnParms->ioDesc;
 	PIO_WORKITEM pWI = (PIO_WORKITEM)ALIGN_UP_POINTER_BY(pWkRtnParms->pQueueWorkItem, 16);
 
 	UNREFERENCED_PARAMETER(pDummy);
 	IoUninitializeWorkItem(pWI);
 
-	taskq_init_ent(&pWkRtnParms->ent);
-	taskq_dispatch_ent(zvol_taskq, bzvol_ReadWriteTaskRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
+	// Create an uio for the IO. If we can possibly embed
+	// the uio in some Extension to this IO, we could
+	// save the allocation here.
+	uio_t* uio = uio_create(1, 0, UIO_SYSSPACE,
+		ActionRead == pWkRtnParms->Action ? UIO_READ : UIO_WRITE);
+	if (uio == NULL) {
+		dprintf("%s: out of memory.\n", __func__);
+		if (pIo->Cb) {
+			pIo->Cb(pIo, STATUS_INSUFFICIENT_RESOURCES, TRUE);
+		}
+		ExFreePoolWithTag(pWkRtnParms, MP_TAG_GENERAL);
+		return;
+	}
+	VERIFY0(uio_addiov(uio, (user_addr_t)pIo->Buffer,
+		pIo->Length));
+	uio_setoffset(uio, pIo->ByteOffset);
+
+	pWkRtnParms->pUio = uio;
+
+	if (pIo->Flags & ZFSZVOLFG_AlwaysPend) {
+		taskq_init_ent(&pWkRtnParms->ent);
+		taskq_dispatch_ent(zvol_taskq, bzvol_ReadWriteTaskRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
+	}
+	else {
+		// bypass the taskq and do everything under workitem thread context.
+		bzvol_ReadWriteTaskRtn(pWkRtnParms);
+	}
+	// workitem freed inside bzvol_ReadWriteTaskRtn
 }
 
 NTSTATUS
@@ -953,74 +980,28 @@ DiReadWriteSetup(
 	MpWkRtnAction action,
 	zfsiodesc_t* pIo)
 {
-	// Create an uio for the IO. If we can possibly embed
-	// the uio in some Extension to this IO, we could
-	// save the allocation here.
-	uio_t* uio = uio_create(1, 0, UIO_SYSSPACE,
-		ActionRead == action ? UIO_READ : UIO_WRITE);
-	if (uio == NULL) {
-		dprintf("%s: out of memory.\n", __func__);
-		// ZFS-207: a failure prior to queueing the request must call the caller's IRP completion routine, if any set.
+	// SSV-19147: cannot use kmem_alloc with sleep if IRQL dispatch so get straight from NP pool.
+	// SSV-19161: cannot use uio routines at DISPATCH as they use a mutex. Resolve everything in the workitem.
+	pMP_WorkRtnParms pWkRtnParms = (pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPool, ALIGN_UP_BY(sizeof(MP_WorkRtnParms),16) + IoSizeofWorkItem(), MP_TAG_GENERAL);
+	if (NULL == pWkRtnParms) {
 		if (pIo->Cb) {
 			pIo->Cb(pIo, STATUS_INSUFFICIENT_RESOURCES, FALSE);
 		}
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
-	VERIFY0(uio_addiov(uio, (user_addr_t)pIo->Buffer,
-		pIo->Length));
-	uio_setoffset(uio, pIo->ByteOffset);
+	RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
+	pWkRtnParms->ioDesc = *pIo;
+	pWkRtnParms->zv = zv;
+	pWkRtnParms->Action = action;
 
-	if (pIo->Flags & ZFSZVOLFG_AlwaysPend) {
-		pMP_WorkRtnParms pWkRtnParms = NULL;
-		// SSV-19147: cannot use kmem_alloc with sleep if IRQL dispatch so get straight from NP pool.
-		pWkRtnParms = (pMP_WorkRtnParms)ExAllocatePoolWithTag(NonPagedPool, ALIGN_UP_BY(sizeof(MP_WorkRtnParms),16) + IoSizeofWorkItem(), MP_TAG_GENERAL);
-		if (NULL == pWkRtnParms) {
-			uio_free(uio);
-			if (pIo->Cb) {
-				pIo->Cb(pIo, STATUS_INSUFFICIENT_RESOURCES, FALSE);
-			}
-			return STATUS_INSUFFICIENT_RESOURCES;
-		}
-		RtlZeroMemory(pWkRtnParms, sizeof(MP_WorkRtnParms));
-		pWkRtnParms->ioDesc = *pIo;
-		pWkRtnParms->pUio = uio;
-		pWkRtnParms->zv = zv;
-		pWkRtnParms->Action = action;
-
-		// SSV-19147: cannot use taskq queuing at dispatch. must queue a work item to do it.
-		// since taskq queueing involves a possibly waiting mutex we do not want to slow down the caller so 
-		// perform taskq queuing always in the workitem.
-		/*
-		if (KeGetCurrentIrql() < DISPATCH_LEVEL) {
-			taskq_init_ent(&pWkRtnParms->ent);
-			taskq_dispatch_ent(zvol_taskq, bzvol_ReadWriteTaskRtn, pWkRtnParms, 0, &pWkRtnParms->ent);
-		}
-		else {
-		*/
-			extern PDEVICE_OBJECT ioctlDeviceObject;
-			PIO_WORKITEM pWI = (PIO_WORKITEM)ALIGN_UP_POINTER_BY(pWkRtnParms->pQueueWorkItem, 16);
-			IoInitializeWorkItem(ioctlDeviceObject, pWI);
-			IoQueueWorkItem(pWI, bzvol_TaskQueuingWkRtn, DelayedWorkQueue, pWkRtnParms);
-		//}
-		return STATUS_PENDING; // queued up.
-	}
-	else {
-		int iores;
-
-		/* Call ZFS to read/write data */
-		if (ActionRead == action) {
-			iores = zvol_read(zv, uio);
-		}
-		else {
-			iores = zvol_write(zv, uio);
-		}
-
-		if (pIo->Cb) {
-			pIo->Cb(pIo, (iores == 0 ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL), FALSE);
-		}
-		uio_free(uio);
-		return(iores == 0 ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL);
-	}
+	// SSV-19147: cannot use taskq queuing at dispatch. must queue a work item to do it.
+	// since taskq queueing involves a possibly waiting mutex we do not want to slow down the caller so 
+	// perform taskq queuing always in the workitem.
+	extern PDEVICE_OBJECT ioctlDeviceObject;
+	PIO_WORKITEM pWI = (PIO_WORKITEM)ALIGN_UP_POINTER_BY(pWkRtnParms->pQueueWorkItem, 16);
+	IoInitializeWorkItem(ioctlDeviceObject, pWI);
+	IoQueueWorkItem(pWI, bzvol_TaskQueuingWkRtn, DelayedWorkQueue, pWkRtnParms);
+	return STATUS_PENDING; // queued up.
 }
 
 
