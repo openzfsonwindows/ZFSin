@@ -6793,8 +6793,10 @@ zfs_ioc_unregister_fs(void)
 	if (fsDiskDeviceObject != NULL) {
 		IoUnregisterFsRegistrationChange(WIN_DriverObject, DriverNotificationRoutine);
 		IoUnregisterFileSystem(fsDiskDeviceObject);
+		ObDereferenceObject(fsDiskDeviceObject);
 		IoDeleteDevice(fsDiskDeviceObject);
 		fsDiskDeviceObject = NULL;
+		ObDereferenceObject(ioctlDeviceObject);
 		IoDeleteDevice(ioctlDeviceObject);
 		ioctlDeviceObject = NULL;
 	}
@@ -7920,6 +7922,7 @@ zfs_attach(void)
 
 	if (!NT_SUCCESS(ntStatus)) {
 		dprintf("ZFS: Couldn't create userland symbolic link to /dev/zfs (%wZ)\n", ZFS_DEV);
+		ObDereferenceObject(ioctlDeviceObject);
 		IoDeleteDevice(ioctlDeviceObject);
 		return -1;
 	}

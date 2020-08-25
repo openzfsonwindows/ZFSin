@@ -9479,7 +9479,7 @@ arc_abd_move_thread(void *notused)
 		}
 
 	}
-	mutex_exit(&arc_abd_move_thr_lock);
+
 	arc_abd_move_thr_exit = 0;
 	cv_broadcast(&arc_abd_move_thr_cv);
 	CALLB_CPR_EXIT(&cpr); // drops arc_abd_move_thr_lock
