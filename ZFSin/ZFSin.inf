@@ -109,7 +109,7 @@ ZFSin.sys = 1,,
 ;;
 
 [Strings]
-Me                      = "Jorgen Lundman"
+Me                      = "DataCore Software Corporation"
 ServiceDescription      = "OpenZFS driver"
 ServiceName             = "ZFSin"
 DriverName              = "ZFSin"
