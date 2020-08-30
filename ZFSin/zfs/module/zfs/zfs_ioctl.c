@@ -3927,6 +3927,7 @@ zfs_ioc_pool_discard_checkpoint(const char *poolname, nvlist_t *innvl,
  *
  * outputs:		none
  */
+extern PKEVENT low_mem_event;
 static int
 zfs_ioc_destroy(zfs_cmd_t *zc)
 {
@@ -3954,6 +3955,14 @@ zfs_ioc_destroy(zfs_cmd_t *zc)
 #endif
 
 		err = dsl_destroy_head(zc->zc_name);
+		if(err == 0) {
+			/*
+			 * Trigger a low_mem_even, so that we relase all the
+			 * ununsed memory to the system.
+			 */
+			xprintf("%s triggering low_mem_event to release ununsed memory\n", __func__);
+			KeSetEvent(low_mem_event, 0, FALSE);
+		}
 
 #if 0 // consider fixing the zvol again if the destroy failed
 		if (err != 0 && zv != NULL) {
@@ -6784,8 +6793,10 @@ zfs_ioc_unregister_fs(void)
 	if (fsDiskDeviceObject != NULL) {
 		IoUnregisterFsRegistrationChange(WIN_DriverObject, DriverNotificationRoutine);
 		IoUnregisterFileSystem(fsDiskDeviceObject);
+		ObDereferenceObject(fsDiskDeviceObject);
 		IoDeleteDevice(fsDiskDeviceObject);
 		fsDiskDeviceObject = NULL;
+		ObDereferenceObject(ioctlDeviceObject);
 		IoDeleteDevice(ioctlDeviceObject);
 		ioctlDeviceObject = NULL;
 	}
@@ -7911,6 +7922,7 @@ zfs_attach(void)
 
 	if (!NT_SUCCESS(ntStatus)) {
 		dprintf("ZFS: Couldn't create userland symbolic link to /dev/zfs (%wZ)\n", ZFS_DEV);
+		ObDereferenceObject(ioctlDeviceObject);
 		IoDeleteDevice(ioctlDeviceObject);
 		return -1;
 	}

@@ -182,6 +182,8 @@ osx_kstat_t osx_kstat = {
 	{ "zfs_disable_wincache",		KSTAT_DATA_UINT64 },
 	{ "zfs_disable_removablemedia",		KSTAT_DATA_UINT64 },
 	{ "zfs_vdev_initialize_value",		KSTAT_DATA_UINT64 },
+	{ "zfs_autoimport_disable",		KSTAT_DATA_UINT64 },
+		
 };
 
 
@@ -213,10 +215,6 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		zfs_vnop_force_formd_normalized_output = ks->win32_force_formd_normalized.value.ui64;
 		zfs_vnop_skip_unlinked_drain = ks->win32_skip_unlinked_drain.value.ui64;
 		zfs_vfs_sync_paranoia = ks->win32_use_system_sync.value.ui64;
-
-		/* ARC */
-		arc_kstat_update(ksp, rw);
-		arc_kstat_update_osx(ksp, rw);
 
 		/* L2ARC */
 		l2arc_write_max = ks->l2arc_write_max.value.ui64;
@@ -393,6 +391,9 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			ks->zfs_disable_removablemedia.value.ui64;
 		zfs_initialize_value =
 			ks->zfs_vdev_initialize_value.value.ui64;
+		zfs_autoimport_disable =
+			ks->zfs_autoimport_disable.value.ui64;
+
 	} else {
 
 		/* kstat READ */
@@ -409,10 +410,6 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		ks->win32_force_formd_normalized.value.ui64 = zfs_vnop_force_formd_normalized_output;
 		ks->win32_skip_unlinked_drain.value.ui64    = zfs_vnop_skip_unlinked_drain;
 		ks->win32_use_system_sync.value.ui64 = zfs_vfs_sync_paranoia;
-
-		/* ARC */
-		arc_kstat_update(ksp, rw);
-		arc_kstat_update_osx(ksp, rw);
 
 		/* L2ARC */
 		ks->l2arc_write_max.value.ui64               = l2arc_write_max;
@@ -584,6 +581,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			zfs_disable_removablemedia;
 		ks->zfs_vdev_initialize_value.value.ui64 =
 			zfs_initialize_value;
+		ks->zfs_autoimport_disable.value.ui64 =
+			zfs_autoimport_disable;
 	}
 
 	return 0;

@@ -120,9 +120,6 @@
     <ClCompile Include="spl\module\spl\spl-kmem.c">
       <Filter>Source Files\SPL</Filter>
     </ClCompile>
-    <ClCompile Include="spl\module\spl\spl-kobj.c">
-      <Filter>Source Files\SPL</Filter>
-    </ClCompile>
     <ClCompile Include="spl\module\spl\spl-kstat.c">
       <Filter>Source Files\SPL</Filter>
     </ClCompile>
@@ -523,6 +520,9 @@
       <Filter>Source Files\ZFS\module\zfs</Filter>
     </ClCompile>
     <ClCompile Include="zfs\module\zfs\zfs_fm.c">
+      <Filter>Source Files\ZFS\module\zfs</Filter>
+    </ClCompile>
+    <ClCompile Include="zfs\module\zfs\zfs_file.c">
       <Filter>Source Files\ZFS\module\zfs</Filter>
     </ClCompile>
     <ClCompile Include="zfs\module\zfs\zfs_fuid.c">

@@ -76,6 +76,9 @@ typedef	int32_t		time32_t;
 typedef	int32_t		clock32_t;
 typedef long long int64_t;
 typedef unsigned long long uint64_t;
+#ifndef loff_t
+typedef unsigned long long loff_t;
+#endif
 typedef uint64_t a_offset;
 typedef uint64_t user_addr_t;
 typedef uint64_t user_size_t;

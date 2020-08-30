@@ -196,12 +196,6 @@ struct rlimit {
 	rlim_t  rlim_max;       /* hard limit */
 };
 
-
-struct _buf *kobj_open_file(char *name);
-int kobj_read_file(struct _buf *file, char *buf, unsigned size, unsigned off);
-void kobj_close_file(struct _buf *file);
-int kobj_get_filesize(struct _buf *file, uint64_t *size);
-
 #define _Atomic
 
 #ifndef SIGTSTP

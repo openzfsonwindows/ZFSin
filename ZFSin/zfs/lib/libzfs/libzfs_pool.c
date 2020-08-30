@@ -30,7 +30,6 @@
  * Copyright (c) 2017, Intel Corporation.
  * Copyright (c) 2018, loli10K <ezomori.nozomu@gmail.com>
  */
-
 #include <ctype.h>
 #include <errno.h>
 #include <devid.h>
@@ -473,6 +472,9 @@ zpool_valid_proplist(libzfs_handle_t *hdl, const char *poolname,
 	struct _stat64 statbuf;
 	zpool_handle_t *zhp;
 	nvlist_t *nvroot;
+	char buf[PATH_MAX];
+	int idx = 0;
+	struct _stat64 st;
 
 	if (nvlist_alloc(&retprops, NV_UNIQUE_NAME, 0) != 0) {
 		(void) no_memory(hdl);
@@ -649,6 +651,39 @@ zpool_valid_proplist(libzfs_handle_t *hdl, const char *poolname,
 			break;
 
 		case ZPOOL_PROP_CACHEFILE:
+#ifdef _WIN32
+			if (strncmp("\\??\\", strval, 4) != 0) {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+					"property '%s' must be empty, an "
+					"absolute path, or 'none'"), propname);
+				(void)zfs_error(hdl, EZFS_BADPATH, errbuf);
+				goto error;
+			}
+			slash = strrchr(strval + 4, '\\');
+
+			if (slash[1] == '\0') {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+					"'%s' is not a valid file"), strval+4);
+				(void)zfs_error(hdl, EZFS_BADPATH, errbuf);
+				goto error;
+			}
+			idx = strlen(strval)-1;
+			while (strval[idx] != '\\' && idx >= 0) {
+				strval[idx] = '\0';
+				--idx;
+			}
+			if (idx < 0)
+				goto error;
+			strval[idx] = '\0';
+			if (stat(strval+4, &st) != 0 || !S_ISDIR(st.st_mode)) {
+				zfs_error_aux(hdl, dgettext(TEXT_DOMAIN,
+				"'%s' is not a valid directory"),
+				strval+4);
+				(void)zfs_error(hdl, EZFS_BADPATH, errbuf);
+				goto error;
+			}
+			break;
+#endif
 			if (strval[0] == '\0')
 				break;
 
@@ -773,10 +808,27 @@ zpool_set_prop(zpool_handle_t *zhp, const char *propname, const char *propval)
 	if (nvlist_alloc(&nvl, NV_UNIQUE_NAME, 0) != 0)
 		return (no_memory(zhp->zpool_hdl));
 
+#ifdef _WIN32
+	char buf[PATH_MAX];
+	if (strcmp("cachefile", propname) == 0) {
+		(void)snprintf(buf, MAXPATHLEN, "%s%s", "\\??\\", propval);
+		if (nvlist_add_string(nvl, propname, buf) != 0) {
+			nvlist_free(nvl);
+			return (no_memory(zhp->zpool_hdl));
+		}
+	} else {
+		if (nvlist_add_string(nvl, propname, propval) != 0) {
+			nvlist_free(nvl);
+			return (no_memory(zhp->zpool_hdl));
+		}
+	}
+#else
 	if (nvlist_add_string(nvl, propname, propval) != 0) {
 		nvlist_free(nvl);
 		return (no_memory(zhp->zpool_hdl));
-	}
+}
+#endif
+
 
 	version = zpool_get_prop_int(zhp, ZPOOL_PROP_VERSION, NULL);
 	if ((realprops = zpool_valid_proplist(zhp->zpool_hdl,

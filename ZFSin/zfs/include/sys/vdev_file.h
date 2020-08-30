@@ -28,18 +28,22 @@
 #define	_SYS_VDEV_FILE_H
 
 #include <sys/vdev.h>
+#include <sys/zfs_file.h>
 
 #ifdef	__cplusplus
 extern "C" {
 #endif
 
 typedef struct vdev_file {
-	HANDLE vf_handle;
+	zfs_file_t vf_handle;
 #ifdef _KERNEL
 	PFILE_OBJECT vf_FileObject;
 	PDEVICE_OBJECT vf_DeviceObject;
 #endif
 } vdev_file_t;
+
+extern void vdev_file_fini(void);
+extern void vdev_file_init(void);
 
 #ifdef	__cplusplus
 }

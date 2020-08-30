@@ -3151,7 +3151,9 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 
 	void *SystemBuffer = MapUserBuffer(Irp);
 
-	if (!nocache) {
+	if (nocache) {
+
+	} else {
 
 		if (fileObject->PrivateCacheMap == NULL) {
 			vnode_pager_setsize(vp, zp->z_size);
@@ -3199,7 +3201,9 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 		if (!FlagOn(IrpSp->MinorFunction, IRP_MN_MDL)) {
 
 			// Since we may have grown the filesize, we need to give CcMgr a head's up.
+			vnode_pager_setsize(vp, zp->z_size);
 			CcSetFileSizes(fileObject, (PCC_FILE_SIZES)&vp->FileHeader.AllocationSize);
+			vnode_setsizechange(vp, 0);
 
 			dprintf("CcWrite:  offset [ 0x%llx - 0x%llx ] len 0x%lx\n", 
 				byteOffset.QuadPart, byteOffset.QuadPart + bufferLength, bufferLength);
@@ -3208,7 +3212,7 @@ NTSTATUS fs_write(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpS
 				&byteOffset,
 				bufferLength,
 				TRUE,
-				SystemBuffer,
+				SystemBuffer, 
 				Irp->Tail.Overlay.Thread)) {
 #else
 			if (!CcCopyWrite(fileObject,
