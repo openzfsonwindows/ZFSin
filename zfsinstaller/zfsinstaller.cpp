@@ -23,12 +23,168 @@
   */
 
 #include "zfsinstaller.h"
+#include <ctime>
+#include <string>
+
+extern "C" {
+	#include <getopt.h>
+	extern char* optarg;
+}
 
 // Usage:
 //	zfsinstaller install [inf] [installFolder] (defaults to something like %ProgramFiles%\ZFS)
 //	zfsinstaller uninstall [inf] (could default to something like %ProgramFiles%\ZFS\ZFSin.inf)
+//  zfsinstaller trace -f Flags -l Levels -s SizeOfETLInMB -p AbsolutePathOfETL
 //
-//
+
+const unsigned char ZFSIN_GUID[] = "c20c603c-afd4-467d-bf76-c0a4c10553df";
+const unsigned char LOGGER_SESSION[] = "autosession\\zfsin_trace";
+
+int session_exists(void) {
+	char   command[256];
+
+	sprintf_s(command, "logman query %s > nul", LOGGER_SESSION);
+
+	int ret = system(command);
+	if (ret == 0) {   // Session exists
+		fprintf(stderr, "Logman session %s exists\n", LOGGER_SESSION);
+	}
+	return ret;
+}
+
+int zfs_log_session_delete(void) {
+	char command[1024];
+
+	int ret = session_exists();
+
+	if (ret == 0) {  // Session exists
+		sprintf_s(command, "cmd.exe /c \"logman delete %s > nul\"", LOGGER_SESSION);
+		ret = system(command);
+		if (ret != 0) {
+			fprintf(stderr, "Error while deleting session %s\n", LOGGER_SESSION);
+		}
+		else {
+			fprintf(stderr, "Logman session %s deleted successfully\n", LOGGER_SESSION);
+		}
+		return ret;
+	}
+	else {
+		return 0; // Session does not exist ; We will pass success
+	}
+}
+
+int validate_args(long long int flags, int levels, int size_in_mb, const char* etl_file) {
+	if (flags < 0 || flags > 0xffffffff) {
+		fprintf(stderr, "Valid input for flags should be in interval [0, 4294967295]\n");
+		return 1;
+	}
+
+	if (levels < 0 || levels > 255) {
+		fprintf(stderr, "Valid input for levels should be in interval [0, 255]\n");
+		return 2;
+	}
+
+	if (!strcmp(etl_file, "") || !strstr(etl_file, ".etl")) {
+		fprintf(stderr, "Etl file path/name is incorrect\n");
+		return 3;
+	}
+
+	if (size_in_mb <= 0) {
+		fprintf(stderr, "Size of etl should be greater than 0\n");
+		return 4;
+	}
+	return 0;
+}
+
+int move_file(const char *etl_file) {
+	char move_etl[1024];
+	time_t rawtime;
+	struct tm timeinfo;
+	char buffer[25];
+
+	time(&rawtime);
+	localtime_s(&timeinfo, &rawtime);
+	strftime(buffer, sizeof(buffer), "_%Y%m%d%H%M%S", &timeinfo);
+
+	strcpy_s(move_etl, etl_file);
+	char* etl = strstr(move_etl, ".etl");
+	if (etl)
+		etl[0] = 0;
+
+	strcat_s(move_etl, buffer);
+	strcat_s(move_etl, ".etl");
+
+	if (0 == rename(etl_file, move_etl)) {
+		fprintf(stderr, "%s already exists\n", etl_file);
+		fprintf(stderr, "%s has been renamed to %s\n", etl_file, move_etl);
+		return 0;
+	}
+	else {
+		fprintf(stderr, "Error while renaming the file %s\n", etl_file);
+		return 1;
+	}
+}
+
+int ArgParser(int argc, char **argv, long long int &flags, int &levels, int &size_in_mb, std::string &etl_file) {
+	int option_index = 0;
+	while ((option_index = getopt(argc, argv, "l:f:s:p:")) != -1) {
+		switch (option_index) {
+		case 'p':
+			etl_file = std::string(optarg);
+			break;
+		case 'l':
+			levels = atoi(optarg);
+			break;
+		case 'f':
+			flags = atoll(optarg);
+			break;
+		case 's':
+			size_in_mb = atoi(optarg);
+			break;
+		default:
+			return 1;
+		}
+	}
+	return 0;
+}
+
+int zfs_log_session_create(int argc, char** argv) {
+	long long int flags = -1;
+	int levels = -1;
+	int size_in_mb = -1;
+	std::string etl_file;
+	char command[1024];
+	int ret;
+
+	ret = ArgParser(argc, argv, flags, levels, size_in_mb, etl_file);
+	if (ret) {
+		fprintf(stderr, "One or more arguments provided is incorrect\n");
+		printUsage();
+		return ret;
+	}
+
+	if (validate_args(flags, levels, size_in_mb, etl_file.c_str())) {
+		fprintf(stderr, "Please check the provided values for the arguments\n");
+		printUsage();
+		return 1;
+	}
+
+	if (0 != session_exists()) { // If Session does not exist
+		if (GetFileAttributesA(etl_file.c_str()) != INVALID_FILE_ATTRIBUTES) { // ETL EXISTS
+			move_file(etl_file.c_str());
+		}
+
+		sprintf_s(command, "cmd.exe /c \"logman create trace %s -p {%s} %lld %d -nb 10 10 -bs 10 -mode Circular -max %d -o \"%s\"\" > nul",
+			LOGGER_SESSION, ZFSIN_GUID, flags, levels, size_in_mb, etl_file.c_str());
+
+		ret = system(command);
+		if (ret != 0) {
+			fprintf(stderr, "There is an issue creating the session %s\n", LOGGER_SESSION);
+		}
+		return ret;
+	}
+	return 0;
+}
 
 
 int main(int argc, char* argv[])
@@ -38,7 +194,7 @@ int main(int argc, char* argv[])
 		printUsage();
 		return ERROR_BAD_ARGUMENTS;
 	}
-	if (argc > 3) {
+	if (argc > 10) {
 		fprintf(stderr, "too many arguments \n");
 		printUsage();
 		return ERROR_BAD_ARGUMENTS;
@@ -47,22 +203,39 @@ int main(int argc, char* argv[])
 	if (strcmp(argv[1], "install") == 0) {
 		zfs_install(argv[2]);
 		fprintf(stderr, "Installation done.");
-	} else if(strcmp(argv[1], "uninstall") == 0) {
-		zfs_uninstall(argv[2]);
-	} else {
+	}
+	else if (strcmp(argv[1], "uninstall") == 0) {
+		int ret = zfs_uninstall(argv[2]);
+		if (0 == ret) {
+			return zfs_log_session_delete();
+		}
+		return ret;
+	}
+	else if (strcmp(argv[1], "trace") == 0) {
+		return zfs_log_session_create(argc - 1, &argv[1]);
+	}
+	else {
 		fprintf(stderr, "unknown argument %s\n", argv[1]);
 		printUsage();
 		return ERROR_BAD_ARGUMENTS;
 	}
+	return 0;
 }
 
 void printUsage() {
 	fprintf(stderr, "Usage:\n\n");
 	fprintf(stderr, "Install driver per INF DefaultInstall section:\n");
-	fprintf(stderr, "zfsinstaller install [inf path]\n");
+	fprintf(stderr, "zfsinstaller install inf_path\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Uninstall driver per INF DefaultUninstall section:\n");
-	fprintf(stderr, "zfsinstaller uninstall [inf path]\n");
+	fprintf(stderr, "zfsinstaller uninstall inf_path\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "zfsinstaller trace -f Flags -l Levels -s SizeOfETLInMB -p AbsolutePathOfETL\n");
+	fprintf(stderr, "Valid inputs for above arguments are as follows:\n");
+	fprintf(stderr, "Flags             Should be in interval [0, 4294967295]\n");
+	fprintf(stderr, "Levels            Should be in interval [0, 255]\n");
+	fprintf(stderr, "SizeOfETLInMB     (Greater than 0)\n");
+	fprintf(stderr, "AbsolutePathOfETL (Absolute Path including the Etl file name)\n");
 }
 
 DWORD zfs_install(char *inf_path) {
