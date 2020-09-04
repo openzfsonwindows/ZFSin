@@ -3470,21 +3470,27 @@ void vmem_free_span_list()
 	int  total = 0;
 	int total_count = 0;
 	struct free_slab* fs;
-	int release = 1;
+//	int release = 1;
 
 	while ((fs = list_head(&freelist))) {
 		total_count++;
 		total += fs->slabsize;
 		list_remove(&freelist, fs);
+		/*
+		Commenting out due to BSOD during uninstallation, will revisit later.
+
 		for (int id = 0; id < VMEM_INITIAL; id++) {
 			if (&vmem0[id] == fs->slab) {
 				release = 0;
 				break;
 			}
 		}
+
 		if (release)
 			fs->vmp->vm_source_free(fs->vmp, fs->slab, fs->slabsize);
 		release = 1;
+
+		*/
 		FREE(fs, M_TEMP);
 	}
 }
