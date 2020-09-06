@@ -70,6 +70,9 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "kstat", "ZFSin\zfs\cmd\kstat\kstat.vcxproj", "{124252BB-55ED-429B-AF4B-9D19043912D1}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "zfsinstaller", "zfsinstaller\zfsinstaller.vcxproj", "{D8FFC7E2-16B5-4A68-86BD-C570669EA263}"
+	ProjectSection(ProjectDependencies) = postProject
+		{5514A992-229B-47B4-9E37-8299A4C1263A} = {5514A992-229B-47B4-9E37-8299A4C1263A}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
