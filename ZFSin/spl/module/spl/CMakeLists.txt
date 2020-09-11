@@ -28,4 +28,4 @@ wdk_add_library(splkern
   spl-xdr.c
 )
 
-target_include_directories(splkern BEFORE PUBLIC ../../include)
+target_include_directories(splkern BEFORE PUBLIC ../../include "${ZFSin_ROOT_DIR}")
