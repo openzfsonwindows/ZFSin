@@ -44,6 +44,10 @@ extern "C" {
 #include <stdlib.h> /* size_t ... */
 #endif
 
+#ifdef pipe
+#undef pipe
+#endif
+
 /*
  * EdonR allows to call EdonRUpdate() consecutively only if the total length
  * of stored unprocessed data and the new supplied data is less than or equal

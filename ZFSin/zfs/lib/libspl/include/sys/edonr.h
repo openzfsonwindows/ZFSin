@@ -40,6 +40,10 @@ extern "C" {
 #include <sys/types.h>
 #include <sys/w32_types.h>
 
+#ifdef pipe
+#undef pipe
+#endif
+
 /*
  * EdonR allows to call EdonRUpdate() consecutively only if the total length
  * of stored unprocessed data and the new supplied data is less than or equal

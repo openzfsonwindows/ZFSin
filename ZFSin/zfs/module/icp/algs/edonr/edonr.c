@@ -41,6 +41,10 @@
 /* big endian support, provides no-op's if run on little endian hosts */
 #include "edonr_byteorder.h"
 
+#ifdef pipe
+#undef pipe
+#endif
+
 #define	hashState224(x)	((x)->pipe->p256)
 #define	hashState256(x)	((x)->pipe->p256)
 #define	hashState384(x)	((x)->pipe->p512)
