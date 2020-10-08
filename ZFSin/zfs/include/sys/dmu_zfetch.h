@@ -66,8 +66,8 @@ void		zfetch_fini(void);
 
 void		dmu_zfetch_init(zfetch_t *, struct dnode *);
 void		dmu_zfetch_fini(zfetch_t *);
-void		dmu_zfetch(zfetch_t *, uint64_t, uint64_t, boolean_t);
-
+void		dmu_zfetch(zfetch_t *, uint64_t, uint64_t, boolean_t,
+    boolean_t);
 
 #ifdef	__cplusplus
 }
