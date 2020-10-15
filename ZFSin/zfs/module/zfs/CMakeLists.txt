@@ -124,6 +124,7 @@ wdk_add_library(zfskern
   zrlock.c
   zthr.c
   zvol.c
+  zfs_file.c
 )
 
 target_link_libraries(zfskern PRIVATE splkern icpkern)

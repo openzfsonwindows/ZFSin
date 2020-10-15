@@ -49,6 +49,7 @@ extern int wosix_isatty(int fd);
 extern int wosix_mkdir(const char *path, mode_t mode);
 extern int wosix_pwrite(int fd, const void *buf, size_t nbyte, off_t offset);
 extern int wosix_pread(int fd, void *buf, size_t nbyte, off_t offset);
+extern int wosix_stat(char* path, struct _stat64* st);
 extern int wosix_fstat(int fd, struct _stat64 *st);
 extern int wosix_fstat_blk(int fd, struct _stat64 *st);
 extern uint64_t wosix_lseek(int fd, uint64_t offset, int seek);

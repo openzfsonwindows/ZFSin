@@ -103,6 +103,9 @@ function(um_add_executable name)
 endfunction()
 
 include_directories(BEFORE zfs/include)
+
+set(ZFSin_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
+
 add_subdirectory(spl)
 add_subdirectory(zfs)
 
