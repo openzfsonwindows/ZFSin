@@ -204,7 +204,8 @@ dmu_zfetch_stream_create(zfetch_t *zf, uint64_t blkid)
  *   TRUE -- prefetch predicted data blocks plus following indirect blocks.
  */
 void
-dmu_zfetch(zfetch_t *zf, uint64_t blkid, uint64_t nblks, boolean_t fetch_data)
+dmu_zfetch(zfetch_t *zf, uint64_t blkid, uint64_t nblks, boolean_t fetch_data,
+	boolean_t have_lock)
 {
 	zstream_t *zs;
 	int64_t pf_start, ipf_start, ipf_istart, ipf_iend;
@@ -233,6 +234,8 @@ dmu_zfetch(zfetch_t *zf, uint64_t blkid, uint64_t nblks, boolean_t fetch_data)
 	if (blkid == 0)
 		return;
 
+	if (!have_lock)
+		rw_enter(&zf->zf_dnode->dn_struct_rwlock, RW_READER);
 	rw_enter(&zf->zf_rwlock, RW_READER);
 
 	/*

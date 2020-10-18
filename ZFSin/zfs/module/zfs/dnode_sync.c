@@ -51,7 +51,6 @@ dnode_increase_indirection(dnode_t *dn, dmu_tx_t *tx)
 
 	/* this dnode can't be paged out because it's dirty */
 	ASSERT(dn->dn_phys->dn_type != DMU_OT_NONE);
-	ASSERT(RW_WRITE_HELD(&dn->dn_struct_rwlock));
 	ASSERT(new_level > 1 && dn->dn_phys->dn_nlevels > 0);
 
 	db = dbuf_hold_level(dn, dn->dn_phys->dn_nlevels, 0, FTAG);
@@ -60,9 +59,25 @@ dnode_increase_indirection(dnode_t *dn, dmu_tx_t *tx)
 	dn->dn_phys->dn_nlevels = new_level;
 	dprintf("os=%p obj=%llu, increase to %d\n", dn->dn_objset,
 	    dn->dn_object, dn->dn_phys->dn_nlevels);
+	
+	/*
+	 * Lock ordering requires that we hold the children's db_mutexes (by
+	 * calling dbuf_find()) before holding the parent's db_rwlock.  The lock
+	 * order is imposed by dbuf_read's steps of "grab the lock to protect
+	 * db_parent, get db_parent, hold db_parent's db_rwlock".
+	 */
+	dmu_buf_impl_t *children[DN_MAX_NBLKPTR];
+	ASSERT3U(nblkptr, <=, DN_MAX_NBLKPTR);
+	for (i = 0; i < nblkptr; i++) {
+		children[i] =
+		    dbuf_find(dn->dn_objset, dn->dn_object, old_toplvl, i);
+	}
 
 	/* transfer dnode's block pointers to new indirect block */
 	(void) dbuf_read(db, NULL, DB_RF_MUST_SUCCEED|DB_RF_HAVESTRUCT);
+	if (dn->dn_dbuf != NULL)
+		rw_enter(&dn->dn_dbuf->db_rwlock, RW_WRITER);
+	rw_enter(&db->db_rwlock, RW_WRITER);
 	ASSERT(db->db.db_data);
 	ASSERT(arc_released(db->db_buf));
 	ASSERT3U(sizeof (blkptr_t) * nblkptr, <=, db->db.db_size);
@@ -72,8 +87,7 @@ dnode_increase_indirection(dnode_t *dn, dmu_tx_t *tx)
 
 	/* set dbuf's parent pointers to new indirect buf */
 	for (i = 0; i < nblkptr; i++) {
-		dmu_buf_impl_t *child =
-		    dbuf_find(dn->dn_objset, dn->dn_object, old_toplvl, i);
+		dmu_buf_impl_t *child = children[i];
 
 		if (child == NULL)
 			continue;
@@ -105,6 +119,10 @@ dnode_increase_indirection(dnode_t *dn, dmu_tx_t *tx)
 	}
 
 	bzero(dn->dn_phys->dn_blkptr, sizeof (blkptr_t) * nblkptr);
+
+	rw_exit(&db->db_rwlock);
+	if (dn->dn_dbuf != NULL)
+		rw_exit(&dn->dn_dbuf->db_rwlock);
 
 	dbuf_rele(db, FTAG);
 
@@ -273,6 +291,26 @@ free_children(dmu_buf_impl_t *db, uint64_t blkid, uint64_t nblks,
 	 */
 	if (db->db_state != DB_CACHED)
 		(void) dbuf_read(db, NULL, DB_RF_MUST_SUCCEED);
+	
+		/*
+	 * If we modify this indirect block, and we are not freeing the
+	 * dnode (!free_indirects), then this indirect block needs to get
+	 * written to disk by dbuf_write().  If it is dirty, we know it will
+	 * be written (otherwise, we would have incorrect on-disk state
+	 * because the space would be freed but still referenced by the BP
+	 * in this indirect block).  Therefore we VERIFY that it is
+	 * dirty.
+	 *
+	 * Our VERIFY covers some cases that do not actually have to be
+	 * dirty, but the open-context code happens to dirty.  E.g. if the
+	 * blocks we are freeing are all holes, because in that case, we
+	 * are only freeing part of this indirect block, so it is an
+	 * ancestor of the first or last block to be freed.  The first and
+	 * last L1 indirect blocks are always dirtied by dnode_free_range().
+	 */
+	db_lock_type_t dblt = dmu_buf_lock_parent(db, RW_READER, FTAG);
+	VERIFY(BP_GET_FILL(db->db_blkptr) == 0 || db->db_dirtycnt > 0);
+	dmu_buf_unlock_parent(db, dblt, FTAG);
 
 	dbuf_release_bp(db);
 	bp = db->db.db_data;
@@ -297,7 +335,9 @@ free_children(dmu_buf_impl_t *db, uint64_t blkid, uint64_t nblks,
 
 	if (db->db_level == 1) {
 		FREE_VERIFY(db, start, end, tx);
-		free_blocks(dn, bp, end-start+1, tx);
+		rw_enter(&db->db_rwlock, RW_WRITER);
+		free_blocks(dn, bp, end - start + 1, tx);
+		rw_exit(&db->db_rwlock);
 	} else {
 		for (i = start; i <= end; i++, bp++) {
 			if (BP_IS_HOLE(bp))
@@ -314,10 +354,12 @@ free_children(dmu_buf_impl_t *db, uint64_t blkid, uint64_t nblks,
 	}
 
 	if (free_indirects) {
+		rw_enter(&db->db_rwlock, RW_WRITER);
 		for (i = 0, bp = db->db.db_data; i < 1ULL << epbs; i++, bp++)
 			ASSERT(BP_IS_HOLE(bp));
 		bzero(db->db.db_data, db->db.db_size);
 		free_blocks(dn, db->db_blkptr, 1, tx);
+		rw_exit(&db->db_rwlock);
 	}
 
 	DB_DNODE_EXIT(db);
