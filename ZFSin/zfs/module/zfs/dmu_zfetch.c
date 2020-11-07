@@ -260,6 +260,10 @@ dmu_zfetch(zfetch_t *zf, uint64_t blkid, uint64_t nblks, boolean_t fetch_data,
 					/* Already prefetched this before. */
 					mutex_exit(&zs->zs_lock);
 					rw_exit(&zf->zf_rwlock);
+					if (!have_lock) {
+						rw_exit(&zf->zf_dnode->
+						    dn_struct_rwlock);
+					}
 					return;
 				}
 				break;
@@ -277,6 +281,8 @@ dmu_zfetch(zfetch_t *zf, uint64_t blkid, uint64_t nblks, boolean_t fetch_data,
 		if (rw_tryupgrade(&zf->zf_rwlock))
 			dmu_zfetch_stream_create(zf, end_of_access_blkid);
 		rw_exit(&zf->zf_rwlock);
+		if (!have_lock)
+			rw_exit(&zf->zf_dnode->dn_struct_rwlock);
 		return;
 	}
 
@@ -356,5 +362,7 @@ dmu_zfetch(zfetch_t *zf, uint64_t blkid, uint64_t nblks, boolean_t fetch_data,
 		dbuf_prefetch(zf->zf_dnode, 1, iblk,
 		    ZIO_PRIORITY_ASYNC_READ, ARC_FLAG_PREDICTIVE_PREFETCH);
 	}
+	if (!have_lock)
+		rw_exit(&zf->zf_dnode->dn_struct_rwlock);
 	ZFETCHSTAT_BUMP(zfetchstat_hits);
 }
