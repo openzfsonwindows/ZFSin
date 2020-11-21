@@ -271,7 +271,7 @@ int        kstat_osx_init(void *);
 void       kstat_osx_fini(void);
 
 int arc_kstat_update(kstat_t *ksp, int rw);
-int arc_kstat_update_osx(kstat_t *ksp, int rw);
+int arc_kstat_update_win();
 int spl_kstat_registry(void *pRegistryPath, kstat_t *ksp);
 
 #endif

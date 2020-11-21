@@ -611,7 +611,10 @@ int kstat_osx_init(PUNICODE_STRING RegistryPath)
 		error = spl_kstat_registry(RegistryPath, osx_kstat_ksp);
 		if (error == 0) goto out;
 
+		// Update this kstat
 		error = KSTAT_UPDATE(osx_kstat_ksp, KSTAT_WRITE);
+		// Update ARC kstat
+		arc_kstat_update_win();
 
 	out:
 		KSTAT_EXIT(osx_kstat_ksp);
