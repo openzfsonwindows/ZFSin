@@ -7377,7 +7377,7 @@ arc_kstat_update(kstat_t *ksp, int rw)
 // Wrapper for static arc_ksp, called after Registry values read.
 int arc_kstat_update_win()
 {
-	kstat_t *ksp = arc_ksp;
+	kstat_t *ksp = &arc_ksp;
 
 	arc_kstat_update(ksp, KSTAT_WRITE);
 }
