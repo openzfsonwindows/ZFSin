@@ -195,6 +195,11 @@ static kstat_t		*osx_kstat_ksp;
 #pragma GCC diagnostic ignored "-Wframe-larger-than="
 #endif
 
+// Since this file can not modify arc.c's 'static arc_stats'
+int 
+arc_kstat_update_cont(kstat_t *ksp, int rw);
+
+
 static int osx_kstat_update(kstat_t *ksp, int rw)
 {
 	osx_kstat_t *ks = ksp->ks_data;
@@ -215,6 +220,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		zfs_vnop_force_formd_normalized_output = ks->win32_force_formd_normalized.value.ui64;
 		zfs_vnop_skip_unlinked_drain = ks->win32_skip_unlinked_drain.value.ui64;
 		zfs_vfs_sync_paranoia = ks->win32_use_system_sync.value.ui64;
+
+		arc_kstat_update_cont(ksp, rw);
 
 		/* L2ARC */
 		l2arc_write_max = ks->l2arc_write_max.value.ui64;
@@ -395,6 +402,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			ks->zfs_autoimport_disable.value.ui64;
 
 	} else {
+
+		arc_kstat_update_cont(ksp, rw);
 
 		/* kstat READ */
 		ks->spa_version.value.ui64                   = SPA_VERSION;
@@ -613,8 +622,6 @@ int kstat_osx_init(PUNICODE_STRING RegistryPath)
 
 		// Update this kstat
 		error = KSTAT_UPDATE(osx_kstat_ksp, KSTAT_WRITE);
-		// Update ARC kstat
-		arc_kstat_update_win();
 
 	out:
 		KSTAT_EXIT(osx_kstat_ksp);

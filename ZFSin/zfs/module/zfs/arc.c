@@ -884,8 +884,6 @@ static arc_state_t	*arc_l2c_only;
 // arcstat: static uint64_t		arc_loaned_bytes;
 #define arc_loaned_bytes ARCSTAT(arcstat_loaned_bytes) /* bytes loaned out as dbuf */
 
-static int arc_kstat_update_cont(kstat_t *ksp, int rw);
-
 /*
  * There are also some ARC variables that we want to export, but that are
  * updated so often that having the canonical representation be the statistic
@@ -7332,8 +7330,6 @@ arc_kstat_update(kstat_t *ksp, int rw)
 		arc_mfu_ghost == NULL)
 		return EACCES;
 
-	arc_kstat_update_cont(ksp, rw);
-
 	if (rw == KSTAT_WRITE) {
 		return (EACCES);
 	} else {
@@ -7383,9 +7379,9 @@ int arc_kstat_update_win()
 }
 
 /*
- * Uses ARC static variables in logic.
+ * Uses ARC static variables in logic. Takes osx_kstat_t *!
  */
-static int 
+int 
 arc_kstat_update_cont(kstat_t *ksp, int rw)
 {
 	osx_kstat_t *ks = ksp->ks_data;
