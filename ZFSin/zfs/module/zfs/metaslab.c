@@ -2889,7 +2889,6 @@ metaslab_sync_done(metaslab_t *msp, uint64_t txg)
 	 * If the metaslab is loaded and we've not tried to load or allocate
 	 * from it in 'metaslab_unload_delay' txgs, then unload it.
 	 */
-	dprintf("metaslab unload delay is %d\n", metaslab_unload_delay);
 	if (msp->ms_loaded &&
 	    msp->ms_disabled == 0 &&
 	    msp->ms_selected_txg + metaslab_unload_delay < txg) {
