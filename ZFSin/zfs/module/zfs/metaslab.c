@@ -36,6 +36,7 @@
 #include <sys/zfeature.h>
 #include <sys/vdev_indirect_mapping.h>
 #include <sys/zap.h>
+#include <sys/kstat_windows.h>
 
 #define	WITH_DF_BLOCK_ALLOCATOR
 
@@ -2888,6 +2889,7 @@ metaslab_sync_done(metaslab_t *msp, uint64_t txg)
 	 * If the metaslab is loaded and we've not tried to load or allocate
 	 * from it in 'metaslab_unload_delay' txgs, then unload it.
 	 */
+	dprintf("metaslab unload delay is %d\n", metaslab_unload_delay);
 	if (msp->ms_loaded &&
 	    msp->ms_disabled == 0 &&
 	    msp->ms_selected_txg + metaslab_unload_delay < txg) {
