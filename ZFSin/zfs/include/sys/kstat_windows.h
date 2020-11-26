@@ -153,6 +153,7 @@ typedef struct osx_kstat {
 
 	kstat_named_t zfs_vdev_initialize_value;
 	kstat_named_t zfs_autoimport_disable;
+	kstat_named_t metaslab_unload_delay;
 } osx_kstat_t;
 
 
@@ -266,12 +267,13 @@ extern uint64_t zfs_disable_removablemedia;
 
 extern uint64_t zfs_initialize_value;
 extern int zfs_autoimport_disable;
+extern int metaslab_unload_delay;
 
 int        kstat_osx_init(void *);
 void       kstat_osx_fini(void);
 
 int arc_kstat_update(kstat_t *ksp, int rw);
-int arc_kstat_update_osx(kstat_t *ksp, int rw);
+int arc_kstat_update_win();
 int spl_kstat_registry(void *pRegistryPath, kstat_t *ksp);
 
 #endif

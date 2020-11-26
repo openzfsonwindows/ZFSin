@@ -36,6 +36,7 @@
 #include <sys/zfeature.h>
 #include <sys/vdev_indirect_mapping.h>
 #include <sys/zap.h>
+#include <sys/kstat_windows.h>
 
 #define	WITH_DF_BLOCK_ALLOCATOR
 

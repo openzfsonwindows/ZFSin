@@ -7369,10 +7369,20 @@ arc_kstat_update(kstat_t *ksp, int rw)
 
 
 #ifdef _WIN32
+
+// Wrapper for static arc_ksp, called after Registry values read.
+int arc_kstat_update_win()
+{
+	kstat_t *ksp = &arc_ksp;
+
+	arc_kstat_update(ksp, KSTAT_WRITE);
+}
+
 /*
- * Uses ARC static variables in logic.
+ * Uses ARC static variables in logic. Takes osx_kstat_t *!
  */
-int arc_kstat_update_osx(kstat_t *ksp, int rw)
+int 
+arc_kstat_update_cont(kstat_t *ksp, int rw)
 {
 	osx_kstat_t *ks = ksp->ks_data;
 

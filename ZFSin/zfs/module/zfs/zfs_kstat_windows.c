@@ -183,7 +183,7 @@ osx_kstat_t osx_kstat = {
 	{ "zfs_disable_removablemedia",		KSTAT_DATA_UINT64 },
 	{ "zfs_vdev_initialize_value",		KSTAT_DATA_UINT64 },
 	{ "zfs_autoimport_disable",		KSTAT_DATA_UINT64 },
-		
+	{ "metaslab_unload_delay",		KSTAT_DATA_UINT64 },	
 };
 
 
@@ -194,6 +194,11 @@ static kstat_t		*osx_kstat_ksp;
 #if !defined (__OPTIMIZE__)
 #pragma GCC diagnostic ignored "-Wframe-larger-than="
 #endif
+
+// Since this file can not modify arc.c's 'static arc_stats'
+int 
+arc_kstat_update_cont(kstat_t *ksp, int rw);
+
 
 static int osx_kstat_update(kstat_t *ksp, int rw)
 {
@@ -215,6 +220,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 		zfs_vnop_force_formd_normalized_output = ks->win32_force_formd_normalized.value.ui64;
 		zfs_vnop_skip_unlinked_drain = ks->win32_skip_unlinked_drain.value.ui64;
 		zfs_vfs_sync_paranoia = ks->win32_use_system_sync.value.ui64;
+
+		arc_kstat_update_cont(ksp, rw);
 
 		/* L2ARC */
 		l2arc_write_max = ks->l2arc_write_max.value.ui64;
@@ -393,8 +400,11 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			ks->zfs_vdev_initialize_value.value.ui64;
 		zfs_autoimport_disable =
 			ks->zfs_autoimport_disable.value.ui64;
-
+		metaslab_unload_delay =
+			ks->metaslab_unload_delay.value.ui64;
 	} else {
+
+		arc_kstat_update_cont(ksp, rw);
 
 		/* kstat READ */
 		ks->spa_version.value.ui64                   = SPA_VERSION;
@@ -583,6 +593,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			zfs_initialize_value;
 		ks->zfs_autoimport_disable.value.ui64 =
 			zfs_autoimport_disable;
+		ks->metaslab_unload_delay.value.ui64 =
+			metaslab_unload_delay;	
 	}
 
 	return 0;
@@ -611,6 +623,7 @@ int kstat_osx_init(PUNICODE_STRING RegistryPath)
 		error = spl_kstat_registry(RegistryPath, osx_kstat_ksp);
 		if (error == 0) goto out;
 
+		// Update this kstat
 		error = KSTAT_UPDATE(osx_kstat_ksp, KSTAT_WRITE);
 
 	out:

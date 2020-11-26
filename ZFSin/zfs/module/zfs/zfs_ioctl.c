@@ -6791,6 +6791,9 @@ zfs_ioc_unregister_fs(void)
 		return zfs_module_busy;
 	}
 	if (fsDiskDeviceObject != NULL) {
+		UNICODE_STRING str;
+		RtlInitUnicodeString(&str, ZFS_DEV_DOS);
+		IoDeleteSymbolicLink(&str);
 		IoUnregisterFsRegistrationChange(WIN_DriverObject, DriverNotificationRoutine);
 		IoUnregisterFileSystem(fsDiskDeviceObject);
 		ObDereferenceObject(fsDiskDeviceObject);
