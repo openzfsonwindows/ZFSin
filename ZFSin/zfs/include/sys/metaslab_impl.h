@@ -277,8 +277,15 @@ struct metaslab_group {
 	boolean_t		mg_disabled_updating;
 	kmutex_t		mg_ms_disabled_lock;
 	kcondvar_t		mg_ms_disabled_cv;
+	kstat_t* mg_kstat;
+	kmutex_t mg_kstat_lock;
 };
 
+typedef struct metaslab_group_kstat {
+	kstat_named_t	mg_loads;
+	kstat_named_t	mg_unloads;
+	kstat_named_t   mg_count;
+} metaslab_group_kstat_t;
 /*
  * This value defines the number of elements in the ms_lbas array. The value
  * of 64 was chosen as it covers all power of 2 buckets up to UINT64_MAX.
@@ -433,7 +440,7 @@ struct metaslab {
 	 */
 	uint64_t	ms_selected_txg;
 
-	uint64_t	ms_alloc_txg;	/* last successful alloc (debug only) */
+	uint64_t    ms_alloc_txg;   /* last successful alloc (debug only) */
 	uint64_t	ms_max_size;	/* maximum allocatable size	*/
 
 	/*
