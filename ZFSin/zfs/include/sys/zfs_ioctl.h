@@ -39,6 +39,7 @@
 
 #ifdef _KERNEL
 #include <sys/nvpair.h>
+#include <sys/fs/zfsdi.h>
 #else
 #include <winioctl.h>
 #endif	/* _KERNEL */
@@ -55,6 +56,8 @@ extern "C" {
  * explicit padding so that the 32-bit structure will not be packed more
  * tightly than the 64-bit structure (which requires 64-bit alignment).
  */
+
+
 
 /*
  * Property values for snapdir

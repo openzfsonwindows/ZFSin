@@ -5,6 +5,7 @@
 #include <storport.h>  
 //#include <wdf.h>
 
+#include <sys/zfs_context.h>
 #include <sys/wzvol.h>
 
 #include "Trace.h"
@@ -93,9 +94,6 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT  DriverObject, _In_ PUNICODE_STRING pRe
 	KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "ZFSin: Started\n"));
 	return STATUS_SUCCESS;
 }
-
-//extern unsigned long spl_hostid;
-extern int random_get_bytes(void *ptr, unsigned long len);
 
 void spl_create_hostid(HANDLE h, PUNICODE_STRING pRegistryPath)
 {

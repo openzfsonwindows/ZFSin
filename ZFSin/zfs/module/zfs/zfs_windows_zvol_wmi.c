@@ -22,6 +22,7 @@
 * WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A PARTICULAR PURPOSE.
 \***************************************************************************/     
 
+#include <sys/zfs_context.h>
 #include <ntddk.h>
 #include <storport.h>
 #include <scsiwmi.h>

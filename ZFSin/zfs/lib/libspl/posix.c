@@ -545,8 +545,9 @@ unsigned long gethostid(void)
 	Status = RegQueryValueEx(key, "hostid", NULL, &type, (LPBYTE)&hostid, &len);
 	if (Status != ERROR_SUCCESS)
 		hostid = 0;
-
-	assert(type == REG_DWORD);
+	else {
+		assert(type == REG_DWORD);
+	}
 
 	RegCloseKey(key);
 
