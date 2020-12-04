@@ -322,7 +322,7 @@ skip_open:
 #ifdef _KERNEL
 	*max_psize = *psize = info.EndOfFile.QuadPart;
 #else
-	if(FileName[0] == '#')
+	if(vd->vdev_physpath && vd->vdev_physpath[0] == '#')
 		*max_psize = *psize = vd->vdev_win_length;
 	else {
 		zfs_file_getattr(&fp, &zfa);
