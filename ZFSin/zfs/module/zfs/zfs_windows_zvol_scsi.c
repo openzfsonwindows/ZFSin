@@ -237,8 +237,8 @@ ScsiExecuteMain(
 {
     UCHAR            status = SRB_STATUS_INVALID_REQUEST;
 
-   dprintf("ScsiExecute: pSrb = 0x%p, CDB = 0x%x Path: %x TID: %x Lun: %x\n",
-                      pSrb, pSrb->Cdb[0], pSrb->PathId, pSrb->TargetId, pSrb->Lun);
+   TraceEvent(TRACE_VERBOSE,"%s:%d: ScsiExecute: pSrb = 0x%p, CDB = 0x%x Path: %x TID: %x Lun: %x\n",
+					 __func__, __LINE__, pSrb, pSrb->Cdb[0], pSrb->PathId, pSrb->TargetId, pSrb->Lun);
 
     *pResult = ResultDone;
 
@@ -834,8 +834,8 @@ wzvol_WkRtn(__in PVOID pWkParms)                          // Parm list pointer.
 
 	sectorOffset = startingSector * MP_BLOCK_SIZE;
 
-	dprintf("MpWkRtn Action: %X, starting sector: 0x%llX, sector offset: 0x%llX\n", pWkRtnParms->Action, startingSector, sectorOffset);
-	dprintf("MpWkRtn pSrb: 0x%p, pSrb->DataBuffer: 0x%p\n", pSrb, pSrb->DataBuffer);
+	TraceEvent(TRACE_VERBOSE,"%s:%d: MpWkRtn Action: %X, starting sector: 0x%llX, sector offset: 0x%llX\n", __func__, __LINE__, pWkRtnParms->Action, startingSector, sectorOffset);
+	TraceEvent(TRACE_VERBOSE,"%s:%d: MpWkRtn pSrb: 0x%p, pSrb->DataBuffer: 0x%p\n", __func__, __LINE__, pSrb, pSrb->DataBuffer);
 
 	if (sectorOffset >= zv->zv_volsize) {      // Starting sector beyond the bounds?
 		dprintf("%s: invalid starting sector: %d\n", __func__, startingSector);
