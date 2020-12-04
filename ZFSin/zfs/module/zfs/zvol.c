@@ -2317,7 +2317,7 @@ zvol_read(zvol_state_t *zv, uio_t *uio, int flags)
 		if (bytes > volsize - uio_offset(uio))
 			bytes = volsize - uio_offset(uio);
 
-		dprintf("%s %llu len %llu bytes %llu\n",
+		TraceEvent(TRACE_VERBOSE,"%s:%d: %s %llu len %llu bytes %llu\n", __func__, __LINE__,
 		    "zvol_read_iokit: position",
 		    uio_offset(uio), uio_resid(uio), bytes);
 
@@ -2361,8 +2361,8 @@ zvol_write(zvol_state_t *zv, uio_t *uio, int flags)
 	if (uio_offset(uio) >= volsize)
 		return (EIO);
 
-	dprintf("zvol_write_iokit(offset "
-	    "0x%llx bytes 0x%llx)\n", uio_offset(uio), uio_resid(uio));
+	TraceEvent(TRACE_VERBOSE,"%s:%d: zvol_write_iokit(offset "
+	    "0x%llx bytes 0x%llx)\n", __func__, __LINE__, uio_offset(uio), uio_resid(uio));
 
 	sync = (flags & ZVOL_WRITE_SYNC) ||
 	    (zv->zv_objset->os_sync == ZFS_SYNC_ALWAYS);
