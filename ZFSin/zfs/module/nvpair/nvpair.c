@@ -33,6 +33,8 @@
 #include <rpc/types.h>
 #include <rpc/xdr.h>
 
+#include <sys/zfs_context.h>
+
 #if defined(_KERNEL) && !defined(_BOOT)
 #include <sys/varargs.h>
 #include <sys/ddi.h>
@@ -43,6 +45,7 @@
 #include <string.h>
 #include <strings.h>
 #endif
+
 
 #ifndef	offsetof
 #define	offsetof(s, m)		((size_t)(&(((s *)0)->m)))
@@ -194,9 +197,14 @@ nv_mem_zalloc(nvpriv_t *nvp, size_t size)
 	nv_alloc_t *nva = nvp->nvp_nva;
 	void *buf;
 
+	TraceEvent(8, "%s:%d: nvp = 0x%p, size = %llu\n", __func__, __LINE__, nvp, size);
 	if ((buf = nva->nva_ops->nv_ao_alloc(nva, size)) != NULL)
 		bzero(buf, size);
 
+	if (buf)
+		TraceEvent(8, "%s:%d: Returning buf = 0x%p\n", __func__, __LINE__, buf);
+	else
+		dprintf("%s:%d: Returning buf = 0x%p\n", __func__, __LINE__, buf);
 	return (buf);
 }
 
@@ -302,20 +310,29 @@ nvlist_xalloc(nvlist_t **nvlp, uint_t nvflag, nv_alloc_t *nva)
 {
 	nvpriv_t *priv;
 
-	if (nvlp == NULL || nva == NULL)
-		return (EINVAL);
+	TraceEvent(8, "%s:%d: nvlp = 0x%p, nvflag = %u, nva = 0x%p\n", __func__, __LINE__, nvlp, nvflag, nva);
 
-	if ((priv = nv_priv_alloc(nva)) == NULL)
+	if (nvlp == NULL || nva == NULL) {
+		dprintf("%s:%d: nvlp = 0x%p, nva = 0x%p. Returning (EINVAL) %d\n",
+			__func__, __LINE__, nvlp, nva, EINVAL);
+		return (EINVAL);
+	}
+
+	if ((priv = nv_priv_alloc(nva)) == NULL) {
+		dprintf("%s:%d: Returning (ENOMEM) %d\n", __func__, __LINE__, ENOMEM);
 		return (ENOMEM);
+	}
 
 	if ((*nvlp = nv_mem_zalloc(priv,
 	    NV_ALIGN(sizeof (nvlist_t)))) == NULL) {
 		nv_mem_free(priv, priv, sizeof (nvpriv_t));
+		dprintf("%s:%d: Returning (ENOMEM) %d\n", __func__, __LINE__, ENOMEM);
 		return (ENOMEM);
 	}
 
 	nvlist_init(*nvlp, nvflag, priv);
 
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -529,18 +546,25 @@ nvlist_copy_pairs(nvlist_t *snvl, nvlist_t *dnvl)
 	nvpriv_t *priv;
 	i_nvp_t *curr;
 
-	if ((priv = (nvpriv_t *)(uintptr_t)snvl->nvl_priv) == NULL)
+	TraceEvent(8, "%s:%d: snvl = 0x%p, dnvl = 0x%p\n", __func__, __LINE__, snvl, dnvl);
+
+	if ((priv = (nvpriv_t*)(uintptr_t)snvl->nvl_priv) == NULL) {
+		dprintf("%s:%d: Returning EINVAL = %d\n", __func__, __LINE__, EINVAL);
 		return (EINVAL);
+	}
 
 	for (curr = priv->nvp_list; curr != NULL; curr = curr->nvi_next) {
 		nvpair_t *nvp = &curr->nvi_nvp;
 		int err;
 
 		if ((err = nvlist_add_common(dnvl, NVP_NAME(nvp), NVP_TYPE(nvp),
-		    NVP_NELEM(nvp), NVP_VALUE(nvp))) != 0)
+			NVP_NELEM(nvp), NVP_VALUE(nvp))) != 0) {
+			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 			return (err);
+		}
 	}
 
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -657,9 +681,13 @@ nvlist_remove_all(nvlist_t *nvl, const char *name)
 	i_nvp_t *curr;
 	int error = ENOENT;
 
+	TraceEvent(8, "%s:%d: nvl = 0x%p, name = %s\n", __func__, __LINE__, nvl, name ? name : "NULL");
+
 	if (nvl == NULL || name == NULL ||
-	    (priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv) == NULL)
+		(priv = (nvpriv_t*)(uintptr_t)nvl->nvl_priv) == NULL) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, EINVAL);
 		return (EINVAL);
+	}
 
 	curr = priv->nvp_list;
 	while (curr != NULL) {
@@ -676,6 +704,7 @@ nvlist_remove_all(nvlist_t *nvl, const char *name)
 		error = 0;
 	}
 
+	TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, error);
 	return (error);
 }
 
@@ -688,9 +717,13 @@ nvlist_remove(nvlist_t *nvl, const char *name, data_type_t type)
 	nvpriv_t *priv;
 	i_nvp_t *curr;
 
+	dprintf("%s:%d: nvl = 0x%p, name = %s, type = %d\n", __func__, __LINE__, nvl, (name ? name : "NULL"), type);
+
 	if (nvl == NULL || name == NULL ||
-	    (priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv) == NULL)
+		(priv = (nvpriv_t*)(uintptr_t)nvl->nvl_priv) == NULL) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, EINVAL);
 		return (EINVAL);
+	}
 
 	curr = priv->nvp_list;
 	while (curr != NULL) {
@@ -706,18 +739,25 @@ nvlist_remove(nvlist_t *nvl, const char *name, data_type_t type)
 		curr = curr->nvi_next;
 	}
 
+	dprintf("%s:%d: Returning %d\n", __func__, __LINE__, ENOENT);
 	return (ENOENT);
 }
 
 int
 nvlist_remove_nvpair(nvlist_t *nvl, nvpair_t *nvp)
 {
-	if (nvl == NULL || nvp == NULL)
+	dprintf("%s:%d: &nvl = 0x%p, &nvp = 0x%p", __func__, __LINE__, nvl, nvp);
+
+	if (nvl == NULL || nvp == NULL) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, EINVAL);
 		return (EINVAL);
+	}
 
 	nvp_buf_unlink(nvl, nvp);
 	nvpair_free(nvp);
 	nvp_buf_free(nvl, nvp);
+
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -851,9 +891,13 @@ nvlist_copy_embedded(nvlist_t *nvl, nvlist_t *onvl, nvlist_t *emb_nvl)
 	nvpriv_t *priv;
 	int err;
 
-	if ((priv = nv_priv_alloc_embedded((nvpriv_t *)(uintptr_t)
-	    nvl->nvl_priv)) == NULL)
+	TraceEvent(8, "%s:%d: nvl = 0x%p, onvl = 0x%p, emb_nvl = 0x%p\n", __func__, __LINE__, nvl, onvl, emb_nvl);
+
+	if ((priv = nv_priv_alloc_embedded((nvpriv_t*)(uintptr_t)
+		nvl->nvl_priv)) == NULL) {
+		dprintf("%s:%d: Returning with error (ENOMEM) %d\n", __func__, __LINE__, ENOMEM);
 		return (ENOMEM);
+	}
 
 	nvlist_init(emb_nvl, onvl->nvl_nvflag, priv);
 
@@ -861,7 +905,7 @@ nvlist_copy_embedded(nvlist_t *nvl, nvlist_t *onvl, nvlist_t *emb_nvl)
 		nvlist_free(emb_nvl);
 		emb_nvl->nvl_priv = 0;
 	}
-
+	TraceEvent(8, "%s:%d: Returning with %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
@@ -878,22 +922,34 @@ nvlist_add_common(nvlist_t *nvl, const char *name,
 	int nvp_sz, name_sz, value_sz;
 	int err = 0;
 
-	if (name == NULL || nvl == NULL || nvl->nvl_priv == 0)
-		return (EINVAL);
+	TraceEvent(8, "%s:%d: nvl = 0x%p, name = 0x%p, type = %d, nelem = %d, data = 0x%p\n",
+			__func__, __LINE__, nvl, name, type, nelem, data);
 
-	if (nelem != 0 && data == NULL)
+	if (name == NULL || nvl == NULL || nvl->nvl_priv == 0) {
+		dprintf("%s:%d: nvl = 0x%p, name = 0x%p, nvl->nvl_priv = %llu. Returning with error (EINVAL) %d\n",
+			__func__, __LINE__, nvl, name, nvl->nvl_priv, EINVAL);
 		return (EINVAL);
+	}
+
+	if (nelem != 0 && data == NULL) {
+		dprintf("%s:%d: Returning with error (EINVAL) %d\n", __func__, __LINE__, EINVAL);
+		return (EINVAL);
+	}
 
 	/*
 	 * Verify type and nelem and get the value size.
 	 * In case of data types DATA_TYPE_STRING and DATA_TYPE_STRING_ARRAY
 	 * is the size of the string(s) included.
 	 */
-	if ((value_sz = i_get_value_size(type, data, nelem)) < 0)
+	if ((value_sz = i_get_value_size(type, data, nelem)) < 0) {
+		dprintf("%s:%d: Returning with error (EINVAL) %d\n", __func__, __LINE__, EINVAL);
 		return (EINVAL);
+	}
 
-	if (i_validate_nvpair_value(type, nelem, data) != 0)
+	if (i_validate_nvpair_value(type, nelem, data) != 0) {
+		dprintf("%s:%d: Returning with error (EINVAL) %d\n", __func__, __LINE__, EINVAL);
 		return (EINVAL);
+	}
 
 	/*
 	 * If we're adding an nvlist or nvlist array, ensure that we are not
@@ -902,14 +958,20 @@ nvlist_add_common(nvlist_t *nvl, const char *name,
 	 */
 	switch (type) {
 	case DATA_TYPE_NVLIST:
-		if (data == nvl || data == NULL)
+		if (data == nvl || data == NULL) {
+			dprintf("%s:%d: data = 0x%p, nvl = 0x%p, returning with error (EINVAL) %d\n",
+				__func__, __LINE__, data, nvl, EINVAL);
 			return (EINVAL);
+		}
 		break;
 	case DATA_TYPE_NVLIST_ARRAY: {
 		nvlist_t **onvlp = (nvlist_t **)data;
 		for (i = 0; i < nelem; i++) {
-			if (onvlp[i] == nvl || onvlp[i] == NULL)
+			if (onvlp[i] == nvl || onvlp[i] == NULL) {
+				dprintf("%s:%d: onvlp[i] = 0x%p, nvl = 0x%p, returning with error (EINVAL) %d\n",
+					__func__, __LINE__, onvlp[i], nvl, EINVAL);
 				return (EINVAL);
+			}
 		}
 		break;
 	}
@@ -919,13 +981,17 @@ nvlist_add_common(nvlist_t *nvl, const char *name,
 
 	/* calculate sizes of the nvpair elements and the nvpair itself */
 	name_sz = strlen(name) + 1;
-	if (name_sz >= 1ULL << (sizeof (nvp->nvp_name_sz) * NBBY - 1))
+	if (name_sz >= 1ULL << (sizeof(nvp->nvp_name_sz) * NBBY - 1)) {
+		dprintf("%s:%d: name_sz = %d. Returning (EINVAL) %d\n", __func__, __LINE__, name_sz, EINVAL);
 		return (EINVAL);
+	}
 
 	nvp_sz = NVP_SIZE_CALC(name_sz, value_sz);
 
-	if ((nvp = nvp_buf_alloc(nvl, nvp_sz)) == NULL)
+	if ((nvp = nvp_buf_alloc(nvl, nvp_sz)) == NULL) {
+		dprintf("%s:%d: Returning with error (ENOMEM) %d\n", __func__, __LINE__, ENOMEM);
 		return (ENOMEM);
+	}
 
 	ASSERT(nvp->nvp_size == nvp_sz);
 	nvp->nvp_name_sz = (int16_t)name_sz;
@@ -957,6 +1023,7 @@ nvlist_add_common(nvlist_t *nvl, const char *name,
 
 		if ((err = nvlist_copy_embedded(nvl, onvl, nnvl)) != 0) {
 			nvp_buf_free(nvl, nvp);
+			dprintf("%s:%d: Returning error %d\n", __func__, __LINE__, err);
 			return (err);
 		}
 		break;
@@ -975,6 +1042,7 @@ nvlist_add_common(nvlist_t *nvl, const char *name,
 				 */
 				nvpair_free(nvp);
 				nvp_buf_free(nvl, nvp);
+				dprintf("%s:%d: Returning error %d\n", __func__, __LINE__, err);
 				return (err);
 			}
 
@@ -994,6 +1062,7 @@ nvlist_add_common(nvlist_t *nvl, const char *name,
 
 	nvp_buf_link(nvl, nvp);
 
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -1170,9 +1239,12 @@ nvlist_next_nvpair(nvlist_t *nvl, nvpair_t *nvp)
 	nvpriv_t *priv;
 	i_nvp_t *curr;
 
+	TraceEvent(8, "%s:%d: nvl = 0x%p, nvp = 0x%p\n", __func__, __LINE__, nvl, nvp);
 	if (nvl == NULL ||
-	    (priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv) == NULL)
+		(priv = (nvpriv_t*)(uintptr_t)nvl->nvl_priv) == NULL) {
+		dprintf("%s:%d: nvl = 0x%p, priv = 0x%p. Returning NULL\n", __func__, __LINE__, nvl, priv);
 		return (NULL);
+	}
 
 	curr = NVPAIR2I_NVP(nvp);
 
@@ -1190,6 +1262,7 @@ nvlist_next_nvpair(nvlist_t *nvl, nvpair_t *nvp)
 
 	priv->nvp_curr = curr;
 
+	TraceEvent(8, "%s:%d: Returning 0x%p\n", __func__, __LINE__, (curr != NULL ? &curr->nvi_nvp : NULL));
 	return (curr != NULL ? &curr->nvi_nvp : NULL);
 }
 
@@ -1222,10 +1295,16 @@ nvlist_empty(nvlist_t *nvl)
 {
 	nvpriv_t *priv;
 
-	if (nvl == NULL ||
-	    (priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv) == NULL)
-		return (B_TRUE);
+	TraceEvent(8, "%s:%d: nvl = 0x%p\n", __func__, __LINE__, nvl);
 
+	if (nvl == NULL ||
+		(priv = (nvpriv_t*)(uintptr_t)nvl->nvl_priv) == NULL) {
+		dprintf("%s:%d: nvl = 0x%p, priv = 0x%p. Returning TRUE\n", __func__, __LINE__, nvl, priv);
+		return (B_TRUE);
+	}
+
+	if (priv->nvp_list != NULL)
+		dprintf("%s:%d: Returning FALSE\n", __func__, __LINE__);
 	return (priv->nvp_list == NULL);
 }
 
@@ -1266,8 +1345,12 @@ nvpair_type_is_array(nvpair_t *nvp)
 static int
 nvpair_value_common(nvpair_t *nvp, data_type_t type, uint_t *nelem, void *data)
 {
-	if (nvp == NULL || nvpair_type(nvp) != type)
+	TraceEvent(8, "%s:%d: nvp = 0x%p, type = %d, nelem = 0x%p, data = 0x%p\n", __func__, __LINE__, nvp, type, nelem, data);
+
+	if (nvp == NULL || nvpair_type(nvp) != type) {
+		dprintf("%s:%d: nvp = 0x%p, nvpair_type(nvp) = %d\n", __func__, __LINE__, nvp, NVP_TYPE(nvp));
 		return (EINVAL);
+	}
 
 	/*
 	 * For non-array types, we copy the data.
@@ -1293,8 +1376,10 @@ nvpair_value_common(nvpair_t *nvp, data_type_t type, uint_t *nelem, void *data)
 #if !defined(_KERNEL)
 	case DATA_TYPE_DOUBLE:
 #endif
-		if (data == NULL)
+		if (data == NULL) {
+			dprintf("%s:%d: Returning EINVAL = %d\n", __func__, __LINE__, EINVAL);
 			return (EINVAL);
+		}
 		bcopy(NVP_VALUE(nvp), data,
 		    (size_t)i_get_value_size(type, NULL, 1));
 		if (nelem != NULL)
@@ -1331,9 +1416,11 @@ nvpair_value_common(nvpair_t *nvp, data_type_t type, uint_t *nelem, void *data)
 		break;
 
 	default:
+		dprintf("%s:%d: Returning (ENOTSUP) %d\n", __func__, __LINE__, ENOTSUP);
 		return (ENOTSUP);
 	}
 
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -1345,12 +1432,19 @@ nvlist_lookup_common(nvlist_t *nvl, const char *name, data_type_t type,
 	nvpair_t *nvp;
 	i_nvp_t *curr;
 
-	if (name == NULL || nvl == NULL ||
-	    (priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv) == NULL)
-		return (EINVAL);
+	TraceEvent(8, "%s:%d: nvl = 0x%p, name = %s, type = %d, nelem = 0x%p, data = 0x%p\n",
+		__func__, __LINE__, nvl, (name ? name : "NULL"), type, nelem, data);
 
-	if (!(nvl->nvl_nvflag & (NV_UNIQUE_NAME | NV_UNIQUE_NAME_TYPE)))
+	if (name == NULL || nvl == NULL ||
+		(priv = (nvpriv_t*)(uintptr_t)nvl->nvl_priv) == NULL) {
+		dprintf("%s:%d: Returning (EINVAL) %d\n", __func__, __LINE__, EINVAL);
+		return (EINVAL);
+	}
+
+	if (!(nvl->nvl_nvflag & (NV_UNIQUE_NAME | NV_UNIQUE_NAME_TYPE))) {
+		dprintf("%s:%d: nvl->nvl_nvflag = %u. Returning (ENOTSUP) %d\n", __func__, __LINE__, nvl->nvl_nvflag, ENOTSUP);
 		return (ENOTSUP);
+	}
 
 	for (curr = priv->nvp_list; curr != NULL; curr = curr->nvi_next) {
 		nvp = &curr->nvi_nvp;
@@ -1359,6 +1453,7 @@ nvlist_lookup_common(nvlist_t *nvl, const char *name, data_type_t type,
 			return (nvpair_value_common(nvp, type, nelem, data));
 	}
 
+	TraceEvent(5, "%s:%d: Returning (ENOENT) %d\n", __func__, __LINE__, ENOENT);
 	return (ENOENT);
 }
 
@@ -2078,8 +2173,10 @@ nvs_encode_pairs(nvstream_t *nvs, nvlist_t *nvl)
 	 * Walk nvpair in list and encode each nvpair
 	 */
 	for (curr = priv->nvp_list; curr != NULL; curr = curr->nvi_next)
-		if (nvs->nvs_ops->nvs_nvpair(nvs, &curr->nvi_nvp, NULL) != 0)
+		if (nvs->nvs_ops->nvs_nvpair(nvs, &curr->nvi_nvp, NULL) != 0) {
+			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, EFAULT);
 			return (EFAULT);
+		}
 
 	return (nvs->nvs_ops->nvs_nvl_fini(nvs));
 }
@@ -2100,25 +2197,35 @@ nvs_decode_pairs(nvstream_t *nvs, nvlist_t *nvl)
 			break;
 
 		/* make sure len makes sense */
-		if (nvsize < NVP_SIZE_CALC(1, 0))
+		if (nvsize < NVP_SIZE_CALC(1, 0)) {
+			dprintf("%s:%d: nvsize = %llu. Returning (EFAULT) = %d\n", __func__, __LINE__, nvsize, EFAULT);
 			return (EFAULT);
+		}
 
-		if ((nvp = nvp_buf_alloc(nvl, nvsize)) == NULL)
+		if ((nvp = nvp_buf_alloc(nvl, nvsize)) == NULL) {
+			dprintf("%s:%d: Returning ENOMEM = %d\n", __func__, __LINE__, ENOMEM);
 			return (ENOMEM);
+		}
 
 		if ((err = nvs->nvs_ops->nvs_nvp_op(nvs, nvp)) != 0) {
 			nvp_buf_free(nvl, nvp);
+			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 			return (err);
 		}
 
 		if (i_validate_nvpair(nvp) != 0) {
 			nvpair_free(nvp);
 			nvp_buf_free(nvl, nvp);
+			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, EFAULT);
 			return (EFAULT);
 		}
 
 		nvp_buf_link(nvl, nvp);
 	}
+	if (err)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
+	else
+		TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
@@ -2134,14 +2241,19 @@ nvs_getsize_pairs(nvstream_t *nvs, nvlist_t *nvl, size_t *buflen)
 	 * Get encoded size of nvpairs in nvlist
 	 */
 	for (curr = priv->nvp_list; curr != NULL; curr = curr->nvi_next) {
-		if (nvs->nvs_ops->nvs_nvp_size(nvs, &curr->nvi_nvp, &size) != 0)
+		if (nvs->nvs_ops->nvs_nvp_size(nvs, &curr->nvi_nvp, &size) != 0) {
+			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, EINVAL);
 			return (EINVAL);
+		}
 
-		if ((nvsize += size) > INT32_MAX)
+		if ((nvsize += size) > INT32_MAX) {
+			dprintf("%s:%d: nvsize = %llu, size = %llu. Returning %d\n", __func__, __LINE__, nvsize, size, EINVAL);
 			return (EINVAL);
+		}
 	}
 
 	*buflen = nvsize;
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -2150,32 +2262,49 @@ nvs_operation(nvstream_t *nvs, nvlist_t *nvl, size_t *buflen)
 {
 	int err;
 
-	if (nvl->nvl_priv == 0)
+	TraceEvent(8, "%s:%d: nvs = 0x%p, nvl = 0x%p, buflen = 0x%p\n", __func__, __LINE__, nvs, nvl, buflen);
+
+	if (nvl->nvl_priv == 0) {
+		dprintf("%s:%d: Returning EFAULT = %d\n", __func__, __LINE__, EFAULT);
 		return (EFAULT);
+	}
 
 	/*
 	 * Perform the operation, starting with header, then each nvpair
 	 */
-	if ((err = nvs->nvs_ops->nvs_nvlist(nvs, nvl, buflen)) != 0)
+	if ((err = nvs->nvs_ops->nvs_nvlist(nvs, nvl, buflen)) != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
+	}
 
 	switch (nvs->nvs_op) {
 	case NVS_OP_ENCODE:
 		err = nvs_encode_pairs(nvs, nvl);
+		if (err)
+			dprintf("%s:%d: Setting err = %d\n", __func__, __LINE__, err);
 		break;
 
 	case NVS_OP_DECODE:
 		err = nvs_decode_pairs(nvs, nvl);
+		if (err)
+			dprintf("%s:%d: Setting err = %d\n", __func__, __LINE__, err);
 		break;
 
 	case NVS_OP_GETSIZE:
 		err = nvs_getsize_pairs(nvs, nvl, buflen);
+		if (err)
+			dprintf("%s:%d: Setting err = %d\n", __func__, __LINE__, err);
 		break;
 
 	default:
 		err = EINVAL;
+		dprintf("%s:%d: Setting err = %d\n", __func__, __LINE__, err);
 	}
 
+	if (err)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
+	else
+		TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
@@ -2288,6 +2417,10 @@ nvlist_common(nvlist_t *nvl, char *buf, size_t *buflen, int encoding,
 	int err = 0;
 	nvstream_t nvs;
 	int nvl_endian;
+
+	TraceEvent(8, "%s:%d: nvl = 0x%p, buf = 0x%p, buflen = 0x%p, encoding = %d, nvs_op = %d\n",
+							__func__, __LINE__, nvl, buf, buflen, encoding, nvs_op);
+
 #ifdef	_LITTLE_ENDIAN
 	int host_endian = 1;
 #else
@@ -2296,8 +2429,10 @@ nvlist_common(nvlist_t *nvl, char *buf, size_t *buflen, int encoding,
 	nvs_header_t *nvh = (void *)buf;
 
 	if (buflen == NULL || nvl == NULL ||
-	    (nvs.nvs_priv = (nvpriv_t *)(uintptr_t)nvl->nvl_priv) == NULL)
+		(nvs.nvs_priv = (nvpriv_t*)(uintptr_t)nvl->nvl_priv) == NULL) {
+		dprintf("%s:%d: Returning (EINVAL) %d\n", __func__, __LINE__, EINVAL);
 		return (EINVAL);
+	}
 
 	nvs.nvs_op = nvs_op;
 	nvs.nvs_recursion = 0;
@@ -2309,8 +2444,11 @@ nvlist_common(nvlist_t *nvl, char *buf, size_t *buflen, int encoding,
 	 */
 	switch (nvs_op) {
 	case NVS_OP_ENCODE:
-		if (buf == NULL || *buflen < sizeof (nvs_header_t))
+		if (buf == NULL || *buflen < sizeof(nvs_header_t)) {
+			dprintf("%s:%d: buf = 0x%p, buflen = %llu, sizeof(nvs_header_t) = %llu\n",
+				__func__, __LINE__, buf, *buflen, sizeof(nvs_header_t));
 			return (EINVAL);
+		}
 
 		nvh->nvh_encoding = (char)encoding;
 		nvh->nvh_endian = nvl_endian = host_endian;
@@ -2319,8 +2457,11 @@ nvlist_common(nvlist_t *nvl, char *buf, size_t *buflen, int encoding,
 		break;
 
 	case NVS_OP_DECODE:
-		if (buf == NULL || *buflen < sizeof (nvs_header_t))
+		if (buf == NULL || *buflen < sizeof(nvs_header_t)) {
+			dprintf("%s:%d: buf = 0x%p, buflen = %llu, sizeof(nvs_header_t) = %llu\n",
+				__func__, __LINE__, buf, *buflen, sizeof(nvs_header_t));
 			return (EINVAL);
+		}
 
 		/* get method of encoding from first byte */
 		encoding = nvh->nvh_encoding;
@@ -2337,6 +2478,7 @@ nvlist_common(nvlist_t *nvl, char *buf, size_t *buflen, int encoding,
 		break;
 
 	default:
+		dprintf("%s:%d: Returning ENOTSUP %d\n", __func__, __LINE__, ENOTSUP);
 		return (ENOTSUP);
 	}
 
@@ -2349,18 +2491,30 @@ nvlist_common(nvlist_t *nvl, char *buf, size_t *buflen, int encoding,
 		 * check endianness, in case we are unpacking
 		 * from a file
 		 */
-		if (nvl_endian != host_endian)
+		if (nvl_endian != host_endian) {
+			dprintf("%s:%d: nvl_endian = %d, host_endian = %d. Returning ENOTSUP %d\n",
+				__func__, __LINE__, nvl_endian, host_endian, ENOTSUP);
 			return (ENOTSUP);
+		}
 		err = nvs_native(&nvs, nvl, buf, buflen);
+		if (err)
+			dprintf("%s:%d: Setting err = %d\n", __func__, __LINE__, err);
 		break;
 	case NV_ENCODE_XDR:
 		err = nvs_xdr(&nvs, nvl, buf, buflen);
+		if (err)
+			dprintf("%s:%d: Setting err = %d\n", __func__, __LINE__, err);
 		break;
 	default:
 		err = ENOTSUP;
+		dprintf("%s:%d: Setting err (ENOTSUP) = %d\n", __func__, __LINE__, err);
 		break;
 	}
 
+	if (err)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
+	else
+		TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
@@ -2390,8 +2544,13 @@ nvlist_xpack(nvlist_t *nvl, char **bufp, size_t *buflen, int encoding,
 	char *buf;
 	int err;
 
-	if (nva == NULL || nvl == NULL || bufp == NULL || buflen == NULL)
+	TraceEvent(8, "%s:%d: nvl = 0x%p, bufp = 0x%p, buflen = 0x%p, encoding = %d, nva = 0x%p\n",
+		__func__, __LINE__, nvl, bufp, buflen, encoding, nva);
+
+	if (nva == NULL || nvl == NULL || bufp == NULL || buflen == NULL) {
+		dprintf("%s:%d: Returning EINVAL = %d\n", __func__, __LINE__, EINVAL);
 		return (EINVAL);
+	}
 
 	if (*bufp != NULL)
 		return (nvlist_common(nvl, *bufp, buflen, encoding,
@@ -2411,11 +2570,15 @@ nvlist_xpack(nvlist_t *nvl, char **bufp, size_t *buflen, int encoding,
 	 */
 	nv_priv_init(&nvpriv, nva, 0);
 
-	if ((err = nvlist_size(nvl, &alloc_size, encoding)))
+	if ((err = nvlist_size(nvl, &alloc_size, encoding))) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
+	}
 
-	if ((buf = nv_mem_zalloc(&nvpriv, alloc_size)) == NULL)
+	if ((buf = nv_mem_zalloc(&nvpriv, alloc_size)) == NULL) {
+		dprintf("%s:%d: Returning ENOMEM = %d\n", __func__, __LINE__, ENOMEM);
 		return (ENOMEM);
+	}
 
 	if ((err = nvlist_common(nvl, buf, &alloc_size, encoding,
 	    NVS_OP_ENCODE)) != 0) {
@@ -2425,6 +2588,8 @@ nvlist_xpack(nvlist_t *nvl, char **bufp, size_t *buflen, int encoding,
 		*bufp = buf;
 	}
 
+	if (err)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
@@ -2443,11 +2608,18 @@ nvlist_xunpack(char *buf, size_t buflen, nvlist_t **nvlp, nv_alloc_t *nva)
 	nvlist_t *nvl;
 	int err;
 
-	if (nvlp == NULL)
-		return (EINVAL);
+	TraceEvent(8, "%s:%d: buf = 0x%p, buflen = %llu, nvlp = 0x%p, nva = 0x%p\n",
+		__func__, __LINE__, buf, buflen, nvlp, nva);
 
-	if ((err = nvlist_xalloc(&nvl, 0, nva)) != 0)
+	if (nvlp == NULL) {
+		dprintf("%s:%d: nvlp is null. Returning EINVAL %d\n", __func__, __LINE__, EINVAL);
+		return (EINVAL);
+	}
+
+	if ((err = nvlist_xalloc(&nvl, 0, nva)) != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
+	}
 
 	if ((err = nvlist_common(nvl, buf, &buflen, NV_ENCODE_NATIVE,
 	    NVS_OP_DECODE)) != 0)
@@ -2455,6 +2627,8 @@ nvlist_xunpack(char *buf, size_t buflen, nvlist_t **nvlp, nv_alloc_t *nva)
 	else
 		*nvlp = nvl;
 
+	if (err)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
@@ -2822,16 +2996,25 @@ nvs_native(nvstream_t *nvs, nvlist_t *nvl, char *buf, size_t *buflen)
 	nvs_native_t native;
 	int err;
 
+	TraceEvent(8, "%s:%d: nvs = 0x%p, nvl = 0x%p, buf = 0x%p, buflen = 0x%p\n",
+		__func__, __LINE__, nvs, nvl, buf, buflen);
+
 	nvs->nvs_ops = &nvs_native_ops;
 
-	if ((err = nvs_native_create(nvs, &native, buf + sizeof (nvs_header_t),
-	    *buflen - sizeof (nvs_header_t))) != 0)
+	if ((err = nvs_native_create(nvs, &native, buf + sizeof(nvs_header_t),
+		*buflen - sizeof(nvs_header_t))) != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
+	}
 
 	err = nvs_operation(nvs, nvl, buflen);
 
 	nvs_native_destroy(nvs);
 
+	if (err)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
+	else
+		TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
@@ -3309,16 +3492,22 @@ nvs_xdr(nvstream_t *nvs, nvlist_t *nvl, char *buf, size_t *buflen)
 	XDR xdr;
 	int err;
 
+	dprintf("%s:%d: nvs = 0x%p, nvl = 0x%p, buf = 0x%p, buflen = 0x%p\n", __func__, __LINE__, nvs, nvl, buf, buflen);
+
 	nvs->nvs_ops = &nvs_xdr_ops;
 
-	if ((err = nvs_xdr_create(nvs, &xdr, buf + sizeof (nvs_header_t),
-	    *buflen - sizeof (nvs_header_t))) != 0)
+	if ((err = nvs_xdr_create(nvs, &xdr, buf + sizeof(nvs_header_t),
+		*buflen - sizeof(nvs_header_t))) != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__,err);
 		return (err);
+	}
 
 	err = nvs_operation(nvs, nvl, buflen);
 
 	nvs_xdr_destroy(nvs);
 
+	if (err)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__,err);
 	return (err);
 }
 

@@ -159,7 +159,7 @@ osif_malloc(uint64_t size)
 		atomic_add_64(&stat_osif_malloc_bytes, size);
 		return(tr);
 	} else {
-		dprintf("%s: ExAllocatePoolWithTag failed (memusage: %llu)\n", __func__, segkmem_total_mem_allocated);
+		dprintf("%s:%d: ExAllocatePoolWithTag failed (memusage: %llu)\n", __func__, __LINE__, segkmem_total_mem_allocated);
 		ASSERT(0);
 		extern volatile unsigned int vm_page_free_wanted;
 		extern volatile unsigned int vm_page_free_min;

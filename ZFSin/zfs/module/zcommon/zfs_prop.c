@@ -823,6 +823,7 @@ zfs_prop_encryption_key_param(zfs_prop_t prop)
 boolean_t
 zfs_prop_valid_keylocation(const char *str, boolean_t encrypted)
 {
+	dprintf("%s: str = %s, encrypted = %d\n", __func__, str, encrypted);
 	if (strcmp("none", str) == 0)
 		return (!encrypted);
 	else if (strcmp("prompt", str) == 0)
@@ -830,6 +831,7 @@ zfs_prop_valid_keylocation(const char *str, boolean_t encrypted)
 	else if (strlen(str) > 8 && strncmp("file:///", str, 8) == 0)
 		return (B_TRUE);
 
+	dprintf("%s: Returning False\n", __func__);
 	return (B_FALSE);
 }
 

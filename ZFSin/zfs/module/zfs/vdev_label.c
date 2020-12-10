@@ -757,8 +757,10 @@ vdev_label_read_config(vdev_t *vd, uint64_t txg)
 
 	ASSERT(spa_config_held(spa, SCL_STATE_ALL, RW_WRITER) == SCL_STATE_ALL);
 
-	if (!vdev_readable(vd))
+	if (!vdev_readable(vd)) {
+		dprintf("%s:%d: Returning NULL\n", __func__, __LINE__);
 		return (NULL);
+	}
 
 	vp_abd = abd_alloc_linear(sizeof (vdev_phys_t), B_TRUE);
 	vp = abd_to_buf(vp_abd);
@@ -817,6 +819,7 @@ retry:
 
 	abd_free(vp_abd);
 
+	dprintf("%s:%d: Returning 0x%p\n", __func__, __LINE__, config);
 	return (config);
 }
 
@@ -841,8 +844,10 @@ vdev_inuse(vdev_t *vd, uint64_t crtxg, vdev_labeltype_t reason,
 	/*
 	 * Read the label, if any, and perform some basic sanity checks.
 	 */
-	if ((label = vdev_label_read_config(vd, -1ULL)) == NULL)
+	if ((label = vdev_label_read_config(vd, -1ULL)) == NULL) {
+		dprintf("%s:%d: Returning FALSE\n", __func__, __LINE__);
 		return (B_FALSE);
+	}
 
 	(void) nvlist_lookup_uint64(label, ZPOOL_CONFIG_CREATE_TXG,
 	    &vdtxg);
@@ -852,6 +857,7 @@ vdev_inuse(vdev_t *vd, uint64_t crtxg, vdev_labeltype_t reason,
 	    nvlist_lookup_uint64(label, ZPOOL_CONFIG_GUID,
 	    &device_guid) != 0) {
 		nvlist_free(label);
+		dprintf("%s:%d: Returning FALSE\n", __func__, __LINE__);
 		return (B_FALSE);
 	}
 
@@ -861,6 +867,7 @@ vdev_inuse(vdev_t *vd, uint64_t crtxg, vdev_labeltype_t reason,
 	    nvlist_lookup_uint64(label, ZPOOL_CONFIG_POOL_TXG,
 	    &txg) != 0)) {
 		nvlist_free(label);
+		dprintf("%s:%d: state = %llu. Returning FALSE\n", __func__, __LINE__, state);
 		return (B_FALSE);
 	}
 
@@ -872,10 +879,12 @@ vdev_inuse(vdev_t *vd, uint64_t crtxg, vdev_labeltype_t reason,
 	 * spare (which we check for later on).
 	 */
 	if (state != POOL_STATE_SPARE && state != POOL_STATE_L2CACHE &&
-	    !spa_guid_exists(pool_guid, device_guid) &&
-	    !spa_spare_exists(device_guid, NULL, NULL) &&
-	    !spa_l2cache_exists(device_guid, NULL))
+		!spa_guid_exists(pool_guid, device_guid) &&
+		!spa_spare_exists(device_guid, NULL, NULL) &&
+		!spa_l2cache_exists(device_guid, NULL)) {
+		dprintf("%s:%d: state = %llu. Returning FALSE\n", __func__, __LINE__, state);
 		return (B_FALSE);
+	}
 
 	/*
 	 * If the transaction group is zero, then this an initialized (but
@@ -885,8 +894,11 @@ vdev_inuse(vdev_t *vd, uint64_t crtxg, vdev_labeltype_t reason,
 	 * transaction.
 	 */
 	if (state != POOL_STATE_SPARE && state != POOL_STATE_L2CACHE &&
-	    txg == 0 && vdtxg == crtxg)
+		txg == 0 && vdtxg == crtxg) {
+		dprintf("%s:%d: state = %llu, txg = %llu, vdtxg = %llu, crtxg = %llu. Returning TRUE\n",
+			__func__, __LINE__, state, txg, vdtxg, crtxg);
 		return (B_TRUE);
+	}
 
 	/*
 	 * Check to see if this is a spare device.  We do an explicit check for
@@ -917,8 +929,10 @@ vdev_inuse(vdev_t *vd, uint64_t crtxg, vdev_labeltype_t reason,
 	/*
 	 * Check to see if this is an l2cache device.
 	 */
-	if (spa_l2cache_exists(device_guid, NULL))
+	if (spa_l2cache_exists(device_guid, NULL)) {
+		dprintf("%s:%d: Returning TRUE\n", __func__, __LINE__);
 		return (B_TRUE);
+	}
 
 	/*
 	 * We can't rely on a pool's state if it's been imported
@@ -926,14 +940,17 @@ vdev_inuse(vdev_t *vd, uint64_t crtxg, vdev_labeltype_t reason,
 	 * read-only in the namespace and set the state to active.
 	 */
 	if (state != POOL_STATE_SPARE && state != POOL_STATE_L2CACHE &&
-	    (spa = spa_by_guid(pool_guid, device_guid)) != NULL &&
-	    spa_mode(spa) == FREAD)
+		(spa = spa_by_guid(pool_guid, device_guid)) != NULL &&
+		spa_mode(spa) == FREAD) {
+		dprintf("%s:%d: state = %llu, spa = 0x%p\n", __func__, __LINE__, state, spa);
 		state = POOL_STATE_ACTIVE;
+	}
 
 	/*
 	 * If the device is marked ACTIVE, then this device is in use by another
 	 * pool on the system.
 	 */
+	dprintf("%s:%d: Returning %d\n", __func__, __LINE__, state == POOL_STATE_ACTIVE);
 	return (state == POOL_STATE_ACTIVE);
 }
 
@@ -968,27 +985,36 @@ vdev_label_init(vdev_t *vd, uint64_t crtxg, vdev_labeltype_t reason)
 
 	for (c = 0; c < vd->vdev_children; c++)
 		if ((error = vdev_label_init(vd->vdev_child[c],
-		    crtxg, reason)) != 0)
+			crtxg, reason)) != 0) {
+			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 			return (error);
+		}
 
 	/* Track the creation time for this vdev */
 	vd->vdev_crtxg = crtxg;
 
-	if (!vd->vdev_ops->vdev_op_leaf || !spa_writeable(spa))
+	if (!vd->vdev_ops->vdev_op_leaf || !spa_writeable(spa)) {
+		dprintf("%s:%d: vd->vdev_ops->vdev_op_leaf = %d. Returning 0\n",
+			__func__, __LINE__, vd->vdev_ops->vdev_op_leaf);
 		return (0);
+	}
 
 	/*
 	 * Dead vdevs cannot be initialized.
 	 */
-	if (vdev_is_dead(vd))
+	if (vdev_is_dead(vd)) {
+		dprintf("%s:%d: Returning EIO = %d\n", __func__, __LINE__, EIO);
 		return (SET_ERROR(EIO));
+	}
 
 	/*
 	 * Determine if the vdev is in use.
 	 */
 	if (reason != VDEV_LABEL_REMOVE && reason != VDEV_LABEL_SPLIT &&
-	    vdev_inuse(vd, crtxg, reason, &spare_guid, &l2cache_guid))
+		vdev_inuse(vd, crtxg, reason, &spare_guid, &l2cache_guid)) {
+		dprintf("%s:%d: reason = %d. Returning EBUSY = %d\n", __func__, __LINE__, reason, EBUSY);
 		return (SET_ERROR(EBUSY));
+	}
 
 	/*
 	 * If this is a request to add or replace a spare or l2cache device
@@ -1030,8 +1056,10 @@ vdev_label_init(vdev_t *vd, uint64_t crtxg, vdev_labeltype_t reason)
 		 * rest of the code.  If we're adding an l2cache, then it's
 		 * already labeled appropriately and we can just return.
 		 */
-		if (reason == VDEV_LABEL_L2CACHE)
+		if (reason == VDEV_LABEL_L2CACHE) {
+			dprintf("%s:%d: Returning 0\n", __func__, __LINE__);
 			return (0);
+		}
 		ASSERT(reason == VDEV_LABEL_REPLACE);
 	}
 
@@ -1102,6 +1130,7 @@ vdev_label_init(vdev_t *vd, uint64_t crtxg, vdev_labeltype_t reason)
 		nvlist_free(label);
 		abd_free(vp_abd);
 		/* EFAULT means nvlist_pack ran out of room */
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error == EFAULT ? ENAMETOOLONG : EINVAL);
 		return (error == EFAULT ? ENAMETOOLONG : EINVAL);
 	}
 
@@ -1172,6 +1201,7 @@ retry:
 	    spa_l2cache_exists(vd->vdev_guid, NULL)))
 		spa_l2cache_add(vd);
 
+	dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 	return (error);
 }
 

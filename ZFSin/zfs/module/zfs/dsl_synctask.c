@@ -51,8 +51,10 @@ dsl_sync_task_common(const char *pool, dsl_checkfunc_t *checkfunc,
 	dsl_pool_t *dp;
 
 	err = spa_open(pool, &spa, FTAG);
-	if (err != 0)
+	if (err != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
+	}
 	dp = spa_get_dsl(spa);
 
 top:
@@ -76,6 +78,7 @@ top:
 	if (err != 0) {
 		dmu_tx_commit(tx);
 		spa_close(spa, FTAG);
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
 	}
 
@@ -93,6 +96,9 @@ top:
 	}
 
 	spa_close(spa, FTAG);
+
+	if (dst.dst_error)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, dst.dst_error);
 	return (dst.dst_error);
 }
 

@@ -664,11 +664,14 @@ dmu_objset_hold_flags(const char *name, boolean_t decrypt, void *tag,
 	ds_hold_flags_t flags = (decrypt) ? DS_HOLD_FLAG_DECRYPT : 0;
 
 	err = dsl_pool_hold(name, tag, &dp);
-	if (err != 0)
+	if (err != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
+	}
 	err = dsl_dataset_hold_flags(dp, name, flags, tag, &ds);
 	if (err != 0) {
 		dsl_pool_rele(dp, tag);
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
 	}
 
@@ -677,7 +680,8 @@ dmu_objset_hold_flags(const char *name, boolean_t decrypt, void *tag,
 		dsl_dataset_rele(ds, tag);
 		dsl_pool_rele(dp, tag);
 	}
-
+	if (err)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
@@ -2549,11 +2553,14 @@ dmu_objset_find_impl(spa_t *spa, const char *name,
 	uint64_t thisobj;
 	int err;
 
+	dprintf("%s:%d: name = %s, flags = %d\n", __func__, __LINE__, (name ? name : "NULL"), flags);
+
 	dsl_pool_config_enter(dp, FTAG);
 
 	err = dsl_dir_hold(dp, name, FTAG, &dd, NULL);
 	if (err != 0) {
 		dsl_pool_config_exit(dp, FTAG);
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
 	}
 
@@ -2561,6 +2568,7 @@ dmu_objset_find_impl(spa_t *spa, const char *name,
 	if (dd->dd_myname[0] == '$') {
 		dsl_dir_rele(dd, FTAG);
 		dsl_pool_config_exit(dp, FTAG);
+		dprintf("%s:%d: dd->dd_myname = %s. Returning 0\n", __func__, __LINE__, dd->dd_myname);
 		return (0);
 	}
 
@@ -2594,6 +2602,7 @@ dmu_objset_find_impl(spa_t *spa, const char *name,
 			dsl_dir_rele(dd, FTAG);
 			dsl_pool_config_exit(dp, FTAG);
 			kmem_free(attr, sizeof (zap_attribute_t));
+			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 			return (err);
 		}
 	}
@@ -2634,8 +2643,10 @@ dmu_objset_find_impl(spa_t *spa, const char *name,
 	kmem_free(attr, sizeof (zap_attribute_t));
 	dsl_pool_config_exit(dp, FTAG);
 
-	if (err != 0)
+	if (err != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
+	}
 
 	/* Apply to self. */
 	return (func(name, arg));
@@ -2652,8 +2663,10 @@ dmu_objset_find(char *name, int func(const char *, void *), void *arg,
 	int error;
 
 	error = spa_open(name, &spa, FTAG);
-	if (error != 0)
+	if (error != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 		return (error);
+	}
 	error = dmu_objset_find_impl(spa, name, func, arg, flags);
 	spa_close(spa, FTAG);
 	return (error);

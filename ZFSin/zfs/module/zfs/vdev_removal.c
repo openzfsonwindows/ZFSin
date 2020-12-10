@@ -1528,8 +1528,11 @@ spa_vdev_remove_cancel_check(void *arg, dmu_tx_t *tx)
 {
 	spa_t *spa = dmu_tx_pool(tx)->dp_spa;
 
-	if (spa->spa_vdev_removal == NULL)
+	if (spa->spa_vdev_removal == NULL) {
+		dprintf("%s:%d: Returning ENOTACTIVE = %d\n", __func__, __LINE__, ENOTACTIVE);
 		return (ENOTACTIVE);
+	}
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -1679,6 +1682,7 @@ spa_vdev_remove_cancel_impl(spa_t *spa)
 		spa_config_exit(spa, SCL_ALLOC | SCL_VDEV, FTAG);
 	}
 
+	dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 	return (error);
 }
 
@@ -1687,8 +1691,10 @@ spa_vdev_remove_cancel(spa_t *spa)
 {
 	spa_vdev_remove_suspend(spa);
 
-	if (spa->spa_vdev_removal == NULL)
+	if (spa->spa_vdev_removal == NULL) {
+		dprintf("%s:%d: Returning ENOTACTIVE = %d\n", __func__, __LINE__, ENOTACTIVE);
 		return (ENOTACTIVE);
+	}
 
 	return (spa_vdev_remove_cancel_impl(spa));
 }
@@ -1754,6 +1760,7 @@ spa_vdev_remove_log(vdev_t *vd, uint64_t *txg)
 	spa_t *spa = vd->vdev_spa;
 	int error = 0;
 
+	dprintf("%s:%d: vd = 0x%p, txg = 0x%p\n", __func__, __LINE__, vd, txg);
 	ASSERT(vd->vdev_islog);
 	ASSERT(vd == vd->vdev_top);
 
@@ -2044,6 +2051,8 @@ spa_vdev_remove(spa_t *spa, uint64_t guid, boolean_t unspare)
 	boolean_t locked = MUTEX_HELD(&spa_namespace_lock);
 	sysevent_t *ev = NULL;
 
+	dprintf("%s:%d: spa = 0x%p, guid = %llu, unspare = %d\n",
+		__func__, __LINE__, spa, guid, unspare);
 	ASSERT(spa_writeable(spa));
 
 	if (!locked)
@@ -2052,11 +2061,12 @@ spa_vdev_remove(spa_t *spa, uint64_t guid, boolean_t unspare)
 	ASSERT(MUTEX_HELD(&spa_namespace_lock));
 	if (spa_feature_is_active(spa, SPA_FEATURE_POOL_CHECKPOINT)) {
 		error = (spa_has_checkpoint(spa)) ?
-		    ZFS_ERR_CHECKPOINT_EXISTS : ZFS_ERR_DISCARDING_CHECKPOINT;
+			ZFS_ERR_CHECKPOINT_EXISTS : ZFS_ERR_DISCARDING_CHECKPOINT;
 
 		if (!locked)
 			return (spa_vdev_exit(spa, NULL, txg, error));
 
+		dprintf("%s:%d: Returning error = %d\n", __func__, __LINE__, error);
 		return (error);
 	}
 
@@ -2085,6 +2095,7 @@ spa_vdev_remove(spa_t *spa, uint64_t guid, boolean_t unspare)
 			spa_load_spares(spa);
 			spa->spa_spares.sav_sync = B_TRUE;
 		} else {
+			dprintf("%s:%d: Setting error EBUSY = %d\n", __func__, __LINE__, EBUSY);
 			error = SET_ERROR(EBUSY);
 		}
 	} else if (spa->spa_l2cache.sav_vdevs != NULL &&

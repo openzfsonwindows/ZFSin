@@ -38,6 +38,7 @@
 
 #if defined(_KERNEL)
 #include <sys/systm.h>
+#include <Trace.h>
 #else
 #include <string.h>
 #endif
@@ -205,6 +206,7 @@ entity_namecheck(const char *path, namecheck_err_t *why, char *what)
 #endif /* HAVE_KOBJ_NAME_LEN */
 		if (why)
 			*why = NAME_ERR_TOOLONG;
+		dprintf("%s:%d: path is too long\n", __func__, __LINE__);
 		return (-1);
 	}
 
@@ -212,12 +214,14 @@ entity_namecheck(const char *path, namecheck_err_t *why, char *what)
 	if (path[0] == '/') {
 		if (why)
 			*why = NAME_ERR_LEADING_SLASH;
+		dprintf("%s:%d: path has leading slash\n", __func__, __LINE__);
 		return (-1);
 	}
 
 	if (path[0] == '\0') {
 		if (why)
 			*why = NAME_ERR_EMPTY_COMPONENT;
+		dprintf("%s:%d: path is empty\n", __func__, __LINE__);
 		return (-1);
 	}
 
@@ -234,6 +238,7 @@ entity_namecheck(const char *path, namecheck_err_t *why, char *what)
 			/* trailing slashes are not allowed */
 			if (why)
 				*why = NAME_ERR_TRAILING_SLASH;
+			dprintf("%s:%d: path has trailing slash\n", __func__, __LINE__);
 			return (-1);
 		}
 
@@ -244,6 +249,7 @@ entity_namecheck(const char *path, namecheck_err_t *why, char *what)
 					*why = NAME_ERR_INVALCHAR;
 					*what = *loc;
 				}
+				dprintf("%s:%d: path contains invalid character %c\n", __func__, __LINE__, *loc);
 				return (-1);
 			}
 		}
@@ -254,6 +260,7 @@ entity_namecheck(const char *path, namecheck_err_t *why, char *what)
 			if (found_delim != 0) {
 				if (why)
 					*why = NAME_ERR_MULTIPLE_DELIMITERS;
+				dprintf("%s:%d: path contains multiple delimiters\n", __func__, __LINE__);
 				return (-1);
 			}
 
@@ -264,6 +271,7 @@ entity_namecheck(const char *path, namecheck_err_t *why, char *what)
 		if (start == end) {
 			if (why)
 				*why = NAME_ERR_EMPTY_COMPONENT;
+			dprintf("%s:%d: path is empty\n", __func__, __LINE__);
 			return (-1);
 		}
 
@@ -278,6 +286,7 @@ entity_namecheck(const char *path, namecheck_err_t *why, char *what)
 		if (*end == '/' && found_delim != 0) {
 			if (why)
 				*why = NAME_ERR_TRAILING_SLASH;
+			dprintf("%s:%d: path has trailing slash\n", __func__, __LINE__);
 			return (-1);
 		}
 
@@ -292,6 +301,8 @@ entity_namecheck(const char *path, namecheck_err_t *why, char *what)
 int
 dataset_namecheck(const char *path, namecheck_err_t *why, char *what)
 {
+	TraceEvent(8, "%s:%d: path = %s\n", __func__, __LINE__, (path ? path : "NULL"));
+
 	int ret = entity_namecheck(path, why, what);
 
 	if (ret == 0 && strchr(path, '#') != NULL) {
@@ -299,9 +310,11 @@ dataset_namecheck(const char *path, namecheck_err_t *why, char *what)
 			*why = NAME_ERR_INVALCHAR;
 			*what = '#';
 		}
+		dprintf("%s:%d: path has invalid character. Returning -1\n", __func__, __LINE__);
 		return (-1);
 	}
 
+	TraceEvent(8, "%s:%d: Returning with value %d\n", __func__, __LINE__, ret);
 	return (ret);
 }
 
@@ -363,6 +376,8 @@ pool_namecheck(const char *pool, namecheck_err_t *why, char *what)
 {
 	const char *c;
 
+	TraceEvent(8, "%s:%d: pool name = %s\n", __func__, __LINE__, (pool ? pool : "NULL"));
+
 	/*
 	 * Make sure the name is not too long.
 	 * If we're creating a pool with version >= SPA_VERSION_DSL_SCRUB (v11)
@@ -375,6 +390,7 @@ pool_namecheck(const char *pool, namecheck_err_t *why, char *what)
 	    strlen(ORIGIN_DIR_NAME) * 2)) {
 		if (why)
 			*why = NAME_ERR_TOOLONG;
+		dprintf("%s:%d: pool name is too long. Returning -1\n", __func__, __LINE__);
 		return (-1);
 	}
 
@@ -385,6 +401,7 @@ pool_namecheck(const char *pool, namecheck_err_t *why, char *what)
 				*why = NAME_ERR_INVALCHAR;
 				*what = *c;
 			}
+			dprintf("%s:%d: pool name has invalid character %c. Returning -1\n", __func__, __LINE__, *c);
 			return (-1);
 		}
 		c++;
@@ -394,21 +411,25 @@ pool_namecheck(const char *pool, namecheck_err_t *why, char *what)
 	    !(*pool >= 'A' && *pool <= 'Z')) {
 		if (why)
 			*why = NAME_ERR_NOLETTER;
+		dprintf("%s:%d: pool name has no character(s). Returning -1\n", __func__, __LINE__);
 		return (-1);
 	}
 
 	if (strcmp(pool, "mirror") == 0 || strcmp(pool, "raidz") == 0) {
 		if (why)
 			*why = NAME_ERR_RESERVED;
+		dprintf("%s:%d: pool name is reserved\n", __func__, __LINE__);
 		return (-1);
 	}
 
 	if (pool[0] == 'c' && (pool[1] >= '0' && pool[1] <= '9')) {
 		if (why)
 			*why = NAME_ERR_DISKLIKE;
+		dprintf("%s:%d: pool name is reserved disk name\n", __func__, __LINE__);
 		return (-1);
 	}
 
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 

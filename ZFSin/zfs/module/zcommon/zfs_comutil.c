@@ -41,6 +41,8 @@
 #include <sys/nvpair.h>
 #include "zfs_comutil.h"
 
+#include <sys/zfs_context.h>
+
 /*
  * Are there allocatable vdevs?
  */
@@ -54,15 +56,19 @@ zfs_allocatable_devs(nvlist_t *nv)
 
 	if (nvlist_lookup_nvlist_array(nv, ZPOOL_CONFIG_CHILDREN,
 	    &child, &children) != 0) {
+		dprintf("%s:%d: Returning FALSE\n", __func__, __LINE__);
 		return (B_FALSE);
 	}
 	for (c = 0; c < children; c++) {
 		is_log = 0;
 		(void) nvlist_lookup_uint64(child[c], ZPOOL_CONFIG_IS_LOG,
 		    &is_log);
-		if (!is_log)
+		if (!is_log) {
+			dprintf("%s:%d: Returning TRUE\n", __func__, __LINE__);
 			return (B_TRUE);
+		}
 	}
+	dprintf("%s:%d: Returning FALSE\n", __func__, __LINE__);
 	return (B_FALSE);
 }
 

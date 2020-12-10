@@ -361,15 +361,21 @@ dsl_dataset_get_snapname(dsl_dataset_t *ds)
 	dsl_pool_t *dp = ds->ds_dir->dd_pool;
 	objset_t *mos = dp->dp_meta_objset;
 
-	if (ds->ds_snapname[0])
+	if (ds->ds_snapname[0]) {
+		dprintf("%s:%d: ds->ds_snapname = %s. Returning 0\n", __func__, __LINE__, ds->ds_snapname);
 		return (0);
-	if (dsl_dataset_phys(ds)->ds_next_snap_obj == 0)
+	}
+	if (dsl_dataset_phys(ds)->ds_next_snap_obj == 0) {
+		TraceEvent(5, "%s:%d: Returning 0\n", __func__, __LINE__);
 		return (0);
+	}
 
 	err = dmu_bonus_hold(mos, dsl_dir_phys(ds->ds_dir)->dd_head_dataset_obj,
 	    FTAG, &headdbuf);
-	if (err != 0)
+	if (err != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
+	}
 	headphys = headdbuf->db_data;
 	err = zap_value_search(dp->dp_meta_objset,
 	    headphys->ds_snapnames_zapobj, ds->ds_object, 0, ds->ds_snapname);
@@ -380,6 +386,7 @@ dsl_dataset_get_snapname(dsl_dataset_t *ds)
 		    (unsigned long long)ds->ds_object, err);
 	}
 	dmu_buf_rele(headdbuf, FTAG);
+	dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
@@ -457,13 +464,17 @@ dsl_dataset_hold_obj(dsl_pool_t *dp, uint64_t dsobj, void *tag,
 	ASSERT(dsl_pool_config_held(dp));
 
 	err = dmu_bonus_hold(mos, dsobj, tag, &dbuf);
-	if (err != 0)
+	if (err != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
+	}
 
 	/* Make sure dsobj has the correct object type. */
 	dmu_object_info_from_db(dbuf, &doi);
 	if (doi.doi_bonus_type != DMU_OT_DSL_DATASET) {
 		dmu_buf_rele(dbuf, tag);
+		dprintf("%s:%d: doi.doi_bonus_type = %d. Returning error EINVAL = %d\n",
+			__func__, __LINE__, doi.doi_bonus_type, EINVAL);
 		return (SET_ERROR(EINVAL));
 	}
 
@@ -481,6 +492,7 @@ dsl_dataset_hold_obj(dsl_pool_t *dp, uint64_t dsobj, void *tag,
 		if (err != 0) {
 			kmem_free(ds, sizeof (dsl_dataset_t));
 			dmu_buf_rele(dbuf, tag);
+			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 			return (err);
 		}
 
@@ -596,6 +608,7 @@ dsl_dataset_hold_obj(dsl_pool_t *dp, uint64_t dsobj, void *tag,
 			kmem_free(ds, sizeof (dsl_dataset_t));
 			if (err != 0) {
 				dmu_buf_rele(dbuf, tag);
+				dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 				return (err);
 			}
 			ds = winner;
@@ -622,6 +635,7 @@ dsl_dataset_hold_obj(dsl_pool_t *dp, uint64_t dsobj, void *tag,
 	    dp->dp_origin_snap == NULL || ds == dp->dp_origin_snap);
 	*dsp = ds;
 
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -630,8 +644,10 @@ dsl_dataset_create_key_mapping(dsl_dataset_t *ds)
 {
 	dsl_dir_t *dd = ds->ds_dir;
 
-	if (dd->dd_crypto_obj == 0)
+	if (dd->dd_crypto_obj == 0) {
+		TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 		return (0);
+	}
 
 	return (spa_keystore_create_mapping(dd->dd_pool->dp_spa,
 	    ds, ds, &ds->ds_key_mapping));
@@ -669,15 +685,22 @@ dsl_dataset_hold_flags(dsl_pool_t *dp, const char *name, ds_hold_flags_t flags,
 	dsl_dataset_t *ds = NULL;
 
 	err = dsl_dir_hold(dp, name, FTAG, &dd, &snapname);
-	if (err != 0)
+	if (err != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
+	}
 
 	ASSERT(dsl_pool_config_held(dp));
 	obj = dsl_dir_phys(dd)->dd_head_dataset_obj;
-	if (obj != 0)
+	if (obj != 0) {
 		err = dsl_dataset_hold_obj_flags(dp, obj, flags, tag, &ds);
-	else
+		if (err)
+			dprintf("%s:%d: err = %d\n", __func__, __LINE__, err);
+	}
+	else {
 		err = SET_ERROR(ENOENT);
+		dprintf("%s:%d: Setting err = %d\n", __func__, __LINE__, err);
+	}
 
 	/* we may be looking for a snapshot */
 	if (err == 0 && snapname != NULL) {
@@ -686,10 +709,11 @@ dsl_dataset_hold_flags(dsl_pool_t *dp, const char *name, ds_hold_flags_t flags,
 		if (*snapname++ != '@') {
 			dsl_dataset_rele_flags(ds, flags, tag);
 			dsl_dir_rele(dd, FTAG);
+			TraceEvent(5, "%s:%d: Returning ENOENT = %d\n", __func__, __LINE__, ENOENT);
 			return (SET_ERROR(ENOENT));
 		}
 
-		dprintf("looking for snapshot '%s'\n", snapname);
+		dprintf("%s:%d: looking for snapshot '%s'\n", __func__, __LINE__, snapname);
 		err = dsl_dataset_snap_lookup(ds, snapname, &obj);
 		if (err == 0) {
 			err = dsl_dataset_hold_obj_flags(dp, obj, flags, tag,
@@ -709,6 +733,9 @@ dsl_dataset_hold_flags(dsl_pool_t *dp, const char *name, ds_hold_flags_t flags,
 	if (err == 0)
 		*dsp = ds;
 	dsl_dir_rele(dd, FTAG);
+
+	if (err)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
