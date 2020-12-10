@@ -3535,7 +3535,7 @@ vmem_fini(vmem_t *heap)
 
 	vmem_walk(heap, VMEM_ALLOC, vmem_fini_freelist, heap);
 	vmem_free_span_list();
-	dprintf("\nSPL: %s destroying heap\n", __func__);
+	dprintf("SPL: %s destroying heap\n", __func__);
  	vmem_destroy(heap); // PARENT: spl_heap_arena
 
 	dprintf("SPL: %s: walking spl_heap_arena, aka bucket_heap (pass 1)\n", __func__);
@@ -3641,9 +3641,9 @@ vmem_fini(vmem_t *heap)
 	dprintf("SPL: %s destroying vmem_metadata_arena\n", __func__);
 	vmem_destroy(vmem_metadata_arena); // parent: spl_default_arena
 
-	dprintf("\nSPL: %s destroying spl_default_arena\n", __func__);
+	dprintf("SPL: %s destroying spl_default_arena\n", __func__);
 	vmem_destroy(spl_default_arena); // parent: spl_default_arena_parent
-	dprintf("\nSPL: %s destroying spl_default_arena_parant\n", __func__);
+	dprintf("SPL: %s destroying spl_default_arena_parant\n", __func__);
 	vmem_destroy(spl_default_arena_parent);
 
 	dprintf("SPL: %s destroying vmem_vmem_arena\n", __func__);
@@ -3666,7 +3666,7 @@ vmem_fini(vmem_t *heap)
 	dprintf("vmem_list_lock ");
 	mutex_destroy(&vmem_list_lock);
 
-	dprintf("\nSPL: %s: walking list of live slabs at time of call to %s\n",
+	dprintf("SPL: %s: walking list of live slabs at time of call to %s\n",
 	       __func__, __func__);
 
 	// annoyingly, some of these should be returned to xnu, but

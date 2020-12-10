@@ -177,8 +177,10 @@ dsl_dir_hold_obj(dsl_pool_t *dp, uint64_t ddobj,
 	ASSERT(dsl_pool_config_held(dp));
 
 	err = dmu_bonus_hold(dp->dp_meta_objset, ddobj, tag, &dbuf);
-	if (err != 0)
+	if (err != 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
+	}
 	dd = dmu_buf_get_user(dbuf);
 
 	dmu_object_info_from_db(dbuf, &doi);
@@ -217,8 +219,10 @@ dsl_dir_hold_obj(dsl_pool_t *dp, uint64_t ddobj,
 			err = dsl_dir_hold_obj(dp,
 			    dsl_dir_phys(dd)->dd_parent_obj, NULL, dd,
 			    &dd->dd_parent);
-			if (err != 0)
+			if (err != 0) {
+				dprintf("%s:%d: Jumping to errout\n", __func__, __LINE__);
 				goto errout;
+			}
 			if (tail) {
 #ifdef ZFS_DEBUG
 				uint64_t foundobj;
@@ -236,8 +240,10 @@ dsl_dir_hold_obj(dsl_pool_t *dp, uint64_t ddobj,
 				    dd_child_dir_zapobj,
 				    ddobj, 0, dd->dd_myname);
 			}
-			if (err != 0)
+			if (err != 0) {
+				dprintf("%s:%d: Jumping to errout\n", __func__, __LINE__);
 				goto errout;
+			}
 		} else {
 			(void) strlcpy(dd->dd_myname, spa_name(dp->dp_spa), MAXNAMELEN);
 		}
@@ -253,8 +259,10 @@ dsl_dir_hold_obj(dsl_pool_t *dp, uint64_t ddobj,
 			err = dmu_bonus_hold(dp->dp_meta_objset,
 			    dsl_dir_phys(dd)->dd_origin_obj, FTAG,
 			    &origin_bonus);
-			if (err != 0)
+			if (err != 0) {
+				dprintf("%s:%d: Jumping to errout\n", __func__, __LINE__);
 				goto errout;
+			}
 			origin_phys = origin_bonus->db_data;
 			dd->dd_origin_txg =
 			    origin_phys->ds_creation_txg;
@@ -291,6 +299,7 @@ dsl_dir_hold_obj(dsl_pool_t *dp, uint64_t ddobj,
 	ASSERT3P(dd->dd_dbuf, ==, dbuf);
 	*ddp = dd;
 
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 
 errout:
@@ -300,6 +309,7 @@ errout:
 	mutex_destroy(&dd->dd_lock);
 	kmem_free(dd, sizeof (dsl_dir_t));
 	dmu_buf_rele(dbuf, tag);
+	dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
@@ -380,12 +390,17 @@ getcomponent(const char *path, char *component, const char **nextp)
 {
 	char *p;
 
-	if ((path == NULL) || (path[0] == '\0'))
+	TraceEvent(8, "%s:%d: path = %s\n", __func__, __LINE__, (path ? path : "NULL"));
+
+	if ((path == NULL) || (path[0] == '\0')) {
+		dprintf("%s:%d: Returning ENOENT = %d\n", __func__, __LINE__, ENOENT);
 		return (SET_ERROR(ENOENT));
+	}
 	/* This would be a good place to reserve some namespace... */
 	p = strpbrk(path, "/@");
 	if (p && (p[1] == '/' || p[1] == '@')) {
 		/* two separators in a row */
+		dprintf("%s:%d: Returning EINVAL = %d\n", __func__, __LINE__, EINVAL);
 		return (SET_ERROR(EINVAL));
 	}
 	if (p == NULL || p == path) {
@@ -395,15 +410,21 @@ getcomponent(const char *path, char *component, const char **nextp)
 		 * and it had better have something after the @.
 		 */
 		if (p != NULL &&
-		    (p[0] != '@' || strpbrk(path+1, "/@") || p[1] == '\0'))
+			(p[0] != '@' || strpbrk(path + 1, "/@") || p[1] == '\0')) {
+			dprintf("%s:%d: Returning EINVAL = %d\n", __func__, __LINE__, EINVAL);
 			return (SET_ERROR(EINVAL));
-		if (strlen(path) >= ZFS_MAX_DATASET_NAME_LEN)
+		}
+		if (strlen(path) >= ZFS_MAX_DATASET_NAME_LEN) {
+			dprintf("%s:%d: Returning ENAMETOOLONG = %d\n", __func__, __LINE__, ENAMETOOLONG);
 			return (SET_ERROR(ENAMETOOLONG));
+		}
 		(void) strlcpy(component, path, MAXNAMELEN);
 		p = NULL;
 	} else if (p[0] == '/') {
-		if (p - path >= ZFS_MAX_DATASET_NAME_LEN)
+		if (p - path >= ZFS_MAX_DATASET_NAME_LEN) {
+			dprintf("%s:%d: Returning ENAMETOOLONG = %d\n", __func__, __LINE__, ENAMETOOLONG);
 			return (SET_ERROR(ENAMETOOLONG));
+		}
 		(void) strncpy(component, path, p - path);
 		component[p - path] = '\0';
 		p++;
@@ -412,16 +433,21 @@ getcomponent(const char *path, char *component, const char **nextp)
 		 * if the next separator is an @, there better not be
 		 * any more slashes.
 		 */
-		if (strchr(path, '/'))
+		if (strchr(path, '/')) {
+			dprintf("%s:%d: Returning EINVAL = %d\n", __func__, __LINE__, EINVAL);
 			return (SET_ERROR(EINVAL));
-		if (p - path >= ZFS_MAX_DATASET_NAME_LEN)
+		}
+		if (p - path >= ZFS_MAX_DATASET_NAME_LEN) {
+			dprintf("%s:%d: Returning ENAMETOOLONG = %d\n", __func__, __LINE__, ENAMETOOLONG);
 			return (SET_ERROR(ENAMETOOLONG));
+		}
 		(void) strncpy(component, path, p - path);
 		component[p - path] = '\0';
 	} else {
 		panic("invalid p=%p", (void *)p);
 	}
 	*nextp = p;
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -451,6 +477,8 @@ dsl_dir_hold(dsl_pool_t *dp, const char *name, void *tag,
 	spaname = spa_name(dp->dp_spa);
 	if (strcmp(buf, spaname) != 0) {
 		err = SET_ERROR(EXDEV);
+		dprintf("%s:%d: buf = %s, spaname = %s. Setting error = %d\n",
+			__func__, __LINE__, (buf ? buf : "NULL"), (spaname ? spaname : "NULL"), EXDEV);
 		goto error;
 	}
 
@@ -458,6 +486,7 @@ dsl_dir_hold(dsl_pool_t *dp, const char *name, void *tag,
 
 	err = dsl_dir_hold_obj(dp, dp->dp_root_dir_obj, NULL, tag, &dd);
 	if (err != 0) {
+		dprintf("%s:%d: Jumping to error\n", __func__, __LINE__);
 		goto error;
 	}
 
@@ -469,7 +498,7 @@ dsl_dir_hold(dsl_pool_t *dp, const char *name, void *tag,
 		ASSERT(next[0] != '\0');
 		if (next[0] == '@')
 			break;
-		dprintf("looking up %s in obj%lld\n",
+		TraceEvent(5, "looking up %s in obj%lld\n",
 		    buf, dsl_dir_phys(dd)->dd_child_dir_zapobj);
 
 		err = zap_lookup(dp->dp_meta_objset,
@@ -502,7 +531,8 @@ dsl_dir_hold(dsl_pool_t *dp, const char *name, void *tag,
 	    (tailp == NULL || (nextnext && nextnext[0] != '\0'))) {
 		/* bad path name */
 		dsl_dir_rele(dd, tag);
-		dprintf("next=%p (%s) tail=%p\n", next, next?next:"", tailp);
+		dprintf("%s:%d: next=%p (%s) tail=%p\n", __func__, __LINE__, next, next?next:"", tailp);
+		dprintf("%s:%d: Setting error = %d\n", __func__, __LINE__, ENOENT);
 		err = SET_ERROR(ENOENT);
 	}
 	if (tailp != NULL)
@@ -510,6 +540,8 @@ dsl_dir_hold(dsl_pool_t *dp, const char *name, void *tag,
 	*ddp = dd;
 error:
 	kmem_free(buf, ZFS_MAX_DATASET_NAME_LEN);
+
+	TraceEvent(5, "%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 

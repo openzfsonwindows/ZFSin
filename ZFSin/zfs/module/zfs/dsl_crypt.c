@@ -357,8 +357,10 @@ spa_keystore_fini(spa_keystore_t *sk)
 static int
 dsl_dir_get_encryption_root_ddobj(dsl_dir_t *dd, uint64_t *rddobj)
 {
-	if (dd->dd_crypto_obj == 0)
+	if (dd->dd_crypto_obj == 0) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, ENOENT);
 		return (SET_ERROR(ENOENT));
+	}
 
 	return (zap_lookup(dd->dd_pool->dp_meta_objset, dd->dd_crypto_obj,
 	    DSL_CRYPTO_KEY_ROOT_DDOBJ, 8, 1, rddobj));
@@ -409,6 +411,7 @@ spa_keystore_wkey_hold_ddobj_impl(spa_t *spa, uint64_t ddobj,
 	found_wkey = avl_find(&spa->spa_keystore.sk_wkeys, &search_wkey, NULL);
 	if (!found_wkey) {
 		ret = SET_ERROR(ENOENT);
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, ret);
 		goto error;
 	}
 
@@ -416,6 +419,7 @@ spa_keystore_wkey_hold_ddobj_impl(spa_t *spa, uint64_t ddobj,
 	dsl_wrapping_key_hold(found_wkey, tag);
 
 	*wkey_out = found_wkey;
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 
 error:
@@ -452,6 +456,7 @@ spa_keystore_wkey_hold_dd(spa_t *spa, dsl_dir_t *dd, void *tag,
 		rw_exit(&spa->spa_keystore.sk_wkeys_lock);
 
 	*wkey_out = wkey;
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 
 error:
@@ -459,6 +464,10 @@ error:
 		rw_exit(&spa->spa_keystore.sk_wkeys_lock);
 
 	*wkey_out = NULL;
+	if (ret)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, ret);
+	else
+		TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, ret);
 	return (ret);
 }
 
@@ -558,8 +567,10 @@ dsl_crypto_key_open(objset_t *mos, dsl_wrapping_key_t *wkey,
 
 	/* allocate and initialize the key */
 	dck = kmem_zalloc(sizeof (dsl_crypto_key_t), KM_SLEEP);
-	if (!dck)
+	if (!dck) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, ENOMEM);
 		return (SET_ERROR(ENOMEM));
+	}
 
 	/* fetch all of the values we need from the ZAP */
 	ret = zap_lookup(mos, dckobj, DSL_CRYPTO_KEY_CRYPTO_SUITE, 8, 1,
@@ -642,6 +653,7 @@ spa_keystore_dsl_key_hold_impl(spa_t *spa, uint64_t dckobj, void *tag,
 	found_dck = avl_find(&spa->spa_keystore.sk_dsl_keys, &search_dck, NULL);
 	if (!found_dck) {
 		ret = SET_ERROR(ENOENT);
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, ret);
 		goto error;
 	}
 
@@ -649,6 +661,7 @@ spa_keystore_dsl_key_hold_impl(spa_t *spa, uint64_t dckobj, void *tag,
 	(void) zfs_refcount_add(&found_dck->dck_holds, tag);
 
 	*dck_out = found_dck;
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 
 error:
@@ -679,6 +692,7 @@ spa_keystore_dsl_key_hold_dd(spa_t *spa, dsl_dir_t *dd, void *tag,
 	ret = spa_keystore_wkey_hold_dd(spa, dd, FTAG, &wkey);
 	if (ret != 0) {
 		*dck_out = NULL;
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, EACCES);
 		return (SET_ERROR(EACCES));
 	}
 
@@ -1143,11 +1157,14 @@ dmu_objset_check_wkey_loaded(dsl_dir_t *dd)
 
 	ret = spa_keystore_wkey_hold_dd(dd->dd_pool->dp_spa, dd, FTAG,
 	    &wkey);
-	if (ret != 0)
+	if (ret != 0) {
+		dprintf("%s:%d: spa_keystore_wkey_hold_dd returned non-zero value. Returning EACCES\n", __func__, __LINE__);
 		return (SET_ERROR(EACCES));
+	}
 
 	dsl_wrapping_key_rele(wkey, FTAG);
 
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -1167,6 +1184,7 @@ dsl_dir_get_crypt(dsl_dir_t *dd, uint64_t *crypt)
 {
 	if (dd->dd_crypto_obj == 0) {
 		*crypt = ZIO_CRYPT_OFF;
+		TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 		return (0);
 	}
 
@@ -1760,50 +1778,66 @@ dmu_objset_clone_crypt_check(dsl_dir_t *parentdd, dsl_dir_t *origindd)
 
 
 int
-dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_crypto_params_t *dcp,
-    boolean_t *will_encrypt)
+dmu_objset_create_crypt_check(dsl_dir_t* parentdd, dsl_crypto_params_t* dcp,
+	boolean_t* will_encrypt)
 {
 	int ret;
 	uint64_t pcrypt, crypt;
 	dsl_crypto_params_t dummy_dcp = { 0 };
 
-	if (will_encrypt != NULL)
+	dprintf("%s:%d: parentdd = 0x%p, dcp = 0x%p\n", __func__, __LINE__, parentdd, dcp);
+
+	if (will_encrypt != NULL) {
+		dprintf("%s:%d: will_encrypt = %d\n", __func__, __LINE__, will_encrypt);
 		*will_encrypt = B_FALSE;
+	}
 
 	if (dcp == NULL)
 		dcp = &dummy_dcp;
 
-	if (dcp->cp_cmd != DCP_CMD_NONE)
+	if (dcp->cp_cmd != DCP_CMD_NONE) {
+		dprintf("%s:%d: dcp->cp_cmd = %d. Returning EINVAL = %d\n", __func__, __LINE__, dcp->cp_cmd, EINVAL);
 		return (SET_ERROR(EINVAL));
+	}
 
 	if (parentdd != NULL) {
 		ret = dsl_dir_get_crypt(parentdd, &pcrypt);
-		if (ret != 0)
+		if (ret != 0) {
+			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, ret);
 			return (ret);
-	} else {
+		}
+	}
+	else {
 		pcrypt = ZIO_CRYPT_OFF;
 	}
 
 	crypt = (dcp->cp_crypt == ZIO_CRYPT_INHERIT) ? pcrypt : dcp->cp_crypt;
 
-	ASSERT3U(pcrypt, !=, ZIO_CRYPT_INHERIT);
-	ASSERT3U(crypt, !=, ZIO_CRYPT_INHERIT);
+	ASSERT3U(pcrypt, != , ZIO_CRYPT_INHERIT);
+	ASSERT3U(crypt, != , ZIO_CRYPT_INHERIT);
 
 	/*
 	 * We can't create an unencrypted child of an encrypted parent
 	 * under any circumstances.
 	 */
-	if (crypt == ZIO_CRYPT_OFF && pcrypt != ZIO_CRYPT_OFF)
+	if (crypt == ZIO_CRYPT_OFF && pcrypt != ZIO_CRYPT_OFF) {
+		dprintf("%s:%d: crypt = %llu, pcrypt = %llu. Returning EINVAL = %d\n",
+			__func__, __LINE__, crypt, pcrypt, EINVAL);
 		return (SET_ERROR(EINVAL));
+	}
 
 	/* check for valid dcp with no encryption (inherited or local) */
 	if (crypt == ZIO_CRYPT_OFF) {
 		/* Must not specify encryption params */
 		if (dcp->cp_wkey != NULL ||
-		    (dcp->cp_keylocation != NULL &&
-		    strcmp(dcp->cp_keylocation, "none") != 0))
+			(dcp->cp_keylocation != NULL &&
+				strcmp(dcp->cp_keylocation, "none") != 0)) {
+			dprintf("%s:%d: dcp->cp_wkey = 0x%p, dcp->cp_keylocation = 0x%p. Returning EINVAL = %d\n",
+				__func__, __LINE__, dcp->cp_wkey, dcp->cp_keylocation, EINVAL);
 			return (SET_ERROR(EINVAL));
+		}
 
+		dprintf("%s:%d: Returning 0\n", __func__, __LINE__);
 		return (0);
 	}
 
@@ -1818,6 +1852,7 @@ dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_crypto_params_t *dcp,
 	if (parentdd != NULL &&
 	    !spa_feature_is_enabled(parentdd->dd_pool->dp_spa,
 	    SPA_FEATURE_ENCRYPTION)) {
+		dprintf("%s:%d: parentdd = 0x%p. Returning EOPNOTSUPP\n", __func__, __LINE__,parentdd);
 		return (SET_ERROR(EOPNOTSUPP));
 	}
 
@@ -1825,6 +1860,7 @@ dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_crypto_params_t *dcp,
 	if (parentdd != NULL &&
 	    !spa_feature_is_enabled(parentdd->dd_pool->dp_spa,
 	    SPA_FEATURE_BOOKMARK_V2)) {
+		dprintf("%s:%d: parentdd = 0x%p. Returning EOPNOTSUPP\n", __func__, __LINE__, parentdd);
 		return (SET_ERROR(EOPNOTSUPP));
 	}
 
@@ -1833,46 +1869,62 @@ dmu_objset_create_crypt_check(dsl_dir_t *parentdd, dsl_crypto_params_t *dcp,
 		ASSERT3P(parentdd, !=, NULL);
 
 		/* key must be fully unspecified */
-		if (dcp->cp_keylocation != NULL)
+		if (dcp->cp_keylocation != NULL) {
+			dprintf("%s:%d: dcp->cp_keylocation = 0x%p. Returning EINVAL = %d\n",
+				__func__, __LINE__, dcp->cp_keylocation, EINVAL);
 			return (SET_ERROR(EINVAL));
+		}
 
 		/* parent must have a key to inherit */
-		if (pcrypt == ZIO_CRYPT_OFF)
+		if (pcrypt == ZIO_CRYPT_OFF) {
+			dprintf("%s:%d: pcrypt = %llu, Returning EINVAL = %d\n", __func__, __LINE__, pcrypt, EINVAL);
 			return (SET_ERROR(EINVAL));
+		}
 
 		/* check for parent key */
 		ret = dmu_objset_check_wkey_loaded(parentdd);
 		if (ret != 0)
 			return (ret);
 
+		dprintf("%s:%d: Returning 0\n", __func__, __LINE__);
 		return (0);
 	}
 
 	/* At this point we should have a fully specified key. Check location */
 	if (dcp->cp_keylocation == NULL ||
-	    !zfs_prop_valid_keylocation(dcp->cp_keylocation, B_TRUE))
+		!zfs_prop_valid_keylocation(dcp->cp_keylocation, B_TRUE)) {
+		dprintf("%s:%d: dcp->cp_keylocation = 0x%p. Returning EINVAL = %d\n", __func__, __LINE__, dcp->cp_keylocation, EINVAL);
 		return (SET_ERROR(EINVAL));
+	}
 
 	/* Must have fully specified keyformat */
 	switch (dcp->cp_wkey->wk_keyformat) {
 	case ZFS_KEYFORMAT_HEX:
 	case ZFS_KEYFORMAT_RAW:
 		/* requires no pbkdf2 iters and salt */
-		if (dcp->cp_wkey->wk_salt != 0 || dcp->cp_wkey->wk_iters != 0)
+		if (dcp->cp_wkey->wk_salt != 0 || dcp->cp_wkey->wk_iters != 0) {
+			dprintf("%s:%d: dcp->cp_wkey->wk_salt = %llu, dcp->cp_wkey->wk_iters = %llu. Returning EINVAL\n",
+				__func__, __LINE__, dcp->cp_wkey->wk_salt, dcp->cp_wkey->wk_iters);
 			return (SET_ERROR(EINVAL));
+		}
 		break;
 	case ZFS_KEYFORMAT_PASSPHRASE:
 		/* requires pbkdf2 iters and salt */
 		if (dcp->cp_wkey->wk_salt == 0 ||
-		    dcp->cp_wkey->wk_iters < MIN_PBKDF2_ITERATIONS)
+			dcp->cp_wkey->wk_iters < MIN_PBKDF2_ITERATIONS) {
+			dprintf("%s:%d: dcp->cp_wkey->wk_salt = %llu, dcp->cp_wkey->wk_iters = %llu. Returning EINVAL\n",
+				__func__, __LINE__, dcp->cp_wkey->wk_salt, dcp->cp_wkey->wk_iters);
 			return (SET_ERROR(EINVAL));
+		}
 		break;
 	case ZFS_KEYFORMAT_NONE:
 	default:
+		dprintf("%s:%d: Returning EINVAL = %d\n", __func__, __LINE__, EINVAL);
 		/* keyformat must be specified and valid */
 		return (SET_ERROR(EINVAL));
 	}
 
+	dprintf("%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 

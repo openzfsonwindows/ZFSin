@@ -1307,6 +1307,8 @@ dsl_pool_hold(const char *name, void *tag, dsl_pool_t **dp)
 		*dp = spa_get_dsl(spa);
 		dsl_pool_config_enter(*dp, tag);
 	}
+	if (error)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 	return (error);
 }
 

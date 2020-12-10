@@ -136,7 +136,7 @@ free_blocks(dnode_t *dn, blkptr_t *bp, int num, dmu_tx_t *tx)
 	uint64_t bytesfreed = 0;
 	int i;
 
-	dprintf("ds=%p obj=%llx num=%d\n", ds, dn->dn_object, num);
+	TraceEvent(5, "ds=%p obj=%llx num=%d\n", ds, dn->dn_object, num);
 
 	for (i = 0; i < num; i++, bp++) {
 		uint64_t lsize, lvl;

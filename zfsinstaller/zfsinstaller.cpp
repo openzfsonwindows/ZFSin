@@ -189,8 +189,8 @@ int arg_parser(int argc, char **argv, std::string &flags, std::string &levels, i
 		return ERROR_BAD_ARGUMENTS;
 
 	if (0 == flags.size())       flags = std::string("0xffffffff");
-	if (0 == levels.size())      levels = std::string("0x3");
-	if (-1 == size_in_mb)        size_in_mb = 10;
+	if (0 == levels.size())      levels = std::string("0x4");
+	if (-1 == size_in_mb)        size_in_mb = 250;
 	if (0 == etl_file.size()) {
 		TCHAR CurrentPath[MAX_PATH_LEN + 1] = L"";
 		DWORD len = GetCurrentDirectory(MAX_PATH_LEN, CurrentPath);
@@ -305,8 +305,8 @@ void printUsage() {
 	fprintf(stderr, "zfsinstaller trace [-f Flags] | [-l Levels] | [-s SizeOfETLInMB] | [-p AbsolutePathOfETL]\n");
 	fprintf(stderr, "Valid inputs for above arguments are as follows:\n");
 	fprintf(stderr, "Flags (in hex)              Should be in interval [0x0, 0xffffffff]      Default (0xffffffff)\n");
-	fprintf(stderr, "Levels (in hex)             Should be in interval [0x0, 0xff]            Default (0x3)\n");
-	fprintf(stderr, "SizeOfETLInMB (in decimal)  Should be greater than 0                     Default (10)\n");
+	fprintf(stderr, "Levels (in hex)             Should be in interval [0x0, 0xff]            Default (0x4)\n");
+	fprintf(stderr, "SizeOfETLInMB (in decimal)  Should be greater than 0                     Default (250)\n");
 	fprintf(stderr, "AbsolutePathOfETL           Absolute Path including the Etl file name    Default ($CWD%s)\n", ETL_FILE.c_str());
 	fprintf(stderr, "\n");
 	fprintf(stderr, "zfsinstaller trace -d\n");

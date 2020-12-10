@@ -101,8 +101,10 @@ space_map_iterate(space_map_t *sm, uint64_t end, sm_cb_t callback, void *arg)
 		dmu_buf_t *db;
 		error = dmu_buf_hold(sm->sm_os, space_map_object(sm),
 		    block_base, FTAG, &db, DMU_READ_PREFETCH);
-		if (error != 0)
+		if (error != 0) {
+			dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 			return (error);
+		}
 
 		uint64_t *block_start = db->db_data;
 		uint64_t block_length = MIN(end - block_base, blksz);
@@ -164,6 +166,10 @@ space_map_iterate(space_map_t *sm, uint64_t end, sm_cb_t callback, void *arg)
 		}
 		dmu_buf_rele(db, FTAG);
 	}
+	if (error)
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
+	else
+		TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, error);
 	return (error);
 }
 
@@ -386,6 +392,7 @@ space_map_load_callback(space_map_entry_t *sme, void *arg)
 		range_tree_remove(smla->smla_rt, sme->sme_offset, sme->sme_run);
 	}
 
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -413,6 +420,7 @@ space_map_load_length(space_map_t *sm, range_tree_t *rt, maptype_t maptype,
 	if (err != 0)
 		range_tree_vacate(rt, NULL, NULL);
 
+	TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
@@ -774,11 +782,14 @@ space_map_open_impl(space_map_t *sm)
 	u_longlong_t blocks;
 
 	error = dmu_bonus_hold(sm->sm_os, sm->sm_object, sm, &sm->sm_dbuf);
-	if (error)
+	if (error) {
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 		return (error);
+	}
 
 	dmu_object_size_from_db(sm->sm_dbuf, &sm->sm_blksz, &blocks);
 	sm->sm_phys = sm->sm_dbuf->db_data;
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -807,10 +818,12 @@ space_map_open(space_map_t **smp, objset_t *os, uint64_t object,
 	error = space_map_open_impl(sm);
 	if (error != 0) {
 		space_map_close(sm);
+		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 		return (error);
 	}
 	*smp = sm;
 
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 

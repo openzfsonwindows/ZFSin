@@ -461,8 +461,9 @@
     <ClCompile Include="zfs\module\zfs\zfs_fm.c" />
     <ClCompile Include="zfs\module\zfs\zfs_fuid.c" />
     <ClCompile Include="zfs\module\zfs\zfs_ioctl.c">
-      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">WPPFILE</UndefinePreprocessorDefinitions>
-      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</WppEnabled>
+      <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </UndefinePreprocessorDefinitions>
+      <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</WppEnabled>
       <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WPPFILE</UndefinePreprocessorDefinitions>
       <WppEnabled Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</WppEnabled>
     </ClCompile>

@@ -290,7 +290,7 @@ out:
 		UnlockAndFreeMdl(mdl);
 	}
 
-	dprintf("SPL: copyin return %d (%d bytes)\n", error, len);
+	TraceEvent(8, "SPL: copyin return %d (%d bytes)\n", error, len);
 
 	return error;
 }

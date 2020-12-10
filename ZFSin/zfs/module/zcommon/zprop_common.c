@@ -303,21 +303,27 @@ zprop_index_to_string(int prop, uint64_t index, const char **string,
 	const zprop_index_t *idx_tbl;
 	int i;
 
-	if (prop == ZPROP_INVAL || prop == ZPROP_CONT)
+	if (prop == ZPROP_INVAL || prop == ZPROP_CONT) {
+		dprintf("%s:%d: prop = %d. Returning -1\n", __func__, __LINE__, prop);
 		return (-1);
+	}
 
 	ASSERT(prop < zprop_get_numprops(type));
 	prop_tbl = zprop_get_proptable(type);
-	if ((idx_tbl = prop_tbl[prop].pd_table) == NULL)
+	if ((idx_tbl = prop_tbl[prop].pd_table) == NULL) {
+		dprintf("%s:%d: Returning -1\n", __func__, __LINE__);
 		return (-1);
+	}
 
 	for (i = 0; idx_tbl[i].pi_name != NULL; i++) {
 		if (idx_tbl[i].pi_value == index) {
 			*string = idx_tbl[i].pi_name;
+			dprintf("%s:%d: Returning 0\n", __func__, __LINE__);
 			return (0);
 		}
 	}
 
+	dprintf("%s:%d: Returning -1\n", __func__, __LINE__);
 	return (-1);
 }
 

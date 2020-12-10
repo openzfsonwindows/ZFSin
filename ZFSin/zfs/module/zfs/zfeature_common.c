@@ -39,6 +39,8 @@
 #include <sys/types.h>
 #include "zfeature_common.h"
 
+#include <sys/zfs_context.h>
+
 /*
  * Set to disable all feature checks while opening pools, allowing pools with
  * unsupported features to be opened. Set for testing only.
@@ -116,10 +118,12 @@ zfeature_lookup_name(const char *name, spa_feature_t *res)
 		if (strcmp(name, feature->fi_uname) == 0) {
 			if (res != NULL)
 				*res = i;
+			TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 			return (0);
 		}
 	}
 
+	dprintf("%s:%d: Returning ENOENT = %d\n", __func__, __LINE__, ENOENT);
 	return (ENOENT);
 }
 

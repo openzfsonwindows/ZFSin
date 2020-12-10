@@ -1918,7 +1918,7 @@ int spl_kstat_chain_id(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION I
 	ASSERT3U(IrpSp->Parameters.DeviceIoControl.OutputBufferLength, >=, sizeof(ksp));
 	ddi_copyout(&ksp, IrpSp->Parameters.DeviceIoControl.Type3InputBuffer,
 		sizeof(ksp), 0);
-	dprintf("%s: returning kstat_chain_id %d\n", __func__, kstat_chain_id);
+	dprintf("%s:%d: returning kstat_chain_id %d\n", __func__, __LINE__, kstat_chain_id);
 	return 0;
 }
 

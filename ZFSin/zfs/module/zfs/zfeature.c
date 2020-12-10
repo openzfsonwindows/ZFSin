@@ -230,9 +230,12 @@ feature_get_refcount(spa_t *spa, zfeature_info_t *feature, uint64_t *res)
 	ASSERT(VALID_FEATURE_FID(feature->fi_feature));
 	if (spa->spa_feat_refcount_cache[feature->fi_feature] ==
 	    SPA_FEATURE_DISABLED) {
+		TraceEvent(5, "%s:%d: Returning ENOTSUP = %d\n", __func__, __LINE__, ENOTSUP);
 		return (SET_ERROR(ENOTSUP));
 	}
 	*res = spa->spa_feat_refcount_cache[feature->fi_feature];
+
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
@@ -478,8 +481,11 @@ spa_feature_is_enabled(spa_t *spa, spa_feature_t fid)
 	uint64_t refcount = 0;
 
 	ASSERT(VALID_FEATURE_FID(fid));
-	if (spa_version(spa) < SPA_VERSION_FEATURES)
+	if (spa_version(spa) < SPA_VERSION_FEATURES) {
+		dprintf("%s:%d: spa->spa_ubsync.ub_version = %llu. Returning False\n",
+			__func__, __LINE__, spa->spa_ubsync.ub_version);
 		return (B_FALSE);
+	}
 
 	err = feature_get_refcount(spa, &spa_feature_table[fid], &refcount);
 	ASSERT(err == 0 || err == ENOTSUP);
@@ -493,11 +499,14 @@ spa_feature_is_active(spa_t *spa, spa_feature_t fid)
 	uint64_t refcount = 0;
 
 	ASSERT(VALID_FEATURE_FID(fid));
-	if (spa_version(spa) < SPA_VERSION_FEATURES)
+	if (spa_version(spa) < SPA_VERSION_FEATURES) {
+		dprintf("%s:%d: spa_version(spa) = %llu. Returning FALSE\n", __func__, __LINE__, spa->spa_ubsync.ub_version);
 		return (B_FALSE);
+	}
 
 	err = feature_get_refcount(spa, &spa_feature_table[fid], &refcount);
 	ASSERT(err == 0 || err == ENOTSUP);
+	TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, (err == 0 && refcount > 0));
 	return (err == 0 && refcount > 0);
 }
 
