@@ -2052,6 +2052,7 @@ zfs_ioc_vdev_remove(zfs_cmd_t *zc)
 		error = spa_vdev_remove(spa, zc->zc_guid, B_FALSE);
 	}
 	spa_close(spa, FTAG);
+	dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 	return (error);
 }
 

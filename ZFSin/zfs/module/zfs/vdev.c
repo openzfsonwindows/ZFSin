@@ -2475,6 +2475,7 @@ vdev_dtl_empty(vdev_t *vd, vdev_dtl_type_t t)
 	empty = range_tree_is_empty(rt);
 	mutex_exit(&vd->vdev_dtl_lock);
 
+	dprintf("%s:%d: t = %d. Returning %d\n", __func__, __LINE__, t, empty);
 	return (empty);
 }
 

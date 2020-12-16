@@ -3614,10 +3614,15 @@ zil_reset(const char *osname, void *arg)
 
 	error = zil_suspend(osname, NULL);
 	/* EACCES means crypto key not loaded */
-	if ((error == EACCES) || (error == EBUSY))
+	if ((error == EACCES) || (error == EBUSY)) {
+		dprintf("%s:%d: zil_suspend returned %d\n", __func__, __LINE__, error);
 		return (SET_ERROR(error));
-	if (error != 0)
+	}
+	if (error != 0) {
+		dprintf("%s:%d: zil_suspend returned %d. Returning %d\n", __func__, __LINE__, error, EEXIST);
 		return (SET_ERROR(EEXIST));
+	}
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 

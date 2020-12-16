@@ -231,7 +231,7 @@ int zfs_log_session_create(int argc, char** argv)
 				return ret;
 		}
 
-		sprintf_s(command, "logman create trace %s -p {%s} %s %s -nb 10 10 -bs 100 -mode Circular -max %d -o \"%s\" ",
+		sprintf_s(command, "logman create trace %s -p {%s} %s %s -nb 1 1 -bs 1 -mode Circular -max %d -o \"%s\" ",
 							LOGGER_SESSION, ZFSIN_GUID, flags.c_str(), levels.c_str(), size_in_mb, etl_file.c_str());
 
 		ret = system(command);

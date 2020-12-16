@@ -1393,6 +1393,9 @@ dsl_dir_tempreserve_impl(dsl_dir_t *dd, uint64_t asize, boolean_t netfree,
 		    quota>>10, asize>>10, retval);
 		mutex_exit(&dd->dd_lock);
 		DMU_TX_STAT_BUMP(dmu_tx_quota);
+		if (retval == ENOSPC)
+			dprintf("%s:%d: used_on_disk = %llu, est_inflight = %llu, quota = %llu. No space. Returning %d\n",
+				__func__, __LINE__, used_on_disk, est_inflight, quota, ENOSPC);
 		return (SET_ERROR(retval));
 	}
 

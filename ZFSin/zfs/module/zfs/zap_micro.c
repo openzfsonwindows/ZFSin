@@ -1154,10 +1154,7 @@ zap_contains(objset_t *os, uint64_t zapobj, const char *name)
 	if (err == EOVERFLOW || err == EINVAL)
 		err = 0; /* found, but skipped reading the value */
 
-	if (err)
-		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
-	else
-		TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, err);
+	TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
