@@ -2165,12 +2165,16 @@ dmu_object_set_blocksize(objset_t *os, uint64_t object, uint64_t size, int ibs,
 {
 	dnode_t *dn;
 	int err;
-
 	err = dnode_hold(os, object, FTAG, &dn);
-	if (err)
+	if (err) {
+		dprintf("%s:%d: Returning error %d\n", __func__, __LINE__, err);
 		return (err);
+	}
+
 	err = dnode_set_blksz(dn, size, ibs, tx);
 	dnode_rele(dn, FTAG);
+
+	dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
 	return (err);
 }
 

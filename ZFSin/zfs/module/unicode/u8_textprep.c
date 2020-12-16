@@ -54,7 +54,7 @@
 #include <sys/u8_textprep_data.h>
 #include <sys/u8_textprep.h>
 
-
+#include <sys/zfs_context.h>
 /* The maximum possible number of bytes in a UTF-8 character. */
 #define	U8_MB_CUR_MAX			(4)
 
@@ -1429,6 +1429,7 @@ collect_a_seq(size_t uv, uchar_t *u8s, uchar_t **source, uchar_t *slast,
 	sz = u8_number_of_bytes[*s];
 
 	if (sz < 0) {
+		dprintf("%s:%d Returning error %d sz %d", __func__, __LINE__, EILSEQ,sz);
 		*errnum = EILSEQ;
 
 		u8s[0] = *s++;
@@ -1449,6 +1450,7 @@ collect_a_seq(size_t uv, uchar_t *u8s, uchar_t **source, uchar_t *slast,
 		s++;
 		u8s[1] = '\0';
 	} else if ((s + sz) > slast) {
+		dprintf("%s:%d Returning error %d", __func__, __LINE__, EINVAL);
 		*errnum = EINVAL;
 
 		for (i = 0; s < slast; )
@@ -1938,11 +1940,13 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 
 	if (unicode_version > U8_UNICODE_LATEST) {
 		*errnum = ERANGE;
+		dprintf("%s:%d Returning error %d unicode_version %llu", __func__, __LINE__, ERANGE,unicode_version);
 		return ((size_t)-1);
 	}
 
 	f = flag & (U8_TEXTPREP_TOUPPER | U8_TEXTPREP_TOLOWER);
 	if (f == (U8_TEXTPREP_TOUPPER | U8_TEXTPREP_TOLOWER)) {
+		dprintf("%s:%d Returning error %d flag %d", __func__, __LINE__, EBADF,flag);
 		*errnum = EBADF;
 		return ((size_t)-1);
 	}
@@ -1950,6 +1954,7 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 	f = flag & (U8_CANON_DECOMP | U8_COMPAT_DECOMP | U8_CANON_COMP);
 	if (f && f != U8_TEXTPREP_NFD && f != U8_TEXTPREP_NFC &&
 	    f != U8_TEXTPREP_NFKD && f != U8_TEXTPREP_NFKC) {
+		dprintf("%s:%d Returning error %d flag %d", __func__, __LINE__, EBADF, flag);
 		*errnum = EBADF;
 		return ((size_t)-1);
 	}
@@ -1958,6 +1963,7 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 		return (0);
 
 	if (outarray == NULL) {
+		dprintf("%s:%d Returning error %d", __func__, __LINE__, E2BIG);
 		*errnum = E2BIG;
 		return ((size_t)-1);
 	}
@@ -1990,6 +1996,7 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 
 			if (sz < 0) {
 				if (do_not_ignore_invalid) {
+					dprintf("%s:%d Returning error %d sz %d", __func__, __LINE__, EILSEQ,sz);
 					*errnum = EILSEQ;
 					ret_val = (size_t)-1;
 					break;
@@ -2001,6 +2008,7 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 
 			if (sz == 1) {
 				if (ob >= obtail) {
+					dprintf("%s:%d Returning error %d", __func__, __LINE__, E2BIG);
 					*errnum = E2BIG;
 					ret_val = (size_t)-1;
 					break;
@@ -2016,12 +2024,14 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 				ob++;
 			} else if ((ib + sz) > ibtail) {
 				if (do_not_ignore_invalid) {
+					dprintf("%s:%d Returning error %d", __func__, __LINE__, EINVAL);
 					*errnum = EINVAL;
 					ret_val = (size_t)-1;
 					break;
 				}
 
 				if ((obtail - ob) < (ibtail - ib)) {
+					dprintf("%s:%d Returning error %d", __func__, __LINE__, E2BIG);
 					*errnum = E2BIG;
 					ret_val = (size_t)-1;
 					break;
@@ -2041,6 +2051,7 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 					    ib, sz, is_it_toupper);
 
 					if ((obtail - ob) < i) {
+						dprintf("%s:%d Returning error %d", __func__, __LINE__, E2BIG);
 						*errnum = E2BIG;
 						ret_val = (size_t)-1;
 						break;
@@ -2052,6 +2063,7 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 						*ob++ = u8s[sz];
 				} else {
 					if ((obtail - ob) < sz) {
+						dprintf("%s:%d Returning error %d", __func__, __LINE__, E2BIG);
 						*errnum = E2BIG;
 						ret_val = (size_t)-1;
 						break;
@@ -2085,6 +2097,7 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 			if (U8_ISASCII(*ib) && ((ib + 1) >= ibtail ||
 			    ((ib + 1) < ibtail && U8_ISASCII(*(ib + 1))))) {
 				if (ob >= obtail) {
+					dprintf("%s:%d Returning error %d", __func__, __LINE__, E2BIG);
 					*errnum = E2BIG;
 					ret_val = (size_t)-1;
 					break;
@@ -2117,6 +2130,7 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 				}
 
 				if ((obtail - ob) < j) {
+					dprintf("%s:%d Returning error %d", __func__, __LINE__, E2BIG);
 					*errnum = E2BIG;
 					ret_val = (size_t)-1;
 					break;
@@ -2130,7 +2144,6 @@ u8_textprep_str(char *inarray, size_t *inlen, char *outarray, size_t *outlen,
 
 	*inlen = ibtail - ib;
 	*outlen = obtail - ob;
-
 	return (ret_val);
 }
 

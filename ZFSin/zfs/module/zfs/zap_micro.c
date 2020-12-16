@@ -206,6 +206,7 @@ zap_name_alloc(zap_t *zap, const char *key, matchtype_t mt)
 	} else {
 		if (mt != 0) {
 			zap_name_free(zn);
+			dprintf("%s:%d: Returning null mt:%d\n", __func__, __LINE__, mt);
 			return (NULL);
 		}
 		zn->zn_key_norm = zn->zn_key_orig;
@@ -620,7 +621,7 @@ zap_lockdir(objset_t *os, uint64_t obj, dmu_tx_t *tx,
 
 	int err = dmu_buf_hold(os, obj, 0, tag, &db, DMU_READ_NO_PREFETCH);
 	if (err != 0) {
-		dprintf("%s:%d: Returning %d\n", __func__, __LINE__, err);
+		TraceEvent(5, "%s:%d: Returning %d\n", __func__, __LINE__, err);
 		return (err);
 	}
 #ifdef ZFS_DEBUG
@@ -670,7 +671,7 @@ mzap_upgrade(zap_t **zapp, void *tag, dmu_tx_t *tx, zap_flags_t flags)
 		}
 	}
 
-	dprintf("upgrading obj=%llu with %u chunks\n",
+	dprintf("%s:%d upgrading obj=%llu with %u chunks\n", __func__, __LINE__,
 	    zap->zap_object, nchunks);
 	/* XXX destroy the avl later, so we can use the stored hash value */
 	mze_destroy(zap);
@@ -681,7 +682,7 @@ mzap_upgrade(zap_t **zapp, void *tag, dmu_tx_t *tx, zap_flags_t flags)
 		mzap_ent_phys_t *mze = &mzp->mz_chunk[i];
 		if (mze->mze_name[0] == 0)
 			continue;
-		dprintf("adding %s=%llu\n",
+		dprintf("%s:%d adding %s=%llu\n", __func__, __LINE__,
 		    mze->mze_name, mze->mze_value);
 		zap_name_t *zn = zap_name_alloc(zap, mze->mze_name, 0);
 		/* If we fail here, we would end up losing entries */
@@ -805,8 +806,10 @@ zap_create_claim_norm_dnsize(objset_t *os, uint64_t obj, int normflags,
 		return (error);
 
 	error = dnode_hold(os, obj, FTAG, &dn);
-	if (error != 0)
+	if (error != 0) {
+		dprintf("%s:%d:  Returning error %d\n", __func__, __LINE__, error);
 		return (error);
+	}
 
 	mzap_create_impl(dn, normflags, 0, tx);
 

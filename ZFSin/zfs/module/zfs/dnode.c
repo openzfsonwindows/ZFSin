@@ -1826,6 +1826,7 @@ dnode_set_blksz(dnode_t *dn, uint64_t size, int ibs, dmu_tx_t *tx)
 
 fail:
 	rw_exit(&dn->dn_struct_rwlock);
+
 	return (SET_ERROR(ENOTSUP));
 }
 

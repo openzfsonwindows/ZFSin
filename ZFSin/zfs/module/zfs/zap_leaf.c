@@ -589,8 +589,10 @@ zap_entry_create(zap_leaf_t *l, zap_name_t *zn, uint32_t cd,
 
 	int numchunks = 1 + ZAP_LEAF_ARRAY_NCHUNKS(zn->zn_key_orig_numints *
 	    zn->zn_key_intlen) + ZAP_LEAF_ARRAY_NCHUNKS(valuelen);
-	if (numchunks > ZAP_LEAF_NUMCHUNKS(l))
+	if (numchunks > ZAP_LEAF_NUMCHUNKS(l)) {
+		dprintf("%s:%d: Returning error %d numchunks %d\n", __func__, __LINE__, E2BIG,numchunks);
 		return (E2BIG);
+	}
 
 	if (cd == ZAP_NEED_CD) {
 		/* find the lowest unused cd */
@@ -630,8 +632,10 @@ zap_entry_create(zap_leaf_t *l, zap_name_t *zn, uint32_t cd,
 		ASSERT3U(cd, <, zap_maxcd(zn->zn_zap));
 	}
 
-	if (zap_leaf_phys(l)->l_hdr.lh_nfree < numchunks)
+	if (zap_leaf_phys(l)->l_hdr.lh_nfree < numchunks) {
+		TraceEvent(8,"%s:%d: Returning error %d\n", __func__, __LINE__, EAGAIN);
 		return (SET_ERROR(EAGAIN));
+	}
 
 	/* make the entry */
 	chunk = zap_leaf_chunk_alloc(l);
