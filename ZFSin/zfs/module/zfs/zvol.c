@@ -185,11 +185,15 @@ zvol_size_changed(zvol_state_t *zv, uint64_t volsize)
 int
 zvol_check_volsize(uint64_t volsize, uint64_t blocksize)
 {
-	if (volsize == 0)
+	if (volsize == 0) {
+		dprintf("%s:%d: Returning error %d\n", __func__, __LINE__, EINVAL);
 		return (EINVAL);
+	}
 
-	if (volsize % blocksize != 0)
+	if (volsize % blocksize != 0) {
+		dprintf("%s:%d: volsize: %llu blocksize: %llu, Returning error %d\n", __func__, __LINE__, volsize, blocksize, EINVAL);
 		return (EINVAL);
+	}
 
 #ifdef _ILP32XXX
 	if (volsize - 1 > SPEC_MAXOFFSET_T)
@@ -202,9 +206,11 @@ int
 zvol_check_volblocksize(uint64_t volblocksize)
 {
 	if (volblocksize < SPA_MINBLOCKSIZE ||
-	    volblocksize > SPA_MAXBLOCKSIZE ||
-	    !ISP2(volblocksize))
+		volblocksize > SPA_MAXBLOCKSIZE ||
+		!ISP2(volblocksize)) {
+		dprintf("%s:%d: volblocksize: %llu, Returning %d \n", __func__, __LINE__, volblocksize, EDOM);
 		return (EDOM);
+	}
 
 	return (0);
 }

@@ -2974,6 +2974,7 @@ zfs_ioc_set_prop(zfs_cmd_t *zc)
 
 	nvlist_free(errors);
 	nvlist_free(nvl);
+	dprintf("%s:%d: zfs set Returning %d\n", __func__, __LINE__, error);
 	return (error);
 }
 
@@ -3244,8 +3245,10 @@ zfs_fill_zplprops_impl(objset_t *os, uint64_t zplver,
 	ASSERT(zplprops != NULL);
 
 	/* parent dataset must be a filesystem */
-	if (os != NULL && os->os_phys->os_type != DMU_OST_ZFS)
+	if (os != NULL && os->os_phys->os_type != DMU_OST_ZFS) {
+		dprintf("%s:%d: Returning error %d \n", __func__, __LINE__, ZFS_ERR_WRONG_PARENT);
 		return (SET_ERROR(ZFS_ERR_WRONG_PARENT));
+	}
 
 	/*
 	 * Pull out creator prop choices, if any.
@@ -3274,12 +3277,14 @@ zfs_fill_zplprops_impl(objset_t *os, uint64_t zplver,
 	 * error out.
 	 */
 	if ((zplver < ZPL_VERSION_INITIAL || zplver > ZPL_VERSION) ||
-	    (zplver >= ZPL_VERSION_FUID && !fuids_ok) ||
-	    (zplver >= ZPL_VERSION_SA && !sa_ok) ||
-	    (zplver < ZPL_VERSION_NORMALIZATION &&
-		 (norm != ZFS_PROP_UNDEFINED || u8 != ZFS_PROP_UNDEFINED ||
-		  sense != ZFS_PROP_UNDEFINED)))
+		(zplver >= ZPL_VERSION_FUID && !fuids_ok) ||
+		(zplver >= ZPL_VERSION_SA && !sa_ok) ||
+		(zplver < ZPL_VERSION_NORMALIZATION &&
+		(norm != ZFS_PROP_UNDEFINED || u8 != ZFS_PROP_UNDEFINED ||
+			sense != ZFS_PROP_UNDEFINED))) {
+		dprintf("%s:%d: Returning error %d \n", __func__, __LINE__, ENOTSUP);
 		return (SET_ERROR(ENOTSUP));
+	}
 
 	/*
 	 * Put the version in the zplprops
@@ -3288,8 +3293,11 @@ zfs_fill_zplprops_impl(objset_t *os, uint64_t zplver,
 							 zfs_prop_to_name(ZFS_PROP_VERSION), zplver) == 0);
 
 	if (norm == ZFS_PROP_UNDEFINED &&
-	    (error = zfs_get_zplprop(os, ZFS_PROP_NORMALIZE, &norm)) != 0)
+		(error = zfs_get_zplprop(os, ZFS_PROP_NORMALIZE, &norm)) != 0) {
+		dprintf("%s:%d: Returning error %d \n", __func__, __LINE__, error);
 		return (error);
+	}
+
 	VERIFY(nvlist_add_uint64(zplprops,
 							 zfs_prop_to_name(ZFS_PROP_NORMALIZE), norm) == 0);
 
@@ -3299,14 +3307,19 @@ zfs_fill_zplprops_impl(objset_t *os, uint64_t zplver,
 	if (norm)
 		u8 = 1;
 	if (u8 == ZFS_PROP_UNDEFINED &&
-	    (error = zfs_get_zplprop(os, ZFS_PROP_UTF8ONLY, &u8)) != 0)
+		(error = zfs_get_zplprop(os, ZFS_PROP_UTF8ONLY, &u8)) != 0) {
+		dprintf("%s:%d: Returning error %d \n", __func__, __LINE__, error);
 		return (error);
+	}
 	VERIFY(nvlist_add_uint64(zplprops,
 							 zfs_prop_to_name(ZFS_PROP_UTF8ONLY), u8) == 0);
 
 	if (sense == ZFS_PROP_UNDEFINED &&
-	    (error = zfs_get_zplprop(os, ZFS_PROP_CASE, &sense)) != 0)
+		(error = zfs_get_zplprop(os, ZFS_PROP_CASE, &sense)) != 0) {
+		dprintf("%s:%d: Returning error %d \n", __func__, __LINE__, error);
 		return (error);
+	}
+
 	VERIFY(nvlist_add_uint64(zplprops,
 							 zfs_prop_to_name(ZFS_PROP_CASE), sense) == 0);
 
@@ -3420,27 +3433,38 @@ zfs_ioc_create(const char *fsname, nvlist_t *innvl, nvlist_t *outnvl)
 		break;
 	}
 	if (strchr(fsname, '@') ||
-	    strchr(fsname, '%'))
+		strchr(fsname, '%')) {
+		dprintf("%s:%d: fsname:%s, Returning error = %d\n", __func__, __LINE__, fsname, EINVAL);
 		return (SET_ERROR(EINVAL));
+	}
 
 	zct.zct_props = nvprops;
 
-	if (cbfunc == NULL)
+	if (cbfunc == NULL) {
+		dprintf("%s:%d: Returning error = %d\n", __func__, __LINE__, EINVAL);
 		return (SET_ERROR(EINVAL));
+	}
 
 	if (type == DMU_OST_ZVOL) {
 		uint64_t volsize, volblocksize;
 
-		if (nvprops == NULL)
+		if (nvprops == NULL) {
+			dprintf("%s:%d: Returning error = %d\n", __func__, __LINE__, EINVAL);
 			return (SET_ERROR(EINVAL));
+		}
+
 		if (nvlist_lookup_uint64(nvprops,
-								 zfs_prop_to_name(ZFS_PROP_VOLSIZE), &volsize) != 0)
+			zfs_prop_to_name(ZFS_PROP_VOLSIZE), &volsize) != 0) {
+			dprintf("%s:%d: Returning error = %d\n", __func__, __LINE__, EINVAL);
 			return (SET_ERROR(EINVAL));
+		}
 
 		if ((error = nvlist_lookup_uint64(nvprops,
-										  zfs_prop_to_name(ZFS_PROP_VOLBLOCKSIZE),
-										  &volblocksize)) != 0 && error != ENOENT)
+			zfs_prop_to_name(ZFS_PROP_VOLBLOCKSIZE),
+			&volblocksize)) != 0 && error != ENOENT) {
+			dprintf("%s:%d: Returning error = %d\n", __func__, __LINE__, EINVAL);
 			return (SET_ERROR(EINVAL));
+		}
 
 		if (error != 0)
 			volblocksize = zfs_prop_default_numeric(
@@ -3503,6 +3527,7 @@ zfs_ioc_create(const char *fsname, nvlist_t *innvl, nvlist_t *outnvl)
 #endif
 	}
 
+	dprintf("%s:%d: Returning %d\n", __func__, __LINE__, error);
 	return (error);
 }
 
@@ -3718,8 +3743,10 @@ zfs_unmount_snap(const char *snapname)
 		return (0);
 
 	//err = zfsctl_snapshot_unmount((char *)snapname, MNT_FORCE);
-	if (err != 0 && err != ENOENT)
+	if (err != 0 && err != ENOENT) {
+		dprintf("%s:%d: Returning error %d\n", __func__, __LINE__,err);
 		return (SET_ERROR(err));
+	}
 
 	return 0;
 }
@@ -4030,6 +4057,8 @@ zfs_ioc_destroy(zfs_cmd_t *zc)
 		}
 #endif
 	}
+
+	dprintf("%s:%d: Returning %d \n", __func__, __LINE__, err);
 	return (err);
 }
 

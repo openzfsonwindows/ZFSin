@@ -768,11 +768,14 @@ fzap_checksize(uint64_t integer_size, uint64_t num_integers)
 	case 8:
 		break;
 	default:
+		TraceEvent(5,"%s:%d: Returning error %d\n", __func__, __LINE__, EINVAL);
 		return (SET_ERROR(EINVAL));
 	}
 
-	if (integer_size * num_integers > ZAP_MAXVALUELEN)
+	if (integer_size * num_integers > ZAP_MAXVALUELEN) {
+		dprintf("%s:%d: Integer_size:%llu, num_integer:%llu, Returning %d \n", __func__, __LINE__, integer_size,num_integers, E2BIG);
 		return (E2BIG);
+	}
 
 	return (0);
 }

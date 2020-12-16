@@ -701,11 +701,14 @@ dmu_objset_own_impl(dsl_dataset_t *ds, dmu_objset_type_t type,
 	if (err != 0) {
 		return (err);
 	} else if (type != DMU_OST_ANY && type != (*osp)->os_phys->os_type) {
+		dprintf("%s:%d: Returning error %d\n", __func__, __LINE__, EINVAL);
 		return (SET_ERROR(EINVAL));
 	} else if (!readonly && dsl_dataset_is_snapshot(ds)) {
+		dprintf("%s:%d: Returning error %d\n", __func__, __LINE__, EROFS);
 		return (SET_ERROR(EROFS));
 	} else if (!readonly && decrypt &&
 	    dsl_dir_incompatible_encryption_version(ds->ds_dir)) {
+		dprintf("%s:%d: Returning error %d\n", __func__, __LINE__, EROFS);
 		return (SET_ERROR(EROFS));
 	}
 

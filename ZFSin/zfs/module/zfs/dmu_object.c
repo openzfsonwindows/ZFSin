@@ -284,18 +284,23 @@ dmu_object_claim_dnsize(objset_t *os, uint64_t object, dmu_object_type_t ot,
 	ASSERT3S(dn_slots, >=, DNODE_MIN_SLOTS);
 	ASSERT3S(dn_slots, <=, DNODE_MAX_SLOTS);
 
-	if (object == DMU_META_DNODE_OBJECT && !dmu_tx_private_ok(tx))
+	if (object == DMU_META_DNODE_OBJECT && !dmu_tx_private_ok(tx)) {
+		dprintf("%s:%d:  returning error %d\n", __func__, __LINE__, EBADF);
 		return (SET_ERROR(EBADF));
+	}
 
 	err = dnode_hold_impl(os, object, DNODE_MUST_BE_FREE, dn_slots,
 	    FTAG, &dn);
-	if (err)
+	if (err) {
+		dprintf("%s:%d:  returning error %d\n", __func__, __LINE__, err);
 		return (err);
+	}
+
 	dnode_allocate(dn, ot, blocksize, 0, bonustype, bonuslen, dn_slots, tx);
 	dmu_tx_add_new_object(tx, dn);
 
 	dnode_rele(dn, FTAG);
-
+	TraceEvent(8, "%s:%d: Returning 0\n", __func__, __LINE__);
 	return (0);
 }
 
