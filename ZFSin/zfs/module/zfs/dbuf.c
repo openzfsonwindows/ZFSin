@@ -3204,7 +3204,7 @@ dbuf_hold_impl(dnode_t *dn, uint8_t level, uint64_t blkid, boolean_t fail_sparse
 	kmem_free(dh, sizeof (struct dbuf_hold_impl_data) *
 	    DBUF_HOLD_IMPL_MAX_DEPTH);
 
-	TraceEvent(5, "%s:%d: Returning %d\n", __func__, __LINE__, error);
+	TraceEvent(8, "%s:%d: Returning %d\n", __func__, __LINE__, error);
 	return (error);
 }
 

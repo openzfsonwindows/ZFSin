@@ -2367,7 +2367,7 @@ zvol_write(zvol_state_t *zv, uio_t *uio, int flags)
 	if (uio_offset(uio) >= volsize)
 		return (EIO);
 
-	TraceEvent(TRACE_VERBOSE,"%s:%d: zvol_write_iokit(offset "
+	TraceEvent(TRACE_NOISY,"%s:%d: zvol_write_iokit(offset "
 	    "0x%llx bytes 0x%llx)\n", __func__, __LINE__, uio_offset(uio), uio_resid(uio));
 
 	sync = (flags & ZVOL_WRITE_SYNC) ||
