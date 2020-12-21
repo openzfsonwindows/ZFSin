@@ -828,10 +828,7 @@ fzap_lookup(zap_name_t *zn,
 	}
 
 	zap_put_leaf(l);
-	if (err)
-		dprintf("%s:%d: Returning err = %d\n", __func__, __LINE__, err);
-	else
-		TraceEvent(8, "%s:%d: Returning err = %d\n", __func__, __LINE__, err);
+	TraceEvent(5, "%s:%d: Returning err = %d\n", __func__, __LINE__, err);
 	return (err);
 }
 
