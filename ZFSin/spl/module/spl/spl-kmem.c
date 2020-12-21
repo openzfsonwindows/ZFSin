@@ -3358,7 +3358,7 @@ kmem_cache_stat(kmem_cache_t *cp, char *name)
 
 // TRUE if we have more than a critical minimum of memory
 // used in arc_memory_throttle; if FALSE, we throttle
-static inline boolean_t
+boolean_t
 spl_minimal_physmem_p_logic()
 {
 	// Are we using more than ZFS has?

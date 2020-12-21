@@ -154,6 +154,7 @@ typedef struct osx_kstat {
 	kstat_named_t zfs_vdev_initialize_value;
 	kstat_named_t zfs_autoimport_disable;
 	kstat_named_t metaslab_unload_delay;
+	kstat_named_t zfs_total_memory_limit;
 } osx_kstat_t;
 
 
