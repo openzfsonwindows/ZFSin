@@ -184,6 +184,7 @@ osx_kstat_t osx_kstat = {
 	{ "zfs_vdev_initialize_value",		KSTAT_DATA_UINT64 },
 	{ "zfs_autoimport_disable",		KSTAT_DATA_UINT64 },
 	{ "metaslab_unload_delay",		KSTAT_DATA_UINT64 },	
+	{ "zfs_total_memory_limit",		KSTAT_DATA_UINT64 },
 };
 
 
