@@ -161,19 +161,18 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <AdditionalIncludeDirectories>$(SolutionDir)\ZFSin;$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>WPPFILE="%(Filename).tmh";_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
+      <PreprocessorDefinitions>RUN_WPP;WPPFILE="%(Filename).tmh";_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
       <StructMemberAlignment>8Bytes</StructMemberAlignment>
       <RuntimeLibrary>
       </RuntimeLibrary>
       <DisableSpecificWarnings>4018;4100;4146;4152;4200;4201;4204;4210;4211;4242;4244;4389;4706;%(DisableSpecificWarnings)</DisableSpecificWarnings>
-      <WppEnabled>false</WppEnabled>
+      <WppEnabled>true</WppEnabled>
       <WppTraceFunction>TraceEvent{FLAGS=MYDRIVER_ALL_INFO}(LEVEL, MSG, ...);dprintf{FLAGS=MYDRIVER_ALL_INFO, LEVEL=TRACE_INFO}(MSG, ...);</WppTraceFunction>
       <WppGenerateUsingTemplateFile>{km-default.tpl}*.tmh</WppGenerateUsingTemplateFile>
       <WppScanConfigurationData>$(KMDF_INC_PATH)$(KMDF_VER_PATH)\WdfTraceEnums.h</WppScanConfigurationData>
       <WppPreprocessorDefinitions>WPP_INLINE __inline</WppPreprocessorDefinitions>
-      <UndefinePreprocessorDefinitions>RUN_WPP</UndefinePreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
