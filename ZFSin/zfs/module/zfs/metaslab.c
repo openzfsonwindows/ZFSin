@@ -848,9 +848,10 @@ metaslab_group_passivate(metaslab_group_t *mg)
 	mg->mg_prev = NULL;
 	mg->mg_next = NULL;
 	if (mg->mg_kstat != NULL) {
-		metaslab_group_kstat_t* data = mg->mg_kstat->ks_data;
+		kmem_free(mg->mg_kstat->ks_data, sizeof(metaslab_group_kstat_t));
+		mg->mg_kstat->ks_data = NULL;
 		kstat_delete(mg->mg_kstat);
-		kmem_free(data, sizeof(metaslab_group_kstat_t));
+		mg->mg_kstat = NULL;
 	}
 	mutex_destroy(&mg->mg_kstat_lock);
 }
