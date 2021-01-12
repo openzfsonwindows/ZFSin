@@ -19,7 +19,7 @@ enum {
 struct cv {
 	KEVENT kevent[CV_MAX_EVENTS]; // signal event, broadcast event
 	KSPIN_LOCK waiters_count_lock;
-	uint32_t waiters_count;
+	volatile uint32_t waiters_count;
 	uint32_t initialised; // Just used as sanity
 };
 

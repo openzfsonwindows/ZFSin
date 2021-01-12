@@ -121,6 +121,14 @@ spl_cv_wait(kcondvar_t *cvp, kmutex_t *mp, int flags, const char *msg)
 	void *locks[CV_MAX_EVENTS] = { &cvp->kevent[CV_SIGNAL], &cvp->kevent[CV_BROADCAST] };
 	result = KeWaitForMultipleObjects(2, locks, WaitAny, Executive, KernelMode, FALSE, NULL, NULL);
 
+	/*
+	 * Moved this above waiters_count == 1 check to avoid the
+	 * possibility of this thread wrongly detecting this is the
+	 * only thread waiting for the event while there could be another
+	 * thread that aquired the mutex and is about to increment the
+	 * 'waiters_count' a few lines above in this function.
+	 */
+	mutex_enter(mp);
 //	KeAcquireSpinLock(&cvp->waiters_count_lock, &oldIrq);
 	// If last listener, clear BROADCAST event. (Even if it was SIGNAL
 	// overclearing will not hurt?)
@@ -137,7 +145,6 @@ spl_cv_wait(kcondvar_t *cvp, kmutex_t *mp, int flags, const char *msg)
 	//if (last_waiter)
 	//	KeClearEvent(&cvp->kevent[CV_BROADCAST]);
 
-	mutex_enter(mp);
 
 #ifdef SPL_DEBUG_MUTEX
 	spl_wdlist_settime(mp->leak, gethrestime_sec());
