@@ -320,7 +320,7 @@ static uint32_t vmem_id;
 static uint32_t vmem_populators;
 static vmem_seg_t vmem_seg0[VMEM_SEG_INITIAL];
 static vmem_seg_t *vmem_segfree;
-static kmutex_t vmem_list_lock;
+kmutex_t vmem_list_lock;
 static kmutex_t vmem_segfree_lock;
 static kmutex_t vmem_sleep_lock;
 static kmutex_t vmem_nosleep_lock;
@@ -342,9 +342,10 @@ vmem_t *spl_heap_arena;
 static void *spl_heap_arena_initial_alloc;
 static uint32_t spl_heap_arena_initial_alloc_size = 0;
 #define NUMBER_OF_ARENAS_IN_VMEM_INIT 21
-//static struct timespec	vmem_update_interval	= {15, 0};	/* vmem_update() every 15 seconds */
+static struct timespec	vmem_update_interval	= {60, 0};	/* vmem_update() every 60 seconds */
 uint32_t vmem_mtbf;		/* mean time between failures [default: off] */
 uint32_t vmem_seg_size = sizeof (vmem_seg_t);
+volatile boolean_t hash_rescale_exit = FALSE;
 
 // must match with include/sys/vmem_impl.h
 static vmem_kstat_t vmem_kstat_template = {
@@ -2127,9 +2128,12 @@ vmem_destroy(vmem_t *vmp)
 			   vmp->vm_name, leaked, (vmp->vm_cflags & VMC_IDENTIFIER) ?
 			   "identifiers" : "bytes");
 
-	if (vmp->vm_hash_table != vmp->vm_hash0)
-		vmem_free(vmem_hash_arena, vmp->vm_hash_table,
-		    (vmp->vm_hash_mask + 1) * sizeof (void *));
+	if (vmp->vm_hash_table != vmp->vm_hash0) {
+		if(vmem_hash_arena != NULL) {
+			vmem_free(vmem_hash_arena, vmp->vm_hash_table,
+			    (vmp->vm_hash_mask + 1) * sizeof (void *));
+		}
+	}
 
 	/*
 	 * Give back the segment structures for anything that's left in the
@@ -2176,10 +2180,13 @@ vmem_destroy_internal(vmem_t *vmp)
 			   vmp->vm_name, leaked, (vmp->vm_cflags & VMC_IDENTIFIER) ?
 			   "identifiers" : "bytes");
 
-	if (vmp->vm_hash_table != vmp->vm_hash0)
-	  if(vmem_hash_arena != NULL)
-		vmem_free(vmem_hash_arena, vmp->vm_hash_table,
-		    (vmp->vm_hash_mask + 1) * sizeof (void *));
+	if (vmp->vm_hash_table != vmp->vm_hash0) {
+		if(vmem_hash_arena != NULL) {
+			vmem_free(vmem_hash_arena, vmp->vm_hash_table,
+			    (vmp->vm_hash_mask + 1) * sizeof (void *));
+		}
+	}
+
 
 	/*
 	 * Give back the segment structures for anything that's left in the
@@ -2275,9 +2282,16 @@ void
 vmem_update(void *dummy)
 {
 	vmem_t *vmp;
+	static struct bsd_timeout_wrapper vmem_update_tm;
+
+	if (hash_rescale_exit == TRUE)
+		return;
 
 	mutex_enter(&vmem_list_lock);
 	for (vmp = vmem_list; vmp != NULL; vmp = vmp->vm_next) {
+		if (hash_rescale_exit == TRUE) {
+			break;
+		}
 		/*
 		 * If threads are waiting for resources, wake them up
 		 * periodically so they can issue another kmem_reap()
@@ -2292,7 +2306,9 @@ vmem_update(void *dummy)
 	}
 	mutex_exit(&vmem_list_lock);
 
-//	(void) bsd_timeout(vmem_update, dummy, &vmem_update_interval);
+
+	if (hash_rescale_exit == FALSE)
+		(void) bsd_timeout(vmem_update, &vmem_update_tm, &vmem_update_interval);
 }
 
 void
