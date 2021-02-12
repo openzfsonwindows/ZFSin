@@ -529,6 +529,7 @@
     <ClCompile Include="zfs\module\zfs\zvol.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="resource.h" />
     <ClInclude Include="zfs\include\sys\abd.h" />
     <ClInclude Include="zfs\include\sys\aggsum.h" />
     <ClInclude Include="zfs\include\sys\arc.h" />
@@ -696,6 +697,9 @@
   <ItemGroup>
     <None Include="..\README.md" />
     <None Include="..\Testing.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Resource.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -162,10 +162,12 @@
     <ClCompile Include="zfsinstaller.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="resource.h" />
     <ClInclude Include="zfsinstaller.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\ZFSin\zfs\resources\resources.rc" />
+    <ResourceCompile Include="Resource.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
