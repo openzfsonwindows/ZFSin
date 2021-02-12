@@ -25,6 +25,7 @@
   <ItemGroup>
     <ClInclude Include="..\zfs_iter.h" />
     <ClInclude Include="..\zfs_util.h" />
+    <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\lib\libnvpair\libnvpair\libnvpair.vcxproj">
@@ -48,6 +49,7 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\..\resources\resources.rc" />
+    <ResourceCompile Include="Resource.rc" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{D923B8A4-5161-4E28-9E69-D3193114DAC4}</ProjectGuid>

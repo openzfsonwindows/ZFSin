@@ -43,6 +43,10 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\..\resources\resources.rc" />
+    <ResourceCompile Include="Resource.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>

@@ -26,6 +26,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\zpool_util.h" />
+    <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\lib\libnvpair\libnvpair\libnvpair.vcxproj">
@@ -49,6 +50,7 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\..\resources\resources.rc" />
+    <ResourceCompile Include="Resource.rc" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{D588961B-6501-4259-AC02-EAD1B465EF89}</ProjectGuid>

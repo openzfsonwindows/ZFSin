@@ -23,6 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="kstat.h" />
+    <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\lib\libkstat\libkstat.vcxproj">
@@ -31,6 +32,7 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\resources\resources.rc" />
+    <ResourceCompile Include="Resource.rc" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
