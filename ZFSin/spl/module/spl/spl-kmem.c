@@ -130,6 +130,8 @@ static const char *KMEM_VA_PREFIX = "kmem_va";
 static const char *KMEM_MAGAZINE_PREFIX = "kmem_magazine_";
 
 static char kext_version[64] = SPL_META_VERSION "-" SPL_META_RELEASE SPL_DEBUG_STR;
+extern boolean_t hash_rescale_exit;
+extern kmutex_t vmem_list_lock;
 
 //struct sysctl_oid_list sysctl__spl_children;
 //SYSCTL_DECL(_spl);
@@ -5448,6 +5450,9 @@ spl_kmem_thread_fini(void)
 	dprintf("SPL: spl_free_thread stop: destroying cv and mutex\n");
 	cv_destroy(&spl_free_thread_cv);
 	mutex_destroy(&spl_free_thread_lock);
+	mutex_enter(&vmem_list_lock);
+	hash_rescale_exit = TRUE;
+	mutex_exit(&vmem_list_lock);
 
 	dprintf("SPL: bsd_untimeout\n");
 
