@@ -33,6 +33,7 @@ extern "C" {
 #include <sys/zfs_context.h>
 #include <sys/crypto/common.h>
 #include <sys/crypto/impl.h>
+#include <sys/crypto/aes_gcm.h>
 
 #define	ECB_MODE			0x00000002
 #define	CBC_MODE			0x00000004
@@ -211,6 +212,15 @@ typedef struct gcm_ctx {
 	int gcm_kmflag;
 } gcm_ctx_t;
 
+typedef struct gcm_ctx_avx {
+	struct gcm_key_data gkey;
+	struct gcm_context_data gctx;
+} gcm_ctx_avx_t;
+
+typedef enum avx_crypt_type {
+	DECRYPT,
+	ENCRYPT
+} avx_crypt_type_t;
 #define	gcm_keysched		gcm_common.cc_keysched
 #define	gcm_keysched_len	gcm_common.cc_keysched_len
 #define	gcm_cb			gcm_common.cc_iv
@@ -230,6 +240,7 @@ typedef struct aes_ctx {
 		ctr_ctx_t acu_ctr;
 		ccm_ctx_t acu_ccm;
 		gcm_ctx_t acu_gcm;
+		gcm_ctx_avx_t acu_gcm_avx;
 	} acu;
 } aes_ctx_t;
 
