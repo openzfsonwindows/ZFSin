@@ -35,10 +35,12 @@
 #include <sys/modctl.h>
 #define	_AES_IMPL
 #include <aes/aes_impl.h>
+#include <immintrin.h>
 
 #define	CRYPTO_PROVIDER_NAME "aes"
 
 extern struct mod_ops mod_cryptoops;
+static int cpu_avx_supported = 0;
 
 /*
  * Module linkage information for the kernel.
@@ -149,6 +151,25 @@ static int aes_create_ctx_template(crypto_provider_handle_t,
     size_t *, crypto_req_handle_t);
 static int aes_free_context(crypto_ctx_t *);
 
+int crypto_update_uio_avx(boolean_t encrypt, void *ctx, crypto_data_t *input, crypto_data_t *output);
+
+static int aes_init_ctx_avx(aes_ctx_t *aes_ctx, crypto_mechanism_t *mechanism,
+	crypto_key_t *key);
+int
+gcm_crypt_final_avx(boolean_t encrypt, gcm_ctx_avx_t *gcm_ctx, crypto_data_t *out);
+static int
+aes_decrypt_atomic_avx(crypto_provider_handle_t provider,
+    crypto_session_id_t session_id, crypto_mechanism_t *mechanism,
+    crypto_key_t *key, crypto_data_t *ciphertext, crypto_data_t *plaintext,
+    crypto_spi_ctx_template_t template, crypto_req_handle_t req);
+static int
+aes_encrypt_atomic_avx(crypto_provider_handle_t provider,
+    crypto_session_id_t session_id, crypto_mechanism_t *mechanism,
+    crypto_key_t *key, crypto_data_t *plaintext, crypto_data_t *ciphertext,
+    crypto_spi_ctx_template_t template, crypto_req_handle_t req);
+extern void aes_keyexp_256(uint8_t* key, uint8_t *ekey, uint8_t *tkey);
+extern void aes_gcm_precomp_256(struct gcm_key_data *data);
+int cpu_supports_avx();
 
 
 static crypto_cipher_ops_t aes_cipher_ops = {
@@ -233,7 +254,7 @@ aes_mod_init(void)
 		(void) mod_remove(&modlinkage);
 		return (EACCES);
 	}
-
+	cpu_avx_supported = cpu_supports_avx();
 	return (0);
 }
 
@@ -956,6 +977,10 @@ aes_encrypt_atomic(crypto_provider_handle_t provider,
     crypto_key_t *key, crypto_data_t *plaintext, crypto_data_t *ciphertext,
     crypto_spi_ctx_template_t template, crypto_req_handle_t req)
 {
+	if(cpu_avx_supported) {
+		return(aes_encrypt_atomic_avx(provider, session_id, mechanism,
+			key, plaintext, ciphertext, template, req));
+	}
 	aes_ctx_t aes_ctx;	/* on the stack */
 	off_t saved_offset;
 	size_t saved_length;
@@ -988,7 +1013,6 @@ aes_encrypt_atomic(crypto_provider_handle_t provider,
 	    crypto_kmflag(req), B_TRUE);
 	if (ret != CRYPTO_SUCCESS)
 		return (ret);
-
 	switch (mechanism->cm_type) {
 	case AES_CCM_MECH_INFO_TYPE:
 		length_needed = plaintext->cd_length + aes_ctx.ac_mac_len;
@@ -1082,6 +1106,10 @@ aes_decrypt_atomic(crypto_provider_handle_t provider,
     crypto_key_t *key, crypto_data_t *ciphertext, crypto_data_t *plaintext,
     crypto_spi_ctx_template_t template, crypto_req_handle_t req)
 {
+	if(cpu_avx_supported) {
+		return(aes_decrypt_atomic_avx(provider, session_id, mechanism,
+			key, ciphertext, plaintext, template, req));
+	}
 	aes_ctx_t aes_ctx;	/* on the stack */
 	off_t saved_offset;
 	size_t saved_length;
@@ -1114,7 +1142,6 @@ aes_decrypt_atomic(crypto_provider_handle_t provider,
 	    crypto_kmflag(req), B_FALSE);
 	if (ret != CRYPTO_SUCCESS)
 		return (ret);
-
 	switch (mechanism->cm_type) {
 	case AES_CCM_MECH_INFO_TYPE:
 		length_needed = aes_ctx.ac_data_len;
@@ -1456,4 +1483,242 @@ aes_mac_verify_atomic(crypto_provider_handle_t provider,
 
 	return (aes_decrypt_atomic(provider, session_id, &gcm_mech,
 	    key, mac, &null_crypto_data, template, req));
+}
+
+int
+crypto_update_uio_avx(avx_crypt_type_t encrypt, void *ctx, crypto_data_t *input,
+	crypto_data_t *output)
+{
+	common_ctx_t *common_ctx = ctx;
+	uio_t *uiop = input->cd_uio;
+	uio_t *ciop = output->cd_uio;
+	off_t offset = input->cd_offset;
+	size_t length = input->cd_length;
+	uint_t vec_idx;
+	size_t cur_len;
+	user_addr_t iov_base = 0ULL, ciov_base = 0ULL;
+	user_size_t iov_len, ciov_len;
+	void *iov_or_mp;
+	gcm_ctx_avx_t *gcm = (gcm_ctx_avx_t *)ctx;
+
+	if (input->cd_miscdata != NULL) {
+		aes_copy_block64((uint8_t *)input->cd_miscdata,
+		    &common_ctx->cc_iv[0]);
+	}
+
+	if (uio_isuserspace(uiop)) {
+		return (CRYPTO_ARGUMENTS_BAD);
+	}
+
+	/*
+	 * Jump to the first iovec containing data to be
+	 * processed.
+	 */
+	for (vec_idx = 0;
+		 !uio_getiov(uiop, vec_idx, NULL, &iov_len) &&
+			 vec_idx < uio_iovcnt(uiop) &&
+			 offset >= iov_len;
+		 offset -= iov_len, vec_idx++)
+		;
+
+	if (vec_idx == uio_iovcnt(uiop) && length > 0) {
+		/*
+		 * The caller specified an offset that is larger than
+		 * the total size of the buffers it provided.
+		 */
+		return (CRYPTO_DATA_LEN_RANGE);
+	}
+
+	/*
+	 * Now process the iovecs.
+	 */
+
+	while (vec_idx < uio_iovcnt(uiop) && length > 0) {
+
+		VERIFY(uio_getiov(uiop, vec_idx, &iov_base, &iov_len) == 0);
+
+		cur_len = MIN(iov_len - offset, length);
+
+		if (encrypt) {
+			VERIFY(uio_getiov(ciop, vec_idx, &ciov_base, &ciov_len) == 0);
+			VERIFY(iov_len == ciov_len);
+			aes_gcm_enc_256_update(&gcm->gkey, &gcm->gctx,
+				(uint8_t *)((uint64_t)(ciov_base)+offset),
+				(const uint8_t *)((uint64_t)(iov_base)+offset), cur_len);
+		}
+		else {
+			if(uio_getiov(ciop, vec_idx, &ciov_base, &ciov_len) == 0) {
+				VERIFY(iov_len == ciov_len);
+				aes_gcm_dec_256_update(&gcm->gkey, &gcm->gctx,
+					(uint8_t *)((uint64_t)(ciov_base)+offset),
+					(const uint8_t *)((uint64_t)(iov_base)+offset),
+					cur_len);
+			}
+		}
+
+		length -= cur_len;
+		vec_idx++;
+		offset = 0;
+	}
+
+	if (vec_idx == uio_iovcnt(uiop) && length > 0) {
+		/*
+		 * The end of the specified iovec's was reached but
+		 * the length requested could not be processed, i.e.
+		 * The caller requested to digest more data than it provided.
+		 */
+
+		return (CRYPTO_DATA_LEN_RANGE);
+	}
+
+	return (CRYPTO_SUCCESS);
+
+
+	return (0);
+}
+
+void aes_gcm_pre_256(const void* key, struct gcm_key_data* key_data)
+{
+	uint8_t tmp_exp_key[GCM_ENC_KEY_LEN * GCM_KEY_SETS];
+	aes_keyexp_256((uint8_t*)key, (uint8_t*)key_data->expanded_keys, tmp_exp_key);
+	aes_gcm_precomp_256(key_data);
+}
+
+static int
+aes_init_ctx_avx(aes_ctx_t *aes_ctx, crypto_mechanism_t *mechanism,
+		crypto_key_t *key)
+{
+	CK_AES_GCM_PARAMS *gcm_param;
+	gcm_param = (CK_AES_GCM_PARAMS *)(void *)mechanism->cm_param;
+	gcm_ctx_avx_t *gcm = (gcm_ctx_avx_t *)aes_ctx;
+	aes_gcm_pre_256(key->ck_data, &gcm->gkey);
+	aes_gcm_init_256(&gcm->gkey, &gcm->gctx, gcm_param->pIv, gcm_param->pAAD, gcm_param->ulAADLen);
+
+	return (0);
+}
+
+int
+gcm_crypt_final_avx(avx_crypt_type_t encrypt, gcm_ctx_avx_t *gcm_ctx, crypto_data_t *out)
+{
+	user_addr_t mac;
+	uint8_t omac[TAG_SIZE];
+	uint64_t maclen;
+	uint8_t *tag;
+	int ret = CRYPTO_SUCCESS;
+
+	uio_t *cuio = out->cd_uio;
+	uio_getiov(cuio, uio_iovcnt(cuio) - 1, &mac, &maclen);
+	tag = (uint8_t *)mac;
+
+	VERIFY(maclen <= TAG_SIZE);
+	if(encrypt) {
+		aes_gcm_enc_256_finalize(&gcm_ctx->gkey, &gcm_ctx->gctx, tag, maclen);
+	} else {
+		aes_gcm_dec_256_finalize(&gcm_ctx->gkey, &gcm_ctx->gctx, (uint8_t*) omac, maclen);
+		if (memcmp(tag, omac, maclen)) {
+			ret = CRYPTO_INVALID_MAC;
+		}
+	}
+
+	return(ret);
+}
+
+
+static int
+aes_encrypt_atomic_avx(crypto_provider_handle_t provider,
+    crypto_session_id_t session_id, crypto_mechanism_t *mechanism,
+    crypto_key_t *key, crypto_data_t *plaintext, crypto_data_t *ciphertext,
+    crypto_spi_ctx_template_t template, crypto_req_handle_t req)
+{
+	if(mechanism->cm_type != AES_GCM_MECH_INFO_TYPE)
+		return(CRYPTO_NOT_SUPPORTED);
+
+	aes_ctx_t aes_ctx = {0};	/* on the stack */
+	int ret;
+
+	AES_ARG_INPLACE(plaintext, ciphertext);
+
+	if ((ret = aes_check_mech_param(mechanism, NULL, 0)) != CRYPTO_SUCCESS)
+		return (ret);
+
+	switch (mechanism->cm_type) {
+	case AES_GCM_MECH_INFO_TYPE:
+		ret = aes_init_ctx_avx(&aes_ctx, mechanism, key);
+		break;
+	}
+
+	/*
+	 * Do an update on the specified input data.
+	 */
+	switch (plaintext->cd_format) {
+	case CRYPTO_DATA_UIO:
+		ret = crypto_update_uio_avx(ENCRYPT, &aes_ctx, plaintext, ciphertext);
+		break;
+	default:
+		ret = CRYPTO_ARGUMENTS_BAD;
+	}
+
+	if (ret == CRYPTO_SUCCESS) {
+		if (mechanism->cm_type == AES_GCM_MECH_INFO_TYPE)
+			ret = gcm_crypt_final_avx(ENCRYPT, (gcm_ctx_avx_t *)&aes_ctx, ciphertext);
+	}
+
+	return(ret);
+}
+
+static int
+aes_decrypt_atomic_avx(crypto_provider_handle_t provider,
+    crypto_session_id_t session_id, crypto_mechanism_t *mechanism,
+    crypto_key_t *key, crypto_data_t *ciphertext, crypto_data_t *plaintext,
+    crypto_spi_ctx_template_t template, crypto_req_handle_t req)
+{
+	if(mechanism->cm_type != AES_GCM_MECH_INFO_TYPE)
+		return(CRYPTO_NOT_SUPPORTED);
+
+	aes_ctx_t aes_ctx = {0};	/* on the stack */
+	int ret;
+
+	AES_ARG_INPLACE(ciphertext, plaintext);
+
+	if ((ret = aes_check_mech_param(mechanism, NULL, 0)) != CRYPTO_SUCCESS)
+		return (ret);
+
+	switch (mechanism->cm_type) {
+	case AES_GCM_MECH_INFO_TYPE:
+		ret = aes_init_ctx_avx(&aes_ctx, mechanism, key);
+		break;
+	}
+
+	/*
+	 * Do an update on the specified input data.
+	 */
+	switch (ciphertext->cd_format) {
+	case CRYPTO_DATA_UIO:
+		ret = crypto_update_uio_avx(DECRYPT, &aes_ctx, ciphertext, plaintext);
+		break;
+	default:
+		ret = CRYPTO_ARGUMENTS_BAD;
+	}
+
+	if (ret == CRYPTO_SUCCESS) {
+		if (mechanism->cm_type == AES_GCM_MECH_INFO_TYPE)
+			ret = gcm_crypt_final_avx(DECRYPT, (gcm_ctx_avx_t *)&aes_ctx, ciphertext);
+	}
+	return (ret);
+}
+
+int
+cpu_supports_avx() {
+	int cpuInfo[4] = { 0 };
+	__cpuid(cpuInfo, 1);
+	int osUsesXSAVE_XRSTORE = cpuInfo[2] & (1 << 27);
+	int cpuAVXSuport = cpuInfo[2] & (1 << 28);
+	int avxSupported = 0;
+
+	if (osUsesXSAVE_XRSTORE && cpuAVXSuport)
+	{
+		unsigned long long xcrFeatureMask = _xgetbv(_XCR_XFEATURE_ENABLED_MASK);
+		avxSupported = ((xcrFeatureMask & 0x6) == 0x6) ? 1 : 0;
+        }
+	return(avxSupported);
 }

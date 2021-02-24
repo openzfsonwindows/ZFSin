@@ -175,7 +175,8 @@
       <WppPreprocessorDefinitions>WPP_INLINE __inline</WppPreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;isa-l_crypto_static.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)\libs\ISA-L\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <DriverSign>
       <AdditionalOptions>/tr http://timestamp.digicert.com /td sha256 /fd sha256 %(AdditionalOptions)</AdditionalOptions>
@@ -198,7 +199,8 @@
       <WppGenerateUsingTemplateFile>{km-default.tpl}*.tmh</WppGenerateUsingTemplateFile>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>wdmsec.lib;Storport.lib;scsiwmi.lib;isa-l_crypto_static.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)\libs\ISA-L\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <DriverSign>
       <AdditionalOptions>/tr http://timestamp.digicert.com /td sha256 /fd sha256 %(AdditionalOptions)</AdditionalOptions>
@@ -673,6 +675,7 @@
     <ClInclude Include="zfs\module\icp\algs\edonr\edonr_byteorder.h" />
     <ClInclude Include="zfs\module\icp\algs\skein\skein_impl.h" />
     <ClInclude Include="zfs\module\icp\algs\skein\skein_port.h" />
+    <ClInclude Include="zfs\module\icp\include\sys\crypto\aes_gcm.h" />
     <ClInclude Include="zfs\module\lua\lapi.h" />
     <ClInclude Include="zfs\module\lua\lcode.h" />
     <ClInclude Include="zfs\module\lua\lctype.h" />

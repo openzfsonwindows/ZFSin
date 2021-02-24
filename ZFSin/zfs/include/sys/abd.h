@@ -142,17 +142,23 @@ abd_copy_from_buf(abd_t *abd, const void *buf, size_t size)
 static inline void
 abd_copy_to_buf(void* buf, abd_t *abd, size_t size)
 {
-#ifdef _KERNEL
+	/*
+	 * Commenting as it is commented in Linux
+	 */
+/*#ifdef _KERNEL
 	ASSERT3S((size_t)abd->abd_size,==,size);
-#endif
+#endif*/
 	abd_copy_to_buf_off(buf, abd, 0, size);
 }
 
 static inline int
 abd_cmp_buf(abd_t *abd, const void *buf, size_t size)
 {
+	/*
+	 * Commenting as it is commented in Linux
+	 */
 #ifdef _KERNEL
-	ASSERT3S((size_t)abd->abd_size,==,size);
+//	ASSERT3S((size_t)abd->abd_size,==,size);
 #endif
 	return (abd_cmp_buf_off(abd, buf, 0, size));
 }
