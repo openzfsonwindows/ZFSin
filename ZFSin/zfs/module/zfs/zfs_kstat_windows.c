@@ -107,7 +107,7 @@ osx_kstat_t osx_kstat = {
 	{"arc_reduce_dnlc_percent",		KSTAT_DATA_INT64  },
 	{"arc_lotsfree_percent",		KSTAT_DATA_INT64  },
 	{"zfs_dirty_data_max",			KSTAT_DATA_INT64  },
-	{"zfs_dirty_data_sync",			KSTAT_DATA_INT64  },
+	{"zfs_dirty_data_sync_percent",		KSTAT_DATA_INT64  },
 	{"zfs_delay_max_ns",			KSTAT_DATA_INT64  },
 	{"zfs_delay_min_dirty_percent",	KSTAT_DATA_INT64  },
 	{"zfs_delay_scale",				KSTAT_DATA_INT64  },
@@ -278,8 +278,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			ks->arc_lotsfree_percent.value.i64;
 		zfs_dirty_data_max =
 			ks->zfs_dirty_data_max.value.i64;
-		zfs_dirty_data_sync =
-			ks->zfs_dirty_data_sync.value.i64;
+		zfs_dirty_data_sync_percent =
+			ks->zfs_dirty_data_sync_percent.value.i64;
 		zfs_delay_max_ns =
 			ks->zfs_delay_max_ns.value.i64;
 		zfs_delay_min_dirty_percent =
@@ -475,8 +475,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			arc_lotsfree_percent;
 		ks->zfs_dirty_data_max.value.i64 =
 			zfs_dirty_data_max;
-		ks->zfs_dirty_data_sync.value.i64 =
-			zfs_dirty_data_sync;
+		ks->zfs_dirty_data_sync_percent.value.i64 =
+			zfs_dirty_data_sync_percent;
 		ks->zfs_delay_max_ns.value.i64 =
 			zfs_delay_max_ns;
 		ks->zfs_delay_min_dirty_percent.value.i64 =
