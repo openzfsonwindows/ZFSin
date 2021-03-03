@@ -329,6 +329,46 @@ static int zfs_fill_zplprops_root(uint64_t, nvlist_t *, nvlist_t *,
 int zfs_set_prop_nvlist(const char *, zprop_source_t, nvlist_t *, nvlist_t *);
 static int get_nvlist(uint64_t nvl, uint64_t size, int iflag, nvlist_t **nvp);
 
+NTSTATUS zpool_get_size_stats(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(zpool_size_stats)) {
+		Irp->IoStatus.Information = sizeof(zpool_size_stats);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	zpool_size_stats* zstats = (zpool_size_stats*)Irp->AssociatedIrp.SystemBuffer;
+	if (!zstats)
+		return STATUS_INVALID_PARAMETER;
+
+	zstats->zpool_name[MAXNAMELEN - 1] = '\0';
+
+	// If 'zpool/zvol' name is provided, truncating it to zpool name only
+	char *slash = strchr(zstats->zpool_name, '/');
+	if (slash)
+		*slash = '\0';
+
+	mutex_enter(&spa_namespace_lock);
+	spa_t* spa;
+	if ((spa = spa_lookup(zstats->zpool_name)) != NULL) {
+		metaslab_class_t* mc = spa_normal_class(spa);
+
+		zstats->alloc = metaslab_class_get_alloc(mc);
+		zstats->alloc += metaslab_class_get_alloc(spa_special_class(spa));
+		zstats->alloc += metaslab_class_get_alloc(spa_dedup_class(spa));
+
+		zstats->size = metaslab_class_get_space(mc);
+		zstats->size += metaslab_class_get_space(spa_special_class(spa));
+		zstats->size += metaslab_class_get_space(spa_dedup_class(spa));
+	}
+	else {
+		mutex_exit(&spa_namespace_lock);
+		return STATUS_NOT_FOUND;
+	}
+	mutex_exit(&spa_namespace_lock);
+	Irp->IoStatus.Information = sizeof(zpool_size_stats);
+	return STATUS_SUCCESS;
+}
+
 static void
 history_str_free(char *buf)
 {

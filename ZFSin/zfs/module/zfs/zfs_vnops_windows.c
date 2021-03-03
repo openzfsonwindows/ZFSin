@@ -79,7 +79,6 @@
 //#include <vfs/vfs_support.h>
 //#include <sys/ioccom.h>
 
-
 PDEVICE_OBJECT ioctlDeviceObject = NULL;
 PDEVICE_OBJECT fsDiskDeviceObject = NULL;
 #ifdef DEBUG_IOCOUNT
@@ -3977,6 +3976,10 @@ ioctlDispatcher(
 			case KSTAT_IOC_WRITE:
 				dprintf("KSTAT_IOC_WRITE\n");
 				Status = spl_kstat_write(DeviceObject, Irp, IrpSp);
+				break;
+			case ZPOOL_GET_SIZE_STATS:
+				dprintf("ZPOOL_GET_SIZE_STATS\n");
+				Status = zpool_get_size_stats(DeviceObject, Irp, IrpSp);
 				break;
 			default:
 				dprintf("**** unknown Windows IOCTL: 0x%lx\n", cmd);
