@@ -76,7 +76,7 @@ typedef struct osx_kstat {
 	kstat_named_t arc_reduce_dnlc_percent;
 	kstat_named_t arc_lotsfree_percent;
 	kstat_named_t zfs_dirty_data_max;
-	kstat_named_t zfs_dirty_data_sync;
+	kstat_named_t zfs_dirty_data_sync_percent;
 	kstat_named_t zfs_delay_max_ns;
 	kstat_named_t zfs_delay_min_dirty_percent;
 	kstat_named_t zfs_delay_scale;
