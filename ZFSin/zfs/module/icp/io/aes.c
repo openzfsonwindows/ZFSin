@@ -1720,5 +1720,10 @@ cpu_supports_avx() {
 		unsigned long long xcrFeatureMask = _xgetbv(_XCR_XFEATURE_ENABLED_MASK);
 		avxSupported = ((xcrFeatureMask & 0x6) == 0x6) ? 1 : 0;
         }
+	if (avxSupported)
+		dprintf("Supports AVX instruction extensions\n");
+	else
+		dprintf("AVX instruction extensions not supported\n");
+
 	return(avxSupported);
 }
