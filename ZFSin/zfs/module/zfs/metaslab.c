@@ -145,7 +145,7 @@ int metaslab_load_pct = 50;
  * allocations from it. As long as a metaslab continues to be used we will
  * keep it loaded.
  */
-int metaslab_unload_delay = TXG_SIZE * 2;
+int metaslab_unload_delay = 2048;
 
 /*
  * Max number of metaslabs per group to preload.
