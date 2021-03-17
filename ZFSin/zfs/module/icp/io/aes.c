@@ -977,7 +977,7 @@ aes_encrypt_atomic(crypto_provider_handle_t provider,
     crypto_key_t *key, crypto_data_t *plaintext, crypto_data_t *ciphertext,
     crypto_spi_ctx_template_t template, crypto_req_handle_t req)
 {
-	if(cpu_avx_supported) {
+	if(cpu_avx_supported && mechanism->cm_type == AES_GCM_MECH_INFO_TYPE) {
 		return(aes_encrypt_atomic_avx(provider, session_id, mechanism,
 			key, plaintext, ciphertext, template, req));
 	}
@@ -1106,7 +1106,7 @@ aes_decrypt_atomic(crypto_provider_handle_t provider,
     crypto_key_t *key, crypto_data_t *ciphertext, crypto_data_t *plaintext,
     crypto_spi_ctx_template_t template, crypto_req_handle_t req)
 {
-	if(cpu_avx_supported) {
+	if(cpu_avx_supported && mechanism->cm_type == AES_GCM_MECH_INFO_TYPE) {
 		return(aes_decrypt_atomic_avx(provider, session_id, mechanism,
 			key, ciphertext, plaintext, template, req));
 	}
