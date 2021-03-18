@@ -185,6 +185,7 @@ osx_kstat_t osx_kstat = {
 	{ "zfs_autoimport_disable",		KSTAT_DATA_UINT64 },
 	{ "metaslab_unload_delay",		KSTAT_DATA_UINT64 },	
 	{ "zfs_total_memory_limit",		KSTAT_DATA_UINT64 },
+	{ "cpu_avx_supported",			KSTAT_DATA_UINT32 },
 };
 
 
@@ -403,6 +404,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			ks->zfs_autoimport_disable.value.ui64;
 		metaslab_unload_delay =
 			ks->metaslab_unload_delay.value.ui64;
+		cpu_avx_supported =
+			ks->cpu_avx_supported.value.ui32;
 	} else {
 
 		arc_kstat_update_cont(ksp, rw);
@@ -596,6 +599,8 @@ static int osx_kstat_update(kstat_t *ksp, int rw)
 			zfs_autoimport_disable;
 		ks->metaslab_unload_delay.value.ui64 =
 			metaslab_unload_delay;	
+		ks->cpu_avx_supported.value.ui32 =
+			cpu_avx_supported;
 	}
 
 	return 0;
