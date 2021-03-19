@@ -36,11 +36,14 @@
 #define	_AES_IMPL
 #include <aes/aes_impl.h>
 #include <immintrin.h>
+#ifdef _WIN32
+#include <sys/kstat_windows.h>
+#endif
 
 #define	CRYPTO_PROVIDER_NAME "aes"
 
 extern struct mod_ops mod_cryptoops;
-static int cpu_avx_supported = 0;
+int cpu_avx_supported = 0;
 
 /*
  * Module linkage information for the kernel.
