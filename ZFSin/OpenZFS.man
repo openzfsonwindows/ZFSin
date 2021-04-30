@@ -1,0 +1,100 @@
+<instrumentationManifest
+	xmlns="http://schemas.microsoft.com/win/2004/08/events"
+	xmlns:trace="http://schemas.microsoft.com/win/2004/08/events/trace"
+	xmlns:win="http://manifests.microsoft.com/win/2004/08/windows/events"
+	xmlns:xs="http://www.w3.org/2001/XMLSchema"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://schemas.microsoft.com/win/2004/08/events eventman.xsd"
+>
+	<instrumentation>
+		<counters
+			xmlns="http://schemas.microsoft.com/win/2005/12/counters"
+			xmlns:auto-ns1="http://schemas.microsoft.com/win/2004/08/events"
+			schemaVersion="1.1"
+		>
+			<provider
+				callback            = "custom"
+				applicationIdentity = "ZFSin.sys"
+				providerType        = "kernelMode"
+				providerName        = "ZFSin"
+				providerGuid        = "{d8cdbc79-de07-46e3-9bb6-dcb4642db837}"
+			>
+				<counterSet
+					guid        = "{d060e0bd-0050-4486-93e1-e7979ebfeb2b}"
+					uri         = "ZFSin.IOPS.THROUGHPUT"
+					name        = "OpenZFS zpool"
+					description = "Collect IOPS, read and written bytes of a zpool"
+					symbol      = "ZFSinPerf"
+					instances   = "multiple"
+				>
+					<structs>
+						<struct
+							name="ZFSinPerfValues"
+							type="zpool_perf_counters"
+						/>
+					</structs>
+					<counter
+						id           = "1"
+						uri          = "ZFSin.read_iops"
+						name         = "Reads/sec"
+						struct       = "read_iops"
+						field        = "read_iops"
+						description  = "Read IO/sec of zpool."
+						type         = "perf_counter_counter"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "2"
+						uri          = "ZFSin.write_iops"
+						name         = "Writes/sec"
+						struct       = "write_iops"
+						field        = "write_iops"
+						description  = "Write IO/sec of zpool."
+						type         = "perf_counter_counter"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "3"
+						uri          = "ZFSin.total_iops"
+						name         = "Total Transfers/sec"
+						struct       = "total_iops"
+						field        = "total_iops"
+						description  = "Total IO/sec of zpool."
+						type         = "perf_counter_counter"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "4"
+						uri          = "ZFSin.read_bytes"
+						name         = "Read MBytes/sec"
+						struct       = "read_mbytes"
+						field        = "read_mbytes"
+						description  = "Amount of mbytes read/sec."
+						type         = "perf_counter_counter"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "5"
+						uri          = "ZFSin.write_bytes"
+						name         = "Write MBytes/sec"
+						struct       = "write_mbytes"
+						field        = "write_mbytes"
+						description  = "Amount of mbytes written/sec."
+						type         = "perf_counter_counter"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "6"
+						uri          = "ZFSin.total_bytes"
+						name         = "Total MBytes/sec"
+						struct       = "total_mbytes"
+						field        = "total_mbytes"
+						description  = "Amount of mbytes written and read/sec."
+						type         = "perf_counter_counter"
+						detailLevel  = "standard">
+					</counter>
+				</counterSet>
+			</provider>
+		</counters>
+	</instrumentation>
+</instrumentationManifest>

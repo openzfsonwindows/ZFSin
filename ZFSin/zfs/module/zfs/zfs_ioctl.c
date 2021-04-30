@@ -231,6 +231,10 @@
 //#define dprintf printf
 #include <sys/lua/lua.h>
 #include <sys/lua/lauxlib.h>
+#include <sys/zfs_ioctl.h>
+
+#include <OpenZFS_perf.h>
+#include <OpenZFS_counters.h>
 
 /*
  * Limit maximum nvlist size.  We don't want users passing in insane values
@@ -368,6 +372,135 @@ NTSTATUS zpool_get_size_stats(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_L
 	Irp->IoStatus.Information = sizeof(zpool_size_stats);
 	return STATUS_SUCCESS;
 }
+
+
+NTSTATUS NTAPI
+ZFSinPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID Context) {
+	UNREFERENCED_PARAMETER(Context);
+
+	switch (Type) {
+	case PcwCallbackEnumerateInstances:
+		{
+			ZFSinPerfEnumerate(Info->EnumerateInstances);
+
+			break;
+		}
+	case PcwCallbackCollectData:
+		{
+			ZFSinPerfCollect(Info->CollectData);
+
+			break;
+		}
+	default: break;
+	}
+
+	return STATUS_SUCCESS;
+
+}
+
+
+PUNICODE_STRING MapInvalidChars(PUNICODE_STRING InstanceName)
+{
+	const WCHAR wInvalidChars[] = L"()#\\/";
+	const WCHAR wMappedChars[] = L"[]___";
+	const LONG lArraySize = ARRAY_SIZE(wInvalidChars) - 1;
+
+	static_assert(sizeof(wInvalidChars) == sizeof(wMappedChars), "Invalid PCW Character Mapping!");
+
+	for (LONG i = 0; i < InstanceName->Length / sizeof(WCHAR); ++i)
+	{
+		for (LONG j = 0; j < lArraySize; ++j)
+		{
+			if (InstanceName->Buffer[i] == wInvalidChars[j])
+			{
+				InstanceName->Buffer[i] = wMappedChars[j];
+				break;
+			}
+		}
+	}
+	return InstanceName;
+}
+
+
+void ZFSinPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
+	NTSTATUS status = STATUS_SUCCESS;
+	UNICODE_STRING unicodeName;
+	unicodeName.Buffer = kmem_alloc(sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
+	unicodeName.MaximumLength = ZFS_MAX_DATASET_NAME_LEN;
+
+	spa_t* spa_perf = NULL;
+	ANSI_STRING ansi_spa;
+
+	mutex_enter(&spa_namespace_lock);
+	while ((spa_perf = spa_next(spa_perf)) != NULL) {
+		spa_open_ref(spa_perf, FTAG);
+		RtlInitAnsiString(&ansi_spa, spa_perf->spa_name);
+		spa_close(spa_perf, FTAG);
+
+		status = RtlAnsiStringToUnicodeString(&unicodeName, &ansi_spa, FALSE);
+		if (!NT_SUCCESS(status)) {
+			TraceEvent(TRACE_ERROR, "Ansi to Unicode string conversion failed\n");
+			break;
+		}
+
+		status = AddZFSinPerf(EnumerateInstances.Buffer, MapInvalidChars(&unicodeName), 0, NULL);
+		if (!NT_SUCCESS(status)) {
+			TraceEvent(TRACE_ERROR, "AddZFSinPerf failed - status 0x%x\n", status);
+			break;
+		}
+	}
+	mutex_exit(&spa_namespace_lock);
+	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
+}
+
+
+void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
+	NTSTATUS status = STATUS_SUCCESS;
+	UNICODE_STRING unicodeName;
+	unicodeName.Buffer = kmem_alloc(sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN, KM_SLEEP);
+	unicodeName.MaximumLength = ZFS_MAX_DATASET_NAME_LEN;
+
+	ANSI_STRING ansi_spa;
+	spa_t* spa_perf = NULL;
+
+	mutex_enter(&spa_namespace_lock);
+	while ((spa_perf = spa_next(spa_perf)) != NULL) {
+		spa_open_ref(spa_perf, FTAG);
+		RtlInitAnsiString(&ansi_spa, spa_perf->spa_name);
+
+		vdev_stat_t vs;
+		spa_config_enter(spa_perf, SCL_ALL, FTAG, RW_READER);
+		vdev_get_stats(spa_perf->spa_root_vdev, &vs);
+		spa_config_exit(spa_perf, SCL_ALL, FTAG);
+		spa_close(spa_perf, FTAG);
+
+		zpool_perf_counters perf = { 0 };
+
+		perf.read_iops = vs.vs_ops[ZIO_TYPE_READ];
+		perf.write_iops = vs.vs_ops[ZIO_TYPE_WRITE];
+		perf.read_mbytes = vs.vs_bytes[ZIO_TYPE_READ] / (1024 * 1024);
+		perf.write_mbytes = vs.vs_bytes[ZIO_TYPE_WRITE] / (1024 * 1024);
+
+		perf.total_mbytes = (vs.vs_bytes[ZIO_TYPE_WRITE]  + vs.vs_bytes[ZIO_TYPE_READ]) / (1024 * 1024);
+		perf.total_iops = vs.vs_ops[ZIO_TYPE_WRITE] + vs.vs_ops[ZIO_TYPE_READ];
+
+		status = RtlAnsiStringToUnicodeString(&unicodeName, &ansi_spa, FALSE);
+		if (!NT_SUCCESS(status)) {
+			TraceEvent(TRACE_ERROR, "Ansi to Unicode string conversion failed\n");
+			break;
+		}
+
+		status = AddZFSinPerf(CollectData.Buffer, MapInvalidChars(&unicodeName), 0, &perf);
+
+		if (!NT_SUCCESS(status)) {
+			TraceEvent(TRACE_ERROR, "AddZFSinPerf failed - status 0x%x\n", status);
+			break;
+		}
+	}
+	mutex_exit(&spa_namespace_lock);
+	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
+}
+
 
 static void
 history_str_free(char *buf)
@@ -8086,6 +8219,11 @@ zfs_attach(void)
 	IoRegisterFileSystem(fsDiskDeviceObject);
 	ObReferenceObject(fsDiskDeviceObject);
 
+	NTSTATUS pcwStatus = RegisterZFSinPerf(ZFSinPerfCallBack, NULL);
+	if (!NT_SUCCESS(pcwStatus)) {
+		TraceEvent(TRACE_ERROR, "ZFSin perf registration failed\n");
+	}
+
 #if 0
 	// CDrom, I mean, really? ZFS?
 	PDEVICE_OBJECT cdDiskDeviceObject;
@@ -8193,6 +8331,8 @@ zfs_detach(void)
 	int error;
 #endif
 	zfsdev_state_t *zs, *zsprev = NULL;
+
+	UnregisterZFSinPerf();
 
 #ifdef linux
 	error = misc_deregister(&zfs_misc);

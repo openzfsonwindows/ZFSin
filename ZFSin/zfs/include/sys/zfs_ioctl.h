@@ -664,6 +664,15 @@ typedef struct {
 } zpool_size_stats;
 
 
+typedef struct {
+	unsigned __int64 read_iops;
+	unsigned __int64 write_iops;
+	unsigned __int64 total_iops;
+	unsigned __int64 read_mbytes;
+	unsigned __int64 write_mbytes;
+	unsigned __int64 total_mbytes;
+} zpool_perf_counters;
+
 
 #define	ZFSDEV_MAX_MINOR	(1 << 16)
 #define	ZFS_MIN_MINOR	(ZFSDEV_MAX_MINOR + 1)
@@ -717,6 +726,15 @@ extern uint64_t zfs_ioc_unregister_fs(void);
 extern int zfs_vnop_force_formd_normalized_output;
 
 DRIVER_FS_NOTIFICATION DriverNotificationRoutine;
+
+NTSTATUS NTAPI
+ZFSinPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID Context);
+
+void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData);
+
+PUNICODE_STRING MapInvalidChars(PUNICODE_STRING InstanceName);
+
+void ZFSinPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances);
 
 #endif	/* _KERNEL */
 
