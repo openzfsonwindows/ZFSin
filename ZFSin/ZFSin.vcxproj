@@ -160,7 +160,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)\ZFSin;$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(SolutionDir)\ZFSin;$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RUN_WPP;WPPFILE="%(Filename).tmh";_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
@@ -181,10 +181,16 @@
     <DriverSign>
       <AdditionalOptions>/tr http://timestamp.digicert.com /td sha256 /fd sha256 %(AdditionalOptions)</AdditionalOptions>
     </DriverSign>
+    <Ctrpp>
+      <HeaderFileNameForCounter>$(IntDir)%(Filename)_counters.h</HeaderFileNameForCounter>
+      <HeaderFileNameForProvider>$(IntDir)%(Filename)_perf.h</HeaderFileNameForProvider>
+      <GenerateResourceSourceFile>true</GenerateResourceSourceFile>
+      <ResourceFileName>$(IntDir)%(Filename)_perf.rc</ResourceFileName>
+    </Ctrpp>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)\ZFSin;$(SolutionDir)\$(Platform)\$(ConfigurationName)\;$(SolutionDir)\ZFSin;$(SolutionDir)\ZFSin\$(Platform)\$(ConfigurationName);$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(IntDir);$(SolutionDir)\ZFSin;$(SolutionDir)\$(Platform)\$(ConfigurationName)\;$(SolutionDir)\ZFSin;$(SolutionDir)\ZFSin\$(Platform)\$(ConfigurationName);$(SolutionDir)/ZFSin/spl/include;$(SolutionDir)/ZFSin/zfs/include;$(SolutionDir)/ZFSin/zfs/module/icp/include;$(SolutionDir)/ZFSin/zfs/lib/zlib-1.2.3;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>RUN_WPP;WPPFILE="%(Filename).tmh";_KERNEL;__x86_64__;_LP64;%(PreprocessorDefinitions);Z_PREFIX;MY_ZCALLOC</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
       <WarningLevel>Level3</WarningLevel>
@@ -205,6 +211,16 @@
     <DriverSign>
       <AdditionalOptions>/tr http://timestamp.digicert.com /td sha256 /fd sha256 %(AdditionalOptions)</AdditionalOptions>
     </DriverSign>
+    <Ctrpp>
+      <HeaderFileNameForProvider>$(IntDir)%(Filename)_perf.h</HeaderFileNameForProvider>
+    </Ctrpp>
+    <Ctrpp>
+      <GenerateResourceSourceFile>true</GenerateResourceSourceFile>
+    </Ctrpp>
+    <Ctrpp>
+      <ResourceFileName>$(IntDir)%(Filename)_perf.rc</ResourceFileName>
+      <HeaderFileNameForCounter>$(IntDir)%(Filename)_counters.h</HeaderFileNameForCounter>
+    </Ctrpp>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -703,6 +719,25 @@
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Resource.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Ctrpp Include="OpenZFS.man">
+      <FileType>Document</FileType>
+      <SubType>Designer</SubType>
+    </Ctrpp>
+  </ItemGroup>
+  <ItemGroup>
+    <FilesToPackage Include="OpenZFS.man" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      <PackageRelativeDirectory>
+      </PackageRelativeDirectory>
+    </FilesToPackage>
+    <FilesToPackage Include="OpenZFS.man" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      <PackageRelativeDirectory>
+      </PackageRelativeDirectory>
+    </FilesToPackage>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="$(IntDir)\OpenZFS_perf.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
