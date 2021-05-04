@@ -374,6 +374,48 @@ NTSTATUS zpool_get_size_stats(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_L
 }
 
 
+NTSTATUS zpool_get_iops_thrput(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
+{
+	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(zpool_perf_counters)) {
+		Irp->IoStatus.Information = sizeof(zpool_perf_counters);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	zpool_perf_counters* perf = (zpool_perf_counters*)Irp->AssociatedIrp.SystemBuffer;
+	if (!perf)
+		return STATUS_INVALID_PARAMETER;
+
+	perf->zpool_name[MAXNAMELEN - 1] = '\0';
+
+	// If 'zpool/zvol' name is provided, truncating it to zpool name only
+	char* slash = strchr(perf->zpool_name, '/');
+	if (slash)
+		*slash = '\0';
+
+	mutex_enter(&spa_namespace_lock);
+	spa_t* spa;
+	if ((spa = spa_lookup(perf->zpool_name)) == NULL) {
+		mutex_exit(&spa_namespace_lock);
+		return STATUS_NOT_FOUND;
+	}
+	vdev_stat_t vs;
+	spa_config_enter(spa, SCL_ALL, FTAG, RW_READER);
+	vdev_get_stats(spa->spa_root_vdev, &vs);
+	spa_config_exit(spa, SCL_ALL, FTAG);
+	mutex_exit(&spa_namespace_lock);
+
+	perf->read_iops = vs.vs_ops[ZIO_TYPE_READ];
+	perf->write_iops = vs.vs_ops[ZIO_TYPE_WRITE];
+	perf->read_mbytes = vs.vs_bytes[ZIO_TYPE_READ] / (1024 * 1024);
+	perf->write_mbytes = vs.vs_bytes[ZIO_TYPE_WRITE] / (1024 * 1024);
+	perf->total_iops = vs.vs_ops[ZIO_TYPE_READ] + vs.vs_ops[ZIO_TYPE_WRITE];
+	perf->total_mbytes = (vs.vs_bytes[ZIO_TYPE_READ] + vs.vs_bytes[ZIO_TYPE_WRITE]) / (1024 * 1024);
+
+	Irp->IoStatus.Information = sizeof(zpool_perf_counters);
+	return STATUS_SUCCESS;
+}
+
+
 NTSTATUS NTAPI
 ZFSinPerfCallBack(PCW_CALLBACK_TYPE Type, PPCW_CALLBACK_INFORMATION Info, PVOID Context) {
 	UNREFERENCED_PARAMETER(Context);
