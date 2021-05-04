@@ -664,6 +664,8 @@ typedef struct {
 } zpool_size_stats;
 
 
+#define ZPOOL_GET_IOPS_THRPUT_STATS	CTL_CODE(ZFSIOCTL_TYPE, 0xFFE, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
 typedef struct {
 	unsigned __int64 read_iops;
 	unsigned __int64 write_iops;
@@ -671,6 +673,7 @@ typedef struct {
 	unsigned __int64 read_mbytes;
 	unsigned __int64 write_mbytes;
 	unsigned __int64 total_mbytes;
+	char zpool_name[MAXNAMELEN];
 } zpool_perf_counters;
 
 
