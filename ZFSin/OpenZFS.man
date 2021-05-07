@@ -40,7 +40,7 @@
 						struct       = "read_iops"
 						field        = "read_iops"
 						description  = "Read IO/sec of zpool."
-						type         = "perf_counter_counter"
+						type         = "perf_counter_bulk_count"
 						detailLevel  = "standard">
 					</counter>
 					<counter
@@ -50,47 +50,47 @@
 						struct       = "write_iops"
 						field        = "write_iops"
 						description  = "Write IO/sec of zpool."
-						type         = "perf_counter_counter"
+						type         = "perf_counter_bulk_count"
 						detailLevel  = "standard">
 					</counter>
 					<counter
 						id           = "3"
 						uri          = "ZFSin.total_iops"
-						name         = "Total Transfers/sec"
+						name         = "Transfers/sec"
 						struct       = "total_iops"
 						field        = "total_iops"
 						description  = "Total IO/sec of zpool."
-						type         = "perf_counter_counter"
+						type         = "perf_counter_bulk_count"
 						detailLevel  = "standard">
 					</counter>
 					<counter
 						id           = "4"
 						uri          = "ZFSin.read_bytes"
-						name         = "Read MBytes/sec"
-						struct       = "read_mbytes"
-						field        = "read_mbytes"
-						description  = "Amount of mbytes read/sec."
-						type         = "perf_counter_counter"
+						name         = "Read Bytes/sec"
+						struct       = "read_bytes"
+						field        = "read_bytes"
+						description  = "Amount of bytes read/sec."
+						type         = "perf_counter_bulk_count"
 						detailLevel  = "standard">
 					</counter>
 					<counter
 						id           = "5"
 						uri          = "ZFSin.write_bytes"
-						name         = "Write MBytes/sec"
-						struct       = "write_mbytes"
-						field        = "write_mbytes"
-						description  = "Amount of mbytes written/sec."
-						type         = "perf_counter_counter"
+						name         = "Write Bytes/sec"
+						struct       = "write_bytes"
+						field        = "write_bytes"
+						description  = "Amount of bytes written/sec."
+						type         = "perf_counter_bulk_count"
 						detailLevel  = "standard">
 					</counter>
 					<counter
 						id           = "6"
 						uri          = "ZFSin.total_bytes"
-						name         = "Total MBytes/sec"
-						struct       = "total_mbytes"
-						field        = "total_mbytes"
-						description  = "Amount of mbytes written and read/sec."
-						type         = "perf_counter_counter"
+						name         = "Total Bytes/sec"
+						struct       = "total_bytes"
+						field        = "total_bytes"
+						description  = "Amount of bytes written and read/sec."
+						type         = "perf_counter_bulk_count"
 						detailLevel  = "standard">
 					</counter>
 				</counterSet>

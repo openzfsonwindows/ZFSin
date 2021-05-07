@@ -406,10 +406,10 @@ NTSTATUS zpool_get_iops_thrput(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_
 
 	perf->read_iops = vs.vs_ops[ZIO_TYPE_READ];
 	perf->write_iops = vs.vs_ops[ZIO_TYPE_WRITE];
-	perf->read_mbytes = vs.vs_bytes[ZIO_TYPE_READ] / (1024 * 1024);
-	perf->write_mbytes = vs.vs_bytes[ZIO_TYPE_WRITE] / (1024 * 1024);
+	perf->read_bytes = vs.vs_bytes[ZIO_TYPE_READ];
+	perf->write_bytes = vs.vs_bytes[ZIO_TYPE_WRITE];
 	perf->total_iops = vs.vs_ops[ZIO_TYPE_READ] + vs.vs_ops[ZIO_TYPE_WRITE];
-	perf->total_mbytes = (vs.vs_bytes[ZIO_TYPE_READ] + vs.vs_bytes[ZIO_TYPE_WRITE]) / (1024 * 1024);
+	perf->total_bytes = vs.vs_bytes[ZIO_TYPE_READ] + vs.vs_bytes[ZIO_TYPE_WRITE];
 
 	Irp->IoStatus.Information = sizeof(zpool_perf_counters);
 	return STATUS_SUCCESS;
@@ -481,16 +481,24 @@ void ZFSinPerfEnumerate(PCW_MASK_INFORMATION EnumerateInstances) {
 
 		status = RtlAnsiStringToUnicodeString(&unicodeName, &ansi_spa, FALSE);
 		if (!NT_SUCCESS(status)) {
-			TraceEvent(TRACE_ERROR, "Ansi to Unicode string conversion failed\n");
-			break;
+			TraceEvent(TRACE_ERROR, "%s:%d: Ansi to Unicode string conversion failed for %Z\n",
+				__func__, __LINE__, &ansi_spa);
+			continue;
 		}
 
 		status = AddZFSinPerf(EnumerateInstances.Buffer, MapInvalidChars(&unicodeName), 0, NULL);
 		if (!NT_SUCCESS(status)) {
-			TraceEvent(TRACE_ERROR, "AddZFSinPerf failed - status 0x%x\n", status);
-			break;
+			TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerf failed - status 0x%x\n", __func__, __LINE__, status);
 		}
 	}
+
+	UNICODE_STRING total;
+	RtlInitUnicodeString(&total, L"_Total");
+	status = AddZFSinPerf(EnumerateInstances.Buffer, MapInvalidChars(&total), 0, NULL);
+	if (!NT_SUCCESS(status)) {
+		TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerf failed - status 0x%x\n", __func__, __LINE__, status);
+	}
+
 	mutex_exit(&spa_namespace_lock);
 	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
 }
@@ -504,6 +512,7 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 
 	ANSI_STRING ansi_spa;
 	spa_t* spa_perf = NULL;
+	zpool_perf_counters total_perf = { 0 };
 
 	mutex_enter(&spa_namespace_lock);
 	while ((spa_perf = spa_next(spa_perf)) != NULL) {
@@ -516,29 +525,44 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 		spa_config_exit(spa_perf, SCL_ALL, FTAG);
 		spa_close(spa_perf, FTAG);
 
+		status = RtlAnsiStringToUnicodeString(&unicodeName, &ansi_spa, FALSE);
+		if (!NT_SUCCESS(status)) {
+			TraceEvent(TRACE_ERROR, "%s:%d: Ansi to Unicode string conversion failed for %Z\n",
+				__func__, __LINE__, &ansi_spa);
+			continue;
+		}
+
 		zpool_perf_counters perf = { 0 };
 
 		perf.read_iops = vs.vs_ops[ZIO_TYPE_READ];
 		perf.write_iops = vs.vs_ops[ZIO_TYPE_WRITE];
-		perf.read_mbytes = vs.vs_bytes[ZIO_TYPE_READ] / (1024 * 1024);
-		perf.write_mbytes = vs.vs_bytes[ZIO_TYPE_WRITE] / (1024 * 1024);
+		perf.read_bytes = vs.vs_bytes[ZIO_TYPE_READ];
+		perf.write_bytes = vs.vs_bytes[ZIO_TYPE_WRITE];
 
-		perf.total_mbytes = (vs.vs_bytes[ZIO_TYPE_WRITE]  + vs.vs_bytes[ZIO_TYPE_READ]) / (1024 * 1024);
+		perf.total_bytes = vs.vs_bytes[ZIO_TYPE_WRITE] + vs.vs_bytes[ZIO_TYPE_READ];
 		perf.total_iops = vs.vs_ops[ZIO_TYPE_WRITE] + vs.vs_ops[ZIO_TYPE_READ];
 
-		status = RtlAnsiStringToUnicodeString(&unicodeName, &ansi_spa, FALSE);
-		if (!NT_SUCCESS(status)) {
-			TraceEvent(TRACE_ERROR, "Ansi to Unicode string conversion failed\n");
-			break;
-		}
+		total_perf.read_iops += perf.read_iops;
+		total_perf.write_iops += perf.write_iops;
+		total_perf.read_bytes += perf.read_bytes;
+		total_perf.write_bytes += perf.write_bytes;
+		total_perf.total_iops += (perf.read_iops + perf.write_iops);
+		total_perf.total_bytes += (perf.read_bytes + perf.write_bytes);
 
 		status = AddZFSinPerf(CollectData.Buffer, MapInvalidChars(&unicodeName), 0, &perf);
 
 		if (!NT_SUCCESS(status)) {
-			TraceEvent(TRACE_ERROR, "AddZFSinPerf failed - status 0x%x\n", status);
-			break;
+			TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerf failed - status 0x%x\n", __func__, __LINE__, status);
 		}
 	}
+
+	UNICODE_STRING total;
+	RtlInitUnicodeString(&total, L"_Total");
+	status = AddZFSinPerf(CollectData.Buffer, MapInvalidChars(&total), 0, &total_perf);
+	if (!NT_SUCCESS(status)) {
+		TraceEvent(TRACE_ERROR, "%s:%d: AddZFSinPerf failed - status 0x%x\n", __func__, __LINE__, status);
+	}
+
 	mutex_exit(&spa_namespace_lock);
 	kmem_free(unicodeName.Buffer, sizeof(WCHAR) * ZFS_MAX_DATASET_NAME_LEN);
 }
