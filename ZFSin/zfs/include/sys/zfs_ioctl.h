@@ -670,9 +670,9 @@ typedef struct {
 	unsigned __int64 read_iops;
 	unsigned __int64 write_iops;
 	unsigned __int64 total_iops;
-	unsigned __int64 read_mbytes;
-	unsigned __int64 write_mbytes;
-	unsigned __int64 total_mbytes;
+	unsigned __int64 read_bytes;
+	unsigned __int64 write_bytes;
+	unsigned __int64 total_bytes;
 	char zpool_name[MAXNAMELEN];
 } zpool_perf_counters;
 
