@@ -519,9 +519,11 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 		spa_open_ref(spa_perf, FTAG);
 		RtlInitAnsiString(&ansi_spa, spa_perf->spa_name);
 
+		ddt_object_t ddo = { 0 };
 		vdev_stat_t vs;
 		spa_config_enter(spa_perf, SCL_ALL, FTAG, RW_READER);
 		vdev_get_stats(spa_perf->spa_root_vdev, &vs);
+		ddt_get_dedup_object_stats(spa_perf, &ddo);
 		spa_config_exit(spa_perf, SCL_ALL, FTAG);
 		spa_close(spa_perf, FTAG);
 
@@ -534,14 +536,19 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 
 		zpool_perf_counters perf = { 0 };
 
+		perf.ddt_entry_count = ddo.ddo_count;
+		perf.ddt_dspace = ddo.ddo_dspace * ddo.ddo_count;
+		perf.ddt_mspace = ddo.ddo_mspace * ddo.ddo_count;
 		perf.read_iops = vs.vs_ops[ZIO_TYPE_READ];
 		perf.write_iops = vs.vs_ops[ZIO_TYPE_WRITE];
 		perf.read_bytes = vs.vs_bytes[ZIO_TYPE_READ];
 		perf.write_bytes = vs.vs_bytes[ZIO_TYPE_WRITE];
-
 		perf.total_bytes = vs.vs_bytes[ZIO_TYPE_WRITE] + vs.vs_bytes[ZIO_TYPE_READ];
 		perf.total_iops = vs.vs_ops[ZIO_TYPE_WRITE] + vs.vs_ops[ZIO_TYPE_READ];
 
+		total_perf.ddt_entry_count += perf.ddt_entry_count;
+		total_perf.ddt_dspace += perf.ddt_dspace;
+		total_perf.ddt_mspace += perf.ddt_mspace;
 		total_perf.read_iops += perf.read_iops;
 		total_perf.write_iops += perf.write_iops;
 		total_perf.read_bytes += perf.read_bytes;

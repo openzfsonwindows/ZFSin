@@ -93,6 +93,36 @@
 						type         = "perf_counter_bulk_count"
 						detailLevel  = "standard">
 					</counter>
+					<counter
+						id           = "7"
+						uri          = "ZFSin.DDT.ddt_entry_count"
+						name         = "DDT Entries"
+						struct       = "ddt_entry_count"
+						field        = "ddt_entry_count"
+						description  = "Number of entries in dedup table."
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "8"
+						uri          = "ZFSin.DDT.ddt_dspace"
+						name         = "DDT On-disk Bytes"
+						struct       = "ddt_dspace"
+						field        = "ddt_dspace"
+						description  = "Size of ddt on disk."
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "9"
+						uri          = "ZFSin.DDT.ddt_mspace"
+						name         = "DDT In-memory Bytes"
+						struct       = "ddt_mspace"
+						field        = "ddt_mspace"
+						description  = "Size of ddt in memory."
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
 				</counterSet>
 			</provider>
 		</counters>

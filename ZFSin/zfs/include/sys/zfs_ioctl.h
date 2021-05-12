@@ -667,12 +667,15 @@ typedef struct {
 #define ZPOOL_GET_IOPS_THRPUT_STATS	CTL_CODE(ZFSIOCTL_TYPE, 0xFFE, METHOD_BUFFERED, FILE_ANY_ACCESS)
 
 typedef struct {
-	unsigned __int64 read_iops;
-	unsigned __int64 write_iops;
-	unsigned __int64 total_iops;
-	unsigned __int64 read_bytes;
-	unsigned __int64 write_bytes;
-	unsigned __int64 total_bytes;
+	unsigned __int64	read_iops;
+	unsigned __int64	write_iops;
+	unsigned __int64	total_iops;
+	unsigned __int64	read_bytes;
+	unsigned __int64	write_bytes;
+	unsigned __int64	total_bytes;
+	unsigned __int64	ddt_entry_count;	/* number of elments in ddt */
+	unsigned __int64	ddt_dspace;			/* size of ddt on disk		*/
+	unsigned __int64	ddt_mspace;			/* size of ddt in-core		*/
 	char zpool_name[MAXNAMELEN];
 } zpool_perf_counters;
 
