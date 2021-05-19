@@ -333,6 +333,21 @@ static int zfs_fill_zplprops_root(uint64_t, nvlist_t *, nvlist_t *,
 int zfs_set_prop_nvlist(const char *, zprop_source_t, nvlist_t *, nvlist_t *);
 static int get_nvlist(uint64_t nvl, uint64_t size, int iflag, nvlist_t **nvp);
 
+void get_zpool_name(PDEVICE_OBJECT DeviceObject, char *zpool_name, size_t size) {
+	if (!DeviceObject || !zpool_name || !size)
+		return;
+
+	mount_t* zmo = (mount_t*)DeviceObject->DeviceExtension;
+
+	if (zmo) {
+		ANSI_STRING zpool_ansi;
+		zpool_ansi.Buffer = zpool_name;
+		zpool_ansi.MaximumLength = size - 1;
+		RtlUnicodeStringToAnsiString(&zpool_ansi, &zmo->name, FALSE);
+		zpool_name[zpool_ansi.Length] = '\0';
+	}
+}
+
 NTSTATUS zpool_get_size_stats(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpSp)
 {
 	if (IrpSp->Parameters.DeviceIoControl.OutputBufferLength < sizeof(zpool_size_stats)) {
@@ -344,6 +359,9 @@ NTSTATUS zpool_get_size_stats(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_L
 	if (!zstats)
 		return STATUS_INVALID_PARAMETER;
 
+	if (zstats->zpool_name[0] == '\0') {
+		get_zpool_name(DeviceObject, zstats->zpool_name, MAXNAMELEN);
+	}
 	zstats->zpool_name[MAXNAMELEN - 1] = '\0';
 
 	// If 'zpool/zvol' name is provided, truncating it to zpool name only
@@ -354,6 +372,7 @@ NTSTATUS zpool_get_size_stats(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_L
 	mutex_enter(&spa_namespace_lock);
 	spa_t* spa;
 	if ((spa = spa_lookup(zstats->zpool_name)) != NULL) {
+		mutex_enter(&spa->spa_props_lock);
 		metaslab_class_t* mc = spa_normal_class(spa);
 
 		zstats->alloc = metaslab_class_get_alloc(mc);
@@ -363,6 +382,7 @@ NTSTATUS zpool_get_size_stats(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_L
 		zstats->size = metaslab_class_get_space(mc);
 		zstats->size += metaslab_class_get_space(spa_special_class(spa));
 		zstats->size += metaslab_class_get_space(spa_dedup_class(spa));
+		mutex_exit(&spa->spa_props_lock);
 	}
 	else {
 		mutex_exit(&spa_namespace_lock);
