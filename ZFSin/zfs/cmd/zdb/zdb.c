@@ -5061,7 +5061,13 @@ zdb_dump_block_raw(void *buf, uint64_t size, int flags)
 {
 	if (flags & ZDB_FLAG_BSWAP)
 		byteswap_uint64_array(buf, size);
+#ifdef _WIN32
+	HANDLE hStdout;
+	hStdout = GetStdHandle(STD_OUTPUT_HANDLE);
+	VERIFY(write(hStdout, buf, size) == size);
+#else
 	VERIFY(write(_fileno(stdout), buf, size) == size);
+#endif
 }
 
 static void
