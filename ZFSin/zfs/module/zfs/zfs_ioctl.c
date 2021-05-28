@@ -533,6 +533,7 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 	ANSI_STRING ansi_spa;
 	spa_t* spa_perf = NULL;
 	zpool_perf_counters total_perf = { 0 };
+	vdev_stat_ex_t vsx;
 
 	mutex_enter(&spa_namespace_lock);
 	while ((spa_perf = spa_next(spa_perf)) != NULL) {
@@ -542,7 +543,7 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 		ddt_object_t ddo = { 0 };
 		vdev_stat_t vs;
 		spa_config_enter(spa_perf, SCL_ALL, FTAG, RW_READER);
-		vdev_get_stats(spa_perf->spa_root_vdev, &vs);
+		vdev_get_stats_ex(spa_perf->spa_root_vdev, &vs, &vsx);
 		ddt_get_dedup_object_stats(spa_perf, &ddo);
 		spa_config_exit(spa_perf, SCL_ALL, FTAG);
 		spa_close(spa_perf, FTAG);
@@ -565,6 +566,14 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 		perf.write_bytes = vs.vs_bytes[ZIO_TYPE_WRITE];
 		perf.total_bytes = vs.vs_bytes[ZIO_TYPE_WRITE] + vs.vs_bytes[ZIO_TYPE_READ];
 		perf.total_iops = vs.vs_ops[ZIO_TYPE_WRITE] + vs.vs_ops[ZIO_TYPE_READ];
+		perf.vsx_active_queue_sync_read=vsx.vsx_active_queue[ZIO_PRIORITY_SYNC_READ];
+		perf.vsx_active_queue_sync_write= vsx.vsx_active_queue[ZIO_PRIORITY_SYNC_WRITE];
+		perf.vsx_active_queue_async_read=vsx.vsx_active_queue[ZIO_PRIORITY_ASYNC_READ];
+		perf.vsx_active_queue_async_write=vsx.vsx_active_queue[ZIO_PRIORITY_ASYNC_WRITE];
+		perf.vsx_pend_queue_sync_read =vsx.vsx_pend_queue[ZIO_PRIORITY_SYNC_READ];
+		perf.vsx_pend_queue_sync_write=vsx.vsx_pend_queue[ZIO_PRIORITY_SYNC_WRITE];
+		perf.vsx_pend_queue_async_read= vsx.vsx_pend_queue[ZIO_PRIORITY_ASYNC_READ];
+		perf.vsx_pend_queue_async_write =vsx.vsx_pend_queue[ZIO_PRIORITY_ASYNC_WRITE];
 
 		total_perf.ddt_entry_count += perf.ddt_entry_count;
 		total_perf.ddt_dspace += perf.ddt_dspace;
@@ -575,6 +584,14 @@ void ZFSinPerfCollect(PCW_MASK_INFORMATION CollectData) {
 		total_perf.write_bytes += perf.write_bytes;
 		total_perf.total_iops += (perf.read_iops + perf.write_iops);
 		total_perf.total_bytes += (perf.read_bytes + perf.write_bytes);
+		total_perf.vsx_active_queue_sync_read += perf.vsx_active_queue_sync_read;
+		total_perf.vsx_active_queue_sync_write += perf.vsx_active_queue_sync_write;
+		total_perf.vsx_active_queue_async_read += perf.vsx_active_queue_async_read;
+		total_perf.vsx_active_queue_async_write += perf.vsx_active_queue_async_write;
+		total_perf.vsx_pend_queue_sync_read += perf.vsx_pend_queue_sync_read;
+		total_perf.vsx_pend_queue_sync_write += perf.vsx_pend_queue_sync_write;
+		total_perf.vsx_pend_queue_async_read += perf.vsx_pend_queue_async_read;
+		total_perf.vsx_pend_queue_async_write += perf.vsx_pend_queue_async_write;
 
 		status = AddZFSinPerf(CollectData.Buffer, MapInvalidChars(&unicodeName), 0, &perf);
 

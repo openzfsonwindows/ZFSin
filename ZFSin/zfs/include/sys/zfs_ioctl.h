@@ -676,6 +676,14 @@ typedef struct {
 	unsigned __int64	ddt_entry_count;	/* number of elments in ddt */
 	unsigned __int64	ddt_dspace;			/* size of ddt on disk		*/
 	unsigned __int64	ddt_mspace;			/* size of ddt in-core		*/
+	unsigned __int64	vsx_active_queue_sync_read;
+	unsigned __int64	vsx_active_queue_sync_write;
+	unsigned __int64	vsx_active_queue_async_read;
+	unsigned __int64	vsx_active_queue_async_write;
+	unsigned __int64	vsx_pend_queue_sync_read;
+	unsigned __int64	vsx_pend_queue_sync_write;
+	unsigned __int64	vsx_pend_queue_async_read;
+	unsigned __int64	vsx_pend_queue_async_write;
 	char zpool_name[MAXNAMELEN];
 } zpool_perf_counters;
 

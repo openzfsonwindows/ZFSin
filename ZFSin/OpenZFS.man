@@ -123,6 +123,86 @@
 						type         = "perf_counter_large_rawcount"
 						detailLevel  = "standard">
 					</counter>
+					<counter
+						id           = "10"
+						uri          = "ZFSin.vsx_active_queue_sync_read"
+						name         = "Active_Sync_Reads"
+						struct       = "vsx_active_queue_sync_read"
+						field        = "vsx_active_queue_sync_read"
+						description  = "vsx_active_queue_sync_read"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "11"
+						uri          = "ZFSin.vsx_active_queue_sync_write"
+						name         = "Active_Sync_Writes"
+						struct       = "vsx_active_queue_sync_write"
+						field        = "vsx_active_queue_sync_write"
+						description  = "vsx_active_queue_sync_write"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "12"
+						uri          = "ZFSin.vsx_active_queue_async_read"
+						name         = "Active_Async_Reads"
+						struct       = "vsx_active_queue_async_read"
+						field        = "vsx_active_queue_async_read"
+						description  = "vsx_active_queue_async_read"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "13"
+						uri          = "ZFSin.vsx_active_queue_async_write"
+						name         = "Active_Async_Writes"
+						struct       = "vsx_active_queue_async_write"
+						field        = "vsx_active_queue_async_write"
+						description  = "vsx_active_queue_async_write"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "14"
+						uri          = "ZFSin.vsx_pend_queue_sync_read "
+						name         = "Pending_Sync_Reads"
+						struct       = "vsx_pend_queue_sync_read"
+						field        = "vsx_pend_queue_sync_read"
+						description  = "vsx_pend_queue_sync_read"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "15"
+						uri          = "ZFSin.vsx_pend_queue_sync_write "
+						name         = "Pending_Sync_Writes"
+						struct       = "vsx_pend_queue_sync_write"
+						field        = "vsx_pend_queue_sync_write"
+						description  = "vsx_pend_queue_sync_write"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "16"
+						uri          = "ZFSin.vsx_pend_queue_async_read"
+						name         = "Pending_Async_Reads"
+						struct       = "vsx_pend_queue_async_read"
+						field        = "vsx_pend_queue_async_read"
+						description  = "vsx_pend_queue_async_read"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
+					<counter
+						id           = "17"
+						uri          = "ZFSin.vsx_pend_queue_async_write "
+						name         = "Pending_Async_Writes"
+						struct       = "vsx_pend_queue_async_write"
+						field        = "vsx_pend_queue_async_write"
+						description  = "vsx_pend_queue_async_write"
+						type         = "perf_counter_large_rawcount"
+						detailLevel  = "standard">
+					</counter>
 				</counterSet>
 			</provider>
 		</counters>
