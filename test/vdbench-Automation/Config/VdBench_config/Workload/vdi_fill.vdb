@@ -1,0 +1,8 @@
+dedupratio=7
+dedupunit=4k
+compratio=8
+sd=default,openflags=directio,align=4k
+sd=sd1,lun=\\.\PhysicalDrive10
+wd=wd_vsi_read,rdpct=100,xfersize=(4K,39.35,8K,9.37,16K,16.47,32K,10.37,64K,12.86,116K,5.45,220K,3.33,472K,1.96,984K,0.84,1032K,0.01),seekpct=80,range=(0,100),sd=sd*
+wd=wd_vsi_write,rdpct=0,xfersize=(4K,61.11,8K,13.05,16K,8.41,28K,3.46,60K,9.31,104K,1.05,240K,2.91,372K,0.33,876K,0.33,2028K,0.04),seekpct=80,range=(50,100),sd=sd*
+rd=rd_vsi_ramp,wd=wd_vsi*,forrdpct=59.44,iorate=max,warmup=60,interval=1,elapsed=300,forthreads=8

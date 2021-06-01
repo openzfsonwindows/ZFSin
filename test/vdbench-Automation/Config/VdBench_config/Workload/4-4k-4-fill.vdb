@@ -1,0 +1,10 @@
+dedupratio=4
+dedupunit=4k
+compratio=4
+messagescan=no
+sd=default,openflags=directio,align=4k
+sd=sd2,lun=\\.\PhysicalDrive10
+wd=wd_default,sd=*
+wd=fill,sd=sd*,xfersize=(4k,3,8k,8,16k,11,32k,12,64k,19,128k,21,256k,26),rdpct=0,seekpct=eof
+rd=default
+rd=fill,wd=fill,iorate=max,interval=60,elapsed=172800,forthreads=16
