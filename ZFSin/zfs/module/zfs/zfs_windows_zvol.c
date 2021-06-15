@@ -199,6 +199,7 @@ wzvol_HwFindAdapter(
 	pConfigInfo->VirtualDevice = TRUE;                        // Inidicate no real hardware.
 	pConfigInfo->WmiDataProvider = TRUE;                        // Indicate WMI provider.
 	pConfigInfo->MaximumTransferLength = SP_UNINITIALIZED_VALUE;      // Indicate unlimited.
+	pConfigInfo->NumberOfPhysicalBreaks = 0x21;                       // 128K IO size
 	pConfigInfo->AlignmentMask = 0x3;                         // Indicate DWORD alignment.
 	pConfigInfo->CachesData = FALSE;                       // Indicate miniport wants flush and shutdown notification.
 	pConfigInfo->ScatterGather = TRUE;                        // Indicate scatter-gather (explicit setting needed for Win2003 at least).
