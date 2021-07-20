@@ -2130,7 +2130,7 @@ zio_suspend(spa_t *spa, zio_t *zio, zio_suspend_reason_t reason)
 		    "failure and the failure mode property for this pool "
 		    "is set to panic.", spa_name(spa));
 
-	cmn_err(CE_WARN, "Pool '%s' has encountered an uncorrectable I/O "
+	dprintf("Pool '%s' has encountered an uncorrectable I/O "
 	    "failure and has been suspended.\n", spa_name(spa));
 
 	zfs_ereport_post(FM_EREPORT_ZFS_IO_FAILURE, spa, NULL,
@@ -3605,7 +3605,7 @@ zio_vdev_io_done(zio_t *zio)
 
 	ops->vdev_op_io_done(zio);
 
-	if (unexpected_error && zio->io_waiter != NULL)
+	if (unexpected_error)
 		VERIFY(vdev_probe(vd, zio) == NULL);
 
 	return (zio);
