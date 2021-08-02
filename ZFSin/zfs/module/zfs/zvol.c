@@ -694,8 +694,10 @@ zvol_create_minor_impl(const char *name)
 	// Announcing new DISK - we hold the zvol open the entire time storport has it.
 	error = zvol_open_impl(zv, FWRITE, 0, NULL);
 	
-	// Assign new TargetId and Lun
-	wzvol_assign_targetid(zv);
+	if (error == 0) {
+		// Assign new TargetId and Lun
+		wzvol_assign_targetid(zv);
+	}
 
 	return (0);
 }
