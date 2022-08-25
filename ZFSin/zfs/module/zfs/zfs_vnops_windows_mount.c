@@ -922,8 +922,8 @@ void generateVolumeNameMountpoint(wchar_t *vol_mpt)
 {
 	char GUID[50];
 	wchar_t wc_guid[50];
-	generateGUID(&GUID);
-	mbstowcs(&wc_guid, GUID, 50);
+	generateGUID(GUID);
+	mbstowcs(wc_guid, GUID, 50);
 	int len = _snwprintf(vol_mpt, 50, L"\\??\\Volume{%s}", wc_guid);
 }
 
@@ -1150,13 +1150,13 @@ int zfs_vnop_mount(PDEVICE_OBJECT DiskDevice, PIRP Irp, PIO_STACK_LOCATION IrpSp
 		if (!MOUNTMGR_IS_DRIVE_LETTER_A(namex)) {
 
 			namex[0] = 0;
-			status = mountmgr_get_volume_name_mountpoint(mountmgr, &dcb->device_name, &namex);
+			status = mountmgr_get_volume_name_mountpoint(mountmgr, &dcb->device_name, namex);
 			if (!MOUNTMGR_IS_VOLUME_NAME_A(namex)) {
 				// We have no volume name mountpoint for our device,
 				// so generate a valid GUID and mount the device
 				UNICODE_STRING vol_mpt;
 				wchar_t buf[50];
-				generateVolumeNameMountpoint(&buf);
+				generateVolumeNameMountpoint(buf);
 				RtlInitUnicodeString(&vol_mpt, buf);
 				status = SendVolumeCreatePoint(&dcb->device_name, &vol_mpt);
 			}

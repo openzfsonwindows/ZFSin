@@ -7387,7 +7387,7 @@ zfsdev_open(dev_t dev, int flags, int devtype, struct proc *p)
 #ifdef _WIN32
 	int flags = 0;
 	int devtype = 0;
-	struct proc *p = current_proc();
+	PEPROCESS p = current_proc();
 	PAGED_CODE();
 
 #endif
@@ -7420,12 +7420,12 @@ zfsdev_release(dev_t dev, int flags, int devtype, struct proc *p)
 #ifdef _WIN32
 	int flags = 0;
 	int devtype = 0;
-	struct proc *p = current_proc();
+	PEPROCESS p = current_proc();
 	PAGED_CODE();
 
 #endif
 
-	dprintf("zfsdev_release, dev 0x%x flag %02X devtype %d, dev is %p, thread %p\n",
+	dprintf("zfsdev_release, dev 0x%x flag %02X devtype %d, proc is %p, thread %p\n",
 		   minor(dev), flags, devtype, p, current_thread());
 	mutex_enter(&zfsdev_state_lock);
 	error = zfsdev_state_destroy(dev);

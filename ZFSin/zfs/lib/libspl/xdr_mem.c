@@ -201,7 +201,7 @@ xdrmem_setpos(XDR *xdrs, uint_t pos)
 	caddr_t newaddr = xdrs->x_base + pos;
 	caddr_t lastaddr = xdrs->x_private + (uint_t)xdrs->x_handy;
 
-	if ((long)newaddr > (long)lastaddr)
+	if ((uintptr_t)newaddr > (uintptr_t)lastaddr)
 		return (FALSE);
 	xdrs->x_private = newaddr;
 	xdrs->x_handy = (int)((uintptr_t)lastaddr - (uintptr_t)newaddr);

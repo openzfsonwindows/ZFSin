@@ -389,7 +389,7 @@ int getfsstat(struct statfs *buf, int bufsize, int flags)
 		if (h != INVALID_HANDLE_VALUE) {
 			char *dataset;
 			char cheat[1024];
-			UID = cheat;
+			UID = (MOUNTDEV_UNIQUE_ID*)cheat;
 			DWORD Size;
 			BOOL gotname = FALSE;
 

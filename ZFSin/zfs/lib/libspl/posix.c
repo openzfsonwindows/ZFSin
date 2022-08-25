@@ -716,7 +716,7 @@ int tcsetattr(int fildes, int optional_actions,
 void console_echo(boolean_t willecho)
 {
 	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
-	int constype = isatty(hStdin);
+	int constype = isatty((intptr_t)hStdin);
 	switch (constype) {
 	case 0:
 	default:
@@ -965,7 +965,7 @@ int wosix_write(int fd, const void *data, uint32_t len)
 // Extend isatty() slightly to return 1 for DOS Console, or
 // 2 for cygwin/mingw - as we will have to do different things
 // for NOECHO etc.
-int wosix_isatty(int fd)
+int wosix_isatty(intptr_t fd)
 {
 	DWORD mode;
 	HANDLE h = ITOH(fd);

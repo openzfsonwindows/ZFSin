@@ -61,15 +61,15 @@ typedef struct metaslab_alloc_trace {
  * of the metaslab_alloc_trace_t record and displayed by mdb.
  */
 typedef enum trace_alloc_type {
-	TRACE_ALLOC_FAILURE	= -1ULL,
-	TRACE_TOO_SMALL		= -2ULL,
-	TRACE_FORCE_GANG	= -3ULL,
-	TRACE_NOT_ALLOCATABLE	= -4ULL,
-	TRACE_GROUP_FAILURE	= -5ULL,
-	TRACE_ENOSPC		= -6ULL,
-	TRACE_CONDENSING	= -7ULL,
-	TRACE_VDEV_ERROR	= -8ULL,
-	TRACE_DISABLED		= -9ULL,
+	TRACE_ALLOC_FAILURE	= -1LL,
+	TRACE_TOO_SMALL		= -2LL,
+	TRACE_FORCE_GANG	= -3LL,
+	TRACE_NOT_ALLOCATABLE	= -4LL,
+	TRACE_GROUP_FAILURE	= -5LL,
+	TRACE_ENOSPC		= -6LL,
+	TRACE_CONDENSING	= -7LL,
+	TRACE_VDEV_ERROR	= -8LL,
+	TRACE_DISABLED		= -9LL,
 } trace_alloc_type_t;
 
 #define	METASLAB_WEIGHT_PRIMARY		(1ULL << 63)

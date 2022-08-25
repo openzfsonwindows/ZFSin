@@ -964,7 +964,7 @@ vn_open(char *path, int x1, int flags, int mode, vnode_t **vpp, int x2, int x3)
 			    dsk + 1);
 	} else {
 		(void) sprintf(realpath, "%s", path);
-		if (!(flags & FCREAT) && stat(realpath, &st) == -1) {
+		if (!(flags & FCREAT) && stat(realpath, (struct stat*)&st) == -1) {
 			err = errno;
 			free(realpath);
 			return (err);

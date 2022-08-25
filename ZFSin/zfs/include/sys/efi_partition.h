@@ -233,8 +233,8 @@ struct partition64 {
 #endif
 
 #ifndef _KERNEL
-extern	int	efi_alloc_and_init(int, uint32_t, struct dk_gpt **);
-extern	int	efi_alloc_and_read(int, struct dk_gpt **);
+extern	int	efi_alloc_and_init(uint64_t, uint32_t, struct dk_gpt **);
+extern	int	efi_alloc_and_read(uint64_t, struct dk_gpt **);
 extern	int	efi_write(int, struct dk_gpt *);
 extern	int	efi_rescan(int);
 extern	void	efi_free(struct dk_gpt *);

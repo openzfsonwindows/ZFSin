@@ -1549,8 +1549,8 @@ NTSTATUS pnp_query_id(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION 
 
 	zmo = (mount_t *)DeviceObject->DeviceExtension;
 
-	Irp->IoStatus.Information = (void *)ExAllocatePoolWithTag(PagedPool, zmo->bus_name.Length + sizeof(UNICODE_NULL), '!OIZ');
-	if (Irp->IoStatus.Information == NULL) return STATUS_NO_MEMORY;
+	Irp->IoStatus.Information = (ULONG_PTR) ExAllocatePoolWithTag(PagedPool, zmo->bus_name.Length + sizeof(UNICODE_NULL), '!OIZ');
+	if (Irp->IoStatus.Information == (ULONG_PTR) NULL) return STATUS_NO_MEMORY;
 
 	RtlCopyMemory(Irp->IoStatus.Information, zmo->bus_name.Buffer, zmo->bus_name.Length);
 	dprintf("replying with '%.*S'\n", zmo->uuid.Length/sizeof(WCHAR), Irp->IoStatus.Information);
@@ -3881,7 +3881,7 @@ ioctlDispatcher(
 		dprintf("IRP_MJ_CREATE: zfsdev FileObject %p name '%wZ' length %u flags 0x%x\n",
 			IrpSp->FileObject, IrpSp->FileObject->FileName, 
 			IrpSp->FileObject->FileName.Length, IrpSp->Flags);
-		Status = zfsdev_open(IrpSp->FileObject, Irp);
+		Status = zfsdev_open((dev_t)IrpSp->FileObject, Irp);
 		break;
 	case IRP_MJ_CLOSE:
 		Status = zfsdev_release((dev_t)IrpSp->FileObject, Irp);

@@ -65,9 +65,9 @@
 // proxy to the machine experiencing memory pressure.
 //
 // xnu vm variables
-extern volatile unsigned int vm_page_free_wanted; // 0 by default smd
+extern volatile uint64_t vm_page_free_wanted; // 0 by default smd
 extern unsigned int vm_page_free_min; // 3500 by default smd kern.vm_page_free_min, rarely changes
-extern volatile unsigned int vm_page_free_count; // will tend to vm_page_free_min smd
+extern volatile uint64_t vm_page_free_count; // will tend to vm_page_free_min smd
 
 #define SMALL_PRESSURE_INCURSION_PAGES (vm_page_free_min >> 5)
 
@@ -4678,7 +4678,7 @@ spl_free_thread(void *notused)
 			// trigger a reap below
 			lowmem = TRUE;
 		}
-		extern volatile unsigned int vm_page_speculative_count;
+		extern volatile uint64_t vm_page_speculative_count;
 		if ((above_min_free_bytes < 0LL && reserve_low && !early_lots_free &&
 			!memory_equilibrium && !just_alloced) ||
 		    above_min_free_bytes <= -4LL*1024LL*1024LL) {

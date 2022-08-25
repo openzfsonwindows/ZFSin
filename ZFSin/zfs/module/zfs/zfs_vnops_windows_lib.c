@@ -594,7 +594,7 @@ static int vnode_apply_single_ea(struct vnode *vp, struct vnode *xdvp, FILE_FULL
 		/* Write data */
 		uio_t *uio;
 		uio = uio_create(1, 0, UIO_SYSSPACE, UIO_WRITE);
-		uio_addiov(uio, ea->EaName + ea->EaNameLength + 1, ea->EaValueLength);
+		uio_addiov(uio, (user_addr_t)(ea->EaName + ea->EaNameLength + 1), ea->EaValueLength);
 		error = zfs_write(xvp, uio, 0, NULL, NULL);
 		uio_free(uio);
 	}
