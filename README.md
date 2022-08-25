@@ -1,3 +1,9 @@
+----
+
+THIS IS THE OLD PORT: Please move over to
+https://github.com/openzfsonwindows/openzfs
+
+----
 
 [![Build status](https://ci.appveyor.com/api/projects/status/dcw734sl0prmolwr/branch/master?svg=true)](https://ci.appveyor.com/project/lundman/zfsin/branch/master)
 
